@@ -1227,6 +1227,9 @@ is on their record. Their mail and calendar connection is untouched; this is a s
   Navigator's inbox is not used - Wingguy works from the ordinary one.
 - The connection is for one month (it switches itself off, with a warning email to you five days
   before). Their list keeps working after that.
+- When their first batch lands, YOU get "ready for a session" and THEY get an email (you copied,
+  replies come to you) with the step 16 steps to do it themselves - only if their Claude key is on
+  their record; your email says whether it went. A client who would rather do it live replies to book.
 - No client has clicked one of these links yet as at 6 Oct 2026 - watch the first one land.
 
 ## STEP 16 EXPANDED - Reconnect: their description, the samples, two yeses [live, session two]

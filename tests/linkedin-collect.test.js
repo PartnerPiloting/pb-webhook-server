@@ -162,6 +162,54 @@ const iso = (ms) => new Date(ms).toISOString();
     assert.strictEqual(upsert.params[2], 'ready');
     assert.strictEqual(upsert.params[3], 27150);
   });
+  await check('first batch in, client has a key -> client gets the steps, coach copied, and Guy is told', async () => {
+    lc._setPool(fakeDb(null));
+    const alerts = []; const sent = [];
+    const r = await lc.collectOne(client({ clientFirstName: 'Pat', clientEmailAddress: 'pat@example.com', anthropicApiKey: 'sk-test' }), {
+      nowMs: T0, coach: { name: 'Casey Coach', email: 'casey@example.com' },
+      deps: { sync: okSync({ messages: 900, withMessages: 200, connections: 900 }), sendAlertEmail: async (s, h, to, o) => alerts.push(o.text), sendClientEmail: async (m) => sent.push(m) },
+    });
+    assert.strictEqual(r.clientEmailed, true);
+    assert.strictEqual(sent.length, 1);
+    assert.strictEqual(sent[0].to, 'pat@example.com');
+    assert.strictEqual(sent[0].cc, 'casey@example.com');
+    assert.strictEqual(sent[0]['h:Reply-To'], 'casey@example.com');
+    assert.ok(sent[0].text.startsWith('Hi Pat,'));
+    assert.ok(sent[0].text.includes('set up my reconnect list'));
+    assert.ok(sent[0].text.endsWith('Cheers,\nCasey'));
+    assert.ok(!/—/.test(sent[0].text), 'no em dashes');
+    assert.ok(sent[0].from.startsWith('Casey Coach <'));
+    assert.ok(alerts[0].includes('Wingguy has emailed them the steps'));
+  });
+  await check('first batch in, no Claude key -> client NOT emailed, and Guy is told why', async () => {
+    lc._setPool(fakeDb(null));
+    const alerts = []; const sent = [];
+    const r = await lc.collectOne(client({ clientEmailAddress: 'pat@example.com' }), {
+      nowMs: T0, deps: { sync: okSync({ messages: 900, withMessages: 200, connections: 900 }), sendAlertEmail: async (s, h, to, o) => alerts.push(o.text), sendClientEmail: async (m) => sent.push(m) },
+    });
+    assert.strictEqual(r.clientEmailed, false);
+    assert.strictEqual(sent.length, 0);
+    assert.ok(alerts[0].includes('NOT been emailed') && alerts[0].includes('Claude key'));
+    assert.strictEqual(lc.clientEmailBlocker({ clientEmailAddress: 'a@b.c', managedClaudeKey: true }), null);
+  });
+  await check('client email fails -> the collect still succeeds and Guy is told to send it himself', async () => {
+    lc._setPool(fakeDb(null));
+    const alerts = [];
+    const r = await lc.collectOne(client({ clientEmailAddress: 'pat@example.com', anthropicApiKey: 'sk-test' }), {
+      nowMs: T0, deps: { sync: okSync({ messages: 900, withMessages: 200, connections: 900 }), sendAlertEmail: async (s, h, to, o) => alerts.push(o.text), sendClientEmail: async () => { throw new Error('mailgun 400'); } },
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.clientEmailed, false);
+    assert.ok(alerts[0].includes('failed (mailgun 400)'));
+  });
+  await check('the client is never emailed on a later day (ready already sent)', async () => {
+    lc._setPool(fakeDb({ tenant_id: 'Pat-Client', account_id: 'li-1', state: 'ready', messages: 500, first_batch_at: iso(T0), last_growth_at: iso(T0), notified_ready_at: iso(T0) }));
+    const sent = [];
+    await lc.collectOne(client({ clientEmailAddress: 'pat@example.com', anthropicApiKey: 'sk-test' }), {
+      nowMs: T0 + 24 * H, deps: { sync: okSync({ messages: 900, withMessages: 200, connections: 900 }), sendAlertEmail: async () => {}, sendClientEmail: async (m) => sent.push(m) },
+    });
+    assert.strictEqual(sent.length, 0);
+  });
   await check('a client already working their list gets no "ready" email', async () => {
     lc._setPool(fakeDb(null));
     const mails = [];

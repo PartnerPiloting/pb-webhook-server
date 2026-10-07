@@ -9,7 +9,8 @@
 //
 // Nobody waits for the whole history (Guy, 5 Oct 2026). The states, in order:
 //   waiting    - connected, nothing has arrived yet
-//   ready      - the first batch is in: the client can have their session   -> EMAIL to Guy
+//   ready      - the first batch is in: the client can have their session   -> EMAIL to Guy, and
+//                the client gets the self-setup steps, coach copied (buildClientReadyEmail)
 //   collecting - older history is still arriving each day
 //   complete   - nothing new for two days running                           -> EMAIL to Guy
 //   stalled    - connected more than a day ago and still nothing            -> EMAIL to Guy
@@ -146,6 +147,47 @@ function buildEmail(kind, c) {
   };
 }
 
+/**
+ * The email to the CLIENT when their first batch is in (Guy, 7 Oct 2026): the steps to switch on
+ * their Reconnect list themselves, in their own Claude, with their coach copied. It saves booking a
+ * call just to type one sentence. The description is the one place a client alone can go wrong, so
+ * the email says why it matters, gives an example, and offers a call instead.
+ */
+function buildClientReadyEmail(c) {
+  const first = String(c.clientFirstName || '').trim() || String(c.clientName || '').trim().split(/\s+/)[0] || 'there';
+  const coachFirst = String(c.coachName || '').trim().split(/\s+/)[0] || 'Guy';
+  const subject = 'Your LinkedIn conversations are in - one step and your Reconnect list is live';
+  const text = [
+    `Hi ${first},`,
+    'Good news - your LinkedIn conversations have landed in Wingguy, so you\'re ready for the fun bit.',
+    'Over the years you\'ve had hundreds of good conversations on LinkedIn that simply stopped. Your Reconnect list finds the ones worth picking up and hands you 20 a day on your Follow-Ups screen, each with a suggested message.',
+    'To switch it on, open your Claude and type:\n\n    set up my reconnect list',
+    'Then Wingguy takes you through it:',
+    '1. It asks who you want to hear from again. Take your time here - this description decides the quality of your list for months. Be specific. Something like: "Founders and senior leaders of growing businesses who have had a real conversation with me about the work I do. Not people who only pitched me something, and not anyone who showed no interest." A vague answer gives you a vague list.\n'
+      + '2. It shows you 30 of your own conversations, scored. Look at them properly and tell it which ones it\'s got wrong - it learns from that.\n'
+      + '3. You say yes twice - once to read all your conversations (it shows you the cost first, usually a few dollars on your own Claude key), and once to choose how many people to bring in.',
+    'That\'s it - your Reconnect section then appears on your Follow-Ups screen with your first 20 people.',
+    'It only reads your LinkedIn - it never posts, connects or messages anyone without you pressing send.',
+    'If you\'d rather do it together, just reply and we\'ll grab 20 minutes - happy either way.',
+    `Cheers,\n${coachFirst}`,
+  ].join('\n\n');
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const html = text.split('\n\n').map((p) => (p.trim() === 'set up my reconnect list'
+    ? `<p style="margin-left:24px"><b>${esc(p.trim())}</b></p>`
+    : `<p>${esc(p).replace(/\n/g, '<br>')}</p>`)).join('');
+  return { subject, text, html };
+}
+
+/**
+ * Should the client get that email? Only when they can act on it today: an email address, and their
+ * own Claude key on the record (the read runs on it). Returns null when yes, else the reason not.
+ */
+function clientEmailBlocker(client) {
+  if (!String((client && client.clientEmailAddress) || '').trim()) return 'there is no email address on their record';
+  if (!String((client && client.anthropicApiKey) || '').trim() && !(client && client.managedClaudeKey)) return 'their Claude key is not on their record yet, so they cannot do the setup';
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -210,7 +252,7 @@ async function statusByTenant() {
 // One client, then all of them
 // ---------------------------------------------------------------------------
 
-async function collectOne(client, { nowMs = Date.now(), dryRun = false, force = false, deps = {} } = {}) {
+async function collectOne(client, { nowMs = Date.now(), dryRun = false, force = false, coach = {}, deps = {} } = {}) {
   const tenantId = client.clientId;
   const db = getPool();
   if (!db) return { tenantId, ok: false, error: 'DATABASE_URL not configured' };
@@ -256,11 +298,41 @@ async function collectOne(client, { nowMs = Date.now(), dryRun = false, force = 
   const alreadyOn = String(client.reconnect || '').trim() === 'Yes';
   if (next.notify && !(next.notify === 'ready' && alreadyOn)) {
     const mail = buildEmail(next.notify, { tenantId, clientName: client.clientName, connections, conversations: result.conversations, oldestMsgAt });
+    // "ready" also goes to the client, coach copied - and Guy's email says whether it went.
+    if (next.notify === 'ready') {
+      const blocker = clientEmailBlocker(client);
+      if (blocker) {
+        result.clientEmailed = false;
+        mail.text += `\n\nThey have NOT been emailed the setup steps: ${blocker}.`;
+      } else {
+        const coachEmail = String(coach.email || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim();
+        const cm = buildClientReadyEmail({ clientFirstName: client.clientFirstName, clientName: client.clientName, coachName: coach.name });
+        const addr = String(process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`).trim();
+        try {
+          const sendClient = deps.sendClientEmail || require('./emailNotificationService').sendMailgunEmail;
+          await sendClient({
+            from: addr.includes('<') ? addr : `${coach.name || 'Guy Wilson'} <${addr}>`,
+            to: String(client.clientEmailAddress).trim(),
+            cc: coachEmail,
+            'h:Reply-To': coachEmail,
+            subject: cm.subject, text: cm.text, html: cm.html,
+          });
+          result.clientEmailed = true;
+          mail.text += `\n\nWingguy has emailed them the steps to set up their Reconnect list themselves ("set up my reconnect list" in their Claude) - you are copied. They can reply to book a session with you instead.`;
+        } catch (e) {
+          result.clientEmailed = false;
+          result.clientEmailError = e.message;
+          mail.text += `\n\nWingguy tried to email them the setup steps but it failed (${e.message}) - send them yourself.`;
+        }
+      }
+    }
     try {
       const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
       await send(mail.subject, `<p>${mail.text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</p>`, null, { text: mail.text });
       notified = next.notify;
     } catch (e) { result.emailError = e.message; }
+    // The client was emailed, so "ready" is done even if Guy's copy failed - never email them twice.
+    if (result.clientEmailed) notified = 'ready';
   } else if (next.notify) notified = next.notify; // recorded so it is not reconsidered every day
 
   const nowIso = new Date(nowMs).toISOString();
@@ -368,7 +440,10 @@ async function runCollectDaily({ dryRun = false, only = '', nowMs = Date.now() }
   const results = [];
   for (const client of due) {
     try {
-      const r = await collectOne(client, { nowMs, dryRun });
+      // The coach copied on the client's "ready" email: their Coach record, else Guy (ALERT_EMAIL).
+      const coachRec = client.coach ? (all || []).find((c) => c.clientId === client.coach) : null;
+      const coach = coachRec ? { name: coachRec.clientName, email: coachRec.clientEmailAddress } : {};
+      const r = await collectOne(client, { nowMs, dryRun, coach });
       // The month end comes after the day's collect, so a warning or switch-off never skips it.
       const m = await monthEnd(client, { nowMs, dryRun });
       if (m) r.monthEnd = m;
@@ -382,4 +457,4 @@ async function runCollectDaily({ dryRun = false, only = '', nowMs = Date.now() }
   return { ok: true, dryRun, clients: due.length, results };
 }
 
-module.exports = { runCollectDaily, collectOne, topUp, monthEnd, monthEndStep, MONTH_DAYS, WARN_DAYS, nextStatus, wantRelations, buildEmail, statusByTenant, ensureSchema, _setPool, NEAR_LIMIT };
+module.exports = { runCollectDaily, collectOne, topUp, monthEnd, monthEndStep, MONTH_DAYS, WARN_DAYS, nextStatus, wantRelations, buildEmail, buildClientReadyEmail, clientEmailBlocker, statusByTenant, ensureSchema, _setPool, NEAR_LIMIT };
