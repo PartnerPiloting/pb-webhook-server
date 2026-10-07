@@ -1286,6 +1286,79 @@ module.exports = function mountWingguy(app) {
     }
   });
 
+  // --- "Your meeting recorder" - portal self-service for the Fathom API key ---------------------
+  // Same shape as the Claude key: write-only value, masked status, tested against Fathom BEFORE it
+  // is stored, so the client sees proof ("your last recording was ...") rather than "saved". The
+  // coach is emailed when a client connects. See services/fathomKey.js.
+
+  const fathomKey = require('../services/fathomKey');
+
+  const fathomStatus = (key, lastRecording) => ({
+    ok: true,
+    hasKey: !!String(key || '').trim(),
+    masked: fathomKey.maskFathomKey(key),
+    lastRecording: lastRecording || null,
+  });
+
+  router.get('/setup/fathom-key', async (req, res) => {
+    let client = req.client;
+    try { client = (await clientService.getClientById(req.client.clientId)) || req.client; } catch (_) { /* cached record */ }
+    const key = String(client.fathomApiKey || '').trim();
+    if (!key) return res.json(fathomStatus(''));
+    // Show the newest recording as live proof; a failed look still reports the key as on file.
+    const probe = await fathomKey.probeFathomKey(key);
+    return res.json({ ...fathomStatus(key, probe.ok ? probe.lastRecording : null), working: probe.ok ? true : (probe.reason === 'rejected' ? false : null) });
+  });
+
+  router.post('/setup/fathom-key', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const key = String((req.body && req.body.key) || '').trim();
+    if (!key) return res.status(400).json({ ok: false, error: 'Paste your key first.' });
+    if (!fathomKey.looksLikeFathomKey(key)) {
+      return res.status(400).json({ ok: false, error: 'That does not look like a Fathom API key - copy it exactly from Fathom (Settings, then API Access). Nothing was saved.' });
+    }
+    const probe = await fathomKey.probeFathomKey(key);
+    if (!probe.ok) {
+      if (probe.reason === 'rejected') {
+        return res.status(400).json({ ok: false, error: 'Fathom rejected that key - it looks mistyped or deleted. Copy it again from Fathom (Settings, then API Access) and paste it here. Nothing was saved.' });
+      }
+      if (probe.reason === 'transient') {
+        return res.status(503).json({ ok: false, error: 'Fathom is busy right now - nothing saved. Try again in a minute.' });
+      }
+      logger.error(`[Wingguy] fathom-key probe failed for ${tenantId}: HTTP ${probe.status}`);
+      return res.status(500).json({ ok: false, error: 'Could not check that key with Fathom - nothing saved. Try again shortly.' });
+    }
+    const hadKey = !!String(req.client.fathomApiKey || '').trim();
+    try {
+      await clientService.updateClientFathomKey(tenantId, key);
+    } catch (e) {
+      logger.error(`[Wingguy] fathom-key save failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'The key checked out with Fathom but could not be saved. Try again shortly.' });
+    }
+    logger.info(`[Wingguy] fathom-key ${hadKey ? 'replaced' : 'saved'} for ${tenantId} (…${key.slice(-4)})${pageName(req) ? ` by ${pageName(req)}` : ''}`);
+    // Tell the coach - this used to be their job, so they should know it is done.
+    try {
+      const who = req.client.clientName || tenantId;
+      const last = probe.lastRecording;
+      const lastLine = last ? `Their newest Fathom recording is "${last.title}"${last.at ? ` (${String(last.at).slice(0, 10)})` : ''}.` : 'Their Fathom account has no recordings yet, so the first call they record will be the proof.';
+      const text = `${who} ${hadKey ? 'replaced' : 'added'} their Fathom key in the portal, and Fathom accepted it.\n\n${lastLine}\n\nNothing needed from you - their recorded calls now file into Wingguy by themselves, within about 5 minutes of each call ending.`;
+      await require('../services/emailNotificationService').sendAlertEmail(`Fathom: ${who} is connected`, `<p>${text.replace(/\n\n/g, '</p><p>')}</p>`, null, { text });
+    } catch (e) { logger.warn(`[Wingguy] fathom-key coach email failed for ${tenantId}: ${e.message}`); }
+    return res.json({ ...fathomStatus(key, probe.lastRecording), working: true });
+  });
+
+  router.delete('/setup/fathom-key', async (req, res) => {
+    const tenantId = req.client.clientId;
+    try {
+      await clientService.updateClientFathomKey(tenantId, '');
+      logger.info(`[Wingguy] fathom-key removed for ${tenantId}${pageName(req) ? ` by ${pageName(req)}` : ''}`);
+      return res.json(fathomStatus(''));
+    } catch (e) {
+      logger.error(`[Wingguy] fathom-key removal failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'Could not remove the key. Try again shortly.' });
+    }
+  });
+
   // --- "How your Wingguy works" — the browse + change + add doors (stage 3) ---------------------
   // The page shows every instruction in plain English and lets the client push back on any of
   // them, right where they are reading it. All writes still go through the ONE checked door

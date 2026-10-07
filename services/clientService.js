@@ -1838,6 +1838,22 @@ async function updateClientAnthropicKey(clientId, key) {
 }
 
 /**
+ * Set or clear a client's Fathom API key (portal self-service, 7 Oct 2026 - services/fathomKey.js).
+ * The caller has already tested the key against Fathom. Pass '' to remove it.
+ */
+async function updateClientFathomKey(clientId, key) {
+    const base = initializeClientsBase();
+    const client = await getClientById(clientId);
+    if (!client) throw new Error(`Client ${clientId} not found`);
+    const clean = String(key || '').trim();
+    await base('Clients').update([{ id: client.id, fields: { 'Fathom API Key': clean } }]);
+    clientsCache = null;
+    clientsCacheTimestamp = null;
+    logger.info(`Fathom key ${clean ? 'updated' : 'removed'} for client ${clientId} (portal self-service)`);
+    return true;
+}
+
+/**
  * Stamp a client's record when their stored key is rejected mid-flight ('revoked' | 'billing'),
  * so the portal can show "your key stopped working since X" instead of the client discovering it
  * draft-by-draft. Only the FIRST failure sets the timestamp ("failing since" stays honest);
@@ -1869,6 +1885,7 @@ async function noteClientKeyFailure(clientId, reason) {
 }
 
 module.exports = {
+    updateClientFathomKey,
     getAllClients,
     getAllActiveClients,
     getActiveClients,  // Add the new function

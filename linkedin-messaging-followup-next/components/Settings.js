@@ -2,13 +2,14 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
-import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon, CreditCardIcon, ShieldCheckIcon, KeyIcon, ExclamationTriangleIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon, CreditCardIcon, ShieldCheckIcon, KeyIcon, ExclamationTriangleIcon, ClipboardDocumentIcon, CheckIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
 import { getBackendBase, getAuthenticatedHeaders } from '../services/api';
 import Link from 'next/link';
 import AIEditModal from './AIEditModal';
 import HelpButton from './HelpButton';
 import RescorePanel from './RescorePanel';
 import ClaudeKeySection from './ClaudeKeySection';
+import FathomKeySection from './FathomKeySection';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 // Component that uses useSearchParams wrapped in Suspense
@@ -52,15 +53,19 @@ const SettingsWithParams = () => {
   }, []);
 
   // Set initial view based on service level
+  // ?view=recorder opens straight onto "Your Meeting Recorder" - the link a coach sends a client.
+  const openView = searchParams.get('view');
   useEffect(() => {
-    if (serviceLevel === 1) {
+    if (openView === 'recorder') {
+      setCurrentView('recorder');
+    } else if (serviceLevel === 1) {
       // Service level 1 goes directly to profile attributes
       setCurrentView('profile');
     } else {
       // Service level 2+ shows the menu
       setCurrentView('menu');
     }
-  }, [serviceLevel]);
+  }, [serviceLevel, openView]);
   const handleOpenAIEdit = (attribute) => {
     console.log('=== DEBUGGING CLICK ===');
     console.log('1. Raw attribute:', attribute);
@@ -727,6 +732,29 @@ const SettingsWithParams = () => {
                 </div>
               </div>
 
+              {/* Your meeting recorder (Fathom key self-service, 7 Oct 2026) */}
+              <div
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
+                onClick={() => setCurrentView('recorder')}
+              >
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="flex-shrink-0">
+                    <MicrophoneIcon className="h-8 w-8 text-rose-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Your Meeting Recorder
+                    </h3>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Connect Fathom so your calls come into Wingguy by themselves - for drafting from the call and prep before the next one.
+                </p>
+                <div className="flex items-center text-sm text-rose-600 font-medium">
+                  Connect Fathom →
+                </div>
+              </div>
+
               {/* Re-score Leads (gated by master "Rescore Enabled") */}
               {rescoreEnabled && (
               <div
@@ -811,6 +839,41 @@ const SettingsWithParams = () => {
               <h3 className="text-lg font-semibold text-gray-900">Manage your key</h3>
             </div>
             <ClaudeKeySection authHeaders={claudeKeyAuthHeaders} variant="settings" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Your meeting recorder view (FathomKeySection)
+  if (currentView === 'recorder') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleBackToMenu}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <ArrowLeftIcon className="h-4 w-4 mr-1" />
+              Back to Settings
+            </button>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Your Meeting Recorder</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Fathom records your calls; Wingguy reads the transcripts so you never have to hold a call in your head
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-xl mx-auto">
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <MicrophoneIcon className="h-6 w-6 text-rose-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Connect Fathom</h3>
+            </div>
+            <FathomKeySection authHeaders={claudeKeyAuthHeaders} />
           </div>
         </div>
       </div>
