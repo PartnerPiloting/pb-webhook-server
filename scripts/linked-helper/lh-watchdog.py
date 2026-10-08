@@ -346,6 +346,9 @@ def campaign_state(account_id, data_dir=None):
       last_invite_at    the newest invitation actually sent
       waiting_running   people queued to be invited in campaigns that are switched on
       waiting_paused    people queued in campaigns that are paused
+      last_invite_attempt_at, failed_invites_recent
+                        the newest invitation ATTEMPT and how many failed in 3 days - still
+                        trying but always failing means the list is used up
     Read-only (mode=ro), a few cheap queries. Best-effort: anything odd returns {} and the
     watchdog carries on - losing this block must never cost the health line.
     """
@@ -367,6 +370,13 @@ def campaign_state(account_id, data_dir=None):
                 "SELECT max(ar.created_at) FROM action_results ar "
                 "JOIN action_versions av ON av.id = ar.action_version_id "
                 f"WHERE ar.result = 1 AND av.action_id IN ({invite_actions})").fetchone()[0]
+            # Still trying but every attempt failing = the list is used up (Sam Noble, 3-8 Oct 2026:
+            # "invited previously", "already 1st-degree"). Attempts of either outcome, last 3 days.
+            attempt, failed = con.execute(
+                "SELECT max(ar.created_at), sum(CASE WHEN ar.result = -1 THEN 1 ELSE 0 END) "
+                "FROM action_results ar JOIN action_versions av ON av.id = ar.action_version_id "
+                f"WHERE av.action_id IN ({invite_actions}) "
+                "AND ar.created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 days')").fetchone()
             waiting = {0: 0, 1: 0}
             for paused, n in con.execute(
                     "SELECT c.is_paused, count(*) FROM action_target_people t "
@@ -378,7 +388,8 @@ def campaign_state(account_id, data_dir=None):
         finally:
             con.close()
         return {"first_action_at": first, "last_invite_at": last,
-                "waiting_running": waiting[0], "waiting_paused": waiting[1]}
+                "waiting_running": waiting[0], "waiting_paused": waiting[1],
+                "last_invite_attempt_at": attempt, "failed_invites_recent": int(failed or 0)}
     except Exception as e:
         print(f"campaign state unreadable (non-fatal): {e}")
         return {}

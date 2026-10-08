@@ -117,7 +117,9 @@ check('the client email: first name, the link, two steps, signed by the coach', 
   assert.match(m.text, /^Hi Alex,/);
   assert.match(m.text, /1\. Open your machine: https:\/\/client-a\.example\.com/);
   assert.match(m.text, /2\. Sign in to LinkedIn there/);
-  assert.match(m.text, /Cheers,\nGuy$/);
+  assert.match(m.text, /Cheers,\n\(I know a\) Guy$/);
+  assert.match(m.text, /on your Linked Helper machine/);
+  assert.ok(!/Wingguy machine/.test(m.text), 'one name for the machine: Linked Helper machine');
   assert.ok(!/[–—]/.test(m.text + m.subject), 'house style: no en or em dash');
 });
 
@@ -176,21 +178,43 @@ check('the coach\'s own machine is listed, worded to them', () => {
 
 console.log('sendSignoutAlert():');
 
-check('client email held (switch off): coach is emailed, with the message ready to forward', async () => {
+check('switch on: the client is emailed (coach copied, replies to the coach), logged, and the coach told', async () => {
   const sent = [];
+  const toClient = [];
+  const logged = [];
   const r = await w.sendSignoutAlert({
-    client: client(), state: 'LOGGED OUT', lastSignedIn: minsAgo(120),
+    client: client({ clientEmailAddress: 'alex@example.com', clientFirstName: 'Alex' }), state: 'LOGGED OUT', lastSignedIn: minsAgo(120),
     deps: {
-      getClientById: async () => ({ clientName: 'Coach One', clientEmailAddress: 'coach@example.com', timezone: 'Australia/Brisbane' }),
+      getClientById: async () => ({ clientName: 'Guy Wilson', clientEmailAddress: 'coach@example.com', timezone: 'Australia/Brisbane' }),
       sendAlertEmail: async (subject, html, to, opts) => { sent.push({ subject, text: opts.text }); },
-      sendClientEmail: async () => { throw new Error('must not email the client while the switch is off'); },
+      sendClientEmail: async (m) => { toClient.push(m); },
+      recordComm: async (c) => { logged.push(c); },
     },
   });
-  assert.equal(w.EMAIL_CLIENT, false);
-  assert.equal(r.clientEmailed, false);
+  assert.equal(w.EMAIL_CLIENT, true);
+  assert.equal(r.clientEmailed, true);
+  assert.equal(toClient.length, 1);
+  assert.equal(toClient[0].to, 'alex@example.com');
+  assert.equal(toClient[0].cc, 'coach@example.com');
+  assert.equal(toClient[0]['h:Reply-To'], 'coach@example.com');
+  assert.equal(toClient[0].subject, 'Your LinkedIn needs you to sign in again');
+  assert.match(toClient[0].text, /\(I know a\) Guy$/);
+  assert.equal(logged[0].channel, 'lh-signout');
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].subject, "Client A's Linked Helper machine: LinkedIn signed out");
-  assert.match(sent[0].text, /They have NOT been emailed: the client email is switched off/);
+  assert.match(sent[0].text, /Wingguy has emailed them the two steps to sign in again - you are copied\./);
+});
+
+check('switch on, but no email address on the record - coach told why, with the message to forward', async () => {
+  const sent = [];
+  await w.sendSignoutAlert({
+    client: client(), state: 'LOGGED OUT', lastSignedIn: minsAgo(120),
+    deps: {
+      getClientById: async () => null,
+      sendAlertEmail: async (subject, html, to, opts) => { sent.push({ subject, text: opts.text }); },
+      sendClientEmail: async () => { throw new Error('must not be called without an address'); },
+    },
+  });
+  assert.match(sent[0].text, /They have NOT been emailed: there is no email address on their record/);
   assert.match(sent[0].text, /The message, ready to forward:\n\nSubject: Your LinkedIn needs you to sign in again/);
 });
 

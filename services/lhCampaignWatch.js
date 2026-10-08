@@ -28,17 +28,17 @@
  *   'LH First Action', 'Last Invite Sent', 'Invites Waiting' - the facts, readable in Airtable
  *   'Trial Warning Sent', 'Quiet Campaign Alerted'           - once-per-episode stamps
  *
- * Client emails: built, but OFF (EMAIL_CLIENT) until Guy approves the wording - his alert carries
- * the message ready to forward, exactly as services/lhSignoutWatch.js does.
+ * Client emails: ON since 8 Oct 2026 (Guy approved the wording), coach copied, replies to the coach.
+ * With EMAIL_CLIENT false the coach's alert carries the message ready to forward instead.
  */
 
 const { createSafeLogger } = require('../utils/loggerHelper');
-const { whenWords } = require('./lhSignoutWatch');
+const { whenWords, signoffName } = require('./lhSignoutWatch');
 
 const log = createSafeLogger({ module: 'lhCampaignWatch' });
 
-// Guy approves the client wording, then this goes true (8 Oct 2026: held for his OK).
-const EMAIL_CLIENT = false;
+// On since 8 Oct 2026 - Guy approved the wording.
+const EMAIL_CLIENT = true;
 
 const DAY = 86400000;
 const TRIAL_DAYS = 14;
@@ -71,8 +71,15 @@ function trialEndsAt(firstActionAt) {
   return t === null ? null : t + TRIAL_DAYS * DAY;
 }
 
-/** Why the campaign is quiet, from the queue the machine reported. */
-function quietKind({ waitingRunning, waitingPaused }) {
+/**
+ * Why the campaign is quiet, from what the machine reported.
+ *   exhausted - it is still TRYING (an attempt in the last 2 days) but every invitation fails:
+ *               everyone it reaches was invited before or is already connected. Sam Noble's
+ *               campaign, 3-8 Oct 2026: 38 "invited previously", 12 "already 1st-degree".
+ */
+function quietKind({ waitingRunning, waitingPaused, lastAttemptAt, failedRecent, now = Date.now() }) {
+  const attempt = ms(lastAttemptAt);
+  if (num(failedRecent) > 0 && attempt !== null && now - attempt < 2 * DAY) return 'exhausted';
   if (num(waitingRunning) > 0) return 'stopped';
   if (num(waitingPaused) > 0) return 'paused';
   return 'empty';
@@ -116,7 +123,7 @@ function campaignStep({ report, client = {}, now = Date.now() } = {}) {
     const idle = now - last;
     if (idle >= QUIET_DAYS * DAY && idle < DORMANT_DAYS * DAY) {
       out.quietAlert = true;
-      out.kind = quietKind({ waitingRunning, waitingPaused });
+      out.kind = quietKind({ waitingRunning, waitingPaused, lastAttemptAt: report.last_invite_attempt_at, failedRecent: report.failed_invites_recent, now });
       out.fields[FIELDS.quietAlerted] = iso(now);
     }
   }
@@ -151,6 +158,9 @@ function quietCoachLine({ clientName, kind, lastInviteAt, waiting, machineStatus
   const who = self ? 'Your' : `${clientName}'s`;
   const days = daysSince(lastInviteAt, now);
   const since = `${dayWords(lastInviteAt, timeZone)}${days !== null ? ` (${days} days)` : ''}`;
+  if (kind === 'exhausted') {
+    return `${who} campaign has run out of fresh people - it is still trying, but every invitation since ${since} has failed: everyone it reaches has been invited before or is already connected. It needs a fresh search.`;
+  }
   if (kind === 'empty') {
     return `${who} campaign has run out of people - the last invitation went out ${since}, and nobody is left to invite. The search needs topping up.`;
   }
@@ -168,7 +178,7 @@ function htmlFrom(text) {
 
 function trialClientEmail({ clientFirstName, clientName, coachName, firstActionAt, timeZone }) {
   const first = firstName(clientFirstName || clientName, 'there');
-  const coach = firstName(coachName, 'Guy');
+  const coach = signoffName(coachName);
   const day = dayWords(trialEndsAt(firstActionAt), timeZone);
   const subject = `Your Linked Helper trial ends on ${day}`;
   const text = [
@@ -184,11 +194,18 @@ function trialClientEmail({ clientFirstName, clientName, coachName, firstActionA
 
 function quietClientEmail({ clientFirstName, clientName, coachName, kind, lastInviteAt, machineLink, timeZone }) {
   const first = firstName(clientFirstName || clientName, 'there');
-  const coach = firstName(coachName, 'Guy');
+  const coach = signoffName(coachName);
   const day = dayWords(lastInviteAt, timeZone);
   let subject;
   let body;
-  if (kind === 'empty') {
+  if (kind === 'exhausted') {
+    subject = 'Your campaign has run out of fresh people';
+    body = [
+      `Your campaign is still running, but it hasn't been able to send an invitation since ${day} - everyone it's reaching has either been invited before or is already one of your connections.`,
+      'To keep it going, it needs a fresh search: in Claude, type "Help me with my first campaign" and it walks you through it.',
+      "Or reply and we'll do it together.",
+    ];
+  } else if (kind === 'empty') {
     subject = 'Your campaign has run out of people';
     body = [
       `Your campaign has invited everyone in your search - the last invitation went out on ${day}.`,
@@ -279,7 +296,7 @@ async function sendCampaignAlert({ client, alert, kind = null, report = {}, deps
 
   const subject = alert === 'trial'
     ? `${self ? 'Your' : `${name}'s`} Linked Helper trial ends soon`
-    : `${self ? 'Your' : `${name}'s`} campaign: ${kind === 'empty' ? 'run out of people' : kind === 'paused' ? 'paused' : 'stopped sending'}`;
+    : `${self ? 'Your' : `${name}'s`} campaign: ${kind === 'exhausted' ? 'run out of fresh people' : kind === 'empty' ? 'run out of people' : kind === 'paused' ? 'paused' : 'stopped sending'}`;
   const text = `${line}${tail}`;
   try {
     const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;

@@ -110,6 +110,16 @@ check('four days, nobody left anywhere - kind "empty"', () => {
   assert.equal(step(report({ last_invite_at: daysAgo(5), waiting_running: 0, waiting_paused: 0 })).kind, 'empty');
 });
 
+check('Sam: still trying (attempt yesterday), every one failing - kind "exhausted"', () => {
+  const s = step(report({ last_invite_at: daysAgo(5.5), waiting_running: 1835, last_invite_attempt_at: daysAgo(0.5), failed_invites_recent: 20 }));
+  assert.equal(s.quietAlert, true);
+  assert.equal(s.kind, 'exhausted');
+});
+
+check('failures but no attempt for days (gave up, not trying) - "stopped", not "exhausted"', () => {
+  assert.equal(step(report({ last_invite_at: daysAgo(6), last_invite_attempt_at: daysAgo(3), failed_invites_recent: 4 })).kind, 'stopped');
+});
+
 check('already alerted, still quiet - never again', () => {
   const s = step(report({ last_invite_at: daysAgo(6) }), { quietCampaignAlerted: daysAgo(2) });
   assert.equal(s.quietAlert, false);
@@ -142,7 +152,7 @@ check('trial email: first name, the end day, the licence page, the promo warning
   assert.match(m.text, /https:\/\/knowaguy\.com\.au\/your-licence/);
   assert.match(m.text, /before you press Proceed to Payment/);
   assert.match(m.text, /already bought it, you're all set/);
-  assert.match(m.text, /Cheers,\nGuy$/);
+  assert.match(m.text, /Cheers,\n\(I know a\) Guy$/);
   nodash(m.subject + m.text);
 });
 
@@ -201,22 +211,40 @@ check('not alerted, another coach, paused client, a month quiet - none listed', 
 
 console.log('sendCampaignAlert():');
 
-check('client email held (switch off): the coach gets the line and the message to forward', async () => {
+check('switch on: the client gets the trial email (coach copied, replies to coach), logged; coach told', async () => {
   const sent = [];
+  const toClient = [];
+  const logged = [];
   const r = await w.sendCampaignAlert({
     client: { clientId: 'Client-A', clientName: 'Client A', clientFirstName: 'Alex', coach: COACH, timezone: 'Australia/Sydney', clientEmailAddress: 'a@example.com' },
     alert: 'trial', report: report({ first_action_at: daysAgo(10) }), now: NOW,
     deps: {
-      getClientById: async () => ({ clientName: 'Coach One', clientEmailAddress: 'coach@example.com', timezone: 'Australia/Brisbane' }),
+      getClientById: async () => ({ clientName: 'Guy Wilson', clientEmailAddress: 'coach@example.com', timezone: 'Australia/Brisbane' }),
       sendAlertEmail: async (subject, html, to, opts) => { sent.push({ subject, text: opts.text }); },
-      sendClientEmail: async () => { throw new Error('must not email the client while the switch is off'); },
+      sendClientEmail: async (m) => { toClient.push(m); },
+      recordComm: async (c) => { logged.push(c); },
     },
   });
-  assert.equal(w.EMAIL_CLIENT, false);
-  assert.equal(r.clientEmailed, false);
+  assert.equal(w.EMAIL_CLIENT, true);
+  assert.equal(r.clientEmailed, true);
+  assert.equal(toClient[0].to, 'a@example.com');
+  assert.equal(toClient[0].cc, 'coach@example.com');
+  assert.equal(toClient[0]['h:Reply-To'], 'coach@example.com');
+  assert.match(toClient[0].subject, /^Your Linked Helper trial ends on /);
+  assert.equal(logged[0].channel, 'lh-trial-ending');
   assert.equal(sent[0].subject, "Client A's Linked Helper trial ends soon");
-  assert.match(sent[0].text, /They have NOT been emailed: the client email is switched off until you approve its wording/);
-  assert.match(sent[0].text, /Subject: Your Linked Helper trial ends on /);
+  assert.match(sent[0].text, /Wingguy has emailed them - you are copied\./);
+});
+
+check('the exhausted email: run out of fresh people, a fresh search, signed (I know a) Guy', () => {
+  const m = w.quietClientEmail({ clientFirstName: 'Sam', coachName: 'Guy Wilson', kind: 'exhausted', lastInviteAt: '2026-10-02T21:51:20Z', timeZone: 'Australia/Perth' });
+  assert.equal(m.subject, 'Your campaign has run out of fresh people');
+  assert.match(m.text, /since Saturday 3 October/);
+  assert.match(m.text, /invited before or is already one of your connections/);
+  assert.match(m.text, /Help me with my first campaign/);
+  assert.match(m.text, /Cheers,\n\(I know a\) Guy$/);
+  assert.ok(!/[–—]/.test(m.subject + m.text));
+  assert.match(w.quietCoachLine({ clientName: 'Sam Noble', kind: 'exhausted', lastInviteAt: daysAgo(5), waiting: 1835, now: NOW }), /^Sam Noble's campaign has run out of fresh people/);
 });
 
 check('a mail failure never throws out of the alert', async () => {

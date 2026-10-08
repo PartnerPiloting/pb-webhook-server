@@ -37,8 +37,8 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger({ module: 'lhSignoutWatch' });
 
-// Guy approves the client wording, then this goes true (8 Oct 2026: held for his OK).
-const EMAIL_CLIENT = false;
+// On since 8 Oct 2026 - Guy approved the wording ("(I know a) Guy", "Linked Helper machine").
+const EMAIL_CLIENT = true;
 
 // An hour. A sign-in page for a few minutes is LinkedIn being LinkedIn; an hour is a stopped
 // campaign. Short enough that a sign-out at 3:25pm is fixed the same afternoon.
@@ -96,6 +96,12 @@ function firstName(s, fallback) {
   return String(s || '').trim().split(/\s+/)[0] || fallback;
 }
 
+/** How a client email is signed: Guy signs "(I know a) Guy" (his own sign-off, 8 Oct 2026). */
+function signoffName(coachName) {
+  const coach = firstName(coachName, 'Guy');
+  return coach === 'Guy' ? '(I know a) Guy' : coach;
+}
+
 /**
  * The one plain line for the coach - email body and the queue's Machine check box alike.
  * `self` = the coach's own machine, worded to them.
@@ -120,14 +126,14 @@ function coachLine({ clientName, state, lastSignedIn, machineLink, timeZone, sel
  */
 function buildClientEmail({ clientFirstName, clientName, coachName, machineLink, state }) {
   const first = firstName(clientFirstName || clientName, 'there');
-  const coach = firstName(coachName, 'Guy');
+  const coach = signoffName(coachName);
   const challenge = state === 'CHALLENGE';
   const subject = challenge ? 'LinkedIn wants to check it\'s you' : 'Your LinkedIn needs you to sign in again';
   const text = [
     `Hi ${first},`,
     challenge
-      ? 'LinkedIn is asking you to confirm it\'s really you on your Wingguy machine, so your campaign has paused until you do.'
-      : 'LinkedIn has signed you out on your Wingguy machine, so your campaign has paused - no invitations go out until you sign back in.',
+      ? 'LinkedIn is asking you to confirm it\'s really you on your Linked Helper machine, so your campaign has paused until you do.'
+      : 'LinkedIn has signed you out on your Linked Helper machine, so your campaign has paused - no invitations go out until you sign back in.',
     `It takes a minute:\n1. Open your machine: ${machineLink}\n2. ${challenge ? 'Do what LinkedIn asks on the screen (usually a code it sends you).' : 'Sign in to LinkedIn there with your usual email and password, plus the code LinkedIn sends you if it asks.'}`,
     'That\'s it - your campaign picks up where it left off.',
     'If anything looks odd, just reply and I\'ll help.',
@@ -287,6 +293,6 @@ async function signedOutMachinesForCoach(coachClientId) {
 
 module.exports = {
   signoutStep, sendSignoutAlert, sendRecoveredNote, signedOutMachineAlerts, signedOutMachinesForCoach,
-  buildClientEmail, coachLine, whenWords, linkedinFromStatus, clientEmailBlocker,
+  buildClientEmail, coachLine, whenWords, signoffName, linkedinFromStatus, clientEmailBlocker,
   FIELDS, ALERT_AFTER_MS, EMAIL_CLIENT,
 };
