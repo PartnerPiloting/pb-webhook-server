@@ -11,7 +11,7 @@
 //   1. New connections to welcome - ThanksForConnecting embedded (highest score first)
 //   2. Waiting on you           - FollowUpsQueue section='owed'  (reply owed + needs judgement)
 //      Welcome went first on 8 Oct 2026 (Guy, Owen's original order): it is the quick, daily
-//      warm-up, its count lands in a second (no live check), and it opens by default.
+//      warm-up, and its count lands in a second (no live check). Nothing opens by default.
 //   3. Worth picking up again   - FollowUpsQueue section='quiet' (went quiet, drop/park recommended)
 //   4. Reconnect                - FollowUpsQueue section='reconnect' (Reconnect + Potential disconnects)
 //                                 Its own box since 8 Oct 2026 (Guy): a different job from chasing a
@@ -115,22 +115,10 @@ function TodayInner() {
   const countReconnect = useCallback((n) => setCounts((c) => (c.reconnect === n ? c : { ...c, reconnect: n })), []);
   const hasReconnect = hasQueue && (queue ? !!queue.reconnect : features.reconnect === true);
 
-  // Which sections are folded open. The first section with anything in it opens by itself, so the
-  // page never greets a client with every box closed. It opens as soon as every box ABOVE it is
-  // known to be empty - Welcome needs no live check, so it usually opens within a second.
+  // Which sections are folded open. None by default (Guy, 8 Oct 2026): the client sees every box
+  // and its number, then picks one - auto-opening the first jumped them in before they had looked.
   const order = [hasWelcome && 'welcome', hasQueue && 'owed', hasQueue && 'quiet', hasReconnect && 'reconnect'].filter(Boolean);
   const [open, setOpen] = useState(() => new Set());
-  const [autoOpened, setAutoOpened] = useState(false);
-  useEffect(() => {
-    if (autoOpened || order.length === 0) return; // order is empty until the profile lands
-    let pick = null;
-    for (const id of order) {
-      if (typeof counts[id] !== 'number') return; // a box above is still counting - wait
-      if (counts[id] > 0) { pick = id; break; }
-    }
-    setOpen(new Set([pick || order[0]]));
-    setAutoOpened(true);
-  }, [autoOpened, counts, order]);
   const toggle = (id) => setOpen((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const qs = searchParams.toString();
