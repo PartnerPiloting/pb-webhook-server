@@ -7,13 +7,16 @@
 // the fold: every section starts closed with just its number showing, so the whole morning is
 // visible at a glance, and the client picks the order that suits them.
 //
-// Nothing here decides anything. The three sections are the existing screens rendered as slices:
+// Nothing here decides anything. The four sections are the existing screens rendered as slices:
 //   1. Waiting on you           - FollowUpsQueue section='owed'  (reply owed + needs judgement)
 //   2. New connections to welcome - ThanksForConnecting embedded (highest score first)
 //   3. Worth picking up again   - FollowUpsQueue section='quiet' (went quiet, drop/park recommended)
-//                                 + the Reconnect list underneath
-// /api/followups/queue is fetched ONCE here and handed to both queue sections, so the live check
-// of Airtable + calendar + mailbox runs once per visit, not twice.
+//   4. Reconnect                - FollowUpsQueue section='reconnect' (Reconnect + Potential disconnects)
+//                                 Its own box since 8 Oct 2026 (Guy): a different job from chasing a
+//                                 recent conversation, and folded into box 3 its count was invisible.
+//                                 Shown only once /queue says the client has the Reconnect list.
+// /api/followups/queue is fetched ONCE here and handed to all three queue sections, so the live
+// check of Airtable + calendar + mailbox runs once per visit, not three times.
 //
 // Every section is mounted even while folded (hidden, not unmounted) so its count is known before
 // it is opened. A section whose feature switch is off for this client is simply not shown.
@@ -31,6 +34,7 @@ const TONE = {
   owed: { badge: 'bg-emerald-100 text-emerald-800', zero: 'bg-gray-100 text-gray-500' },
   welcome: { badge: 'bg-blue-100 text-blue-800', zero: 'bg-gray-100 text-gray-500' },
   quiet: { badge: 'bg-gray-200 text-gray-700', zero: 'bg-gray-100 text-gray-500' },
+  reconnect: { badge: 'bg-amber-100 text-amber-800', zero: 'bg-gray-100 text-gray-500' },
 };
 
 function Section({ id, title, blurb, count, open, onToggle, children }) {
@@ -82,7 +86,7 @@ function TodayInner() {
   const [queueError, setQueueError] = useState(null);
   const [loadSecs, setLoadSecs] = useState(0);
 
-  // One fetch for both queue sections (see the header comment).
+  // One fetch for all the queue sections (see the header comment).
   useEffect(() => {
     if (!hasQueue) return undefined;
     let alive = true;
@@ -105,10 +109,12 @@ function TodayInner() {
   const countOwed = useCallback((n) => setCounts((c) => (c.owed === n ? c : { ...c, owed: n })), []);
   const countWelcome = useCallback((n) => setCounts((c) => (c.welcome === n ? c : { ...c, welcome: n })), []);
   const countQuiet = useCallback((n) => setCounts((c) => (c.quiet === n ? c : { ...c, quiet: n })), []);
+  const countReconnect = useCallback((n) => setCounts((c) => (c.reconnect === n ? c : { ...c, reconnect: n })), []);
+  const hasReconnect = hasQueue && !!queue?.reconnect;
 
   // Which sections are folded open. The first section with anything in it opens by itself the
-  // first time the counts land, so the page never greets a client with three closed boxes.
-  const order = [hasQueue && 'owed', hasWelcome && 'welcome', hasQueue && 'quiet'].filter(Boolean);
+  // first time the counts land, so the page never greets a client with every box closed.
+  const order = [hasQueue && 'owed', hasWelcome && 'welcome', hasQueue && 'quiet', hasReconnect && 'reconnect'].filter(Boolean);
   const [open, setOpen] = useState(() => new Set());
   const [autoOpened, setAutoOpened] = useState(false);
   useEffect(() => {
@@ -157,8 +163,14 @@ function TodayInner() {
       )}
 
       {hasQueue && (
-        <Section id="quiet" title="Worth picking up again" blurb="Good conversations that went quiet, and old ones worth a nudge" count={counts.quiet} open={open.has('quiet')} onToggle={() => toggle('quiet')}>
+        <Section id="quiet" title="Worth picking up again" blurb="Good conversations that went quiet" count={counts.quiet} open={open.has('quiet')} onToggle={() => toggle('quiet')}>
           <FollowUpsQueue section="quiet" preloaded={queue} preloadError={queueError} onCount={countQuiet} />
+        </Section>
+      )}
+
+      {hasReconnect && (
+        <Section id="reconnect" title="Reconnect" blurb="People you haven't talked to in a long while - a few each day" count={counts.reconnect} open={open.has('reconnect')} onToggle={() => toggle('reconnect')}>
+          <FollowUpsQueue section="reconnect" preloaded={queue} preloadError={queueError} onCount={countReconnect} />
         </Section>
       )}
     </div>

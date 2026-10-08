@@ -22,7 +22,8 @@
 // 2026-10-07 (Owen: "a whole bunch of options, and you don't really know where to start"): the
 // same component also renders as ONE SECTION of the Today page (components/TodayPage.js) via the
 // `section` prop - 'owed' = people waiting on you (reply owed + needs judgement), 'quiet' = people
-// you are chasing (went quiet, drop/park recommended) plus Reconnect. Today loads /queue ONCE and
+// you are chasing (went quiet, drop/park recommended), 'reconnect' = the Reconnect list (and the
+// Potential disconnects under it) on their own, as Today's fourth box. Today loads /queue ONCE and
 // hands the payload to both sections through `preloaded`, so the live check runs once, not twice.
 // Without `section` this is the standalone /followups screen, unchanged.
 
@@ -551,8 +552,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
   // Tell the Today page how many are here (its folded header shows the number before it is opened).
   useEffect(() => {
     if (!onCount || loading) return;
-    const extra = section === 'quiet' && reconnect ? (reconnect.items || []).length : 0;
-    onCount(mine.length + extra);
+    onCount(section === 'reconnect' ? (reconnect?.items || []).length : mine.length);
   }, [onCount, loading, mine.length, section, reconnect]);
 
   const visible = useMemo(() => {
@@ -719,6 +719,22 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
   // As a Today section the page supplies the title and the fold; the notices that belong to the
   // whole queue (machine check, paused key, hidden people) show once, on the first section only.
   const showNotices = !section || section === 'owed';
+
+  // Today's Reconnect box: just the two stacked lists, none of the queue around them.
+  if (section === 'reconnect') {
+    return (
+      <div className="space-y-3">
+        {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>}
+        {loading && <div className="text-gray-500 py-6 text-center">Checking your CRM, calendar and mailbox… {loadSecs}s</div>}
+        {!loading && reconnect && (
+          <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} />
+        )}
+        {!loading && reconnect && (
+          <DisconnectSection get={(path) => apiGet(path, clientId)} post={(path, body) => apiPost(path, body, clientId)} refreshKey={disconnectTick} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={section ? 'space-y-3' : 'space-y-6'}>
@@ -968,14 +984,14 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
         </div>
       </div>
 
-      {/* Reconnect: a separate, stacked list - see ReconnectSection.js. On Today it lives under
-          "Worth picking up again" (section 'quiet'), never under the people waiting on you. */}
-      {!loading && reconnect && section !== 'owed' && (
+      {/* Reconnect: a separate, stacked list - see ReconnectSection.js. On Today it has its own
+          box (section 'reconnect', above), so it shows here only on the standalone screen. */}
+      {!loading && reconnect && !section && (
         <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} />
       )}
 
       {/* Potential disconnects: the third stacked list - see DisconnectSection.js */}
-      {!loading && reconnect && section !== 'owed' && (
+      {!loading && reconnect && !section && (
         <DisconnectSection get={(path) => apiGet(path, clientId)} post={(path, body) => apiPost(path, body, clientId)} refreshKey={disconnectTick} />
       )}
     </div>
