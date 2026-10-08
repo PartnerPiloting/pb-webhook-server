@@ -276,36 +276,42 @@ const Layout = ({ children }) => {
               </h1>
             </div>
             <div className="flex items-center space-x-3">
-              {/* Quick Update Link */}
-              <Link
-                href={buildAuthUrl('/quick-update')}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                title="Quick Update - rapid notes entry"
-              >
-                <PencilSquareIcon className="h-5 w-5" />
-                <span className="hidden sm:inline">Quick Update</span>
-              </Link>
-              
-              {/* Calendar Booking Link */}
-              <Link
-                href={buildAuthUrl('/calendar-booking')}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
-                title="Book a meeting with a lead"
-              >
-                <CalendarIcon className="h-5 w-5" />
-                <span className="hidden sm:inline">Book Meeting</span>
-              </Link>
-              
-              {/* Coached Clients Link */}
-              <Link
-                href={buildAuthUrl('/coached-clients')}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
-                title="Your clients - where each one is, who needs you next"
-              >
-                <UsersIcon className="h-5 w-5" />
-                <span className="hidden sm:inline">My Clients</span>
-              </Link>
-              
+              {/* Quick Update + Book Meeting - only for clients without Wingguy; Wingguy clients
+                  just ask Wingguy to update a lead or book a meeting */}
+              {clientProfile && clientProfile.features?.wingguy !== true && (
+                <>
+                  <Link
+                    href={buildAuthUrl('/quick-update')}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                    title="Quick Update - rapid notes entry"
+                  >
+                    <PencilSquareIcon className="h-5 w-5" />
+                    <span className="hidden sm:inline">Quick Update</span>
+                  </Link>
+                  {/* Calendar Booking Link */}
+                  <Link
+                    href={buildAuthUrl('/calendar-booking')}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                    title="Book a meeting with a lead"
+                  >
+                    <CalendarIcon className="h-5 w-5" />
+                    <span className="hidden sm:inline">Book Meeting</span>
+                  </Link>
+                </>
+              )}
+
+              {/* My Clients - the coach board; Guy is the only coach */}
+              {getCurrentClientId() === 'Guy-Wilson' && (
+                <Link
+                  href={buildAuthUrl('/coached-clients')}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+                  title="Your clients - where each one is, who needs you next"
+                >
+                  <UsersIcon className="h-5 w-5" />
+                  <span className="hidden sm:inline">My Clients</span>
+                </Link>
+              )}
+
               {/* Smart Follow-ups, Upload Emails, Owner — Guy-Wilson only */}
               {getCurrentClientId() === 'Guy-Wilson' && (
                 <>
