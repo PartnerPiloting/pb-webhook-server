@@ -153,6 +153,18 @@ const PAGES = {
       'One campaign invites everyone in your search and scores whoever accepts. '
       + 'Your part is the thank-you - Thanks for Connecting, best first.',
   },
+  // Buying the Linked Helper licence (8 Oct 2026): every new client meets this when their 14-day
+  // trial ends. Standard for 12 months, Guy's promo code, and a loud warning not to press Proceed to
+  // Payment before the code is in - LH's promo box sits below the fold of its own window. Says that
+  // a licence bought during the trial switches itself on when the trial ends, and that Standard
+  // cannot become Pro until it runs out. Screenshots dated; Guy's own account details cropped out.
+  licence: {
+    file: 'your-licence.html',
+    title: 'Buying your Linked Helper licence - I Know A Guy',
+    description:
+      'Standard for 12 months, the 45% annual discount plus 10% off with the promo code - '
+      + 'where to click, and the one button not to press too early.',
+  },
   // A made-up introduction email in the real introduction-emails-html layout.
   // Linked as a "Picture:" from the playbook topic "The inner circle" - the
   // chat can only send text, so this is where a client sees what one looks like.
@@ -306,6 +318,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/your-machine', servePage(PAGES.machine));
   router.get('/open-your-machine', servePage(PAGES.openMachine));
   router.get('/your-campaign', servePage(PAGES.campaign));
+  router.get('/your-licence', servePage(PAGES.licence));
   router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/follow-ups-example', servePage(PAGES.followupsExample));
   router.get('/thanks-for-connecting-example', servePage(PAGES.thanksExample));

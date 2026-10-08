@@ -1,0 +1,269 @@
+<style>
+  /* The editorial shell the one-pagers use (routes/onePagerRoutes.js) rather
+     than the homepage's teal/paper palette - deliberately. This page is a
+     letter to somebody who has already had the conversation, and it is sent
+     alongside /series/nodes, so matching THAT is what matters. Single-theme,
+     like the rest of the site: every colour is painted explicitly. */
+  :root {
+    color-scheme: light;
+    --ground:   #e9e2d3;
+    --card:     #fbf9f3;
+    --ink:      #2c2823;
+    --ink-deep: #221f1a;
+    --ink-soft: #6f6558;
+    --ink-mid:  #4a423a;
+    --rule:     #e2dccd;
+    --rule-sc:  #efe9dc;
+    --dark:     #211d18;
+    --gold:     #c49a5e;
+    --gold-ink: #9a6a2f;
+    --cream:    #f3ede1;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .op-page { padding: 28px 16px 52px; }
+
+  .op {
+    max-width: 640px;
+    margin: 0 auto 22px;
+    background: var(--card);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+  }
+
+  .op-mast { background: var(--dark); padding: 34px 40px 30px; }
+  .op-eb {
+    font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--gold); margin: 0 0 12px;
+  }
+  .op-wm { font-size: 30px; margin: 0; font-weight: 400; }
+  .op-wm a { color: var(--cream); text-decoration: none; }
+
+  .op-c { padding: 34px 40px 8px; }
+
+  .op-t {
+    font-size: 28px; line-height: 1.25; margin: 0 0 12px;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-dek {
+    font-style: italic; color: var(--ink-soft); font-size: 18px;
+    line-height: 1.5; margin: 0 0 20px; text-wrap: balance;
+  }
+  .op-r { border: 0; border-top: 1px solid var(--rule); margin: 0 0 22px; }
+
+  .op-body p { font-size: 17px; line-height: 1.66; margin: 0 0 1.15rem; }
+  .op-body h2 {
+    font-size: 21px; line-height: 1.3; margin: 1.9rem 0 .4rem;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-body strong { font-weight: 700; }
+  .op-body em { font-style: italic; }
+  .op-body a { color: var(--gold-ink); }
+  .op-body a:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+
+  /* The price, stated once. Three lines, hairline rules, gold on the total -
+     enough structure to be found at a glance, not enough to read as an invoice. */
+  .price { margin: 1.4rem 0 1.15rem; }
+  .price dl { margin: 0; display: grid; grid-template-columns: 1fr auto; }
+  .price dt, .price dd {
+    margin: 0; padding: 9px 0; font-size: 16.5px; line-height: 1.45;
+    border-bottom: 1px solid var(--rule-sc);
+  }
+  .price dd {
+    text-align: right; padding-left: 18px;
+    font-variant-numeric: tabular-nums; color: var(--ink-mid);
+    white-space: nowrap;
+  }
+  .price dt.total, .price dd.total {
+    border-bottom: 0; border-top: 1px solid var(--gold);
+    padding-top: 12px; margin-top: 2px; color: var(--ink-deep);
+  }
+  .price dd.total { font-weight: 700; }
+
+  .op-foot {
+    padding: 18px 40px 6px; border-top: 1px solid var(--rule);
+    margin-top: 1.6rem; font-size: 14px; line-height: 1.6; color: var(--ink-soft);
+  }
+  .op-foot a { color: var(--gold-ink); }
+  .op-sign { margin: .9rem 0 0; }
+  .op-bar { background: var(--dark); height: 34px; }
+
+  @media (max-width: 520px) {
+    .op-mast, .op-c, .op-foot { padding-left: 22px; padding-right: 22px; }
+    .op-t { font-size: 24px; }
+    .op-wm { font-size: 26px; }
+    .price dt, .price dd { font-size: 16px; }
+  }
+</style>
+<style>
+  /* Screenshots. Every one is dated in its caption, because a stale picture of
+     somebody else's website is worse than no picture at all - people believe
+     the image over the words. The caveat at the top of the page and the date
+     under each shot are the whole reason this page can exist safely. */
+  .shot { margin: 22px 0 26px; }
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: #fff;
+  }
+  .shot figcaption {
+    margin-top: 8px;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--ink-soft);
+  }
+  .shot figcaption b { color: var(--ink-mid); }
+  .shot-narrow img { max-width: 420px; margin: 0 auto; }
+  .asof {
+    margin: 0 0 4px;
+    padding: 12px 14px;
+    background: var(--cream);
+    border-left: 3px solid var(--gold);
+    border-radius: 3px;
+    font-size: 0.92rem;
+    color: var(--ink-mid);
+  }
+  .keybox {
+    display: block;
+    padding: 10px 12px;
+    background: var(--dark);
+    color: #e8e1d3;
+    border-radius: 4px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.74rem;
+    line-height: 1.5;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+</style>
+<style>
+  .op-body ul, .op-body ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  .op-body li { font-size: 17px; line-height: 1.6; margin: 0 0 .5rem; }
+  .aside {
+    margin: 1.6rem 0 1.6rem; padding: 14px 18px 4px;
+    border: 1px solid var(--rule); border-left: 3px solid var(--gold);
+    border-radius: 3px; background: var(--cream);
+  }
+  .op-body .aside p { font-size: 16px; line-height: 1.6; margin: 0 0 .7rem; color: var(--ink-mid); }
+  /* The one mistake that costs money: paying before the promo code is in. The code box sits
+     below the fold of LH's window, under the Proceed button's line of sight - so this is loud. */
+  .op-body .warn {
+    margin: 1.4rem 0 1.4rem; padding: 16px 18px;
+    background: var(--dark); color: var(--cream);
+    border-left: 5px solid var(--gold); border-radius: 4px;
+    font-size: 20px; line-height: 1.4; font-weight: 700;
+  }
+</style>
+
+<div class="op-page">
+  <article class="op">
+
+    <header class="op-mast">
+      <p class="op-eb">Network building, rethought</p>
+      <p class="op-wm"><a href="/">(I know a) Guy</a></p>
+    </header>
+
+    <div class="op-c">
+      <h1 class="op-t">Buying your Linked Helper licence</h1>
+      <p class="op-dek">Your free trial ends two weeks after your first campaign starts. Here's which licence to buy, the two discounts, and exactly where to click.</p>
+      <hr class="op-r">
+
+      <div class="op-body">
+
+        <p class="asof">These pictures were taken on <b>8 October 2026</b>. If what you're looking at doesn't match, go by the words rather than the picture - or just ask me.</p>
+
+        <p>Your Linked Helper trial lasts 14 days, and the clock only starts when your first campaign sends. When it runs out, your campaign stops until there's a licence on your account. Buying one takes about five minutes.</p>
+
+        <h2 id="which">Which one to get</h2>
+
+        <p><b>Standard, for 12 months.</b> Buying a year at a time takes 45% off, and Standard is plenty for the pace your one campaign runs at. Then my promo code takes a further 10% off your first purchase.</p>
+
+        <div class="price">
+          <dl>
+            <dt>Standard, 12 months</dt><dd>US$99</dd>
+            <dt>Less my 10% promo code</dt><dd>- US$9.90</dd>
+            <dt class="total">You pay</dt><dd class="total">about US$89 for the year</dd>
+          </dl>
+        </div>
+
+        <p>That's less than US$7.50 a month. Local tax may be added at checkout.</p>
+
+        <h2 id="steps">Step by step</h2>
+
+        <ol>
+          <li><b>Go to <a href="https://www.linkedhelper.com/member/accounts">linkedhelper.com/member/accounts</a></b> and sign in with your <b>Linked Helper</b> email and password - the account you made when you installed it, not your LinkedIn login.</li>
+          <li><b>Click the blue Buy license button</b>, top right of the LinkedIn accounts page.</li>
+        </ol>
+
+        <figure class="shot">
+          <img src="/assets/licence-buy-button.png" alt="The Linked Helper LinkedIn accounts page. Top right, a blue button marked Buy license, outlined in red.">
+          <figcaption><b>The LinkedIn accounts page, 8 October 2026.</b> Your own account is listed underneath - the button is the same for everyone.</figcaption>
+        </figure>
+
+        <p class="warn">Do not press Proceed to Payment until you have entered your promo code at the bottom of this form.</p>
+
+        <ol start="3">
+          <li><b>Under License type, choose Standard.</b></li>
+          <li><b>Under Plans, choose 12 months</b> - the one marked -45%. The bottom of the window should now say <b>12 months Standard license</b>.</li>
+        </ol>
+
+        <figure class="shot shot-narrow">
+          <img src="/assets/licence-plans.png" alt="The Buy new licenses window. Standard is selected under License type, and the 12 months plan marked minus 45 percent is selected, both outlined in red. The total reads 12 months Standard license, 99 dollars, with a Proceed to Payment button.">
+          <figcaption><b>The Buy new licenses window, 8 October 2026.</b> Standard and 12 months chosen. The total at the bottom is before my promo code.</figcaption>
+        </figure>
+
+        <ol start="5">
+          <li><b>Check Billing country</b> further down says where you are.</li>
+          <li><b>Scroll to the bottom of the same window.</b> Under <b>Promo code</b>, paste my code and click <b>Apply</b>. Copy it exactly - the two dashes at the end are part of it:
+            <code class="keybox">LHU-BFXSJTJQUUHJGSPSODJDAQ--</code>
+          </li>
+        </ol>
+
+        <figure class="shot">
+          <img src="/assets/licence-promo.png" alt="The bottom of the Buy new licenses window. A box marked Enter promo code with an Apply button beside it, and below, 12 months Standard license, 99 dollars, and a blue Proceed to Payment button.">
+          <figcaption><b>The promo code box, 8 October 2026.</b> After you click Apply, the price beside Proceed to Payment should come down by 10%.</figcaption>
+        </figure>
+
+        <ol start="7">
+          <li><b>Only now, click Proceed to Payment</b> - once the price shows the 10% off - and pay as you normally would.</li>
+        </ol>
+
+        <h2 id="after">After you've paid</h2>
+
+        <p>There's nothing else to do. Buy it any time before your trial runs out - Linked Helper holds the new licence and switches it on by itself the moment the trial ends. Your 12 months only start counting from then, so buying early costs you nothing.</p>
+
+        <p>Don't activate it yourself. Leave it to switch over on its own.</p>
+
+        <div class="aside" id="pro">
+          <p><b>Why Standard, and the one catch</b></p>
+          <p>Standard does everything your one campaign needs. Pro mainly lifts a few daily limits that matter if you run several kinds of campaign at once.</p>
+          <p>The catch: a Standard licence can't be switched to Pro part-way through. It can only be changed once it runs out. So if you already know you'll be reaching out to a big existing list - your past clients, say - talk to me before you buy.</p>
+        </div>
+
+        <div class="aside" id="stuck">
+          <p><b>If the 10% doesn't come off</b></p>
+          <p>Don't pay full price to save a few minutes. Email me before you finish, and I'll sort it out with you.</p>
+        </div>
+
+      </div>
+
+      <footer class="op-foot">
+        <p>Haven't opened your machine yet? <a href="/open-your-machine">Here's how to get in</a>.</p>
+        <p class="op-sign">- (I know a) Guy</p>
+      </footer>
+    </div>
+
+    <div class="op-bar"></div>
+  </article>
+</div>
