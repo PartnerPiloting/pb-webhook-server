@@ -778,16 +778,31 @@ you actually put it to work. No pressure to rush.
 **When the time for a paid licence comes, there are two decisions: term and tier.**
 
 - **Term - go yearly.** It comes with a 45% discount, and it's by far the best value of the options.
-- **Tier - standard or pro.** The difference that matters to us is webhooks: standard gives you 20 a
-  day, pro gives you unlimited. Twenty a day is a real ceiling once things are flowing, so **pro is
-  the one to get.**
+- **Tier - Standard, for almost everyone.** The difference that matters to us is how many people a
+  day Linked Helper can hand across to your database: Standard does 20, Pro has no limit. The one
+  campaign we run lands well under 20 a day, so **Standard is the one to get.**
+- **The exception is outreach to a big existing list** - your past clients, say, or a whole network
+  you want to wake up. That can be hundreds of people at once, and at 20 a day it takes weeks to come
+  through. If that's in your plans, tell me and we'll get Pro from the start.
 
-Pro is genuinely inexpensive next to the competitors in this space, and safety is the reason it's the
-one we've built around - the last thing anyone wants is their LinkedIn account flagged or suspended.
-That's not a place to cut corners to save a little money.
+**One thing to know before you choose: Standard can't be upgraded part-way through.** Linked Helper
+only lets you move to Pro once your Standard licence has run out. If you outgrow it early, the fix is
+to buy Pro then, and the unused months of Standard are the cost - under US$100 at worst.
 
-**One more thing worth knowing: I can get you a discount.** I have a link that gives you 10% off, and
-it also gives me a month free - it works out well for both of us, so just ask when the time comes.
+Linked Helper is genuinely inexpensive next to the competitors in this space, and safety is the reason
+it's the one we've built around - the last thing anyone wants is their LinkedIn account flagged or
+suspended. That's not a place to cut corners to save a little money.
+
+**One more thing worth knowing: I can get you a discount.** My promo code takes a further 10% off your
+first purchase, and it also gives me a month free - it works out well for both of us.
+
+**When it's time to buy, every click is on one page, with pictures:**
+https://knowaguy.com.au/your-licence
+The one thing to watch: put the promo code in **before** you press Proceed to Payment. The box is at
+the bottom of the form, and it's easy to miss.
+
+Buy it any time before your trial runs out. Linked Helper holds the new licence and switches it on by
+itself the moment the trial ends - no gap, and nothing to do afterwards.
 
 But again - none of this is relevant until the free trial has run its course. We start on the free
 plan, and all of this becomes relevant later, when a paid licence is actually the next decision.
