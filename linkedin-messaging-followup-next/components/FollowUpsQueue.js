@@ -492,6 +492,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
   const [keyNotice, setKeyNotice] = useState(null);
   const [fleetAlerts, setFleetAlerts] = useState([]); // coached clients' machines gone dark
   const [reconnect, setReconnect] = useState(null);   // the Reconnect list - null when the client's switch is off
+  const [reconnectLeft, setReconnectLeft] = useState(null); // rows still on the Reconnect list after actions this visit
   const [disconnectTick, setDisconnectTick] = useState(0); // bumped when a Reconnect row is flagged, so the list below reloads
   const [loading, setLoading] = useState(true);
   const [loadSecs, setLoadSecs] = useState(0);
@@ -552,8 +553,8 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
   // Tell the Today page how many are here (its folded header shows the number before it is opened).
   useEffect(() => {
     if (!onCount || loading) return;
-    onCount(section === 'reconnect' ? (reconnect?.items || []).length : mine.length);
-  }, [onCount, loading, mine.length, section, reconnect]);
+    onCount(section === 'reconnect' ? (reconnectLeft ?? (reconnect?.items || []).length) : mine.length);
+  }, [onCount, loading, mine.length, section, reconnect, reconnectLeft]);
 
   const visible = useMemo(() => {
     let list = mine;
@@ -727,7 +728,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
         {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>}
         {loading && <div className="text-gray-500 py-6 text-center">Checking your CRM, calendar and mailbox… {loadSecs}s</div>}
         {!loading && reconnect && (
-          <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} />
+          <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} onRemaining={setReconnectLeft} />
         )}
         {!loading && reconnect && (
           <DisconnectSection get={(path) => apiGet(path, clientId)} post={(path, body) => apiPost(path, body, clientId)} refreshKey={disconnectTick} />

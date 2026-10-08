@@ -8,7 +8,7 @@
 // No message is pre-written for LinkedIn people (Guy, 1 Aug 2026): the row gives the reason and
 // the thing to pick up on; the name opens their profile, and /wg in the thread does the writing.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 const CHIP_CLS = {
   open_question_or_offer: 'bg-emerald-100 text-emerald-800',
@@ -27,15 +27,19 @@ const DONE_NOTE = {
   disconnect: 'will be disconnected tonight - Undo is in the list below until then',
 };
 
-export default function ReconnectSection({ data, post, onReplace, onFlagged }) {
+export default function ReconnectSection({ data, post, onReplace, onFlagged, onRemaining }) {
   const [gone, setGone] = useState(() => new Set());   // keys actioned this session
   const [busy, setBusy] = useState(() => new Set());
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const items = (data?.items || []).filter((it) => !gone.has(it.key));
+
+  // How many are still on the list, so Today's folded Reconnect box counts down as rows are actioned.
+  useEffect(() => { if (onRemaining) onRemaining(items.length); }, [onRemaining, items.length]);
+
   if (!data) return null;
-  const items = (data.items || []).filter((it) => !gone.has(it.key));
 
   const act = async (it, action) => {
     setError(null);
