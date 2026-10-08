@@ -198,6 +198,13 @@ async function getAllClients() {
                 // machine last read signed in, and when the "signed out" alert went for this episode.
                 const linkedinLastSignedIn = record.get('LinkedIn Last Signed In') || null;
                 const linkedinSignOutAlerted = record.get('LinkedIn Sign-Out Alerted') || null;
+                // Campaign watch (services/lhCampaignWatch.js, 8 Oct 2026): what the campaign has done,
+                // as the machine reports it, and the once-per-episode warning stamps.
+                const lhFirstAction = record.get('LH First Action') || null;
+                const lastInviteSent = record.get('Last Invite Sent') || null;
+                const invitesWaiting = Number(record.get('Invites Waiting')) || 0;
+                const trialWarningSent = record.get('Trial Warning Sent') || null;
+                const quietCampaignAlerted = record.get('Quiet Campaign Alerted') || null;
                 // Yes = shown the eight-stop journey on Start Here from day one (services/clientJourney.js).
                 const clientJourney = record.get('Client Journey') || null;
                 // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
@@ -344,6 +351,11 @@ async function getAllClients() {
                     machineStatus: machineStatus,
                     linkedinLastSignedIn: linkedinLastSignedIn,
                     linkedinSignOutAlerted: linkedinSignOutAlerted,
+                    lhFirstAction: lhFirstAction,
+                    lastInviteSent: lastInviteSent,
+                    invitesWaiting: invitesWaiting,
+                    trialWarningSent: trialWarningSent,
+                    quietCampaignAlerted: quietCampaignAlerted,
                     clientJourney: clientJourney,
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,

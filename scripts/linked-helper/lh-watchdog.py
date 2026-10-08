@@ -336,6 +336,54 @@ def backup_state():
         return {}
 
 
+def campaign_state(account_id, data_dir=None):
+    """What the campaigns have actually done, read from Linked Helper's own database.
+
+    WHY (8 Oct 2026): Rick Wong's campaign sent nothing for two days and nobody knew - the window
+    title said RUNNING the whole time. The server now warns when invitations stop and before a
+    trial runs out, and both need facts only the database has:
+      first_action_at   the first campaign action ever recorded - the trial's 14 days start here
+      last_invite_at    the newest invitation actually sent
+      waiting_running   people queued to be invited in campaigns that are switched on
+      waiting_paused    people queued in campaigns that are paused
+    Read-only (mode=ro), a few cheap queries. Best-effort: anything odd returns {} and the
+    watchdog carries on - losing this block must never cost the health line.
+    """
+    acct = str(account_id or "").strip()
+    if not acct.isdigit() or int(acct) <= 1:
+        return {}
+    db = os.path.join(data_dir or LH_DATA, "Partitions", f"linked-helper-account-{acct}-main", "lh.db")
+    if not os.path.exists(db):
+        return {}
+    try:
+        import sqlite3
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+        try:
+            invite_actions = ("SELECT DISTINCT av.action_id FROM action_versions av "
+                              "JOIN action_configs ac ON ac.id = av.config_id "
+                              "WHERE ac.actionType = 'InvitePerson'")
+            first = con.execute("SELECT min(created_at) FROM action_results").fetchone()[0]
+            last = con.execute(
+                "SELECT max(ar.created_at) FROM action_results ar "
+                "JOIN action_versions av ON av.id = ar.action_version_id "
+                f"WHERE ar.result = 1 AND av.action_id IN ({invite_actions})").fetchone()[0]
+            waiting = {0: 0, 1: 0}
+            for paused, n in con.execute(
+                    "SELECT c.is_paused, count(*) FROM action_target_people t "
+                    "JOIN actions a ON a.id = t.action_id "
+                    "JOIN campaigns c ON c.id = a.campaign_id "
+                    f"WHERE t.state = 1 AND c.is_archived = 0 AND t.action_id IN ({invite_actions}) "
+                    "GROUP BY c.is_paused"):
+                waiting[1 if paused else 0] = int(n)
+        finally:
+            con.close()
+        return {"first_action_at": first, "last_invite_at": last,
+                "waiting_running": waiting[0], "waiting_paused": waiting[1]}
+    except Exception as e:
+        print(f"campaign state unreadable (non-fatal): {e}")
+        return {}
+
+
 def restart_wanted():
     """True once, when lh-first-run.py has left its flag. Reading it uses it up."""
     if not os.path.exists(RESTART_NOW):
@@ -450,6 +498,7 @@ def main():
                   "health": health, "actions": actions, "ts": int(time.time()),
                   "backup": backup_state(),
                   "setup": first_run_state(),
+                  "campaign": campaign_state(health.get("account") or conf.get("LH_ACCOUNT_ID")),
                   "machine": machine_info() if conf.get("REPORT_URL") else {}})
 
     # Non-zero exit makes failures visible in systemd/journalctl.

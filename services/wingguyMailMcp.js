@@ -1990,11 +1990,13 @@ async function buildQueue(tenant = TENANT, { reconnectMore = 0 } = {}) {
   // updater itself never tells anyone. Best-effort - [] on any failure, never blocks the queue.
   // A Linked Helper machine signed out of LinkedIn for over an hour rides the same list (8 Oct
   // 2026, services/lhSignoutWatch.js) - Rick Wong's campaign sat stopped two days unnoticed.
-  const [darkAlerts, signedOutAlerts] = await Promise.all([
+  // And a campaign that has sent no invitation for four days (services/lhCampaignWatch.js).
+  const [darkAlerts, signedOutAlerts, quietAlerts] = await Promise.all([
     require('./extensionDistStore').darkMachinesForCoach(tenant),
     require('./lhSignoutWatch').signedOutMachinesForCoach(tenant),
+    require('./lhCampaignWatch').quietCampaignsForCoach(tenant),
   ]);
-  const fleetAlerts = [...signedOutAlerts, ...darkAlerts];
+  const fleetAlerts = [...signedOutAlerts, ...quietAlerts, ...darkAlerts];
   return { items: rc.live, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts, introChecks, reconnect };
 }
 

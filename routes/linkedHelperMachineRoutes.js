@@ -43,6 +43,7 @@ const crypto = require('crypto');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const clientService = require('../services/clientService');
 const lhSignoutWatch = require('../services/lhSignoutWatch');
+const lhCampaignWatch = require('../services/lhCampaignWatch');
 const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 
 const router = express.Router();
@@ -192,18 +193,31 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
     alertedAt: client.linkedinSignOutAlerted,
   });
 
+  // The campaign itself (services/lhCampaignWatch.js, 8 Oct 2026): first action, last invitation,
+  // people waiting - and whether the trial is about to end or the campaign has gone quiet.
+  // A machine still on the old watchdog sends no `campaign` block, and nothing happens.
+  const campaignReport = (body.campaign && typeof body.campaign === 'object') ? body.campaign : null;
+  const campaign = lhCampaignWatch.campaignStep({
+    report: campaignReport,
+    client: { trialWarningSent: client.trialWarningSent, quietCampaignAlerted: client.quietCampaignAlerted },
+  });
+  const extra = { ...signout.fields, ...campaign.fields };
+
   try {
     const base = clientService.initializeClientsBase();
     try {
-      await base(MASTER_TABLES.CLIENTS).update(client.id, { ...fields, ...signout.fields }, { typecast: true });
+      await base(MASTER_TABLES.CLIENTS).update(client.id, { ...fields, ...extra }, { typecast: true });
     } catch (e) {
-      // The sign-out fields must never cost the machine its status line: if they are the
+      // The watch fields must never cost the machine its status line: if they are the
       // problem (not created on the master table yet), write the report without them.
-      if (!Object.keys(signout.fields).length) throw e;
-      log.error(`LH-MACHINE ${clientId}: sign-out fields not written (${e.message}) - writing the report without them`);
+      if (!Object.keys(extra).length) throw e;
+      log.error(`LH-MACHINE ${clientId}: watch fields not written (${e.message}) - writing the report without them`);
       await base(MASTER_TABLES.CLIENTS).update(client.id, fields, { typecast: true });
       signout.alert = false;
       signout.recovered = false;
+      campaign.trialWarn = false;
+      campaign.quietAlert = false;
+      campaign.quietRecovered = false;
     }
     clientService.clearCache();
   } catch (e) {
@@ -221,7 +235,19 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
     lhSignoutWatch.sendRecoveredNote({ client })
       .catch((e) => log.error(`LH-SIGNOUT ${clientId} recovered note failed: ${e.message}`));
   }
-  return res.json({ ok: true, wrote: Object.keys({ ...fields, ...signout.fields }) });
+  const fresh = { ...client, machineStatus: fields[FIELDS.status] };
+  if (campaign.trialWarn) {
+    lhCampaignWatch.sendCampaignAlert({ client: fresh, alert: 'trial', report: campaignReport })
+      .catch((e) => log.error(`LH-CAMPAIGN ${clientId} trial warning failed: ${e.message}`));
+  }
+  if (campaign.quietAlert) {
+    lhCampaignWatch.sendCampaignAlert({ client: fresh, alert: 'quiet', kind: campaign.kind, report: campaignReport })
+      .catch((e) => log.error(`LH-CAMPAIGN ${clientId} quiet alert failed: ${e.message}`));
+  } else if (campaign.quietRecovered) {
+    lhCampaignWatch.sendSendingAgainNote({ client: fresh })
+      .catch((e) => log.error(`LH-CAMPAIGN ${clientId} sending-again note failed: ${e.message}`));
+  }
+  return res.json({ ok: true, wrote: Object.keys({ ...fields, ...extra }) });
 });
 
 /**

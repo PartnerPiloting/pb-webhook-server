@@ -340,6 +340,36 @@ const MASTER_FIELDS = [
     options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
   },
   {
+    name: 'LH First Action',
+    type: 'dateTime',
+    description: 'The first campaign action Linked Helper ever recorded on this client\'s machine, read from its database by the 5-minute watchdog report. The 14-day trial starts here, so services/lhCampaignWatch.js warns five days before day 14. Added 2026-10-08.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
+    name: 'Last Invite Sent',
+    type: 'dateTime',
+    description: 'When this client\'s campaign last actually sent a connection invitation, from the machine\'s own database (5-minute watchdog report). Four days with none = the campaign has gone quiet, and services/lhCampaignWatch.js tells the coach. Added 2026-10-08 after Rick Wong\'s campaign stopped for two days unnoticed.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
+    name: 'Invites Waiting',
+    type: 'number',
+    description: 'People queued to be invited in this client\'s campaigns (running and paused together), from the machine\'s own database. Zero with no invitations going out = the search needs topping up. Added 2026-10-08.',
+    options: { precision: 0 }
+  },
+  {
+    name: 'Trial Warning Sent',
+    type: 'dateTime',
+    description: 'When the coach (and, once switched on, the client) was warned that the Linked Helper trial ends in five days or less. Set once so it never repeats. services/lhCampaignWatch.js. Added 2026-10-08.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
+    name: 'Quiet Campaign Alerted',
+    type: 'dateTime',
+    description: 'When the coach was told this campaign had sent no invitation for four days. Once per episode; cleared by the next invitation, which also sends the coach an all-clear. While set, the campaign shows on the coach\'s Machine check (queue and Follow-Ups). services/lhCampaignWatch.js. Added 2026-10-08.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
     name: 'Machine Icon Proven',
     type: 'date',
     description: 'The day the client double-clicked the Remote Desktop icon on their OWN laptop and saw their Linked Helper machine (Tailscale on their laptop under their own account, the machine shared to them, the .rdp from scripts/make-client-rdp.js). Set by hand at the machine session - checklist step 14. Blank with Machine Tailscale filled = the client has no way into their own machine; the onboarding preflight flags it. Added 2026-09-26 after Sam Noble was told "icon on your desktop" and there was none.',
