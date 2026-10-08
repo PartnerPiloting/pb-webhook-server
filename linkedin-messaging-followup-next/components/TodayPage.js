@@ -14,7 +14,8 @@
 //   4. Reconnect                - FollowUpsQueue section='reconnect' (Reconnect + Potential disconnects)
 //                                 Its own box since 8 Oct 2026 (Guy): a different job from chasing a
 //                                 recent conversation, and folded into box 3 its count was invisible.
-//                                 Shown only once /queue says the client has the Reconnect list.
+//                                 Shown from the start when the profile's Reconnect switch is on
+//                                 (counting "…" like the others), then by what /queue returns.
 // /api/followups/queue is fetched ONCE here and handed to all three queue sections, so the live
 // check of Airtable + calendar + mailbox runs once per visit, not three times.
 //
@@ -110,7 +111,7 @@ function TodayInner() {
   const countWelcome = useCallback((n) => setCounts((c) => (c.welcome === n ? c : { ...c, welcome: n })), []);
   const countQuiet = useCallback((n) => setCounts((c) => (c.quiet === n ? c : { ...c, quiet: n })), []);
   const countReconnect = useCallback((n) => setCounts((c) => (c.reconnect === n ? c : { ...c, reconnect: n })), []);
-  const hasReconnect = hasQueue && !!queue?.reconnect;
+  const hasReconnect = hasQueue && (queue ? !!queue.reconnect : features.reconnect === true);
 
   // Which sections are folded open. The first section with anything in it opens by itself the
   // first time the counts land, so the page never greets a client with every box closed.

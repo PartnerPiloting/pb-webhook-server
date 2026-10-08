@@ -88,6 +88,8 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
         topScoringLeadsHidden: req.client.topScoringLeadsHidden === true,
         // Three-tab portal (Today / Leads / Setup and help) - see components/Layout.js
         todayLayout: req.client.todayLayout === true,
+        // Reconnect switch - lets Today show its Reconnect box (counting) before /queue lands
+        reconnect: String(req.client.reconnect || '').trim() === 'Yes',
         // Per-client Wingguy switch: gates the "My Wingguy" tab (setup + what's-changed pages)
         wingguy: req.client.wingguyEnabled === true,
         // The Follow-Ups screen rides the SAME switch as the overnight stores it is a window
