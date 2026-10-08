@@ -4,9 +4,8 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId, buildAuthUrl } from '../utils/clientUtils.js';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon, SparklesIcon, EnvelopeIcon, MicrophoneIcon, HandRaisedIcon, SunIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, CreditCardIcon, SparklesIcon, HandRaisedIcon, SunIcon } from '@heroicons/react/24/outline';
 import ClientCodeEntry from './ClientCodeEntry';
-import UploadEmailsModal from './UploadEmailsModal';
 
 // Lazy-load the help panel to keep initial bundle lean
 const ContextHelpPanel = dynamic(() => import('./ContextHelpPanel'), { ssr: false });
@@ -134,7 +133,6 @@ const Layout = ({ children }) => {
   const [clientProfile, setClientProfile] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpAreaOverride, setHelpAreaOverride] = useState(null);
-  const [uploadEmailsOpen, setUploadEmailsOpen] = useState(false);
   const { isInitialized, error } = useClientInitialization();
   
   // Get client param for Calendar Booking link
@@ -312,52 +310,6 @@ const Layout = ({ children }) => {
                 </Link>
               )}
 
-              {/* Smart Follow-ups, Upload Emails, Owner — Guy-Wilson only */}
-              {getCurrentClientId() === 'Guy-Wilson' && (
-                <>
-                  <Link
-                    href={buildAuthUrl('/smart-followups')}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                    title="Smart Follow-ups - AI-powered prioritization"
-                  >
-                    <SparklesIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline">Smart Follow-ups</span>
-                  </Link>
-                  <Link
-                    href={buildAuthUrl('/recall-review')}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-lg transition-colors"
-                    title="Review meeting transcripts — verify speakers and link to leads"
-                  >
-                    <MicrophoneIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline">Transcripts</span>
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => setUploadEmailsOpen(true)}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors"
-                    title="Copy blank-email LinkedIn URLs or upload a CSV from LinkedHelper"
-                  >
-                    <EnvelopeIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline">Upload Emails</span>
-                  </button>
-                  <Link
-                    href={buildAuthUrl('/onboard-client')}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
-                    title="Onboard a new client — validate base, create record, mint portal token"
-                  >
-                    <UserPlusIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline">Onboard Client</span>
-                  </Link>
-                  <Link
-                    href={buildAuthUrl('/owner-dashboard')}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
-                    title="Owner Dashboard - admin tools"
-                  >
-                    <WrenchScrewdriverIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline">Owner</span>
-                  </Link>
-                </>
-              )}
               {/* Per-page Help buttons are rendered within individual components via HelpButton */}
             </div>
           </div>
@@ -381,7 +333,6 @@ const Layout = ({ children }) => {
         <ContextHelpPanel area={helpAreaOverride || helpArea} isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
       )}
 
-      <UploadEmailsModal isOpen={uploadEmailsOpen} onClose={() => setUploadEmailsOpen(false)} />
     </div>
   );
 };
