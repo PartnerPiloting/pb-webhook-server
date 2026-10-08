@@ -1,7 +1,7 @@
 "use client";
 import React, { Suspense, useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId, buildAuthUrl } from '../utils/clientUtils.js';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon, SparklesIcon, EnvelopeIcon, MicrophoneIcon, HandRaisedIcon, SunIcon } from '@heroicons/react/24/outline';
@@ -129,6 +129,7 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
 
 const Layout = ({ children }) => {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [clientProfile, setClientProfile] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -177,6 +178,15 @@ const Layout = ({ children }) => {
       setClientProfile(getClientProfile());
     }
   }, [isInitialized, error]);
+
+  // The portal link lands on / (Lead Search). With the three-tab layout the day starts on Today
+  // instead (Guy, 8 Oct 2026) - the Leads tab is /leads, so nothing else uses / there. An assistant
+  // stays put: their ticked functions may not include anything Today shows.
+  useEffect(() => {
+    if (pathname !== '/' || !clientProfile) return;
+    if (clientProfile.features?.todayLayout !== true || clientProfile.assistant) return;
+    router.replace(`/today?${searchParams.toString()}`);
+  }, [pathname, clientProfile, router, searchParams]);
 
   // Init state
   if (!isInitialized) {
