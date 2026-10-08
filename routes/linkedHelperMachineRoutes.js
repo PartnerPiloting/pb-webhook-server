@@ -42,6 +42,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const clientService = require('../services/clientService');
+const lhSignoutWatch = require('../services/lhSignoutWatch');
 const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 
 const router = express.Router();
@@ -183,9 +184,27 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   const lastOk = clip(body.backup && body.backup.last_ok, 40);
   if (lastOk && Number.isFinite(Date.parse(lastOk))) fields[FIELDS.lastBackup] = new Date(lastOk).toISOString();
 
+  // LinkedIn signed out (services/lhSignoutWatch.js, 8 Oct 2026): stamp when it last read signed
+  // in, and decide whether this report is the one that tells the coach. Rides the same write.
+  const signout = lhSignoutWatch.signoutStep({
+    linkedin: h.linkedin,
+    lastSignedIn: client.linkedinLastSignedIn,
+    alertedAt: client.linkedinSignOutAlerted,
+  });
+
   try {
     const base = clientService.initializeClientsBase();
-    await base(MASTER_TABLES.CLIENTS).update(client.id, fields, { typecast: true });
+    try {
+      await base(MASTER_TABLES.CLIENTS).update(client.id, { ...fields, ...signout.fields }, { typecast: true });
+    } catch (e) {
+      // The sign-out fields must never cost the machine its status line: if they are the
+      // problem (not created on the master table yet), write the report without them.
+      if (!Object.keys(signout.fields).length) throw e;
+      log.error(`LH-MACHINE ${clientId}: sign-out fields not written (${e.message}) - writing the report without them`);
+      await base(MASTER_TABLES.CLIENTS).update(client.id, fields, { typecast: true });
+      signout.alert = false;
+      signout.recovered = false;
+    }
     clientService.clearCache();
   } catch (e) {
     // A missing field on the master table lands here (rollout not run yet) - say so plainly.
@@ -193,7 +212,16 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
     return res.status(500).json({ ok: false, error: 'write failed' });
   }
   log.info(`LH-MACHINE ${clientId}: ${fields[FIELDS.status]}`);
-  return res.json({ ok: true, wrote: Object.keys(fields) });
+  // Told only after the stamp is written, so a failed write can never send it twice. Not awaited:
+  // the machine's report is answered now, and a mail failure is logged inside, never thrown.
+  if (signout.alert) {
+    lhSignoutWatch.sendSignoutAlert({ client, state: clip(h.linkedin, 20), lastSignedIn: client.linkedinLastSignedIn })
+      .catch((e) => log.error(`LH-SIGNOUT ${clientId} alert failed: ${e.message}`));
+  } else if (signout.recovered) {
+    lhSignoutWatch.sendRecoveredNote({ client })
+      .catch((e) => log.error(`LH-SIGNOUT ${clientId} recovered note failed: ${e.message}`));
+  }
+  return res.json({ ok: true, wrote: Object.keys({ ...fields, ...signout.fields }) });
 });
 
 /**

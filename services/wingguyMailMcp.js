@@ -1988,7 +1988,13 @@ async function buildQueue(tenant = TENANT, { reconnectMore = 0 } = {}) {
   // Dark machines (Guy 2026-09-13): a coached client's extension updater that has gone quiet for
   // three days rides on the queue, because the queue is what the coach reads each morning and the
   // updater itself never tells anyone. Best-effort - [] on any failure, never blocks the queue.
-  const fleetAlerts = await require('./extensionDistStore').darkMachinesForCoach(tenant);
+  // A Linked Helper machine signed out of LinkedIn for over an hour rides the same list (8 Oct
+  // 2026, services/lhSignoutWatch.js) - Rick Wong's campaign sat stopped two days unnoticed.
+  const [darkAlerts, signedOutAlerts] = await Promise.all([
+    require('./extensionDistStore').darkMachinesForCoach(tenant),
+    require('./lhSignoutWatch').signedOutMachinesForCoach(tenant),
+  ]);
+  const fleetAlerts = [...signedOutAlerts, ...darkAlerts];
   return { items: rc.live, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts, introChecks, reconnect };
 }
 

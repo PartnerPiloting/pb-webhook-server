@@ -194,6 +194,10 @@ async function getAllClients() {
                 const lhAccountId = record.get('LH Account ID') || null;
                 // The machine's own one-line report of itself, e.g. "RUNNING | LinkedIn logged in | LH 2.130".
                 const machineStatus = record.get('Machine Status') || null;
+                // LinkedIn sign-out alert state (services/lhSignoutWatch.js, 8 Oct 2026): when the
+                // machine last read signed in, and when the "signed out" alert went for this episode.
+                const linkedinLastSignedIn = record.get('LinkedIn Last Signed In') || null;
+                const linkedinSignOutAlerted = record.get('LinkedIn Sign-Out Alerted') || null;
                 // Yes = shown the eight-stop journey on Start Here from day one (services/clientJourney.js).
                 const clientJourney = record.get('Client Journey') || null;
                 // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
@@ -338,6 +342,8 @@ async function getAllClients() {
                     reconnectDisconnects: reconnectDisconnects,
                     lhAccountId: lhAccountId,
                     machineStatus: machineStatus,
+                    linkedinLastSignedIn: linkedinLastSignedIn,
+                    linkedinSignOutAlerted: linkedinSignOutAlerted,
                     clientJourney: clientJourney,
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,

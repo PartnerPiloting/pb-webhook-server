@@ -328,6 +328,18 @@ const MASTER_FIELDS = [
     options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
   },
   {
+    name: 'LinkedIn Last Signed In',
+    type: 'dateTime',
+    description: 'When the client\'s Linked Helper machine last reported LinkedIn as signed in. Stamped on every 5-minute watchdog report that reads ok (routes/linkedHelperMachineRoutes.js). Blank = the machine has never been signed in, so a LinkedIn login page there is not news and never alerts. Added 2026-10-08 after Rick Wong sat signed out for two days with nobody told.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
+    name: 'LinkedIn Sign-Out Alerted',
+    type: 'dateTime',
+    description: 'When the coach was emailed that this machine has been signed out of LinkedIn (or restricted, or challenged) for over an hour - services/lhSignoutWatch.js. Set once per episode so the alert never repeats; cleared by the next report that reads signed in, which also sends the coach an all-clear. While set, the machine shows on the coach\'s Machine check (queue and Follow-Ups). Added 2026-10-08.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
     name: 'Machine Icon Proven',
     type: 'date',
     description: 'The day the client double-clicked the Remote Desktop icon on their OWN laptop and saw their Linked Helper machine (Tailscale on their laptop under their own account, the machine shared to them, the .rdp from scripts/make-client-rdp.js). Set by hand at the machine session - checklist step 14. Blank with Machine Tailscale filled = the client has no way into their own machine; the onboarding preflight flags it. Added 2026-09-26 after Sam Noble was told "icon on your desktop" and there was none.',

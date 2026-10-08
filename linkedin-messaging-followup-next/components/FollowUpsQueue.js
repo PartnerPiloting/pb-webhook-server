@@ -778,7 +778,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
           <div className="mt-3 text-sm text-red-800 bg-red-50 border border-red-200 rounded px-3 py-2">
             <div className="font-semibold">Machine check</div>
             {fleetAlerts.map((a) => (
-              <div key={a.clientId}>{a.line}</div>
+              <div key={`${a.clientId}-${a.kind || ''}`}>{a.line}</div>
             ))}
           </div>
         )}
