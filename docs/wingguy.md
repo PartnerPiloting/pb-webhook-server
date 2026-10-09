@@ -5388,3 +5388,37 @@ stays the way to look at a client's Portal: the extension is not allowed there, 
 
 **Tests.** `tests/wingguy-identity.test.js` (the rule) and `tests/wingguy-extension-owner-lock.test.js`
 (runs the real `background.js` in a sandbox with a fake browser and server).
+
+## Lead booking links: code writes the give-up opener, and the extension sends real hrefs (2026-10-10)
+
+**The problem, in one line.** Sam Trattles sent a TidyCal link on 9 Oct and the panel failed to read it
+four runs in a row for four different reasons - and each time the give-up draft told HER so, in a fresh
+sentence ("I wasn't able to pull your diary link in", "Couldn't quite get it to load on my end"). Two
+regex guards (LINK_FAIL_RE, LINK_FAIL_VERB_RE in `linkBookingPromise`) were chasing phrasings. Guy
+asked for the fix that removes the sentence and the fix that removes the mangling.
+
+**Part 1 - code writes the opener (`services/wingguyChat.js`, propose_times).** When this turn's
+check_availability read a lead's link and it failed (`leadLinkState.ok === false`, any provider -
+Calendly, TidyCal, Google), the draft's opener is written by code: "Thanks for sending that through,
+<first name> - would any of the following times work for you?", then the usual list and timezone line,
+then the invite line. The model's intro is dropped whole, and any outro line the guards would catch is
+dropped too. Same move as the connecting line, the list, the timezone line and the invite line: the
+model has no sentence left to confess with. The result echoes `linkOpener` so the chat summary is
+grounded. The coach still hears the plain reason - the kind of link and why it could not be read - in
+the check_availability note and in chat. The regex guards stay as a backstop for propose_message, where
+they should now never fire on this path.
+
+**Part 2 - the extension sends hrefs (`wingguy-extension/content-wingguy.js` 0.3.32).** Both thread
+scrapers (the overlay bubble and the full /messaging/thread/ page) now attach `links: [...]` to each
+message that holds a link: the href of every anchor in it, with LinkedIn's redirect wrapper
+(`linkedin.com/redir/redirect?url=...`, `safety/go?url=...`) unwrapped by `realHref`. Text is unchanged,
+and a message with no links is byte-for-byte the same payload as before. On the server
+`detectLeadBookingLink` checks a message's hrefs first (each confirmed by `parseBookingLink`, so only a
+supported host counts) and falls back to the text scan - older extensions send text only, and emails
+have no anchors. So LinkedIn gluing the next line onto the visible link, or dropping the https://, no
+longer hides the lead's link.
+
+**Tests.** `tests/wingguy-lead-booking-link-panel.test.js` (confessing intro and outro over an unreadable
+TidyCal link -> draft starts with the code-written opener and confesses nothing; the same over a Google
+link with the real reader; glued text plus a clean href -> the href is read),
+`tests/wingguy-extension-message-links.test.js` (lifts `realHref` out of the shipping file).
