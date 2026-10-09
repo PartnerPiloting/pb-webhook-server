@@ -57,6 +57,9 @@ check('catches a confession that the link could not be read (third run, 9 Oct 20
   assert.ok(linkBookingPromise("Appreciate you sending that through, but I wasn't able to pull your diary link in from here, so let me just offer a few times directly."));
   assert.ok(linkBookingPromise("I couldn't open your Calendly, so here are some times."));
   assert.ok(linkBookingPromise('Having trouble with your booking page - would any of these work?'));
+  // Fourth run: the noun was in the sentence before.
+  assert.ok(linkBookingPromise("Great, Sam - thanks for the diary link. Couldn't quite get it to load on my end, so easiest for me is to just send a calendar invite directly."));
+  assert.ok(linkBookingPromise("Thanks for that. It didn't open for me, so here are a few times."));
 });
 check('leaves the normal lines alone', () => {
   for (const s of ['Would any of the following times work for you?', "Invite's on its way - see you Tuesday.", 'Thanks for sending the link through.', "I've booked us in for Tuesday 2pm and put the invite in your calendar.", 'Let me know which suits and I will send the invite from my side.', "Saw Friday 11am was open on your link, so I've sent an invite for then to make it easy for you."]) {
@@ -106,6 +109,15 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
     check('leadLink.read is true and the source is the thread', () => { assert.ok(r && r.leadLink && r.leadLink.read === true, JSON.stringify(r && r.leadLink)); assert.strictEqual(r.leadLink.source, 'thread'); assert.strictEqual(r.leadLink.url, LINK); });
     check('only the overlap survives: one day, one slot (the 1:30)', () => { assert.strictEqual(r.days.length, 1, JSON.stringify(r.days.map((d) => d.date))); assert.deepStrictEqual(r.days[0].freeSlots.map((s) => s.time), [target.freeSlots[1].time]); });
     check('the note says one slot, no list', () => assert.match(r.leadLink.note, /Do not offer a list/));
+  }
+  console.log('\nthe thread link wins over a retyped one from the model (fourth run, 9 Oct 2026):');
+  {
+    const seen = [];
+    const readerSpy = async (url, opts) => { seen.push(url); return readerOk(url, opts); };
+    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: { leadBookingLink: 'https://calendly.com/candacengok/intr' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerSpy } });
+    const r = toolResults(res)[0];
+    check('the reader is called with the thread\'s link, not the model\'s typo', () => assert.deepStrictEqual(seen, [LINK]));
+    check('the result carries the thread link as its source', () => { assert.strictEqual(r.leadLink.source, 'thread'); assert.strictEqual(r.leadLink.url, LINK); });
   }
   console.log('\nnotBefore actually filters (the stripped-backslash regression):');
   {

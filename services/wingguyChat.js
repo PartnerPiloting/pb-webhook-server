@@ -522,9 +522,14 @@ const LINK_PROMISE_RE = /\b(grab|grabbing|book|booking|pick|picking|take|taking|
 // pull your diary link in from here", Sam Trattles 2026-10-09, third run). The lead learns nothing
 // from that except that something is off on Guy's side; the times go out as if no link was sent.
 const LINK_FAIL_RE = /\b(couldn't|could not|can't|cannot|wasn't able|was not able|unable|not able|didn't manage|failed|struggled|having trouble|had trouble|trouble)\b[^.!?\n]{0,60}?\b(link|calendly|tidycal|page|diary link|calendar link|booking page|scheduler)\b/i;
+// Fourth run, same day: "thanks for the diary link. Couldn't quite get it to load on my end" - the
+// noun sat in the sentence before, so the pattern above missed it. While the thread holds a lead's
+// link (the only time this guard runs), any "couldn't load / open / get it to work / on my end"
+// sentence is about that link, whatever it is called.
+const LINK_FAIL_VERB_RE = /\b(couldn't|could not|can't|cannot|wasn't able|was not able|unable|not able|didn't|did not|failed|struggled|having trouble|had trouble)\b[^.!?\n]{0,40}?\b(load|open|access|pull|read|reach|resolve|work|get (?:it|that|this|the \w+)(?: to)?)\b|\b(?:on|at|from) (?:my|our) end\b/i;
 function linkBookingPromise(text) {
   const s = String(text || '');
-  const m = s.match(LINK_PROMISE_RE) || s.match(LINK_FAIL_RE);
+  const m = s.match(LINK_PROMISE_RE) || s.match(LINK_FAIL_RE) || s.match(LINK_FAIL_VERB_RE);
   return m ? m[0].trim() : null;
 }
 
@@ -953,16 +958,23 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       if (notBefore) filtered = { ...filtered, days: filtered.days.filter((d) => String(d.date) >= notBefore), notBefore };
       // The lead sent their OWN booking link (Candace, 2026-09-15): read the slots their page shows
       // and keep only the times both can make. Booking still goes through book_meeting (Guy's invite).
-      // The link comes from the THREAD (data) when the model did not pass it - see detectLeadBookingLink.
-      const linkUrl = String(input.leadBookingLink || threadBookingLink || '');
+      // The THREAD's link (data) wins over the one the model passes. The model retypes the address
+      // and gets it wrong: Sam Trattles, 2026-10-09, fourth run - it passed ".../thepowertoach/..."
+      // for ".../thepowertoask/...", the page 404'd, and the panel fell to the give-up path with a
+      // correct link sitting in the thread the whole time. The model's link is used only when the
+      // thread holds none.
+      const linkUrl = String(threadBookingLink || input.leadBookingLink || '');
+      if (input.leadBookingLink && threadBookingLink && String(input.leadBookingLink) !== threadBookingLink) {
+        console.log(`WINGGUY-LEAD-LINK ${coach.clientId} → ${profile.name || 'lead'}: model passed ${input.leadBookingLink}, thread has ${threadBookingLink} - using the thread's`);
+      }
       if (linkUrl) {
         const reader = deps.readBookingLink || leadBookingLink.readBookingLink;
         const lead = await reader(linkUrl, { timezone: avail.yourTimezone || 'Australia/Brisbane', rangeStart: notBefore || undefined });
         leadLinkState = { url: linkUrl, ok: !!lead.ok, reason: lead.reason || null };
         // One line per read so a "didn't resolve" in the panel can be traced in the server logs
         // (Sam Trattles, 2026-10-09: the second run gave nothing to go on).
-        console.log(`WINGGUY-LEAD-LINK ${coach.clientId} → ${profile.name || 'lead'}: ${input.leadBookingLink ? 'model' : 'thread'} ${linkUrl} → ${lead.ok ? `ok (${lead.slots.length} lead slots)` : `FAILED: ${lead.reason}`}`);
-        const source = input.leadBookingLink ? 'model' : 'thread';
+        const source = threadBookingLink ? 'thread' : 'model';
+        console.log(`WINGGUY-LEAD-LINK ${coach.clientId} → ${profile.name || 'lead'}: ${source} ${linkUrl} → ${lead.ok ? `ok (${lead.slots.length} lead slots)` : `FAILED: ${lead.reason}`}`);
         // "Calendly" / "TidyCal" / "booking" - from the reader when it says, else from the link itself.
         const label = leadBookingLink.providerLabel(lead.provider || leadBookingLink.parseBookingLink(linkUrl).provider);
         if (lead.ok) {
