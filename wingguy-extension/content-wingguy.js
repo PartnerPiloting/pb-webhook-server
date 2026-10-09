@@ -885,6 +885,37 @@
     return '';
   }
 
+  // ---- dedupeParticipants (pure; tests/wingguy-extension-group-dedupe.test.js lifts this block) ----
+  // One person, one entry. On the full /messaging/thread/ page LinkedIn links the SHORT name on every
+  // bubble ("Sam") and the full name in the thread header ("Sam Trattles"), so a plain 1:1 with Sam
+  // Trattles came through as "Group: Sam, Sam Trattles" (2026-10-09) - and a group flag changes what
+  // the server does, not just the wording. Names are compared as PEOPLE: case and punctuation are
+  // ignored, and a name that is the first word(s) of another is the same person, folded into the
+  // longer entry (which keeps the better profile link). "You" and the signed-in coach - full name,
+  // first name, or either as the start of the other - are dropped. [{ name, profileUrl }] in, same
+  // shape out, in order of first appearance. No DOM, no other helpers: it must stay liftable as text.
+  function dedupeParticipants(list, selfName) {
+    const norm = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    const startsWith = (short, long) => !!short && !!long && short !== long && (long + ' ').startsWith(short + ' ');
+    const samePerson = (a, b) => a === b || startsWith(a, b) || startsWith(b, a);
+    const vanity = (u) => !!u && !/\/in\/ACoA/i.test(u);
+    const self = norm(selfName);
+    const selfFirst = self.split(' ')[0] || '';
+    const out = [];
+    for (const raw of Array.isArray(list) ? list : []) {
+      const name = String((raw && raw.name) || '').replace(/\s+/g, ' ').trim();
+      const key = norm(name);
+      if (!key || key === 'you') continue;
+      if (self && (key === selfFirst || samePerson(key, self))) continue;
+      const url = String((raw && raw.profileUrl) || '');
+      const hit = out.find((e) => samePerson(e.key, key));
+      if (!hit) { out.push({ key, name, profileUrl: url }); continue; }
+      if (startsWith(hit.key, key)) { hit.key = key; hit.name = name; }
+      if (url && (!hit.profileUrl || (vanity(url) && !vanity(hit.profileUrl)))) hit.profileUrl = url;
+    }
+    return out.map((e) => ({ name: e.name, profileUrl: e.profileUrl }));
+  }
+  // ---- end dedupeParticipants ----
   // ---- GROUP threads (introductions live here — "Ann, Dimitri, and you") ----------------------
   // Every participant other than the signed-in user, read off the conversation's own profile links
   // (each message row links its sender). Returns [{ name, profileUrl }] in order of first
@@ -919,18 +950,23 @@
       const img = a.querySelector ? a.querySelector('img[alt]') : null;
       add(a.getAttribute('aria-label') || a.textContent || (img && img.getAttribute('alt')), a.getAttribute('href'));
     }
+    // Fold the same person's short and full names into one entry ("Sam" + "Sam Trattles"), and drop
+    // the coach again by person rather than by exact string. The head count below is of PEOPLE.
+    const people = dedupeParticipants(out, self);
     // The group heading names the others by first name ("Ann, Dimitri, and you"). When it does,
     // keep only those — it is the surest way to drop the coach's own row links when the nav name
     // couldn't be read, and any stray link to a third profile mentioned in a message.
     if (isGroupTitle(groupTitle)) {
       const firsts = headingFirstNames(groupTitle);
-      const kept = out.filter((p) => firsts.includes(p.name.toLowerCase().split(/\s+/)[0]));
+      const kept = people.filter((p) => firsts.includes(p.name.toLowerCase().split(/\s+/)[0]));
       if (kept.length) return kept;
     }
-    return out;
+    return people;
   }
   // Is this conversation a GROUP (3+ people)? True on a group heading, or on two-plus other
   // participants when the coach's own name is known (so their own row links can't fake a group).
+  // "Two-plus" counts distinct people - threadParticipants has already folded one person's short
+  // and full names together, so a 1:1 can never read as a group of two (Sam Trattles, 2026-10-09).
   // Returns { title, participants, primary } or null.
   function detectGroupThread(convo) {
     if (!convo) return null;
