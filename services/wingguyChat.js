@@ -611,7 +611,7 @@ function coachSlotLine(iso, coachTz, leadTz) {
 }
 
 /** A model claim that the two clocks agree. "same time as last week" is not one. */
-const SAME_CLOCK_CLAIM = /\b(same (clock|time ?zone)s?|same time(?! as\b)|no (time|clock|hour) difference|no difference (in|between) (the )?(time|clock)s?|(clocks|times) (are|read) the same|(clocks|times|time zones) (match|line up)|identical clocks?|no (daylight[- ]saving|dst) (gap|difference))/i;
+const SAME_CLOCK_CLAIM = /\b(same (clock|time ?zone)s?|same time(?! as\b)|no (time|clock|hour) difference|no difference (in|between) (the )?(time|clock)s?|(clocks|times) (are|read) the same|(clocks|times|time zones) (match|line up)|identical clocks?|no (daylight[- ]saving|dst) (gap|difference)|no (time |clock )?offset)/i;
 /** Drops every parenthetical and every sentence that claims the clocks agree. Returns the text and
  * what was dropped, so the turn can log it. Text with no claim comes back untouched. */
 function scrubSameClockClaims(text) {
@@ -939,16 +939,29 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const coachTz = coach.timezone || coach.timeZone || 'Australia/Brisbane';
   let overrideTz = null;
   let timesListed = false; // propose_times wrote a list this turn - offeredTimes already carries both clocks
+  // THE ONE LOCATION THE CLOCK MATHS USE. The record's Location when it pins a zone; else the city on
+  // the record's job history (recordRoleLocation - the same fallback the model is TOLD about in
+  // leadClockLine). Sam Trattles, 2026-10-09, fifth run: Location "Australia" (ambiguous), job history
+  // "Greater Sydney Area". check_availability and the coach clock line were still fed "Australia", so
+  // the slots were labelled on Guy's clock, the clock guard had no lead zone and stayed quiet, and the
+  // model told Guy "11:00 am Brisbane - same clock for Sam, no offset" during Sydney daylight saving.
+  // Code resolves it once here; the model only ever adds a thread override on top (propose_times).
+  const leadClockLocation = (() => {
+    const rec = String((profile && profile.location) || '').trim();
+    if (resolveLeadTimezone(rec).detected) return rec;
+    const fromHistory = recordRoleLocation(profile && profile.rawProfileData, rec);
+    return fromHistory && fromHistory.location ? fromHistory.location : rec;
+  })();
   const leadTzForLine = () => {
     if (overrideTz) return overrideTz;
     if (availTz.leadTzDetected !== undefined) return availTz.leadTzDetected ? (availTz.leadTimezone || null) : null;
-    const r = resolveLeadTimezone(String(profile.location || '').trim());
+    const r = resolveLeadTimezone(leadClockLocation);
     return r.detected ? r.timezone : null;
   };
 
   const runTool = async (name, input) => {
     if (name === 'check_availability') {
-      const avail = await getAvailability(coach.clientId, profile.location || '');
+      const avail = await getAvailability(coach.clientId, leadClockLocation);
       availTz = { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadTzDetected: avail.leadTzDetected, leadTzCandidates: avail.leadTzCandidates, leadTzAssumedNote: avail.leadTzAssumedNote };
       // The shared pipeline (wingguyCalendar.filterAvailability) enforces ALL the offer rules in one
       // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
@@ -1041,7 +1054,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // order as the offer window above), lead clock from their resolved location - Brisbane is the
       // last resort, never the first.
       const tz = availTz.yourTimezone || coach.timezone || coach.timeZone || 'Australia/Brisbane';
-      const upfrontLoc = String(profile.location || '').trim();
+      const upfrontLoc = leadClockLocation;
       const upfront = availTz.leadTzDetected !== undefined
         ? { detected: !!availTz.leadTzDetected, candidates: availTz.leadTzCandidates || [], timezone: availTz.leadTimezone || null }
         : resolveLeadTimezone(upfrontLoc);

@@ -136,6 +136,24 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy', timezone: BRI
     });
     check('no booking this turn, no draft', () => { assert.ok(!res.booked); assert.ok(!res.draft); });
   }
+  console.log('\nTHE CONFIRM TURN with Location "Australia" and Sydney only in the job history (fifth run, 9 Oct 2026):');
+  {
+    // The record's Location is a country, so the city comes off the record's job history - and the
+    // same resolved city must feed check_availability AND the coach clock line, not just the prose
+    // the model reads. Before: "11:00 am Brisbane - same clock for Sam, no offset right now".
+    const askedWith = [];
+    const availByLocation = async (clientId, loc) => {
+      askedWith.push(loc);
+      if (/sydney/i.test(String(loc))) return availSyd();
+      return { yourTimezone: BRIS, leadTimezone: null, leadLocation: loc, leadTzDetected: false, leadTzCandidates: [{ place: 'Sydney', timezone: SYD }, { place: 'Perth', timezone: 'Australia/Perth' }], days: [day] };
+    };
+    const raw = { organization_1: 'Other Side of the Table', organization_location_1: 'Greater Sydney Area', organization_start_1: '2024.02', organization_end_1: null };
+    const aside = `Best pick: Fri ${fri.day} October, 10:00 am Brisbane (that's the same clock for Sam if he's Sydney - no offset right now). Want me to book it and send Sam's invite to sam@example.com?`;
+    const res = await runWingguyChatTurn({ ...base, profile: { name: 'Sam Trattles', location: 'Australia', rawProfileData: raw }, deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true } }], aside), getAvailabilityForCoach: availByLocation, clashingSlots: noClashes, readBookingLink: tidyOk, ...bookingDeps } });
+    check('check_availability is asked with the job-history city, not the bare country', () => assert.deepStrictEqual(askedWith, ['Greater Sydney Area']));
+    check('the reply ends with "On both clocks:" using Sydney for Sam', () => assert.ok(res.reply.endsWith(`On both clocks: ${LINE}`), res.reply));
+    check('the "same clock / no offset" aside did not survive', () => { assert.ok(!/same clock/i.test(res.reply), res.reply); assert.ok(!/no offset/i.test(res.reply), res.reply); });
+  }
   console.log('\nTHE BOOKED TURN - Guy said yes:');
   {
     const wrong = `Booked for ${LEAD_LABEL}. Brisbane and Sydney are on the same clock, so that's 11:00 am for you too - invite sent to sam@example.com.`;
