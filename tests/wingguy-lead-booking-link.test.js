@@ -59,6 +59,17 @@ check('plain words are still not a link', () => assert.strictEqual(link.findBook
 check('the other-host reason now names both providers', () => assert.match(link.parseBookingLink('https://cal.com/someone/30min').reason, /Calendly or TidyCal only/));
 check('providerLabel: Calendly / TidyCal / booking', () => { assert.strictEqual(link.providerLabel('calendly'), 'Calendly'); assert.strictEqual(link.providerLabel('tidycal'), 'TidyCal'); assert.strictEqual(link.providerLabel(null), 'booking'); });
 
+// Google appointment pages (Laura Gardner, 2026-10-10): recognised so the panel guards engage, never read.
+console.log('Google appointment links - recognised, never read:');
+const LAURA = 'https://calendar.app.google/Rt3HARJvfXUBpviz7';
+check('a calendar.app.google link is found, mixed-case code intact, trailing stop dropped', () => assert.strictEqual(link.findBookingLink(`Happy to chat - grab a time here: ${LAURA}. Laura`), LAURA));
+check('the long calendar.google.com form is found too', () => assert.strictEqual(link.findBookingLink('see https://calendar.google.com/calendar/appointments/schedules/AcZssZ3YEPpceCy3fzjJaMTtDD5fmvAc2NyYPxOS4HG_RMRwRPMDERi4jkn_EBOaqpjnEJExL_kLOkt1?gv=true thanks'), 'https://calendar.google.com/calendar/appointments/schedules/AcZssZ3YEPpceCy3fzjJaMTtDD5fmvAc2NyYPxOS4HG_RMRwRPMDERi4jkn_EBOaqpjnEJExL_kLOkt1?gv=true'));
+check('a bare calendar.app.google address is found and given https', () => assert.strictEqual(link.findBookingLink('book me at calendar.app.google/Rt3HARJvfXUBpviz7'), LAURA));
+check('parse: provider google, no slugs, a plain reason naming Google', () => { const p = link.parseBookingLink(LAURA); assert.strictEqual(p.provider, 'google'); assert.ok(!p.profileSlug); assert.match(p.reason, /Google Calendar appointment page/); assert.match(p.reason, /Calendly or TidyCal only/); });
+check('parse: the schedules form is google too', () => assert.strictEqual(link.parseBookingLink('https://calendar.google.com/appointments/schedules/AcZssZ3Y').provider, 'google'));
+check('an ordinary Google Calendar event link is NOT a booking link', () => { assert.strictEqual(link.findBookingLink('https://calendar.google.com/calendar/event?eid=abc'), null); assert.strictEqual(link.parseBookingLink('https://calendar.google.com/calendar/u/0/r').provider, null); });
+check('providerLabel: google → Google appointment', () => assert.strictEqual(link.providerLabel('google'), 'Google appointment'));
+
 console.log('reading Calendly (fake fetch):');
 const fakeFetch = (calls, { lookupStatus = 200, rangeStatus = 200, spots = {} } = {}) => async (url) => {
   calls.push(url);
@@ -104,6 +115,11 @@ const fakeFetch = (calls, { lookupStatus = 200, rangeStatus = 200, spots = {} } 
     const calls = [];
     const r = await link.readBookingLink('https://calendly.com/d/abc/intro', { fetchImpl: fakeFetch(calls) });
     assert.strictEqual(r.ok, false); assert.strictEqual(calls.length, 0);
+  });
+  await checkAsync('a Google appointment link falls open without a network call, reason names Google', async () => {
+    const calls = [];
+    const r = await link.readBookingLink(LAURA, { fetchImpl: fakeFetch(calls) });
+    assert.strictEqual(r.ok, false); assert.strictEqual(calls.length, 0); assert.match(r.reason, /Google Calendar appointment page/);
   });
 
   // TidyCal (fake fetch). The three responses below follow the shapes Guy recorded with curl on

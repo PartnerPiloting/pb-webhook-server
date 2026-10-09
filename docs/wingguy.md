@@ -5311,6 +5311,49 @@ model already quoted word for word is not repeated. Logged as WINGGUY-CLOCK-GUAR
 what code wrote. The MCP door already had its own WHEN line (2026-10-05) and is unchanged. Test:
 tests/wingguy-coach-clock-line.test.js (Brisbane coach, Sydney lead on the third Friday of October).
 
+## Lead booking links: Google appointment pages are NOT readable - investigated, parked (2026-10-10)
+
+Laura Gardner sent https://calendar.app.google/Rt3HARJvfXUBpviz7. Could Wingguy read her free slots the way
+it reads Calendly and TidyCal - a plain fetch, no login? No, and it is not worth building. Two hours with
+Node fetch only (no browser, no Google account), what was found:
+
+- **What the link is.** `calendar.app.google/<code>` is a 302 to
+  `calendar.google.com/appointments/schedules/<token>` (an 80-character token), which lands on
+  `calendar.google.com/calendar/appointments/schedules/<token>`. The page is a 54 KB JavaScript shell:
+  title "30 min with Laura", one script tag, an empty body div. No slots, no schedule definition and no
+  duration anywhere in the HTML. The only facts a plain read gives are the page title (event name, and
+  the length when the owner put it in the title) and a time zone that matched the fetching machine, so
+  the visitor's guess, not Laura's.
+- **Where the slots come from.** The page's embedded config names a private data host,
+  `https://calendar-pa.clients6.google.com`, with a page-issued API key - the same private-API family the
+  Calendar web app itself uses. The slots are fetched by the app's JavaScript after load, from modules
+  loaded on demand (the schedules view is module `MURy2e`; its slot grid and booking services sit in
+  further modules - about 1.2 MB was pulled from gstatic and searched). None of them carries a readable
+  endpoint: the request path is assembled from generated protobuf service descriptors, not from strings.
+  Every path that could be reconstructed (REST `v1` forms, `$rpc` forms, discovery) answers a bare Google
+  404, and the same-origin `batchexecute` endpoint other Google apps use is 404 here too. So the request
+  shape could not be captured without a browser watching the real page.
+- **Response shape.** Everything the app exchanges is positional protobuf-JSON - the embedded config is
+  literally `%.@.[null,null,null,[1,1,[...],4],null,23]` - nested arrays indexed by field number, no
+  names. Even with the endpoint captured, a reader would be decoding undocumented array positions that
+  Google reshuffles with any build (the page carries its build label: `boq_calendar-web-appslots_20261005.05_p0`,
+  shipped five days before this probe).
+- **Decision: no reader.** Both stop conditions hit - the call needs a browser to capture, and the answer
+  is the undocumented nested-array kind. A reader that worked today would break silently on a Google
+  release, and the lead would get a confident wrong time. One small change in
+  services/wingguyLeadBookingLink.js, and it is not a reader: `findBookingLink` now RECOGNISES the two
+  Google hosts (keeping the mixed-case code intact - the Calendly/TidyCal capital-letter cut would have
+  chopped it), and `parseBookingLink` returns provider `google` with no slugs and a plain reason. Why:
+  the panel's "never promise to book through their link / never confess the link failed" guard
+  (`linkBookingPromise`) only runs while the thread scanner has found a lead's link, and the scanner knew
+  only Calendly and TidyCal - so for a Google link the protection rested on the prompt alone. Now the
+  link is seen, check_availability answers "The lead's Google appointment link could not be read (...)"
+  without a network call, propose_times falls open to Guy's own times in the normal list, and the draft
+  guards engage. The honest routes if this ever matters: ask the lead for a Calendly or TidyCal style link, or the
+  give-up path as it stands. Google's official Calendar API would need Laura's own OAuth consent - not a
+  door a lead opens for us. No second public Google appointment page was found to test; the shell is
+  Google's app, not something the owner configures, so the finding is not Laura-specific.
+
 ## The extension keeps its owner + the LinkedIn name must agree (0.3.29, 2026-09-30)
 
 **What went wrong.** Guy ran /wg on his own lead (Shiva Farabi) and the draft came back signed "Cheers,
