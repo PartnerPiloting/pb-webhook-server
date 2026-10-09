@@ -36,8 +36,17 @@
  * (coach's own invite, Zoom room, lead record) - the lead's link only tells us WHEN.
  *
  * Supported today: calendly.com/<profile>/<event>[?...] and tidycal.com/<profile>/<booking-type>.
- * Other providers (cal.com, HubSpot, Google appointment pages) parse as { provider:null } and the
- * caller says so.
+ * Other providers (cal.com, HubSpot) parse as { provider:null } and the caller says so.
+ *
+ * GOOGLE APPOINTMENT PAGES (calendar.app.google/<code>, calendar.google.com/calendar/appointments/
+ * schedules/<token>) are RECOGNISED BUT NOT READ (Laura Gardner, 2026-10-10). The page is a JavaScript
+ * shell: the slots come from a private Google API (calendar-pa.clients6.google.com) whose request the
+ * app assembles from protobuf descriptors and whose answers are positional nested arrays - nothing a
+ * plain fetch can read, and nothing stable enough to decode. Investigated for two hours, written up in
+ * docs/wingguy.md (2026-10-10). The link is still FOUND by findBookingLink so the panel's thread scanner
+ * sees it and the no-promise / no-confession guards engage; parseBookingLink returns provider 'google'
+ * with no slugs, so readBookingLink answers { ok:false, reason } without a network call and the caller
+ * offers the coach's own times.
  */
 
 const { DateTime } = require('luxon');
@@ -47,7 +56,8 @@ const CALENDLY_MAX_RANGE_DAYS = MAX_RANGE_DAYS;
 const FETCH_TIMEOUT_MS = 8000;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 
-const PROVIDER_LABELS = { calendly: 'Calendly', tidycal: 'TidyCal' };
+const PROVIDER_LABELS = { calendly: 'Calendly', tidycal: 'TidyCal', google: 'Google appointment' };
+const GOOGLE_REASON = 'a Google Calendar appointment page - Google only serves its slots to a browser, so Wingguy cannot read it (Calendly or TidyCal only)';
 
 /** 'calendly' -> 'Calendly', 'tidycal' -> 'TidyCal', anything else -> 'booking' (as in "booking link"). */
 function providerLabel(provider) {
@@ -63,14 +73,15 @@ function providerLabel(provider) {
  * URL". A bare host+path is returned with https:// put back so every caller sees one shape.
  */
 function findBookingLink(text) {
-  const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com|tidycal\.com)\/[^\s<>"')\]]+/i);
+  const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com\/|tidycal\.com\/|calendar\.app\.google\/|calendar\.google\.com\/(?:calendar\/)?appointments\/)[^\s<>"')\]]+/i);
   if (!m) return null;
   let raw = m[0];
   // LinkedIn's full-thread view glues the next line onto the link with no space between
   // ("…/consultationLook forward to chatting", Sam Trattles 2026-10-09, third run - the reader then
-  // fetched a page that does not exist). Slugs on both providers are lower case, so the path ends
-  // at the first capital letter after the host.
-  raw = raw.replace(/^((?:https?:\/\/)?[^/]+\/[^A-Z]*)[A-Z].*$/, '$1');
+  // fetched a page that does not exist). Slugs on Calendly and TidyCal are lower case, so the path
+  // ends at the first capital letter after the host. Google's codes are mixed case (Rt3HARJvfXUBpviz7),
+  // so a Google link is left as matched - it is never fetched anyway.
+  if (!/calendar\.(?:app\.)?google/i.test(raw)) raw = raw.replace(/^((?:https?:\/\/)?[^/]+\/[^A-Z]*)[A-Z].*$/, '$1');
   raw = raw.replace(/[.,;:!?]+$/, '');
   return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 }
@@ -79,9 +90,13 @@ function findBookingLink(text) {
 function parseBookingLink(url) {
   let u;
   const str = String(url || '').trim();
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(str) ? str : (/^(?:www\.)?(?:calendly\.com|tidycal\.com)\//i.test(str) ? `https://${str}` : str);
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(str) ? str : (/^(?:www\.)?(?:calendly\.com|tidycal\.com|calendar\.app\.google|calendar\.google\.com)\//i.test(str) ? `https://${str}` : str);
   try { u = new URL(withScheme); } catch (_) { return { provider: null, url, reason: 'not a URL' }; }
   const host = u.hostname.replace(/^www\./, '').toLowerCase();
+  // Recognised, never read - see the header. No slugs, so readBookingLink falls open without a call.
+  if (host === 'calendar.app.google' || (host === 'calendar.google.com' && /^\/(?:calendar\/)?appointments\//i.test(u.pathname))) {
+    return { provider: 'google', url, reason: GOOGLE_REASON };
+  }
   if (host === 'calendly.com') {
     const parts = u.pathname.split('/').filter(Boolean);
     // /d/<uid>/<slug> is a share link - it does not carry the profile slug the lookup needs.

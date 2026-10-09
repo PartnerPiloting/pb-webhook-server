@@ -45,6 +45,9 @@ const SAM = 'Hi Guy, happy to chat. Grab a time that suits here: https://tidycal
 const TIDY = 'https://tidycal.com/thepowertoask/consultation';
 const samConvo = [{ sender: 'Guy Wilson', text: 'Thanks for connecting, Sam. Open to a quick call?' }, { sender: 'Sam Trattles', text: SAM }];
 check('finds a TidyCal link in the lead\'s message', () => assert.strictEqual(detectLeadBookingLink(samConvo, 'Guy'), TIDY));
+// Laura Gardner, 2026-10-10: a Google appointment link is FOUND (so the no-promise / no-confession
+// guards engage) even though it can never be read - its mixed-case code must survive the scan.
+check('finds a Google appointment link in the lead\'s message, code intact', () => assert.strictEqual(detectLeadBookingLink([{ sender: 'Laura Gardner', text: 'Happy to chat - book a time here: https://calendar.app.google/Rt3HARJvfXUBpviz7. Laura' }], 'Guy'), 'https://calendar.app.google/Rt3HARJvfXUBpviz7'));
 
 console.log('linkBookingPromise (a draft must never promise to book through THEIR link):');
 check('catches "I\'ll grab a slot through your link now"', () => assert.strictEqual(linkBookingPromise("Hi Sam - Tuesday works for me. I'll grab a slot through your link now."), 'grab a slot through your link'));
