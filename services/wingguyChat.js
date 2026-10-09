@@ -571,6 +571,119 @@ function priorLeadLinkRead(messages = []) {
   return found;
 }
 
+// THE COACH'S OWN CLOCK IS WRITTEN BY CODE (Sam Trattles, 2026-10-09). Sydney lead, Brisbane coach,
+// NSW daylight saving on since 4 Oct. check_availability said "Sydney is 1h ahead of Brisbane", the
+// slot carried "(coach: 10:00 am)", the booking used the right ISO - and the panel's note to Guy still
+// read "Fri 16 October, 11:00 am (Brisbane/Sydney same clock this time of year)". Right diary entry,
+// wrong time in Guy's head. The time list, the invite line and the sign-off all went to code for the
+// same reason: a fact that must be right is written from data, never asked of the model. So the line
+// that names a chosen or booked slot to the coach is built here from the slot's ISO and the two
+// zones (coachSlotLine), and a model aside claiming the clocks match while they do not is dropped
+// from the reply (scrubSameClockClaims) - in the spirit of withInviteLine above: the model's version
+// goes, code's version stays.
+function coachTimeOnly(iso, tz) {
+  return new Date(iso).toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz }).toLowerCase();
+}
+/** "Fri 16 October, 11:00 am Sydney (10:00 am your time, Brisbane)" - the slot on the lead's clock,
+ * then the coach's own. Same clock on that date: says so, from the real offsets for that date. The
+ * coach's side carries its own day when the date differs across the two zones (a US lead). No lead
+ * zone: the coach's time only, and says the lead's clock is not on file. */
+function coachSlotLine(iso, coachTz, leadTz) {
+  const coachCity = tzCity(coachTz);
+  if (!leadTz) return `${fmtSlot(iso, coachTz)} ${coachCity} (your time - the lead's clock is not on file)`;
+  if (leadTz === coachTz) return `${fmtSlot(iso, coachTz)} ${coachCity} (your time - the lead is on the same clock)`;
+  const leadCity = tzCity(leadTz);
+  const gap = wingguyCalendar.clockGapMins(iso, coachTz, leadTz);
+  if (gap === 0) return `${fmtSlot(iso, leadTz)} ${leadCity} (${coachTimeOnly(iso, coachTz)} your time, ${coachCity} - same clock on this date)`;
+  const sameDay = dateStrInTz(iso, leadTz) === dateStrInTz(iso, coachTz);
+  const coachSide = sameDay ? coachTimeOnly(iso, coachTz) : fmtSlot(iso, coachTz);
+  return `${fmtSlot(iso, leadTz)} ${leadCity} (${coachSide} your time, ${coachCity})`;
+}
+
+/** A model claim that the two clocks agree. "same time as last week" is not one. */
+const SAME_CLOCK_CLAIM = /\b(same (clock|time ?zone)s?|same time(?! as\b)|no (time|clock|hour) difference|no difference (in|between) (the )?(time|clock)s?|(clocks|times) (are|read) the same|(clocks|times|time zones) (match|line up)|identical clocks?|no (daylight[- ]saving|dst) (gap|difference))/i;
+/** Drops every parenthetical and every sentence that claims the clocks agree. Returns the text and
+ * what was dropped, so the turn can log it. Text with no claim comes back untouched. */
+function scrubSameClockClaims(text) {
+  const dropped = [];
+  let s = String(text || '');
+  // Asides first: "(Brisbane/Sydney same clock this time of year)".
+  s = s.replace(/\s*\(([^()]*)\)/g, (m, inner) => { if (!SAME_CLOCK_CLAIM.test(inner)) return m; dropped.push(m.trim()); return ''; });
+  // Then any whole sentence that carries the claim, line by line.
+  s = s.split('\n').map((line) => {
+    if (!SAME_CLOCK_CLAIM.test(line)) return line;
+    // A sentence ends at . ! ? followed by a space or the end - "sam@example.com" is not two sentences.
+    const parts = line.match(/.+?(?:[.!?]+(?=\s|$)\s*|$)/g) || [line];
+    return parts.filter((p) => { if (!SAME_CLOCK_CLAIM.test(p)) return true; dropped.push(p.trim()); return false; }).join('').trim();
+  }).join('\n');
+  return { text: s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(), dropped };
+}
+
+/** Does the text name this slot - its day + month and its clock time - on the given zone's clock?
+ * Lenient on the model's spelling ("Fri 16 October, 11:00 am", "Friday 16 Oct at 11am", "October 16"). */
+function mentionsSlot(text, iso, tz) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return false;
+  const day = d.toLocaleString('en-AU', { day: 'numeric', timeZone: tz });
+  const monLong = d.toLocaleString('en-AU', { month: 'long', timeZone: tz });
+  const mon = `${monLong.slice(0, 3)}(?:${monLong.slice(3)})?`;
+  const dateRe = new RegExp(`\\b${day}(?:st|nd|rd|th)?\\s+(?:of\\s+)?${mon}\\b|\\b${mon}\\s+${day}\\b`, 'i');
+  const t = coachTimeOnly(iso, tz).match(/(\d{1,2}):(\d{2})\s*(am|pm)/);
+  if (!t) return false;
+  const timeRe = new RegExp(`\\b${t[1]}${t[2] === '00' ? '(?:[:.]00)?' : `[:.]${t[2]}`}\\s*${t[3]}\\b`, 'i');
+  return dateRe.test(text) && timeRe.test(text);
+}
+/** The ONE candidate slot the reply names (on either clock), else null - a reply that names several
+ * is a list, not a pick, and a reply that names none gets no line. */
+function chosenSlotFromReply(reply, candidates, coachTz, leadTz) {
+  const text = String(reply || '');
+  if (!text.trim()) return null;
+  const hits = [...new Set(candidates)].filter((iso) => mentionsSlot(text, iso, leadTz || coachTz) || mentionsSlot(text, iso, coachTz));
+  return hits.length === 1 ? hits[0] : null;
+}
+/** Every slot ISO the tools have put in front of the model in this chat: check_availability days
+ * (this turn or earlier - the panel resends the running messages) and check_time results. */
+function slotCandidates(messages = []) {
+  const out = [];
+  for (const m of (Array.isArray(messages) ? messages : [])) {
+    if (!m || m.role !== 'user' || !Array.isArray(m.content)) continue;
+    for (const b of m.content) {
+      if (!b || b.type !== 'tool_result' || typeof b.content !== 'string') continue;
+      if (!b.content.includes('"freeSlots"') && !b.content.includes('"clockRule"')) continue;
+      try {
+        const r = JSON.parse(b.content);
+        if (r && r.clockRule && r.startISO) out.push(r.startISO);
+        for (const d of (r && Array.isArray(r.days) ? r.days : [])) {
+          for (const s of (d && Array.isArray(d.freeSlots) ? d.freeSlots : [])) if (s && s.time) out.push(s.time);
+        }
+      } catch (_) { /* not JSON - not one of ours */ }
+    }
+  }
+  return out;
+}
+/**
+ * The reply the coach actually reads, with the clock facts owned by code. A booking this turn gets a
+ * "Booked:" line for its slot; a reply that names exactly one slot the tools returned, while the
+ * lead's zone differs from the coach's by name, gets an "On both clocks:" line. Either way a model
+ * claim that the clocks agree is dropped first when the real offsets say they do not. A line the
+ * model already quoted word for word is not repeated.
+ */
+function coachClockReply(reply, { bookedISO = null, candidates = [], coachTz, leadTz, skipConfirmLine = false } = {}) {
+  const iso = bookedISO || chosenSlotFromReply(reply, candidates, coachTz, leadTz);
+  const gapAt = (when) => wingguyCalendar.clockGapMins(when, coachTz, leadTz) !== 0;
+  const differ = !!leadTz && leadTz !== coachTz && (iso
+    ? gapAt(iso)
+    : [Date.now(), Date.now() + 35 * 864e5].every((ms) => gapAt(new Date(ms).toISOString())));
+  let text = String(reply || '');
+  let dropped = [];
+  if (differ) ({ text, dropped } = scrubSameClockClaims(text));
+  if (!iso) return { reply: text, dropped, line: null };
+  if (!bookedISO && (skipConfirmLine || !leadTz || leadTz === coachTz)) return { reply: text, dropped, line: null };
+  const line = coachSlotLine(iso, coachTz, leadTz);
+  if (text.includes(line)) return { reply: text, dropped, line };
+  return { reply: [text.trim(), `${bookedISO ? 'Booked:' : 'On both clocks:'} ${line}`].filter(Boolean).join('\n\n'), dropped, line };
+}
+
 /** Stage 1 by DATA: nobody but the coach has spoken, and the coach never asked for a call. */
 function isHandshakeOnly({ conversation, coachName, leadName, group }) {
   if (group) return false;
@@ -810,6 +923,18 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   // The lead's own booking link, from THEIR messages (data, not the model), and what reading it gave.
   const threadBookingLink = detectLeadBookingLink(conversation, coach.clientName);
   let leadLinkState = null; // { url, ok, reason } once check_availability has read one
+  // The coach's own clock line (see coachSlotLine above). coachTz in the same order the offer window
+  // uses; the lead's zone from this turn's check_availability when it ran, else the record, else
+  // unknown - never a silent Brisbane. A thread override passed to propose_times this turn wins.
+  const coachTz = coach.timezone || coach.timeZone || 'Australia/Brisbane';
+  let overrideTz = null;
+  let timesListed = false; // propose_times wrote a list this turn - offeredTimes already carries both clocks
+  const leadTzForLine = () => {
+    if (overrideTz) return overrideTz;
+    if (availTz.leadTzDetected !== undefined) return availTz.leadTzDetected ? (availTz.leadTimezone || null) : null;
+    const r = resolveLeadTimezone(String(profile.location || '').trim());
+    return r.detected ? r.timezone : null;
+  };
 
   const runTool = async (name, input) => {
     if (name === 'check_availability') {
@@ -841,7 +966,12 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
             ? ` The lead's page offers ${filtered.leadSlotMins}-minute slots, shorter than Guy's usual ${coachMins} minutes: a slot below means the lead is free at that START time. book_meeting still sends Guy's usual length - the message after the booking gives the length ("I've put ${coachMins} minutes on it, happy to keep it to ${filtered.leadSlotMins} if that suits better").`
             : '';
           leadLinkState.leadSlotMins = filtered.leadSlotMins; // the ack guard below needs it on a same-turn booking
-          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, leadSlotMins: filtered.leadSlotMins, coachMins, note: filtered.days.length ? `The days below are ONLY the times BOTH Guy and the lead are free.${slotNote} Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. The message that follows the booking ACKNOWLEDGES their ${label} link (propose_message checks for this): name the time you saw open on their link and say the invite has been SENT to ${currentLeadEmail || 'their email'} - never "booked, you'll see it in your calendar", Guy's invite is a request they accept. Shape: "Saw Friday 11am was open on your link, so I've sent an invite for then to ${currentLeadEmail || '<email>'} - just accept and we're set."` : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
+          // Each surviving slot carries "both": the slot on the lead's clock and the coach's own, from
+          // code for that date (Sam Trattles, 2026-10-09 - the confirm question told Guy 11:00 am when
+          // his own clock said 10:00). The model quotes it; the reply guard below writes it anyway.
+          const leadTzNow = avail.leadTzDetected ? (avail.leadTimezone || null) : null;
+          filtered = { ...filtered, days: filtered.days.map((d) => ({ ...d, freeSlots: d.freeSlots.map((s) => ({ ...s, both: coachSlotLine(s.time, avail.yourTimezone || coachTz, leadTzNow) })) })) };
+          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, leadSlotMins: filtered.leadSlotMins, coachMins, note: filtered.days.length ? `The days below are ONLY the times BOTH Guy and the lead are free.${slotNote} Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. When you ask Guy to confirm, quote the slot's "both" value word for word - it gives his own clock for that date, worked out in code. Never tell Guy the clocks match unless "both" says so. The message that follows the booking ACKNOWLEDGES their ${label} link (propose_message checks for this): name the time you saw open on their link and say the invite has been SENT to ${currentLeadEmail || 'their email'} - never "booked, you'll see it in your calendar", Guy's invite is a request they accept. Shape: "Saw Friday 11am was open on your link, so I've sent an invite for then to ${currentLeadEmail || '<email>'} - just accept and we're set."` : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
         } else {
           // The give-up path (Sam Trattles, 2026-10-09): an unreadable link means Guy's OWN times go
           // out in the normal list. The old note ("or suggest he books through the link by hand")
@@ -904,6 +1034,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         try {
           new Intl.DateTimeFormat('en-AU', { timeZone: String(input.leadTimezoneOverride) });
           leadTz = String(input.leadTimezoneOverride);
+          overrideTz = leadTz; // the coach's clock line (coachClockReply) follows the same zone the draft used
         } catch (_) { /* invalid zone — profile-derived stands */ }
       }
       // HARD STOP when the lead's clock is unknown (Guy, 2026-09-02 — twice in a week a time list
@@ -1059,6 +1190,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // the same afternoon: 8 HOLD blocks incl. duplicates piled up within half an hour and made the
       // diary unreadable). Guy places "HOLD: <lead name>" events MANUALLY when a promise is worth
       // protecting; book_meeting still respects and clears them (see below).
+      timesListed = true;
       return {
         ok: true, offered: ordered.length, offeredTimes, leadBase: leadBase + poisonGuard, dropped,
         ...(beyondNextWeek.length ? { beyondNextWeek, warning: `These offered times fall BEYOND next week (fallback weeks): ${beyondNextWeek.join('; ')}. Never describe them as "this week" or "next week" in the draft or to Guy, and only offer them because nearer days couldn't fill the options — say that plainly.` } : {}),
@@ -1216,8 +1348,13 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         confirmDoubleBook: input.confirmDoubleBook,
         meetingLink: (input.meetingLink && String(input.meetingLink).trim()) || undefined,
       }, { getClashesForISO, createBookingEvent: bookMeeting, deleteOfferHolds });
-      if (result.ok) bookedEvent = result;
-      return result;
+      if (!result.ok) return result;
+      // WHEN, on both clocks, from code for the meeting's own date (the MCP door's WHEN line, 2026-10-05,
+      // brought to the panel after Sam Trattles 2026-10-09). The reply guard at the end of the turn
+      // writes this line to Guy whatever the model says; "when" here lets the model say it first.
+      const when = coachSlotLine(result.start || input.startISO, coachTz, leadTzForLine());
+      bookedEvent = { ...result, when };
+      return { ...result, when, note: 'Tell Guy the booking as WHEN reads, word for word - it was worked out in code for that date on both clocks. Never convert a time yourself, and never say the clocks match unless WHEN says so.' };
     }
     if (name === 'propose_message') {
       const draft = unescapeModelNewlines(input && input.message).trim();
@@ -1362,7 +1499,22 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     convo.push({ role: 'user', content: toolResults });
   }
 
-  return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
+  // The coach's own clock, from code, on the reply he reads (see coachSlotLine). A booking this turn
+  // always gets its "Booked:" line; a confirm question that names one slot the tools returned gets
+  // "On both clocks:" when the lead's zone differs from his; a model aside that the clocks match is
+  // dropped when the real offsets for that date say otherwise.
+  const clocked = coachClockReply(assistantText, {
+    bookedISO: bookedEvent ? bookedEvent.start : null,
+    candidates: slotCandidates(convo),
+    coachTz,
+    leadTz: leadTzForLine(),
+    skipConfirmLine: timesListed,
+  });
+  if (clocked.dropped.length) {
+    console.warn(`WINGGUY-CLOCK-GUARD dropped ${clocked.dropped.map((d) => `"${d}"`).join(', ')} for ${coach.clientId} → ${profile.name || 'lead'}${clocked.line ? ` (code wrote: ${clocked.line})` : ''}`);
+  }
+
+  return { ok: true, reply: clocked.reply, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
