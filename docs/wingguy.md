@@ -5264,6 +5264,20 @@ headers, short code, UTC window, 405 / Cloudflare / missing-code failures) and
 tests/wingguy-lead-booking-link-panel.test.js (TidyCal link found in the thread; unreadable link -> the
 promise is refused and the draft carries Guy's times and no "through your link").
 
+**Same day, live from Render: the read worked (no Cloudflare block), the overlap came back empty.** Sam's
+page offered 306 slots; the tool said "no time where BOTH are free" when seven matched. Cause:
+`intersectAvailability` demanded the coach's whole 30 minutes inside the lead's free run. Right for
+Calendly, whose 15-minute grid merges into long runs - but a TidyCal booking type with padding is a
+15-minute island per hour, so a 30-minute test discarded every one. Fix: the fit test uses the SMALLER
+of the coach's meeting length and the lead's own event length, so a lead offering 15-minute slots
+matches at those start times. The invite still goes out at the coach's usual length (Guy does not want
+short meetings); the LEAD'S OWN CALENDAR READ line and the panel note now say "the lead's page offers
+15-minute slots, shorter than the coach's usual 30" so the model can mention it. Side effect, deliberate:
+a 60- or 90-minute coach meeting now matches wherever the lead's page shows a slot of the lead's own
+length, where before it needed the whole meeting inside the lead's run. Test: Sam's shape in
+tests/wingguy-lead-booking-link.test.js (isolated 15-minute slots on the hour, coach at 30-minute steps,
+the seven on-the-hour matches survive).
+
 ## The extension keeps its owner + the LinkedIn name must agree (0.3.29, 2026-09-30)
 
 **What went wrong.** Guy ran /wg on his own lead (Shiva Farabi) and the draft came back signed "Cheers,

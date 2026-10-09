@@ -192,13 +192,42 @@ const fakeFetch = (calls, { lookupStatus = 200, rangeStatus = 200, spots = {} } 
     assert.strictEqual(out.leadLinkSlotsBefore, 5);
     assert.strictEqual(out.yourTimezone, 'Australia/Brisbane');
   });
-  check('a 60-minute coach meeting needs 60 free minutes on the lead\'s side', () => {
-    const filtered = { days: [{ date: '2026-09-29', freeSlots: [{ time: '2026-09-29T03:30:00.000Z', label: '1:30 pm' }, { time: '2026-09-29T02:45:00.000Z', label: '12:45' }] }] };
+  check('the fit length is the SMALLER of the coach\'s meeting and the lead\'s event (a 60/90-minute coach meeting fits where the lead offers 30)', () => {
+    // Until 9 Oct 2026 this demanded the coach's whole meeting inside the lead's run (the 90-minute
+    // case used to drop the 1:30). That rule threw away every TidyCal slot - see the Sam Trattles
+    // check below - so now the lead's own event length caps the fit test.
+    const filtered = { days: [{ date: '2026-09-29', freeSlots: [{ time: '2026-09-29T03:30:00.000Z', label: '1:30 pm' }, { time: '2026-09-29T02:45:00.000Z', label: '12:45' }, { time: '2026-09-29T04:30:00.000Z', label: '2:30 pm' }] }] };
     const lead = { slots: ['2026-09-29T02:45:00Z', '2026-09-29T03:15:00Z', '2026-09-29T03:45:00Z', '2026-09-29T04:15:00Z'], durationMins: 30 }; // free 12:45-14:45
     const out = link.intersectAvailability(filtered, lead, { meetingMins: 60 });
-    assert.deepStrictEqual(out.days[0].freeSlots.map((s) => s.label), ['1:30 pm', '12:45']);
+    assert.deepStrictEqual(out.days[0].freeSlots.map((s) => s.label), ['1:30 pm', '12:45']); // 2:30 + 30 min overruns 2:45
+    assert.strictEqual(out.fitMins, 30); assert.strictEqual(out.leadSlotMins, 30); assert.strictEqual(out.leadSlotsShorter, true);
     const out2 = link.intersectAvailability(filtered, lead, { meetingMins: 90 });
-    assert.deepStrictEqual(out2.days[0].freeSlots.map((s) => s.label), ['12:45']);
+    assert.deepStrictEqual(out2.days[0].freeSlots.map((s) => s.label), ['1:30 pm', '12:45']);
+    const same = link.intersectAvailability(filtered, lead, { meetingMins: 30 });
+    assert.strictEqual(same.fitMins, 30); assert.strictEqual(same.leadSlotsShorter, false);
+  });
+  check('Sam Trattles\'s TidyCal shape: isolated 15-minute slots on the hour, coach at 30-minute steps, coach meeting 30 → the on-the-hour matches survive (live 9 Oct 2026: 0 of 7 came back)', () => {
+    // Sam: one 15-minute slot on each hour, 8am-4pm Sydney (UTC+11), padding 30 -> no slot touches another.
+    const leadSlots = [];
+    for (const day of ['2026-10-12', '2026-10-13', '2026-10-16']) for (let h = 21; h <= 23; h++) leadSlots.push(`${day === '2026-10-12' ? '2026-10-11' : day === '2026-10-13' ? '2026-10-12' : '2026-10-15'}T${String(h).padStart(2, '0')}:00:00Z`);
+    for (const day of ['2026-10-12', '2026-10-13', '2026-10-16']) for (let h = 0; h <= 5; h++) leadSlots.push(`${day}T0${h}:00:00Z`);
+    const lead = { slots: leadSlots, durationMins: 15 };
+    // Guy's offerable slots that week at 30-minute steps (the seven the peer check expected are on the hour).
+    const mk = (iso) => ({ time: iso, label: iso });
+    const filtered = { days: [
+      { date: '2026-10-12', freeSlots: ['2026-10-12T01:00:00.000Z', '2026-10-12T01:30:00.000Z', '2026-10-12T04:00:00.000Z', '2026-10-12T04:30:00.000Z'].map(mk) },
+      { date: '2026-10-13', freeSlots: ['2026-10-13T01:00:00.000Z', '2026-10-13T02:30:00.000Z'].map(mk) },
+      { date: '2026-10-14', freeSlots: ['2026-10-14T00:30:00.000Z', '2026-10-14T03:30:00.000Z'].map(mk) },
+      { date: '2026-10-16', freeSlots: ['2026-10-16T00:00:00.000Z', '2026-10-16T01:00:00.000Z', '2026-10-16T03:00:00.000Z', '2026-10-16T04:00:00.000Z', '2026-10-16T05:30:00.000Z'].map(mk) },
+    ] };
+    const out = link.intersectAvailability(filtered, lead, { meetingMins: 30 });
+    assert.deepStrictEqual(out.days.map((d) => [d.date, d.freeSlots.map((s) => s.time)]), [
+      ['2026-10-12', ['2026-10-12T01:00:00.000Z', '2026-10-12T04:00:00.000Z']],
+      ['2026-10-13', ['2026-10-13T01:00:00.000Z']],
+      ['2026-10-16', ['2026-10-16T00:00:00.000Z', '2026-10-16T01:00:00.000Z', '2026-10-16T03:00:00.000Z', '2026-10-16T04:00:00.000Z']],
+    ]);
+    assert.strictEqual(out.fitMins, 15); assert.strictEqual(out.leadSlotMins, 15); assert.strictEqual(out.leadSlotsShorter, true);
+    assert.strictEqual(out.leadLinkSlotsBefore, 13);
   });
 
   console.log('wingguy_check_availability with not_before + lead_booking_link:');
@@ -258,9 +287,27 @@ const fakeFetch = (calls, { lookupStatus = 200, rangeStatus = 200, spots = {} } 
       const readBookingLink = async (url) => { assert.strictEqual(url, TIDY_PAGE); return { ok: true, provider: 'tidycal', ownerName: 'Sam Trattles', eventName: 'Consultation', durationMins: 15, slots: [t.toISO(), t.plus({ minutes: 15 }).toISO(), t.plus({ minutes: 30 }).toISO()] }; };
       const r = await runCheckAvailability({ not_before: notBefore, lead_booking_link: TIDY_PAGE }, 'Guy-Wilson', { readBookingLink });
       assert.match(r.text, /LEAD'S OWN CALENDAR READ: Sam Trattles's TidyCal page \("Consultation", 15 min\) offered 3 slots/);
+      assert.match(r.text, /The lead's page offers 15-minute slots, shorter than the coach's usual 30 minutes/);
+      assert.match(r.text, /invite still goes out at the coach's usual length/);
       const slotLines = r.text.split('\n').filter((l) => /label=/.test(l));
       assert.strictEqual(slotLines.length, 1, r.text);
       assert.ok(slotLines[0].includes(target.freeSlots[1].time), slotLines[0]);
+    });
+    await checkAsync('an isolated 15-minute TidyCal slot on the hour matches the coach\'s 30-minute slot at that hour (the live 9 Oct miss)', async () => {
+      const target = days[8];
+      const onTheHour = target.freeSlots[0].time; // 10:00 Brisbane, one 15-minute island, nothing either side
+      const readBookingLink = async () => ({ ok: true, provider: 'tidycal', ownerName: 'Sam Trattles', eventName: 'Initial Consultation with Sam Trattles', durationMins: 15, slots: [onTheHour] });
+      const r = await runCheckAvailability({ not_before: notBefore, lead_booking_link: TIDY_PAGE }, 'Guy-Wilson', { readBookingLink });
+      assert.ok(!/No time in the scan window where BOTH/.test(r.text), r.text);
+      const slotLines = r.text.split('\n').filter((l) => /label=/.test(l));
+      assert.strictEqual(slotLines.length, 1, r.text);
+      assert.ok(slotLines[0].includes(onTheHour), slotLines[0]);
+    });
+    await checkAsync('a Calendly 30-minute event against a 30-minute coach meeting: no slot-length note', async () => {
+      const target = days[8];
+      const t = DateTime.fromISO(target.freeSlots[1].time).minus({ minutes: 15 });
+      const r = await runCheckAvailability({ not_before: notBefore, lead_booking_link: 'https://calendly.com/candacengok/intro' }, 'Guy-Wilson', { readBookingLink: async () => ({ ok: true, ownerName: 'Candace Ngok', eventName: 'Introductory Call', durationMins: 30, slots: [t.toISO(), t.plus({ minutes: 30 }).toISO()] }) });
+      assert.ok(!/minute slots, shorter than/.test(r.text), r.text);
     });
     await checkAsync('an unreadable TidyCal link: the coach\'s slots, TidyCal named, offer the coach\'s own times, never "by hand"', async () => {
       const r = await runCheckAvailability({ lead_booking_link: TIDY_PAGE }, 'Guy-Wilson', { readBookingLink: async () => ({ ok: false, reason: 'TidyCal answered with a Cloudflare bot check instead of the page' }) });

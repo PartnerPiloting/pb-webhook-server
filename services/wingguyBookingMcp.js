@@ -59,8 +59,15 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
     const label = leadBookingLink.providerLabel(lead.provider || leadBookingLink.parseBookingLink(lead_booking_link).provider);
     if (lead.ok) {
       leadSlotCount = lead.slots.length;
-      filtered = leadBookingLink.intersectAvailability(filtered, lead, { meetingMins: prefs.meetingLengthMins || 30 });
-      leadLinkLine = `LEAD'S OWN CALENDAR READ: ${lead.ownerName || 'the lead'}'s ${label} page ("${lead.eventName || 'booking'}", ${lead.durationMins} min) offered ${lead.slots.length} slots in the scan window. The slots below are ONLY the times BOTH are free. The lead handed over a booking link, so do NOT send them a list of options - pick ONE (lightest day, mid-morning first) and book it with wingguy_book_meeting after the coach confirms, then tell the lead it is booked. If the coach would rather book through the lead's page by hand, name the same slot.`;
+      const coachMins = prefs.meetingLengthMins || 30;
+      filtered = leadBookingLink.intersectAvailability(filtered, lead, { meetingMins: coachMins });
+      // The lead's page may offer shorter slots than the coach books (TidyCal 15-minute islands, Sam
+      // Trattles 2026-10-09). A match then means the lead is free at that START; the invite keeps the
+      // coach's usual length, and the coach hears the lead's page is set shorter so he can decide.
+      const slotNote = filtered.leadSlotsShorter
+        ? ` The lead's page offers ${filtered.leadSlotMins}-minute slots, shorter than the coach's usual ${coachMins} minutes: a slot below means the lead is free at that START time. The invite still goes out at the coach's usual length - tell the coach the lead's page is set to ${filtered.leadSlotMins} minutes so he can decide whether to mention it.`
+        : '';
+      leadLinkLine = `LEAD'S OWN CALENDAR READ: ${lead.ownerName || 'the lead'}'s ${label} page ("${lead.eventName || 'booking'}", ${lead.durationMins} min) offered ${lead.slots.length} slots in the scan window.${slotNote} The slots below are ONLY the times BOTH are free. The lead handed over a booking link, so do NOT send them a list of options - pick ONE (lightest day, mid-morning first) and book it with wingguy_book_meeting after the coach confirms, then tell the lead it is booked. If the coach would rather book through the lead's page by hand, name the same slot.`;
     } else {
       // The give-up path (Sam Trattles, 2026-10-09): an unreadable link means the coach's OWN times
       // go out, in the normal list. The draft never promises the lead a booking through their page -

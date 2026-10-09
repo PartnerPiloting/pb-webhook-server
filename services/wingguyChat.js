@@ -785,8 +785,14 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         // "Calendly" / "TidyCal" / "booking" - from the reader when it says, else from the link itself.
         const label = leadBookingLink.providerLabel(lead.provider || leadBookingLink.parseBookingLink(linkUrl).provider);
         if (lead.ok) {
-          filtered = leadBookingLink.intersectAvailability(filtered, lead, { meetingMins: prefs.meetingLengthMins || 30 });
-          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, note: filtered.days.length ? 'The days below are ONLY the times BOTH Guy and the lead are free. Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting.' : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
+          const coachMins = prefs.meetingLengthMins || 30;
+          filtered = leadBookingLink.intersectAvailability(filtered, lead, { meetingMins: coachMins });
+          // Shorter slots on the lead's page (TidyCal 15-minute islands, Sam Trattles 2026-10-09): a
+          // match means the lead is free at that START; Guy's invite keeps his usual length.
+          const slotNote = filtered.leadSlotsShorter
+            ? ` The lead's page offers ${filtered.leadSlotMins}-minute slots, shorter than Guy's usual ${coachMins} minutes: a slot below means the lead is free at that START time. book_meeting still sends Guy's usual length - tell Guy the lead's page is set to ${filtered.leadSlotMins} minutes so he can decide whether to mention it.`
+            : '';
+          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, leadSlotMins: filtered.leadSlotMins, note: filtered.days.length ? `The days below are ONLY the times BOTH Guy and the lead are free.${slotNote} Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting.` : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
         } else {
           // The give-up path (Sam Trattles, 2026-10-09): an unreadable link means Guy's OWN times go
           // out in the normal list. The old note ("or suggest he books through the link by hand")
