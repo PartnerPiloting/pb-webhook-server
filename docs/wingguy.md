@@ -5293,6 +5293,24 @@ means Guy's own times went out, so there is nothing to acknowledge and the guard
 The "through your link" promise guard still runs first. The MCP line also lost its "book through the lead's
 page by hand" tail - Guy never does that. Test: tests/wingguy-lead-booking-link-panel.test.js.
 
+**Same day, Guy's own clock on a chosen or booked slot is written by code.** Sam is in Sydney, Guy in
+Brisbane, NSW daylight saving on since 4 Oct. check_availability said "Sydney is 1h ahead of Brisbane" and
+the slot carried "(coach: 10:00 am)"; the booking used the right ISO; and the panel's note to Guy still read
+"Fri 16 October, 11:00 am (Brisbane/Sydney same clock this time of year)" - the right diary entry, the wrong
+time in Guy's head. Same lesson as the time list, the invite line and the sign-off: a fact that must be right
+is written from data, not asked of the model. Now (services/wingguyChat.js): `coachSlotLine` builds
+"Fri 16 October, 11:00 am Sydney (10:00 am your time, Brisbane)" from the slot's ISO and the two zones, per
+date (a same-clock date says "same clock on this date"; no lead zone = Guy's time only, never a guess; a US
+lead's line carries Guy's own day). book_meeting returns it as `when`, and every slot that survives a
+lead-link read carries it as `both`. Then the reply Guy actually reads is fixed after the model has
+finished: a booking this turn ends the reply with "Booked: <line>"; a confirm question that names ONE slot
+the tools returned ends with "On both clocks: <line>" when the lead's zone differs from Guy's by name; and a
+model aside claiming the clocks match ("same clock", "same time", "no time difference", "clocks match") is
+dropped first when the real offsets for that date say otherwise - a true same-clock claim stays. A line the
+model already quoted word for word is not repeated. Logged as WINGGUY-CLOCK-GUARD with what was dropped and
+what code wrote. The MCP door already had its own WHEN line (2026-10-05) and is unchanged. Test:
+tests/wingguy-coach-clock-line.test.js (Brisbane coach, Sydney lead on the third Friday of October).
+
 ## The extension keeps its owner + the LinkedIn name must agree (0.3.29, 2026-09-30)
 
 **What went wrong.** Guy ran /wg on his own lead (Shiva Farabi) and the draft came back signed "Cheers,
