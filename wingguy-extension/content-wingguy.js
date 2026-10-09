@@ -1542,6 +1542,53 @@
   // Read the OPEN LinkedIn thread for the conversation the user is acting in. Shadow-aware (the newer
   // messaging build renders inside open shadow roots) AND scoped to a single conversation container so
   // multiple open bubbles don't bleed into one another.
+  // ---- realHref (pure; tests/wingguy-extension-message-links.test.js lifts this block) ----
+  // The address a link in a message REALLY points at. LinkedIn renders an external link the lead
+  // pasted as its own redirect (linkedin.com/redir/redirect?url=<encoded real address>&urlhash=...,
+  // or linkedin.com/safety/go?url=...), so the anchor's href is not the lead's link until that wrapper
+  // is unwrapped. Every message now carries these hrefs beside its text (0.3.32, Guy 2026-10-10):
+  // the visible text is what LinkedIn shows, and it is mangled - the next line glued straight onto the
+  // link, the scheme dropped - which is how a TidyCal link went unread four times on 9 Oct 2026. The
+  // href is what the lead actually sent. Only http(s) addresses count ('' for mailto:, javascript:,
+  // '#', blanks); an unwrapped address that is itself a wrapper is unwrapped again; a wrapper with no
+  // url parameter is returned as it is. No DOM, no other helpers: it must stay liftable as text.
+  function realHref(href, depth) {
+    const raw = String(href || '').trim();
+    if (!/^https?:\/\//i.test(raw)) return '';
+    let u;
+    try { u = new URL(raw); } catch (_) { return ''; }
+    const onLinkedIn = /(^|\.)linkedin\.com$/i.test(u.hostname);
+    const wrapper = onLinkedIn && /^\/(redir\/|safety\/go\b|redirect\b)/i.test(u.pathname);
+    if (wrapper) {
+      const inner = String(u.searchParams.get('url') || '').trim();
+      if (/^https?:\/\//i.test(inner) && (depth || 0) < 3) return realHref(inner, (depth || 0) + 1) || raw;
+    }
+    return raw;
+  }
+  // ---- end realHref ----
+
+  // Every real link inside a message's element(s), unwrapped (realHref), in order, no repeats.
+  // Returns [] rather than throwing - a scrape must never fail over its anchors.
+  function messageLinks(els) {
+    const out = [];
+    try {
+      for (const el of (Array.isArray(els) ? els : [els])) {
+        if (!el || !el.querySelectorAll) continue;
+        for (const a of el.querySelectorAll('a[href]')) {
+          const h = realHref(a.getAttribute('href') || a.href);
+          if (h && !out.includes(h)) out.push(h);
+        }
+      }
+    } catch (_) { /* a message with no readable anchors is still a message */ }
+    return out;
+  }
+  // The message object the server receives: { sender, text, day, time } as always, plus `links` only
+  // when the message holds at least one - so every payload without links is byte-for-byte unchanged.
+  function withLinks(msg, els) {
+    const links = messageLinks(els);
+    return links.length ? { ...msg, links } : msg;
+  }
+
   // NEW-UI thread reader: walk the container's <time> / profile-link / <p> nodes in document order.
   // <time> with an H:MM is a message time; <time> without one is a DAY separator ("Saturday", "Today").
   // A name-ish profile link sets the sender (rows link the sender; "View X's profile" strips to X;
@@ -1550,9 +1597,9 @@
   function scrapeNewUiThread(convo) {
     const out = [];
     let lastSender = '', curDay = '', lastTime = '';
-    let buf = null; // { sender, day, time, parent, parts[] } — merges sibling <p>s into one message
+    let buf = null; // { sender, day, time, parent, parts[], nodes[] } — merges sibling <p>s into one message
     const flush = () => {
-      if (buf && buf.parts.length) out.push({ sender: buf.sender || 'Unknown', text: buf.parts.join('\n'), day: buf.day, time: buf.time });
+      if (buf && buf.parts.length) out.push(withLinks({ sender: buf.sender || 'Unknown', text: buf.parts.join('\n'), day: buf.day, time: buf.time }, buf.nodes));
       buf = null;
     };
     for (const node of convo.querySelectorAll('time, a[href*="/in/"], p')) {
@@ -1574,8 +1621,8 @@
       }
       const text = cleanText(node.textContent);
       if (!text) continue;
-      if (buf && buf.parent === node.parentElement) buf.parts.push(text);
-      else { flush(); buf = { sender: lastSender, day: curDay, time: lastTime, parent: node.parentElement, parts: [text] }; }
+      if (buf && buf.parent === node.parentElement) { buf.parts.push(text); buf.nodes.push(node); }
+      else { flush(); buf = { sender: lastSender, day: curDay, time: lastTime, parent: node.parentElement, parts: [text], nodes: [node] }; }
     }
     flush();
     return out;
@@ -1622,7 +1669,7 @@
       const time = timeForItem(node); if (time) lastTime = time;
       const bodyEl = node.querySelector(selStr('message_body'));
       const text = cleanText(bodyEl && bodyEl.textContent);
-      if (text) out.push({ sender: lastSender || 'Unknown', text, day: curDay, time: lastTime });
+      if (text) out.push(withLinks({ sender: lastSender || 'Unknown', text, day: curDay, time: lastTime }, bodyEl));
     });
     console.log('[Wingguy] thread scrape:', {
       scopedTo: container ? (String(container.className || '').split(' ')[0] || 'container') : 'NONE→document',

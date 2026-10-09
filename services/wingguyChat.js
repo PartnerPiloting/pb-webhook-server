@@ -498,12 +498,26 @@ function replyOpenerRefusal(line, leadName, offer) {
  * link to my calendar"). The coach's own links never count. Found from DATA so the read happens
  * whether or not the model passes leadBookingLink - the instruction moved the odds and the panel
  * still offered three of Guy's times, two inside her trip, the same afternoon it shipped.
+ *
+ * HREFS FIRST, TEXT SECOND (Guy, 2026-10-10). Extension 0.3.32 sends, with each message, the real
+ * href of every link in it (`links: [...]`, LinkedIn's redirect wrapper already unwrapped). An href
+ * is the address the lead actually pasted, so it is checked before the visible text - which LinkedIn
+ * mangles (Sam Trattles, 2026-10-09: the next line glued straight onto the link, the scheme shown
+ * without https://, and the model retyping the address with a typo). Each href is confirmed with
+ * parseBookingLink so only a supported host counts. The text scan stays as the fall-back: older
+ * extensions send text alone, and emails have no anchors.
  */
 function detectLeadBookingLink(conversation = [], coachName = '') {
   for (const m of (Array.isArray(conversation) ? conversation : [])) {
-    if (!m || !m.text) continue;
+    if (!m || (!m.text && !(Array.isArray(m.links) && m.links.length))) continue;
     const s = normName(m.sender);
     if (senderIs(s, coachName) || s === 'you' || s === 'me') continue;
+    for (const href of (Array.isArray(m.links) ? m.links : [])) {
+      const h = String(href || '').trim();
+      if (!h) continue;
+      const parsed = leadBookingLink.parseBookingLink(h);
+      if (parsed && parsed.provider) return /^https?:\/\//i.test(h) ? h : `https://${h}`;
+    }
     const url = leadBookingLink.findBookingLink(m.text);
     if (url) return url;
   }
@@ -1010,7 +1024,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           // out in the normal list. The old note ("or suggest he books through the link by hand")
           // produced a draft promising "I'll grab a slot through your link now" and a booking Guy had
           // to make by hand on a page Wingguy cannot see. propose_message now refuses that wording.
-          filtered.leadLink = { read: false, url: linkUrl, source, provider: label, reason: lead.reason, note: `The lead's ${label} link could not be read (${lead.reason}) - the slots below are Guy's only. Offer Guy's own times exactly as usual: call propose_times with slots from below (it writes the list and its timezone line). Tell Guy in chat, in one plain line, that the lead's ${label} link could not be read. NEVER write into the draft that Guy will book through their link or page - propose_message refuses that wording; Guy's own invite is the only booking door.` };
+          // And since 2026-10-10 propose_times writes the OPENER of that draft itself (a thanks for
+          // the link, no hint of failure) - the model's intro is dropped, so there is no sentence
+          // left for it to confess with. The coach still hears the plain reason, here and in chat.
+          filtered.leadLink = { read: false, url: linkUrl, source, provider: label, reason: lead.reason, note: `The lead's ${label} link could not be read (${lead.reason}) - the slots below are Guy's only. Offer Guy's own times exactly as usual: call propose_times with slots from below. It writes the whole top of the draft itself - a thanks for the link (with no hint it could not be read), the list and its timezone line - so pass NO intro; any intro you pass is dropped. Tell Guy in chat, in one plain line, that the lead's ${label} link could not be read and why. The lead is never told: the times go out as if no link had been sent. NEVER write into the draft that Guy will book through their link or page - propose_message refuses that wording; Guy's own invite is the only booking door.` };
         }
       }
       return filtered;
@@ -1154,16 +1171,35 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // question, strip that line so the draft doesn't ask twice.
       const CONNECTING_LINE = 'Would any of the following times work for you?';
       let intro = unescapeModelNewlines(input.intro).trim();
-      {
+      let outro = unescapeModelNewlines(input.outro).trim();
+      // CODE-OWNED OPENER when the lead's own booking link could not be read (Guy, 2026-10-10). Sam
+      // Trattles sent a TidyCal link on 9 Oct and four runs in a row the give-up draft confessed the
+      // failure to her in a different sentence each time ("I wasn't able to pull your diary link in",
+      // "Couldn't quite get it to load on my end"). The regex guards below (linkBookingPromise) chase
+      // phrasings; this removes the sentence. Same move as the connecting line, the list, the
+      // timezone line and the invite line: when leadLinkState says the link failed, code writes the
+      // opener - a thanks for the link with no hint of trouble - and the model's intro is dropped
+      // whole. Any outro line that confesses is dropped too (the guards stay as a backstop for the
+      // propose_message path, where they should now never fire). The coach is told the plain reason
+      // in the tool result and in chat; the lead learns nothing but Guy's times.
+      let linkOpener = null;
+      if (leadLinkState && !leadLinkState.ok) {
+        const first = String(profile.name || '').trim().split(/\s+/)[0];
+        linkOpener = `Thanks for sending that through${first ? `, ${first}` : ''} - would any of the following times work for you?`;
+        if (intro) console.log(`WINGGUY-LEAD-LINK ${coach.clientId} → ${profile.name || 'lead'}: unreadable link - code wrote the opener, dropped the model's intro "${intro.slice(0, 80)}"`);
+        intro = linkOpener;
+        const keptOutro = outro.split('\n').filter((l) => !linkBookingPromise(l));
+        if (keptOutro.length !== outro.split('\n').length) console.log(`WINGGUY-LEAD-LINK ${coach.clientId} → ${profile.name || 'lead'}: dropped an outro line that confessed the link read`);
+        outro = keptOutro.join('\n').trim();
+      } else {
         const lines = intro.split('\n');
         const last = (lines[lines.length - 1] || '').trim();
         if (/(work for you|suit you|works for you|any of (these|the following))/i.test(last) && /[?:]\s*$/.test(last)) {
           lines.pop();
           intro = lines.join('\n').trim();
         }
+        intro = intro ? `${intro}\n\n${CONNECTING_LINE}` : CONNECTING_LINE;
       }
-      intro = intro ? `${intro}\n\n${CONNECTING_LINE}` : CONNECTING_LINE;
-      let outro = unescapeModelNewlines(input.outro).trim();
       // Code owns the sign-off on a times message (the model composes intro/outro but often omits it, or
       // adds the wrong variant). Strip any trailing sign-off line the model tacked on, then append the
       // tenant's chosen sign-off (chooseSignoff already decided tagline vs plain).
@@ -1226,6 +1262,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       timesListed = true;
       return {
         ok: true, offered: ordered.length, offeredTimes, leadBase: leadBase + poisonGuard, dropped,
+        ...(linkOpener ? { linkOpener, linkOpenerNote: `The lead's booking link could not be read, so code wrote the draft's opener word for word: "${linkOpener}". Your intro was not used. The draft says nothing about the link failing - never add that; tell Guy in chat instead.` } : {}),
         ...(beyondNextWeek.length ? { beyondNextWeek, warning: `These offered times fall BEYOND next week (fallback weeks): ${beyondNextWeek.join('; ')}. Never describe them as "this week" or "next week" in the draft or to Guy, and only offer them because nearer days couldn't fill the options — say that plainly.` } : {}),
       };
     }
@@ -1408,7 +1445,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
             ? 'has not been read yet - call check_availability first; it reads the page and says what it found'
             : leadLinkState.ok
               ? 'was read, so pick ONE of the times both are free, confirm it with Guy, book_meeting it, and only then draft the message that acknowledges their link: the time you saw open on it, and that the invite has been sent to their email'
-              : `could not be read (${leadLinkState.reason}) - offer Guy's own times instead: call propose_times with slots from check_availability, which writes the list and its timezone line`;
+              : `could not be read (${leadLinkState.reason}) - offer Guy's own times instead: call propose_times with slots from check_availability and NO intro; it writes the opener (a thanks for the link, nothing about the failure), the list and its timezone line`;
           console.warn(`WINGGUY-LINK-PROMISE-GUARD refused "${promise}" for ${coach.clientId} → ${who} (${label} link)`);
           return {
             ok: false,

@@ -17,6 +17,12 @@
  *    length when their page offers shorter slots than Guy's usual (linkBookedDraftProblem); the
  *    read usually lands a turn before the booking, so the guard scans earlier tool results
  *    (priorLeadLinkRead)
+ *  - an unreadable link (any provider, Google included) means CODE writes the opener of the times
+ *    draft (Guy, 2026-10-10): a thanks for the link with no hint of failure, then the list and the
+ *    timezone line. The model's intro is dropped whole and a confessing outro line is dropped, so
+ *    there is no sentence left to confess with - the regex guards are a backstop, not the fix
+ *  - the extension (0.3.32) sends each message's real hrefs as `links`; the scanner checks those
+ *    before the text, so LinkedIn gluing the next line onto the visible link cannot hide it
  *
  * Run: node tests/wingguy-lead-booking-link-panel.test.js
  */
@@ -48,6 +54,21 @@ check('finds a TidyCal link in the lead\'s message', () => assert.strictEqual(de
 // Laura Gardner, 2026-10-10: a Google appointment link is FOUND (so the no-promise / no-confession
 // guards engage) even though it can never be read - its mixed-case code must survive the scan.
 check('finds a Google appointment link in the lead\'s message, code intact', () => assert.strictEqual(detectLeadBookingLink([{ sender: 'Laura Gardner', text: 'Happy to chat - book a time here: https://calendar.app.google/Rt3HARJvfXUBpviz7. Laura' }], 'Guy'), 'https://calendar.app.google/Rt3HARJvfXUBpviz7'));
+// Extension 0.3.32 (Guy, 2026-10-10): each message carries the real hrefs of its links. Those are
+// checked FIRST - the visible text is what LinkedIn mangles.
+const GLUED = 'Hi Guy, happy to chat. Grab a time that suits here: tidycal.com/thepowertoask/consultationlooking forward to it. Cheers, Sam';
+check('the links array beats the text: a clean href wins over a link glued to the next line', () => {
+  assert.strictEqual(detectLeadBookingLink([{ sender: 'Sam Trattles', text: GLUED, links: [TIDY] }], 'Guy'), TIDY);
+  // Without the hrefs the text scan does its best and gets the glued slug - the bug the hrefs fix.
+  assert.strictEqual(detectLeadBookingLink([{ sender: 'Sam Trattles', text: GLUED }], 'Guy'), 'https://tidycal.com/thepowertoask/consultationlooking');
+});
+check('only a supported host counts as a booking link in the links array; the text is still scanned after', () => {
+  assert.strictEqual(detectLeadBookingLink([{ sender: 'Sam Trattles', text: SAM, links: ['https://www.linkedin.com/in/sam-trattles/', 'https://thepowertoask.com/about'] }], 'Guy'), TIDY);
+  assert.strictEqual(detectLeadBookingLink([{ sender: 'Sam Trattles', text: 'see my site', links: ['https://thepowertoask.com/about'] }], 'Guy'), null);
+  assert.strictEqual(detectLeadBookingLink([{ sender: 'Sam Trattles', text: '', links: ['https://calendar.app.google/Rt3HARJvfXUBpviz7'] }], 'Guy'), 'https://calendar.app.google/Rt3HARJvfXUBpviz7');
+  assert.strictEqual(detectLeadBookingLink([{ sender: 'Guy Wilson', text: 'here is mine', links: [TIDY] }], 'Guy'), null, 'the coach\'s own hrefs never count');
+  assert.strictEqual(detectLeadBookingLink([{ sender: 'Sam Trattles', text: 'x', links: 'not-an-array' }], 'Guy'), null);
+});
 
 console.log('linkBookingPromise (a draft must never promise to book through THEIR link):');
 check('catches "I\'ll grab a slot through your link now"', () => assert.strictEqual(linkBookingPromise("Hi Sam - Tuesday works for me. I'll grab a slot through your link now."), 'grab a slot through your link'));
@@ -159,29 +180,70 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
     const res = await runWingguyChatTurn({ ...base, profile: { name: 'Sam Trattles', location: 'Brisbane' }, conversation: samConvo, leadEmail: 'sam@example.com', deps: { client: fakeClient([
       { name: 'check_availability', input: { includeFarWeeks: true } },
       { name: 'propose_message', input: { message: "Hi Sam - Tuesday works for me. I'll grab a slot through your link now." } },
-      { name: 'propose_times', input: { intro: 'Hi Sam - thanks, keen to chat.', slotTimes: [days[0].freeSlots[0].time, days[1].freeSlots[1].time, days[2].freeSlots[2].time], outro: 'Let me know.' } },
+      // The fourth-run confession, as the model's intro AND an outro line (Guy, 2026-10-10): code
+      // writes the opener, so neither reaches the lead.
+      { name: 'propose_times', input: { intro: "Great, Sam - thanks for the diary link. Couldn't get your link to load on my end, so here are a few times.", slotTimes: [days[0].freeSlots[0].time, days[1].freeSlots[1].time, days[2].freeSlots[2].time], outro: "Sorry I couldn't open your page.\nLooking forward to it." } },
     ]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: tidyFail } });
     const [ca, pm, pt] = toolResults(res);
-    check('check_availability names TidyCal, keeps Guy\'s slots, steers to propose_times, no "by hand"', () => {
+    check('check_availability names TidyCal, keeps Guy\'s slots, steers to propose_times with NO intro, no "by hand"', () => {
       assert.strictEqual(ca.leadLink.read, false); assert.strictEqual(ca.leadLink.provider, 'TidyCal');
       assert.match(ca.leadLink.note, /TidyCal link could not be read \(TidyCal answered with a Cloudflare bot check/);
       assert.match(ca.leadLink.note, /propose_times/); assert.match(ca.leadLink.note, /NEVER write into the draft/);
+      assert.match(ca.leadLink.note, /pass NO intro/); assert.match(ca.leadLink.note, /The lead is never told/);
       assert.ok(!/by hand/.test(ca.leadLink.note), ca.leadLink.note); assert.ok(ca.days.length > 3);
     });
     check('the "through your link" draft is REJECTED, quoting the line, naming TidyCal and the way forward', () => {
       assert.strictEqual(pm.ok, false, JSON.stringify(pm));
       assert.match(pm.error, /It says "grab a slot through your link"/); assert.match(pm.error, /Sam Trattles's TidyCal link/);
-      assert.match(pm.error, /could not be read/); assert.match(pm.error, /propose_times/);
+      assert.match(pm.error, /could not be read/); assert.match(pm.error, /propose_times/); assert.match(pm.error, /writes the opener/);
     });
-    check('propose_times then builds the list', () => { assert.ok(pt && pt.ok !== false, JSON.stringify(pt)); assert.strictEqual(pt.offered, 3); });
-    check('the draft carries Guy\'s three times with the timezone line, and no promise to use their link', () => {
+    check('propose_times then builds the list and reports the code-written opener', () => {
+      assert.ok(pt && pt.ok !== false, JSON.stringify(pt)); assert.strictEqual(pt.offered, 3);
+      assert.strictEqual(pt.linkOpener, 'Thanks for sending that through, Sam - would any of the following times work for you?');
+      assert.match(pt.linkOpenerNote, /Your intro was not used/);
+    });
+    check('the draft STARTS with the code-written opener, carries the three times and the timezone line, and confesses nothing', () => {
       assert.ok(res.draft, 'no draft was set');
-      assert.match(res.draft, /Would any of the following times work for you\?/);
+      assert.ok(res.draft.startsWith('Thanks for sending that through, Sam - would any of the following times work for you?\n\n- '), res.draft);
       assert.match(res.draft, /\(all times are Brisbane time\)/);
       assert.strictEqual((res.draft.match(/^- /gm) || []).length, 3, res.draft);
+      assert.match(res.draft, /Looking forward to it\./, 'the harmless outro line stays');
+      assert.ok(!/diary link|load|on my end|couldn't|could not|sorry|open your page/i.test(res.draft), res.draft);
       assert.ok(!/through (your|the) link|grab a slot|your link|your page/i.test(res.draft), res.draft);
       assert.strictEqual(linkBookingPromise(res.draft), null, res.draft);
     });
+  }
+  console.log('\nan unreadable Google appointment link (Laura Gardner, 2026-10-10): same code-written opener, the REAL reader, no network:');
+  {
+    const GOOGLE = 'https://calendar.app.google/Rt3HARJvfXUBpviz7';
+    const lauraConvo = [{ sender: 'Guy Wilson', text: 'Thanks for connecting, Laura. Open to a quick call?' }, { sender: 'Laura Gardner', text: `Happy to chat - book a time here: ${GOOGLE}. Laura` }];
+    // No readBookingLink dep: the shipping reader answers a Google link without a network call.
+    const res = await runWingguyChatTurn({ ...base, profile: { name: 'Laura Gardner', location: 'Brisbane' }, conversation: lauraConvo, leadEmail: 'laura@example.com', deps: { client: fakeClient([
+      { name: 'check_availability', input: { includeFarWeeks: true } },
+      { name: 'propose_times', input: { intro: "Hi Laura - I wasn't able to pull your Google calendar link in from here, so let me offer a few times directly.", slotTimes: [days[0].freeSlots[0].time, days[1].freeSlots[1].time], outro: 'Let me know.' } },
+    ]), getAvailabilityForCoach, clashingSlots: noClashes } });
+    const [ca, pt] = toolResults(res);
+    check('check_availability says a Google appointment page cannot be read, and why', () => {
+      assert.strictEqual(ca.leadLink.read, false); assert.strictEqual(ca.leadLink.provider, 'Google appointment'); assert.strictEqual(ca.leadLink.url, GOOGLE);
+      assert.match(ca.leadLink.note, /Google appointment link could not be read \(a Google Calendar appointment page/);
+    });
+    check('propose_times builds the list under the code-written opener', () => { assert.ok(pt && pt.ok !== false, JSON.stringify(pt)); assert.strictEqual(pt.offered, 2); assert.match(pt.linkOpener, /^Thanks for sending that through, Laura - would any/); });
+    check('the draft starts with the opener, has the list and timezone line, and never mentions Google or a failure', () => {
+      assert.ok(res.draft && res.draft.startsWith('Thanks for sending that through, Laura - would any of the following times work for you?\n\n- '), res.draft);
+      assert.match(res.draft, /\(all times are Brisbane time\)/); assert.strictEqual((res.draft.match(/^- /gm) || []).length, 2, res.draft);
+      assert.ok(!/google|wasn't able|pull your|your link|calendar link|directly/i.test(res.draft), res.draft);
+      assert.strictEqual(linkBookingPromise(res.draft), null, res.draft);
+    });
+  }
+  console.log('\nthe extension\'s links array (0.3.32): text glued to the next line, clean href beside it - the clean one is read:');
+  {
+    const seen = [];
+    const tidySpy = async (url) => { seen.push(url); return { ok: true, provider: 'tidycal', ownerName: 'Sam Trattles', eventName: 'Consultation', durationMins: 15, slots: [target.freeSlots[0].time] }; };
+    const gluedConvo = [samConvo[0], { sender: 'Sam Trattles', text: GLUED, links: ['https://www.linkedin.com/in/sam-trattles/', TIDY] }];
+    const res = await runWingguyChatTurn({ ...base, profile: { name: 'Sam Trattles', location: 'Brisbane' }, conversation: gluedConvo, leadEmail: 'sam@example.com', deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: tidySpy } });
+    const [ca] = toolResults(res);
+    check('the reader is called with the clean href, never the glued slug', () => assert.deepStrictEqual(seen, [TIDY]));
+    check('the read succeeds off the thread\'s href and the overlap comes back', () => { assert.strictEqual(ca.leadLink.read, true); assert.strictEqual(ca.leadLink.source, 'thread'); assert.strictEqual(ca.leadLink.url, TIDY); assert.strictEqual(ca.days.length, 1); });
   }
   console.log('\nthe promise guard holds whatever the read said, and stays out of the way with no link:');
   {
