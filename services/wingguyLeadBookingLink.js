@@ -263,12 +263,23 @@ function leadFreeIntervals(slotsISO, durationMins) {
 }
 
 /**
- * Keep only the coach's slots the lead can also make: the whole coach meeting [t, t+meetingMins)
- * must sit inside one of the lead's free intervals. Days left with no slots are dropped.
+ * Keep only the coach's slots the lead can also make: a meeting of `fitMins` starting at the coach's
+ * slot [t, t+fitMins) must sit inside one of the lead's free intervals. Days left with no slots are
+ * dropped.
+ *
+ * fitMins is the SMALLER of the coach's meeting length and the lead's own event length (Sam
+ * Trattles, live 9 Oct 2026). The first cut demanded the coach's whole 30 minutes. Right for Calendly,
+ * whose 15-minute grid merges into long free runs - but TidyCal's padded booking types are 15-minute
+ * islands, so a 30-minute test discarded all 306 of Sam's slots and "no time where BOTH are free"
+ * went back when seven matched. A lead whose page offers 15-minute slots is free at those START
+ * times; the coach's invite still goes out at his usual length (the callers say so in their note).
  */
 function intersectAvailability(filtered, lead, { meetingMins = 30 } = {}) {
   const intervals = leadFreeIntervals(lead.slots, lead.durationMins);
-  const len = (Number(meetingMins) || 30) * 60000;
+  const coachMins = Number(meetingMins) || 30;
+  const leadMins = Number(lead.durationMins) || coachMins;
+  const fitMins = Math.min(coachMins, leadMins);
+  const len = fitMins * 60000;
   const free = (iso) => {
     const t = Date.parse(iso);
     return intervals.some(([s, e]) => t >= s && t + len <= e);
@@ -276,7 +287,14 @@ function intersectAvailability(filtered, lead, { meetingMins = 30 } = {}) {
   const days = (filtered.days || [])
     .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => free(s.time)) }))
     .filter((d) => d.freeSlots.length);
-  return { ...filtered, days, leadLinkSlotsBefore: (filtered.days || []).reduce((n, d) => n + (d.freeSlots || []).length, 0) };
+  return {
+    ...filtered,
+    days,
+    leadLinkSlotsBefore: (filtered.days || []).reduce((n, d) => n + (d.freeSlots || []).length, 0),
+    fitMins,
+    leadSlotMins: leadMins,
+    leadSlotsShorter: leadMins < coachMins,
+  };
 }
 
 module.exports = { findBookingLink, parseBookingLink, readBookingLink, leadFreeIntervals, intersectAvailability, providerLabel, CALENDLY_MAX_RANGE_DAYS, MAX_RANGE_DAYS };
