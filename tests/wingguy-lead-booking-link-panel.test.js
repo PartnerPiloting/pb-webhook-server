@@ -9,12 +9,15 @@
  *  - propose_times REFUSES while a readable lead link exists (one slot, booked, not a list)
  *  - an unreadable link falls open: the normal list still works
  *  - the notBefore regex actually matches (its backslashes were lost on the way into main)
+ *  - TidyCal links are found in the lead's messages too (Sam Trattles, 2026-10-09), and an
+ *    unreadable link means Guy's OWN times in the draft: propose_message REFUSES any "I'll grab a
+ *    slot through your link" promise (linkBookingPromise), whatever the read said
  *
  * Run: node tests/wingguy-lead-booking-link-panel.test.js
  */
 const assert = require('assert');
 const { DateTime } = require('luxon');
-const { runWingguyChatTurn, detectLeadBookingLink } = require('../services/wingguyChat');
+const { runWingguyChatTurn, detectLeadBookingLink, linkBookingPromise } = require('../services/wingguyChat');
 
 let failures = 0;
 const check = (name, fn) => { try { fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); } };
@@ -31,6 +34,25 @@ check('finds the link in the lead\'s message', () => assert.strictEqual(detectLe
 check('ignores a link in the coach\'s own message', () => assert.strictEqual(detectLeadBookingLink([{ sender: 'Guy Wilson', text: 'book me here https://calendly.com/guy/intro' }], 'Guy'), null));
 check('ignores "You"/"me" senders (the coach as LinkedIn renders him)', () => assert.strictEqual(detectLeadBookingLink([{ sender: 'You', text: 'https://calendly.com/guy/intro' }], 'Guy'), null));
 check('no link, no crash', () => assert.strictEqual(detectLeadBookingLink([{ sender: 'Candace Ngok', text: 'see you Tuesday' }], 'Guy'), null));
+// TidyCal (Sam Trattles, 2026-10-09): the scanner walked straight past this link while the reader
+// said "Calendly only", so the panel never even tried.
+const SAM = 'Hi Guy, happy to chat. Grab a time that suits here: https://tidycal.com/thepowertoask/consultation. Cheers, Sam';
+const TIDY = 'https://tidycal.com/thepowertoask/consultation';
+const samConvo = [{ sender: 'Guy Wilson', text: 'Thanks for connecting, Sam. Open to a quick call?' }, { sender: 'Sam Trattles', text: SAM }];
+check('finds a TidyCal link in the lead\'s message', () => assert.strictEqual(detectLeadBookingLink(samConvo, 'Guy'), TIDY));
+
+console.log('linkBookingPromise (a draft must never promise to book through THEIR link):');
+check('catches "I\'ll grab a slot through your link now"', () => assert.strictEqual(linkBookingPromise("Hi Sam - Tuesday works for me. I'll grab a slot through your link now."), 'grab a slot through your link'));
+check('catches "book via your Calendly", "find a time on your TidyCal page", "lock in a time through the link"', () => {
+  assert.ok(linkBookingPromise("I'll book via your Calendly"));
+  assert.ok(linkBookingPromise('Happy to find a time on your TidyCal page'));
+  assert.ok(linkBookingPromise("I'll lock in a time through the link you sent"));
+});
+check('leaves the normal lines alone', () => {
+  for (const s of ['Would any of the following times work for you?', "Invite's on its way - see you Tuesday.", 'Thanks for sending the link through.', "I've booked us in for Tuesday 2pm and put the invite in your calendar.", 'Let me know which suits and I will send the invite from my side.']) {
+    assert.strictEqual(linkBookingPromise(s), null, s);
+  }
+});
 
 // Fake model: one tool call per turn, in order, then end.
 function fakeClient(calls) {
@@ -102,6 +124,48 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
     const [ca, pt] = toolResults(res);
     check('check_availability says the link could not be read and keeps Guy\'s slots', () => { assert.strictEqual(ca.leadLink.read, false); assert.match(ca.leadLink.reason, /503/); assert.ok(ca.days.length > 3); });
     check('propose_times still builds the list', () => { assert.ok(pt && pt.ok !== false, JSON.stringify(pt)); assert.strictEqual(pt.offered, 2); });
+  }
+  console.log('\nan unreadable TidyCal link: the draft offers Guy\'s own times and never promises to use their link (Sam Trattles, 2026-10-09):');
+  {
+    const tidyFail = async (url) => { assert.strictEqual(url, TIDY); return { ok: false, reason: 'TidyCal answered with a Cloudflare bot check instead of the page' }; };
+    const res = await runWingguyChatTurn({ ...base, profile: { name: 'Sam Trattles', location: 'Brisbane' }, conversation: samConvo, leadEmail: 'sam@example.com', deps: { client: fakeClient([
+      { name: 'check_availability', input: {} },
+      { name: 'propose_message', input: { message: "Hi Sam - Tuesday works for me. I'll grab a slot through your link now." } },
+      { name: 'propose_times', input: { intro: 'Hi Sam - thanks, keen to chat.', slotTimes: [days[0].freeSlots[0].time, days[1].freeSlots[1].time, days[2].freeSlots[2].time], outro: 'Let me know.' } },
+    ]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: tidyFail } });
+    const [ca, pm, pt] = toolResults(res);
+    check('check_availability names TidyCal, keeps Guy\'s slots, steers to propose_times, no "by hand"', () => {
+      assert.strictEqual(ca.leadLink.read, false); assert.strictEqual(ca.leadLink.provider, 'TidyCal');
+      assert.match(ca.leadLink.note, /TidyCal link could not be read \(TidyCal answered with a Cloudflare bot check/);
+      assert.match(ca.leadLink.note, /propose_times/); assert.match(ca.leadLink.note, /NEVER write into the draft/);
+      assert.ok(!/by hand/.test(ca.leadLink.note), ca.leadLink.note); assert.ok(ca.days.length > 3);
+    });
+    check('the "through your link" draft is REJECTED, quoting the line, naming TidyCal and the way forward', () => {
+      assert.strictEqual(pm.ok, false, JSON.stringify(pm));
+      assert.match(pm.error, /It says "grab a slot through your link"/); assert.match(pm.error, /Sam Trattles's TidyCal link/);
+      assert.match(pm.error, /could not be read/); assert.match(pm.error, /propose_times/);
+    });
+    check('propose_times then builds the list', () => { assert.ok(pt && pt.ok !== false, JSON.stringify(pt)); assert.strictEqual(pt.offered, 3); });
+    check('the draft carries Guy\'s three times with the timezone line, and no promise to use their link', () => {
+      assert.ok(res.draft, 'no draft was set');
+      assert.match(res.draft, /Would any of the following times work for you\?/);
+      assert.match(res.draft, /\(all times are Brisbane time\)/);
+      assert.strictEqual((res.draft.match(/^- /gm) || []).length, 3, res.draft);
+      assert.ok(!/through (your|the) link|grab a slot|your link|your page/i.test(res.draft), res.draft);
+      assert.strictEqual(linkBookingPromise(res.draft), null, res.draft);
+    });
+  }
+  console.log('\nthe promise guard holds whatever the read said, and stays out of the way with no link:');
+  {
+    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: {} }, { name: 'propose_message', input: { message: "Hi Candace - I'll book via your Calendly for when you're back." } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
+    const [, pm] = toolResults(res);
+    check('readable Calendly link + "book via your Calendly" → REJECTED, told to book ONE via book_meeting', () => { assert.strictEqual(pm.ok, false, JSON.stringify(pm)); assert.match(pm.error, /Calendly link was read/); assert.match(pm.error, /book_meeting/); assert.ok(!res.draft, res.draft); });
+    const res2 = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'propose_message', input: { message: "Hi Candace - I'll grab a slot through your link now." } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
+    const [pm2] = toolResults(res2);
+    check('link in the thread, not read yet → REJECTED, told to call check_availability first', () => { assert.strictEqual(pm2.ok, false, JSON.stringify(pm2)); assert.match(pm2.error, /has not been read yet/); assert.match(pm2.error, /check_availability/); });
+    const res3 = await runWingguyChatTurn({ ...base, conversation: [convo[0], { sender: 'Candace Ngok', text: 'Sure, what times suit?' }], deps: { client: fakeClient([{ name: 'propose_message', input: { message: "Hi Candace - great, I'll find a time on your calendar that suits." } }]), getAvailabilityForCoach, clashingSlots: noClashes } });
+    const [pm3] = toolResults(res3);
+    check('no lead link in the thread → the guard does not fire', () => assert.strictEqual(pm3.ok, true, JSON.stringify(pm3)));
   }
   console.log('\nno link in the thread: nothing changes:');
   {

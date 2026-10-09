@@ -10,6 +10,11 @@
  *  - wingguy_check_availability: not_before removes earlier days and switches off fallback flags;
  *    lead_booking_link narrows the slots to the overlap and says so; an unreadable link keeps the
  *    coach's slots and says THAT instead
+ *  - TidyCal (Sam Trattles, 2026-10-09): the link is found and parsed, the three-call recipe runs
+ *    with browser headers and the SHORT booking-type code, slots come back in UTC over the coach's
+ *    window, and a 405 / Cloudflare bot check / missing code all degrade to { ok:false, reason }
+ *  - the unreadable-link line names the provider and tells the model to offer the coach's own times,
+ *    never to promise the lead a booking through their page
  *
  * Run: node tests/wingguy-lead-booking-link.test.js
  */
@@ -33,6 +38,16 @@ check('a share link (calendly.com/d/...) is refused with a reason', () => { cons
 check('a bare profile page is refused', () => assert.match(link.parseBookingLink('https://calendly.com/candacengok').reason, /pick an event/));
 check('another host is refused, naming it', () => { const p = link.parseBookingLink('https://cal.com/someone/30min'); assert.strictEqual(p.provider, null); assert.match(p.reason, /cal\.com/); });
 check('junk is refused, not thrown', () => assert.strictEqual(link.parseBookingLink('not a url').provider, null));
+
+console.log('TidyCal: finding and parsing (Sam Trattles, 2026-10-09):');
+const SAM = 'Hi Guy, happy to chat. Grab a time that suits here: https://tidycal.com/thepowertoask/consultation. Cheers, Sam';
+const TIDY_PAGE = 'https://tidycal.com/thepowertoask/consultation';
+check('a TidyCal link is pulled out of a LinkedIn message, trailing full stop dropped', () => assert.strictEqual(link.findBookingLink(SAM), TIDY_PAGE));
+check('profile + booking type parse, with the clean page address', () => assert.deepStrictEqual(link.parseBookingLink('https://www.tidycal.com/thepowertoask/consultation?month=2026-10#x'), { provider: 'tidycal', url: 'https://www.tidycal.com/thepowertoask/consultation?month=2026-10#x', profileSlug: 'thepowertoask', eventSlug: 'consultation', pageUrl: TIDY_PAGE }));
+check('a bare TidyCal profile page is refused', () => { const p = link.parseBookingLink('https://tidycal.com/thepowertoask'); assert.strictEqual(p.provider, 'tidycal'); assert.ok(!p.profileSlug); assert.match(p.reason, /pick one/); });
+check('an internal booking-types address is refused', () => assert.match(link.parseBookingLink('https://tidycal.com/booking-types/1rlrxwx').reason, /internal TidyCal address/));
+check('the other-host reason now names both providers', () => assert.match(link.parseBookingLink('https://cal.com/someone/30min').reason, /Calendly or TidyCal only/));
+check('providerLabel: Calendly / TidyCal / booking', () => { assert.strictEqual(link.providerLabel('calendly'), 'Calendly'); assert.strictEqual(link.providerLabel('tidycal'), 'TidyCal'); assert.strictEqual(link.providerLabel(null), 'booking'); });
 
 console.log('reading Calendly (fake fetch):');
 const fakeFetch = (calls, { lookupStatus = 200, rangeStatus = 200, spots = {} } = {}) => async (url) => {
@@ -79,6 +94,85 @@ const fakeFetch = (calls, { lookupStatus = 200, rangeStatus = 200, spots = {} } 
     const calls = [];
     const r = await link.readBookingLink('https://calendly.com/d/abc/intro', { fetchImpl: fakeFetch(calls) });
     assert.strictEqual(r.ok, false); assert.strictEqual(calls.length, 0);
+  });
+
+  // TidyCal (fake fetch). The three responses below follow the shapes Guy recorded with curl on
+  // 9 Oct 2026 (bookingType fields, booking-types/<code> in the page, the available-bookings array)
+  // - the recipe's field names, not captured bytes, so the live read from Render is still to prove.
+  console.log('reading TidyCal (fake fetch):');
+  const TIDY_JSON = { bookingType: { id: 1580287, title: 'Consultation', duration_minutes: 15, padding_minutes: 30, url_slug: 'consultation' } };
+  const TIDY_HTML = '<!DOCTYPE html><html><head><title>Consultation</title></head><body><div id="app"></div><script>window.__tidy={"availableBookingsUrl":"https://tidycal.com/booking-types/1rlrxwx/available-bookings"}</script></body></html>';
+  const TIDY_SLOTS = [
+    { starts_at: '2026-10-15T00:00:00.000000Z', ends_at: '2026-10-15T00:15:00.000000Z', available_bookings: 1 },
+    { starts_at: '2026-10-14T23:45:00.000000Z', ends_at: '2026-10-15T00:00:00.000000Z', available_bookings: 1 },
+    { starts_at: '2026-10-14T23:45:00.000000Z', ends_at: '2026-10-15T00:00:00.000000Z', available_bookings: 1 }, // duplicate
+    { starts_at: '2026-10-15 03:00:00', ends_at: '2026-10-15 03:15:00', available_bookings: 1 },               // Laravel shape: UTC, no marker
+    { starts_at: '2026-10-15T05:00:00.000000Z', ends_at: '2026-10-15T05:15:00.000000Z', available_bookings: 0 }, // full
+  ];
+  const CF_CHALLENGE = '<!DOCTYPE html><html><head><title>Just a moment...</title></head><body><script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script><div id="cf-chl-widget"></div></body></html>';
+  const fakeTidy = (calls, { jsonStatus = 200, jsonText = null, htmlStatus = 200, html = TIDY_HTML, slotsStatus = 200, slots = TIDY_SLOTS } = {}) => async (url, opts = {}) => {
+    calls.push({ url, headers: opts.headers || {} });
+    if (url === `${TIDY_PAGE}?json`) return { status: jsonStatus, text: async () => (jsonText != null ? jsonText : JSON.stringify(TIDY_JSON)) };
+    if (url === TIDY_PAGE) return { status: htmlStatus, text: async () => html };
+    if (url.includes('/available-bookings')) return { status: slotsStatus, text: async () => (slotsStatus === 200 ? JSON.stringify(slots) : 'Method Not Allowed') };
+    throw new Error(`unexpected call ${url}`);
+  };
+  const jsonHeadersOk = (h) => { assert.strictEqual(h.Accept, 'application/json'); assert.strictEqual(h['X-Requested-With'], 'XMLHttpRequest'); assert.strictEqual(h.Referer, TIDY_PAGE); assert.match(h['User-Agent'], /^Mozilla\/5\.0/); };
+  await checkAsync('three calls: ?json, the HTML page, then available-bookings by SHORT code, browser headers on, UTC window, slots sorted/unique/pinned to UTC', async () => {
+    const calls = [];
+    const r = await link.readBookingLink(TIDY_PAGE, { timezone: 'Australia/Brisbane', rangeStart: '2026-10-14', rangeEnd: '2026-10-20', fetchImpl: fakeTidy(calls) });
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.strictEqual(calls.length, 3, JSON.stringify(calls.map((c) => c.url)));
+    assert.strictEqual(calls[0].url, `${TIDY_PAGE}?json`); jsonHeadersOk(calls[0].headers);
+    assert.strictEqual(calls[1].url, TIDY_PAGE); assert.match(calls[1].headers.Accept, /text\/html/); assert.match(calls[1].headers['User-Agent'], /^Mozilla\/5\.0/);
+    const u = new URL(calls[2].url);
+    assert.strictEqual(u.pathname, '/booking-types/1rlrxwx/available-bookings', calls[2].url);
+    assert.ok(!calls[2].url.includes('1580287'), 'the numeric id must not be used for slots');
+    assert.strictEqual(u.searchParams.get('start'), '2026-10-13T14:00:00.000Z'); // 2026-10-14 00:00 Brisbane
+    assert.strictEqual(u.searchParams.get('end'), '2026-10-20T13:59:59.999Z');   // 2026-10-20 23:59 Brisbane
+    jsonHeadersOk(calls[2].headers);
+    assert.strictEqual(r.provider, 'tidycal'); assert.strictEqual(r.eventName, 'Consultation'); assert.strictEqual(r.durationMins, 15);
+    assert.deepStrictEqual(r.slots, ['2026-10-14T23:45:00.000Z', '2026-10-15T00:00:00.000Z', '2026-10-15T03:00:00.000Z']);
+  });
+  await checkAsync('the short code already in the ?json text skips the HTML read', async () => {
+    const calls = [];
+    const jsonText = JSON.stringify({ ...TIDY_JSON, links: { availableBookings: 'https://tidycal.com/booking-types/1rlrxwx/available-bookings' } });
+    const r = await link.readBookingLink(TIDY_PAGE, { rangeStart: '2026-10-14', rangeEnd: '2026-10-20', fetchImpl: fakeTidy(calls, { jsonText }) });
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.deepStrictEqual(calls.map((c) => c.url.replace(/\?start=.*$/, '')), [`${TIDY_PAGE}?json`, 'https://tidycal.com/booking-types/1rlrxwx/available-bookings']);
+  });
+  await checkAsync('a 7-week window is paged in 28-day chunks, each chunk whole days in the coach\'s clock', async () => {
+    const calls = [];
+    const r = await link.readBookingLink(TIDY_PAGE, { timezone: 'Australia/Brisbane', rangeStart: '2026-10-14', rangeEnd: '2026-12-01', fetchImpl: fakeTidy(calls) });
+    assert.strictEqual(r.ok, true);
+    const ranges = calls.filter((c) => c.url.includes('/available-bookings')).map((c) => { const u = new URL(c.url); return [u.searchParams.get('start'), u.searchParams.get('end')]; });
+    assert.deepStrictEqual(ranges, [['2026-10-13T14:00:00.000Z', '2026-11-10T13:59:59.999Z'], ['2026-11-10T14:00:00.000Z', '2026-12-01T13:59:59.999Z']]);
+  });
+  await checkAsync('slots answering 405 (the headers were wrong) → ok:false with the status', async () => {
+    const r = await link.readBookingLink(TIDY_PAGE, { rangeStart: '2026-10-14', rangeEnd: '2026-10-20', fetchImpl: fakeTidy([], { slotsStatus: 405 }) });
+    assert.strictEqual(r.ok, false); assert.match(r.reason, /TidyCal availability failed \(HTTP 405\)/);
+  });
+  await checkAsync('a Cloudflare bot-check page instead of JSON → ok:false naming the bot check, nothing else called', async () => {
+    const calls = [];
+    const r = await link.readBookingLink(TIDY_PAGE, { fetchImpl: fakeTidy(calls, { jsonStatus: 403, jsonText: CF_CHALLENGE }) });
+    assert.strictEqual(r.ok, false); assert.match(r.reason, /Cloudflare bot check/); assert.strictEqual(calls.length, 1);
+  });
+  await checkAsync('page lookup 404 → ok:false with the status', async () => {
+    const r = await link.readBookingLink(TIDY_PAGE, { fetchImpl: fakeTidy([], { jsonStatus: 404, jsonText: '{}' }) });
+    assert.strictEqual(r.ok, false); assert.match(r.reason, /page lookup failed \(HTTP 404\)/);
+  });
+  await checkAsync('JSON without a bookingType → ok:false', async () => {
+    const r = await link.readBookingLink(TIDY_PAGE, { fetchImpl: fakeTidy([], { jsonText: '{"ok":true}' }) });
+    assert.strictEqual(r.ok, false); assert.match(r.reason, /no booking type/);
+  });
+  await checkAsync('HTML with no booking-types code → ok:false, no slots call', async () => {
+    const calls = [];
+    const r = await link.readBookingLink(TIDY_PAGE, { fetchImpl: fakeTidy(calls, { html: '<html><body>nothing here</body></html>' }) });
+    assert.strictEqual(r.ok, false); assert.match(r.reason, /no booking-type code/); assert.strictEqual(calls.length, 2);
+  });
+  await checkAsync('fetch throwing on TidyCal → ok:false, no throw', async () => {
+    const r = await link.readBookingLink(TIDY_PAGE, { fetchImpl: async () => { throw new Error('ECONNRESET'); } });
+    assert.strictEqual(r.ok, false); assert.match(r.reason, /ECONNRESET/);
   });
 
   console.log('intersection:');
@@ -157,6 +251,29 @@ const fakeFetch = (calls, { lookupStatus = 200, rangeStatus = 200, spots = {} } 
       assert.match(r.text, /Could not read the lead's booking link \(cal\.com is not a booking page/);
       assert.match(r.text, /COACH'S ONLY/);
       assert.ok(r.text.split('\n').filter((l) => /label=/.test(l)).length > 3);
+    });
+    await checkAsync('a readable TidyCal link reads as the lead\'s TidyCal page and narrows to the overlap', async () => {
+      const target = days[8];
+      const t = DateTime.fromISO(target.freeSlots[1].time).minus({ minutes: 15 }); // lead free 1:15-2:00 -> only the coach's 1:30 fits
+      const readBookingLink = async (url) => { assert.strictEqual(url, TIDY_PAGE); return { ok: true, provider: 'tidycal', ownerName: 'Sam Trattles', eventName: 'Consultation', durationMins: 15, slots: [t.toISO(), t.plus({ minutes: 15 }).toISO(), t.plus({ minutes: 30 }).toISO()] }; };
+      const r = await runCheckAvailability({ not_before: notBefore, lead_booking_link: TIDY_PAGE }, 'Guy-Wilson', { readBookingLink });
+      assert.match(r.text, /LEAD'S OWN CALENDAR READ: Sam Trattles's TidyCal page \("Consultation", 15 min\) offered 3 slots/);
+      const slotLines = r.text.split('\n').filter((l) => /label=/.test(l));
+      assert.strictEqual(slotLines.length, 1, r.text);
+      assert.ok(slotLines[0].includes(target.freeSlots[1].time), slotLines[0]);
+    });
+    await checkAsync('an unreadable TidyCal link: the coach\'s slots, TidyCal named, offer the coach\'s own times, never "by hand"', async () => {
+      const r = await runCheckAvailability({ lead_booking_link: TIDY_PAGE }, 'Guy-Wilson', { readBookingLink: async () => ({ ok: false, reason: 'TidyCal answered with a Cloudflare bot check instead of the page' }) });
+      assert.match(r.text, /Could not read the lead's TidyCal link \(TidyCal answered with a Cloudflare bot check/);
+      assert.match(r.text, /COACH'S ONLY/);
+      assert.match(r.text, /offer the coach's own times from the list below/);
+      assert.match(r.text, /NEVER tell the lead the coach will book through their link/);
+      assert.ok(!/by hand/.test(r.text), r.text);
+      assert.ok(r.text.split('\n').filter((l) => /label=/.test(l)).length > 3);
+    });
+    await checkAsync('an unreadable Calendly link names Calendly the same way', async () => {
+      const r = await runCheckAvailability({ lead_booking_link: 'https://calendly.com/x/y' }, 'Guy-Wilson', { readBookingLink: async () => ({ ok: false, reason: 'Calendly lookup failed (HTTP 503)' }) });
+      assert.match(r.text, /Could not read the lead's Calendly link \(Calendly lookup failed \(HTTP 503\)\)/);
     });
     await checkAsync('no link, no not_before → the result is exactly as before (no new lines)', async () => {
       const r = await runCheckAvailability({}, 'Guy-Wilson');
