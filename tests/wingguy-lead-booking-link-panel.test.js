@@ -53,8 +53,13 @@ check('catches "book via your Calendly", "find a time on your TidyCal page", "lo
   assert.ok(linkBookingPromise('Happy to find a time on your TidyCal page'));
   assert.ok(linkBookingPromise("I'll lock in a time through the link you sent"));
 });
+check('catches a confession that the link could not be read (third run, 9 Oct 2026)', () => {
+  assert.ok(linkBookingPromise("Appreciate you sending that through, but I wasn't able to pull your diary link in from here, so let me just offer a few times directly."));
+  assert.ok(linkBookingPromise("I couldn't open your Calendly, so here are some times."));
+  assert.ok(linkBookingPromise('Having trouble with your booking page - would any of these work?'));
+});
 check('leaves the normal lines alone', () => {
-  for (const s of ['Would any of the following times work for you?', "Invite's on its way - see you Tuesday.", 'Thanks for sending the link through.', "I've booked us in for Tuesday 2pm and put the invite in your calendar.", 'Let me know which suits and I will send the invite from my side.']) {
+  for (const s of ['Would any of the following times work for you?', "Invite's on its way - see you Tuesday.", 'Thanks for sending the link through.', "I've booked us in for Tuesday 2pm and put the invite in your calendar.", 'Let me know which suits and I will send the invite from my side.', "Saw Friday 11am was open on your link, so I've sent an invite for then to make it easy for you."]) {
     assert.strictEqual(linkBookingPromise(s), null, s);
   }
 });

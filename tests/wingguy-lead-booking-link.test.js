@@ -48,6 +48,10 @@ check('a bare TidyCal profile page is refused', () => { const p = link.parseBook
 check('an internal booking-types address is refused', () => assert.match(link.parseBookingLink('https://tidycal.com/booking-types/1rlrxwx').reason, /internal TidyCal address/));
 // The full-thread view on LinkedIn showed Sam's link with no https:// (second run, 9 Oct 2026).
 check('a link with no https:// is still found, and comes back with it', () => assert.strictEqual(link.findBookingLink('here is a link to my diary: tidycal.com/thepowertoask/consultation\n\nLook forward to chatting'), TIDY_PAGE));
+// Third run, 9 Oct 2026: LinkedIn's full-thread view glued the next line straight onto the link.
+check('the next line glued onto the link is cut off at its capital letter', () => assert.strictEqual(link.findBookingLink("To make it easy here's a link to my diary: https://tidycal.com/thepowertoask/consultationLook forward to chatting. :-)"), TIDY_PAGE));
+check('a glued bare link is cut off too', () => assert.strictEqual(link.findBookingLink('diary: tidycal.com/thepowertoask/consultationLook forward'), TIDY_PAGE));
+check('a query string survives the cut', () => assert.strictEqual(link.findBookingLink('https://calendly.com/candacengok/intro?month=2026-10 thanks'), 'https://calendly.com/candacengok/intro?month=2026-10'));
 check('a bare www. Calendly link is found too', () => assert.strictEqual(link.findBookingLink('book me at www.calendly.com/candacengok/intro.'), 'https://www.calendly.com/candacengok/intro'));
 check('a bare TidyCal address parses as https', () => assert.strictEqual(link.parseBookingLink('tidycal.com/thepowertoask/consultation').pageUrl, TIDY_PAGE));
 check('a bare Calendly address parses', () => assert.strictEqual(link.parseBookingLink('calendly.com/candacengok/intro').eventSlug, 'intro'));

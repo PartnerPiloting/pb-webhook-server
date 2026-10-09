@@ -518,8 +518,13 @@ function detectLeadBookingLink(conversation = [], coachName = '') {
  * Returns the offending phrase, or null.
  */
 const LINK_PROMISE_RE = /\b(grab|grabbing|book|booking|pick|picking|take|taking|snag|lock(?:ing)?(?: in)?|schedule|scheduling|secure|choose|select|find|reserve|jump|jumping)\b[^.!?\n]{0,80}?\b(through|via|using|on|off|from|with)\s+(your|the|that)\s+(?:booking\s+|scheduling\s+|calendar\s+|tidycal\s+|calendly\s+)?(link|calendly|tidycal|page|calendar|site|scheduler)\b/i;
+// And a draft must never CONFESS to the lead that their link could not be read ("I wasn't able to
+// pull your diary link in from here", Sam Trattles 2026-10-09, third run). The lead learns nothing
+// from that except that something is off on Guy's side; the times go out as if no link was sent.
+const LINK_FAIL_RE = /\b(couldn't|could not|can't|cannot|wasn't able|was not able|unable|not able|didn't manage|failed|struggled|having trouble|had trouble|trouble)\b[^.!?\n]{0,60}?\b(link|calendly|tidycal|page|diary link|calendar link|booking page|scheduler)\b/i;
 function linkBookingPromise(text) {
-  const m = String(text || '').match(LINK_PROMISE_RE);
+  const s = String(text || '');
+  const m = s.match(LINK_PROMISE_RE) || s.match(LINK_FAIL_RE);
   return m ? m[0].trim() : null;
 }
 
@@ -1245,7 +1250,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           console.warn(`WINGGUY-LINK-PROMISE-GUARD refused "${promise}" for ${coach.clientId} → ${who} (${label} link)`);
           return {
             ok: false,
-            error: `REJECTED - draft NOT set. It says "${promise}" - a promise that Guy will book through ${who}'s ${label} link. Guy never books through a lead's page: his own invite (book_meeting) is the only booking door, and a draft like that leaves him booking by hand on a page Wingguy cannot see. The ${label} link ${next}. Tell Guy in chat, in one plain line, that ${who} sent a ${label} link and what happened when Wingguy read it. If Guy himself asked for this wording, tell him Wingguy will not draft a promise to use the lead's page, and why, rather than calling propose_message again with it.`,
+            error: `REJECTED - draft NOT set. It says "${promise}" - either a promise that Guy will book through ${who}'s ${label} link, or an admission to ${who} that the link could not be read. Neither goes to a lead. Guy never books through a lead's page: his own invite (book_meeting) is the only booking door. And a lead is never told their link could not be read - the times go out exactly as if no link had been sent. The ${label} link ${next}. Tell Guy in chat, in one plain line, that ${who} sent a ${label} link and what happened when Wingguy read it. If Guy himself asked for this wording, tell him Wingguy will not draft a promise to use the lead's page, and why, rather than calling propose_message again with it.`,
           };
         }
       }

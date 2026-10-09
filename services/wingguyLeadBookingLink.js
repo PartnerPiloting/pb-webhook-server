@@ -65,7 +65,13 @@ function providerLabel(provider) {
 function findBookingLink(text) {
   const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com|tidycal\.com)\/[^\s<>"')\]]+/i);
   if (!m) return null;
-  const raw = m[0].replace(/[.,;:!?]+$/, '');
+  let raw = m[0];
+  // LinkedIn's full-thread view glues the next line onto the link with no space between
+  // ("…/consultationLook forward to chatting", Sam Trattles 2026-10-09, third run - the reader then
+  // fetched a page that does not exist). Slugs on both providers are lower case, so the path ends
+  // at the first capital letter after the host.
+  raw = raw.replace(/^((?:https?:\/\/)?[^/]+\/[^A-Z]*)[A-Z].*$/, '$1');
+  raw = raw.replace(/[.,;:!?]+$/, '');
   return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 }
 
