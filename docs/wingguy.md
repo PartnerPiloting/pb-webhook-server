@@ -5278,6 +5278,21 @@ length, where before it needed the whole meeting inside the lead's run. Test: Sa
 tests/wingguy-lead-booking-link.test.js (isolated 15-minute slots on the hour, coach at 30-minute steps,
 the seven on-the-hour matches survive).
 
+**Same day, Guy: the message after the booking acknowledges the link.** "Tell the lead it is booked" produced
+drafts that never mentioned the link the lead went to the trouble of sending. Now the draft names the time
+seen open on their link, says the invite has been SENT to their email (Guy's invite is a request they
+accept - never "booked, you'll see it in your calendar"), and gives the length when their page offers
+shorter slots than Guy's usual ("I've put 30 minutes on it, happy to keep it to 15 if that suits better").
+Both doors say so (the LEAD'S OWN CALENDAR READ line in services/wingguyBookingMcp.js, the leadLink note and
+the panel bullet in config/wingguyTemplates.js), and the panel checks it in code: `propose_message` refuses a
+post-booking draft that skips the link, the time, the "sent" or the length, or that puts the invite "in your
+calendar" (`linkBookedDraftProblem`, services/wingguyChat.js). It fires only when book_meeting succeeded this
+turn AND the link was actually read - this turn, or an earlier one in the same chat (`priorLeadLinkRead`
+scans the resent tool results, since Guy's yes usually lands a turn after the read). An unreadable link
+means Guy's own times went out, so there is nothing to acknowledge and the guard stays out of the way.
+The "through your link" promise guard still runs first. The MCP line also lost its "book through the lead's
+page by hand" tail - Guy never does that. Test: tests/wingguy-lead-booking-link-panel.test.js.
+
 ## The extension keeps its owner + the LinkedIn name must agree (0.3.29, 2026-09-30)
 
 **What went wrong.** Guy ran /wg on his own lead (Shiva Farabi) and the draft came back signed "Cheers,

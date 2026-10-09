@@ -12,12 +12,17 @@
  *  - TidyCal links are found in the lead's messages too (Sam Trattles, 2026-10-09), and an
  *    unreadable link means Guy's OWN times in the draft: propose_message REFUSES any "I'll grab a
  *    slot through your link" promise (linkBookingPromise), whatever the read said
+ *  - a booking made off a READABLE link is acknowledged in the draft (Guy, 2026-10-09): the time
+ *    seen open on their link, the invite SENT to their email (never "in your calendar"), and the
+ *    length when their page offers shorter slots than Guy's usual (linkBookedDraftProblem); the
+ *    read usually lands a turn before the booking, so the guard scans earlier tool results
+ *    (priorLeadLinkRead)
  *
  * Run: node tests/wingguy-lead-booking-link-panel.test.js
  */
 const assert = require('assert');
 const { DateTime } = require('luxon');
-const { runWingguyChatTurn, detectLeadBookingLink, linkBookingPromise } = require('../services/wingguyChat');
+const { runWingguyChatTurn, detectLeadBookingLink, linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead } = require('../services/wingguyChat');
 
 let failures = 0;
 const check = (name, fn) => { try { fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); } };
@@ -172,6 +177,124 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
     const res = await runWingguyChatTurn({ ...base, conversation: [convo[0], { sender: 'Candace Ngok', text: 'Sure, what times suit?' }], deps: { client: fakeClient([{ name: 'check_availability', input: {} }, { name: 'propose_times', input: { intro: 'Hi -', slotTimes: [days[0].freeSlots[0].time], outro: 'x' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: async () => { throw new Error('must not be called'); } } });
     const [ca, pt] = toolResults(res);
     check('no leadLink on the availability result, list produced', () => { assert.ok(!ca.leadLink); assert.strictEqual(pt.offered, 1); });
+  }
+  // THE MESSAGE AFTER A BOOKING OFF THE LEAD'S LINK ACKNOWLEDGES IT (Guy, 2026-10-09): the time seen
+  // open on their link, the invite SENT to their email (a request they accept, never "in your
+  // calendar"), and the length when their page offers shorter slots than Guy's usual.
+  const bookingDeps = {
+    getClashesForISO: async () => [],
+    createBookingEvent: async (coach, { startISO, durationMins }) => ({ ok: true, eventId: 'evt1', title: 'Guy / lead', start: startISO, durationMins: durationMins || 30 }),
+    deleteOfferHolds: async () => ({ ok: true }),
+  };
+  const GOOD = "Hi Candace - saw Friday 1:30pm was open on your link, so I've sent an invite for then to candace@example.com - just accept and we're set.";
+  console.log('\nlinkBookedDraftProblem (the shape of the post-booking message):');
+  check('the shape Guy wants passes, with and without the length line', () => {
+    assert.strictEqual(linkBookedDraftProblem(GOOD), null);
+    assert.strictEqual(linkBookedDraftProblem(`${GOOD} I've put 30 minutes on it, happy to keep it to 15 if that suits better.`, { leadSlotMins: 15, coachMins: 30 }), null);
+    assert.strictEqual(linkBookingPromise(GOOD), null, 'the promise guard must not catch the acknowledgement');
+  });
+  check('a bare "invite\'s on its way" never mentions the link', () => assert.match(linkBookedDraftProblem("Invite's on its way - see you Friday."), /never mentions the link/));
+  check('"you\'ll see it in your calendar" is refused - the invite is a request they accept', () => assert.match(linkBookedDraftProblem("Booked Friday 1:30pm off your link - you'll see it in your calendar."), /"in your calendar"/));
+  check('no day or time, or no "sent", is refused', () => {
+    assert.match(linkBookedDraftProblem("Saw a gap on your link, so I've sent an invite to candace@example.com."), /never names the day and time/);
+    assert.match(linkBookedDraftProblem("Saw Friday 1:30pm open on your link - I'll be in touch."), /never says the invite has been SENT/);
+  });
+  check('shorter lead slots need both lengths; equal slots need none', () => {
+    assert.match(linkBookedDraftProblem(GOOD, { leadSlotMins: 15, coachMins: 30 }), /give the length/);
+    assert.match(linkBookedDraftProblem(`${GOOD} I've put 30 minutes on it.`, { leadSlotMins: 15, coachMins: 30 }), /give the length/);
+    assert.strictEqual(linkBookedDraftProblem(GOOD, { leadSlotMins: 30, coachMins: 30 }), null);
+  });
+  console.log('\npriorLeadLinkRead (the read usually lands a turn before the booking):');
+  check('finds the latest readable leadLink in resent tool results, ignores unreadable ones and junk', () => {
+    const tr = (obj) => ({ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: JSON.stringify(obj) }] });
+    assert.strictEqual(priorLeadLinkRead([]), null);
+    assert.strictEqual(priorLeadLinkRead([{ role: 'user', content: 'yes' }, tr({ ok: true }), tr({ leadLink: { read: false, url: LINK } })]), null);
+    const got = priorLeadLinkRead([tr({ leadLink: { read: true, url: LINK, leadSlotMins: 30 } }), tr({ leadLink: { read: true, url: TIDY, leadSlotMins: 15 } }), { role: 'assistant', content: 'ok' }]);
+    assert.deepStrictEqual(got, { read: true, url: TIDY, leadSlotMins: 15 });
+  });
+
+  console.log('\nreadable Calendly link, booked this turn: the draft must acknowledge the link (Guy, 2026-10-09):');
+  {
+    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([
+      { name: 'check_availability', input: {} },
+      { name: 'book_meeting', input: { startISO: target.freeSlots[1].time } },
+      { name: 'propose_message', input: { message: "Hi Candace - invite's on its way, see you Friday." } },
+      { name: 'propose_message', input: { message: "Hi Candace - I've booked us in for Friday 1:30pm, you'll see it in your calendar." } },
+      { name: 'propose_message', input: { message: "Hi Candace - I'll lock in Friday 1:30pm through your link." } },
+      { name: 'propose_message', input: { message: GOOD } },
+    ]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk, ...bookingDeps } });
+    const [ca, bm, pm1, pm2, pm3, pm4] = toolResults(res);
+    check('the leadLink note tells the model to acknowledge the link, names the email, and no "so he can decide"', () => {
+      assert.match(ca.leadLink.note, /ACKNOWLEDGES their Calendly link/); assert.match(ca.leadLink.note, /SENT to candace@example\.com/);
+      assert.match(ca.leadLink.note, /never "booked, you'll see it in your calendar"/); assert.ok(!/so he can decide/.test(ca.leadLink.note), ca.leadLink.note);
+      assert.strictEqual(ca.leadLink.coachMins, 30);
+    });
+    check('book_meeting succeeded', () => { assert.strictEqual(bm.ok, true, JSON.stringify(bm)); assert.strictEqual(res.booked && res.booked.eventId, 'evt1'); });
+    check('a bare "invite\'s on its way" is REJECTED for never mentioning the link, with the way forward', () => {
+      assert.strictEqual(pm1.ok, false, JSON.stringify(pm1)); assert.match(pm1.error, /booked off Candace Ngok's Calendly link/);
+      assert.match(pm1.error, /never mentions the link/); assert.match(pm1.error, /sent to candace@example\.com/); assert.match(pm1.error, /Never promise to book through their page/);
+    });
+    check('"you\'ll see it in your calendar" is REJECTED', () => { assert.strictEqual(pm2.ok, false, JSON.stringify(pm2)); assert.match(pm2.error, /"in your calendar"/); assert.match(pm2.error, /request the lead accepts/); });
+    check('"through your link" is still REJECTED by the promise guard', () => { assert.strictEqual(pm3.ok, false, JSON.stringify(pm3)); assert.match(pm3.error, /lock in Friday 1:30pm through your link/); assert.match(pm3.error, /acknowledges their link/); });
+    check('the acknowledgement is accepted and becomes the draft', () => {
+      assert.strictEqual(pm4.ok, true, JSON.stringify(pm4)); assert.strictEqual(res.draft, GOOD);
+      assert.match(res.draft, /on your link/); assert.match(res.draft, /sent an invite/); assert.ok(!/in your calendar/.test(res.draft));
+      assert.strictEqual(linkBookingPromise(res.draft), null);
+    });
+  }
+  console.log('\nreadable TidyCal link with 15-minute slots, booked this turn: the draft carries the length line:');
+  {
+    const tidyOk = async (url) => { assert.strictEqual(url, TIDY); return { ok: true, provider: 'tidycal', ownerName: 'Sam Trattles', eventName: 'Consultation', durationMins: 15, slots: [target.freeSlots[0].time] }; };
+    const SAM_GOOD = "Hi Sam - saw Friday 10am was open on your link, so I've sent an invite for then to sam@example.com - just accept and we're set. I've put 30 minutes on it, happy to keep it to 15 if that suits better.";
+    const res = await runWingguyChatTurn({ ...base, profile: { name: 'Sam Trattles', location: 'Brisbane' }, conversation: samConvo, leadEmail: 'sam@example.com', deps: { client: fakeClient([
+      { name: 'check_availability', input: {} },
+      { name: 'book_meeting', input: { startISO: target.freeSlots[0].time } },
+      { name: 'propose_message', input: { message: "Hi Sam - saw Friday 10am was open on your link, so I've sent an invite for then to sam@example.com - just accept and we're set." } },
+      { name: 'propose_message', input: { message: SAM_GOOD } },
+    ]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: tidyOk, ...bookingDeps } });
+    const [ca, bm, pm1, pm2] = toolResults(res);
+    check('the read matched the one 10am slot and the note carries the length sentence', () => {
+      assert.strictEqual(ca.leadLink.read, true); assert.strictEqual(ca.leadLink.leadSlotMins, 15); assert.strictEqual(ca.days.length, 1);
+      assert.match(ca.leadLink.note, /15-minute slots, shorter than Guy's usual 30/); assert.match(ca.leadLink.note, /I've put 30 minutes on it, happy to keep it to 15/);
+      assert.strictEqual(bm.ok, true, JSON.stringify(bm));
+    });
+    check('without the length line the draft is REJECTED, naming both lengths', () => { assert.strictEqual(pm1.ok, false, JSON.stringify(pm1)); assert.match(pm1.error, /15-minute slots and Guy's invite is 30 minutes/); assert.match(pm1.error, /happy to keep it to 15/); });
+    check('with the length line it is accepted', () => { assert.strictEqual(pm2.ok, true, JSON.stringify(pm2)); assert.strictEqual(res.draft, SAM_GOOD); assert.strictEqual(linkBookingPromise(res.draft), null); });
+  }
+  console.log('\nthe read on one turn, Guy\'s yes and the booking on the next: the guard still knows the link was read:');
+  {
+    const turn1 = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: {} }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
+    const messages2 = [...turn1.messages, { role: 'user', content: 'yes, book it' }];
+    const turn2 = await runWingguyChatTurn({ ...base, messages: messages2, deps: { client: fakeClient([
+      { name: 'book_meeting', input: { startISO: target.freeSlots[1].time } },
+      { name: 'propose_message', input: { message: "Hi Candace - invite's on its way, see you Friday." } },
+      { name: 'propose_message', input: { message: GOOD } },
+    ]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: async () => { throw new Error('must not re-read'); }, ...bookingDeps } });
+    const [bm, pm1, pm2] = toolResults(turn2).slice(-3);
+    check('booked on turn two without re-reading the link', () => assert.strictEqual(bm.ok, true, JSON.stringify(bm)));
+    check('the bare draft is REJECTED from the earlier turn\'s read; the acknowledgement is accepted', () => {
+      assert.strictEqual(pm1.ok, false, JSON.stringify(pm1)); assert.match(pm1.error, /never mentions the link/);
+      assert.strictEqual(pm2.ok, true, JSON.stringify(pm2)); assert.strictEqual(turn2.draft, GOOD);
+    });
+  }
+  console.log('\nthe acknowledgement guard stays out of the way:');
+  {
+    // Readable link, nothing booked this turn - an ordinary reply is fine.
+    const res1 = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: {} }, { name: 'propose_message', input: { message: 'Thanks for the link, Candace - will come back to you shortly.' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
+    check('no booking this turn → not checked', () => { const [, pm] = toolResults(res1); assert.strictEqual(pm.ok, true, JSON.stringify(pm)); });
+    // Unreadable link, Guy's own times went out, the lead picked one, booked - nothing to acknowledge.
+    const res2 = await runWingguyChatTurn({ ...base, conversation: [...convo, { sender: 'Guy Wilson', text: 'Would any of the following times work for you?\n- Fri 1:30pm\n(all times are Brisbane time)' }, { sender: 'Candace Ngok', text: 'Friday 1:30 works' }], deps: { client: fakeClient([
+      { name: 'check_availability', input: {} },
+      { name: 'book_meeting', input: { startISO: target.freeSlots[1].time } },
+      { name: 'propose_message', input: { message: "Hi Candace - invite's on its way, see you Friday." } },
+    ]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerFail, ...bookingDeps } });
+    check('unreadable link + booking → the plain "invite\'s on its way" is accepted', () => { const [ca, bm, pm] = toolResults(res2); assert.strictEqual(ca.leadLink.read, false); assert.strictEqual(bm.ok, true, JSON.stringify(bm)); assert.strictEqual(pm.ok, true, JSON.stringify(pm)); });
+    // No link at all, booked - unchanged.
+    const res3 = await runWingguyChatTurn({ ...base, conversation: [convo[0], { sender: 'Candace Ngok', text: 'Friday 1:30 works' }], deps: { client: fakeClient([
+      { name: 'book_meeting', input: { startISO: target.freeSlots[1].time } },
+      { name: 'propose_message', input: { message: "Hi Candace - invite's on its way, see you Friday." } },
+    ]), getAvailabilityForCoach, clashingSlots: noClashes, ...bookingDeps } });
+    check('no link in the thread + booking → unchanged', () => { const [bm, pm] = toolResults(res3); assert.strictEqual(bm.ok, true, JSON.stringify(bm)); assert.strictEqual(pm.ok, true, JSON.stringify(pm)); });
   }
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all lead-booking-link panel tests passed');
   process.exit(failures ? 1 : 0);
