@@ -54,16 +54,27 @@ function providerLabel(provider) {
   return PROVIDER_LABELS[String(provider || '').toLowerCase()] || 'booking';
 }
 
-/** Pull a booking link out of free text (a LinkedIn message, an email). First match wins. */
+/**
+ * Pull a booking link out of free text (a LinkedIn message, an email). First match wins.
+ *
+ * The scheme is optional (Sam Trattles, 2026-10-09, second run): LinkedIn's full-thread view showed
+ * her link as "tidycal.com/thepowertoask/consultation" with no https://, the scanner walked past it,
+ * the panel offered a list, and the model's own attempt with the bare address was refused as "not a
+ * URL". A bare host+path is returned with https:// put back so every caller sees one shape.
+ */
 function findBookingLink(text) {
-  const m = String(text || '').match(/https?:\/\/(?:www\.)?(?:calendly\.com|tidycal\.com)\/[^\s<>"')\]]+/i);
-  return m ? m[0].replace(/[.,;:!?]+$/, '') : null;
+  const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com|tidycal\.com)\/[^\s<>"')\]]+/i);
+  if (!m) return null;
+  const raw = m[0].replace(/[.,;:!?]+$/, '');
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 }
 
-/** Parse a booking link into its provider parts. */
+/** Parse a booking link into its provider parts. A bare "tidycal.com/..." is read as https. */
 function parseBookingLink(url) {
   let u;
-  try { u = new URL(String(url || '').trim()); } catch (_) { return { provider: null, url, reason: 'not a URL' }; }
+  const str = String(url || '').trim();
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(str) ? str : (/^(?:www\.)?(?:calendly\.com|tidycal\.com)\//i.test(str) ? `https://${str}` : str);
+  try { u = new URL(withScheme); } catch (_) { return { provider: null, url, reason: 'not a URL' }; }
   const host = u.hostname.replace(/^www\./, '').toLowerCase();
   if (host === 'calendly.com') {
     const parts = u.pathname.split('/').filter(Boolean);

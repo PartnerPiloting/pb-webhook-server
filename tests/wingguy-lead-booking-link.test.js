@@ -46,6 +46,12 @@ check('a TidyCal link is pulled out of a LinkedIn message, trailing full stop dr
 check('profile + booking type parse, with the clean page address', () => assert.deepStrictEqual(link.parseBookingLink('https://www.tidycal.com/thepowertoask/consultation?month=2026-10#x'), { provider: 'tidycal', url: 'https://www.tidycal.com/thepowertoask/consultation?month=2026-10#x', profileSlug: 'thepowertoask', eventSlug: 'consultation', pageUrl: TIDY_PAGE }));
 check('a bare TidyCal profile page is refused', () => { const p = link.parseBookingLink('https://tidycal.com/thepowertoask'); assert.strictEqual(p.provider, 'tidycal'); assert.ok(!p.profileSlug); assert.match(p.reason, /pick one/); });
 check('an internal booking-types address is refused', () => assert.match(link.parseBookingLink('https://tidycal.com/booking-types/1rlrxwx').reason, /internal TidyCal address/));
+// The full-thread view on LinkedIn showed Sam's link with no https:// (second run, 9 Oct 2026).
+check('a link with no https:// is still found, and comes back with it', () => assert.strictEqual(link.findBookingLink('here is a link to my diary: tidycal.com/thepowertoask/consultation\n\nLook forward to chatting'), TIDY_PAGE));
+check('a bare www. Calendly link is found too', () => assert.strictEqual(link.findBookingLink('book me at www.calendly.com/candacengok/intro.'), 'https://www.calendly.com/candacengok/intro'));
+check('a bare TidyCal address parses as https', () => assert.strictEqual(link.parseBookingLink('tidycal.com/thepowertoask/consultation').pageUrl, TIDY_PAGE));
+check('a bare Calendly address parses', () => assert.strictEqual(link.parseBookingLink('calendly.com/candacengok/intro').eventSlug, 'intro'));
+check('plain words are still not a link', () => assert.strictEqual(link.findBookingLink('see you on calendly sometime'), null));
 check('the other-host reason now names both providers', () => assert.match(link.parseBookingLink('https://cal.com/someone/30min').reason, /Calendly or TidyCal only/));
 check('providerLabel: Calendly / TidyCal / booking', () => { assert.strictEqual(link.providerLabel('calendly'), 'Calendly'); assert.strictEqual(link.providerLabel('tidycal'), 'TidyCal'); assert.strictEqual(link.providerLabel(null), 'booking'); });
 

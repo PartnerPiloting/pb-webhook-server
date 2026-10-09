@@ -829,6 +829,9 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         const reader = deps.readBookingLink || leadBookingLink.readBookingLink;
         const lead = await reader(linkUrl, { timezone: avail.yourTimezone || 'Australia/Brisbane', rangeStart: notBefore || undefined });
         leadLinkState = { url: linkUrl, ok: !!lead.ok, reason: lead.reason || null };
+        // One line per read so a "didn't resolve" in the panel can be traced in the server logs
+        // (Sam Trattles, 2026-10-09: the second run gave nothing to go on).
+        console.log(`WINGGUY-LEAD-LINK ${coach.clientId} → ${profile.name || 'lead'}: ${input.leadBookingLink ? 'model' : 'thread'} ${linkUrl} → ${lead.ok ? `ok (${lead.slots.length} lead slots)` : `FAILED: ${lead.reason}`}`);
         const source = input.leadBookingLink ? 'model' : 'thread';
         // "Calendly" / "TidyCal" / "booking" - from the reader when it says, else from the link itself.
         const label = leadBookingLink.providerLabel(lead.provider || leadBookingLink.parseBookingLink(linkUrl).provider);
