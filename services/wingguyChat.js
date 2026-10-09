@@ -523,6 +523,54 @@ function linkBookingPromise(text) {
   return m ? m[0].trim() : null;
 }
 
+/**
+ * The message that follows a booking made off the LEAD's own link (Guy, 2026-10-09). They handed the
+ * link over to make this easy, and "tell the lead it is booked" produced drafts that never mentioned
+ * it. So the draft acknowledges the link: it names the time seen open on their page, says the invite
+ * has been SENT to their email (Guy's invite is a request they accept - never "booked, you'll see it
+ * in your calendar"), and gives the meeting length when their page offers shorter slots than Guy's
+ * usual (TidyCal 15-minute slots vs his 30: "I've put 30 minutes on it, happy to keep it to 15 if that
+ * suits better"). Returns null when the draft passes, else the plain-English reason it does not.
+ */
+const LINK_MENTION_RE = /\b(link|page|calendly|tidycal)\b/i;
+const INVITE_SENT_RE = /\b(sent|on its way|heading your way|coming through)\b/i;
+const IN_YOUR_CALENDAR_RE = /\b(in|into|on)\s+your\s+(calendar|diary)\b/i;
+const NAMES_A_TIME_RE = /\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b(today|tomorrow)\b/i;
+function linkBookedDraftProblem(text, { leadSlotMins = 0, coachMins = 0 } = {}) {
+  const s = String(text || '');
+  const diary = s.match(IN_YOUR_CALENDAR_RE);
+  if (diary) return `it says "${diary[0]}" - Guy's invite is a request the lead accepts, not an entry on their diary. Say the invite has been SENT to their email ("just accept and we're set")`;
+  if (!LINK_MENTION_RE.test(s)) return 'it never mentions the link the lead sent. They handed it over to make this easy, so acknowledge it: name the time you saw open on their link ("Saw Friday 11am was open on your link, so ...")';
+  if (!NAMES_A_TIME_RE.test(s)) return 'it never names the day and time that was open on their link';
+  if (!INVITE_SENT_RE.test(s)) return 'it never says the invite has been SENT to their email ("so I\'ve sent an invite for then to <email> - just accept and we\'re set")';
+  if (leadSlotMins && coachMins && leadSlotMins < coachMins) {
+    const coachLen = new RegExp('\\b' + coachMins + '\\s*-?\\s*min', 'i');
+    const leadLen = new RegExp('\\b' + leadSlotMins + '\\b');
+    if (!coachLen.test(s) || !leadLen.test(s)) return `their page offers ${leadSlotMins}-minute slots and Guy's invite is ${coachMins} minutes, so give the length: "I've put ${coachMins} minutes on it, happy to keep it to ${leadSlotMins} if that suits better"`;
+  }
+  return null;
+}
+
+/**
+ * What a readable lead link said on an EARLIER turn of this chat. The read (check_availability) and
+ * the booking (Guy's yes, then book_meeting) usually land a turn apart, and the panel resends the
+ * running messages each turn, so the tool_result from the read is still here to scan. Latest wins.
+ */
+function priorLeadLinkRead(messages = []) {
+  let found = null;
+  for (const m of (Array.isArray(messages) ? messages : [])) {
+    if (!m || m.role !== 'user' || !Array.isArray(m.content)) continue;
+    for (const b of m.content) {
+      if (!b || b.type !== 'tool_result' || typeof b.content !== 'string' || !b.content.includes('"leadLink"')) continue;
+      try {
+        const r = JSON.parse(b.content);
+        if (r && r.leadLink && r.leadLink.read === true) found = r.leadLink;
+      } catch (_) { /* not JSON - not one of ours */ }
+    }
+  }
+  return found;
+}
+
 /** Stage 1 by DATA: nobody but the coach has spoken, and the coach never asked for a call. */
 function isHandshakeOnly({ conversation, coachName, leadName, group }) {
   if (group) return false;
@@ -790,9 +838,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           // Shorter slots on the lead's page (TidyCal 15-minute islands, Sam Trattles 2026-10-09): a
           // match means the lead is free at that START; Guy's invite keeps his usual length.
           const slotNote = filtered.leadSlotsShorter
-            ? ` The lead's page offers ${filtered.leadSlotMins}-minute slots, shorter than Guy's usual ${coachMins} minutes: a slot below means the lead is free at that START time. book_meeting still sends Guy's usual length - tell Guy the lead's page is set to ${filtered.leadSlotMins} minutes so he can decide whether to mention it.`
+            ? ` The lead's page offers ${filtered.leadSlotMins}-minute slots, shorter than Guy's usual ${coachMins} minutes: a slot below means the lead is free at that START time. book_meeting still sends Guy's usual length - the message after the booking gives the length ("I've put ${coachMins} minutes on it, happy to keep it to ${filtered.leadSlotMins} if that suits better").`
             : '';
-          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, leadSlotMins: filtered.leadSlotMins, note: filtered.days.length ? `The days below are ONLY the times BOTH Guy and the lead are free.${slotNote} Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting.` : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
+          leadLinkState.leadSlotMins = filtered.leadSlotMins; // the ack guard below needs it on a same-turn booking
+          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, leadSlotMins: filtered.leadSlotMins, coachMins, note: filtered.days.length ? `The days below are ONLY the times BOTH Guy and the lead are free.${slotNote} Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. The message that follows the booking ACKNOWLEDGES their ${label} link (propose_message checks for this): name the time you saw open on their link and say the invite has been SENT to ${currentLeadEmail || 'their email'} - never "booked, you'll see it in your calendar", Guy's invite is a request they accept. Shape: "Saw Friday 11am was open on your link, so I've sent an invite for then to ${currentLeadEmail || '<email>'} - just accept and we're set."` : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
         } else {
           // The give-up path (Sam Trattles, 2026-10-09): an unreadable link means Guy's OWN times go
           // out in the normal list. The old note ("or suggest he books through the link by hand")
@@ -1188,13 +1237,39 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           const next = !leadLinkState
             ? 'has not been read yet - call check_availability first; it reads the page and says what it found'
             : leadLinkState.ok
-              ? 'was read, so pick ONE of the times both are free, confirm it with Guy, book_meeting it, and only then draft the plain "invite is on its way" message'
+              ? 'was read, so pick ONE of the times both are free, confirm it with Guy, book_meeting it, and only then draft the message that acknowledges their link: the time you saw open on it, and that the invite has been sent to their email'
               : `could not be read (${leadLinkState.reason}) - offer Guy's own times instead: call propose_times with slots from check_availability, which writes the list and its timezone line`;
           console.warn(`WINGGUY-LINK-PROMISE-GUARD refused "${promise}" for ${coach.clientId} → ${who} (${label} link)`);
           return {
             ok: false,
             error: `REJECTED - draft NOT set. It says "${promise}" - a promise that Guy will book through ${who}'s ${label} link. Guy never books through a lead's page: his own invite (book_meeting) is the only booking door, and a draft like that leaves him booking by hand on a page Wingguy cannot see. The ${label} link ${next}. Tell Guy in chat, in one plain line, that ${who} sent a ${label} link and what happened when Wingguy read it. If Guy himself asked for this wording, tell him Wingguy will not draft a promise to use the lead's page, and why, rather than calling propose_message again with it.`,
           };
+        }
+      }
+      // A BOOKING MADE OFF THE LEAD'S LINK IS ACKNOWLEDGED (Guy, 2026-10-09). The read says what their
+      // page offered; the message after book_meeting names that time, says the invite has been SENT
+      // to their email, and gives the length when their slots run shorter than Guy's. Code checks
+      // the shape (linkBookedDraftProblem) because "tell the lead it is booked" left the link unsaid.
+      // Fires only when a booking landed THIS turn and the link was actually read (this turn, or an
+      // earlier one in the same chat) - an unreadable link means Guy's own times went out instead.
+      if (bookedEvent) {
+        const read = (leadLinkState && leadLinkState.ok) ? leadLinkState : null;
+        const prior = read ? null : priorLeadLinkRead(messages);
+        if (read || prior) {
+          const leadSlotMins = Number((read && read.leadSlotMins) || (prior && prior.leadSlotMins) || 0);
+          const coachMins = prefs.meetingLengthMins || 30;
+          const problem = linkBookedDraftProblem(draft, { leadSlotMins, coachMins });
+          if (problem) {
+            const url = (read && read.url) || (prior && prior.url) || threadBookingLink || '';
+            const label = leadBookingLink.providerLabel(leadBookingLink.parseBookingLink(url).provider);
+            const who = profile.name || 'the lead';
+            const lengthHint = leadSlotMins && leadSlotMins < coachMins ? `, and that Guy has put ${coachMins} minutes on it but is happy to keep it to ${leadSlotMins}` : '';
+            console.warn(`WINGGUY-LINK-ACK-GUARD refused a post-booking draft for ${coach.clientId} → ${who} (${label} link): ${problem}`);
+            return {
+              ok: false,
+              error: `REJECTED - draft NOT set. The meeting was booked off ${who}'s ${label} link, and ${problem}. Redraft in Guy's voice, short: the time you saw open on their link, that the invite has been sent to ${currentLeadEmail || 'their email'} and they only need to accept it${lengthHint}. Never promise to book through their page.`,
+            };
+          }
         }
       }
       const wrongWay = wrongWayGreeting(draft, coach.clientName, profile.name);
@@ -1290,4 +1365,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, linkBookingPromise, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
