@@ -542,7 +542,7 @@ function linkBookedDraftProblem(text, { leadSlotMins = 0, coachMins = 0 } = {}) 
   if (diary) return `it says "${diary[0]}" - Guy's invite is a request the lead accepts, not an entry on their diary. Say the invite has been SENT to their email ("just accept and we're set")`;
   if (!LINK_MENTION_RE.test(s)) return 'it never mentions the link the lead sent. They handed it over to make this easy, so acknowledge it: name the time you saw open on their link ("Saw Friday 11am was open on your link, so ...")';
   if (!NAMES_A_TIME_RE.test(s)) return 'it never names the day and time that was open on their link';
-  if (!INVITE_SENT_RE.test(s)) return 'it never says the invite has been SENT to their email ("so I\'ve sent an invite for then to <email> - just accept and we\'re set")';
+  if (!INVITE_SENT_RE.test(s)) return 'it never says the invite has been SENT to their email ("so I\'ve sent an invite for then to make it easy for you - it\'s gone to <email>, just accept and we\'re set")';
   if (leadSlotMins && coachMins && leadSlotMins < coachMins) {
     const coachLen = new RegExp('\\b' + coachMins + '\\s*-?\\s*min', 'i');
     const leadLen = new RegExp('\\b' + leadSlotMins + '\\b');

@@ -186,7 +186,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
     createBookingEvent: async (coach, { startISO, durationMins }) => ({ ok: true, eventId: 'evt1', title: 'Guy / lead', start: startISO, durationMins: durationMins || 30 }),
     deleteOfferHolds: async () => ({ ok: true }),
   };
-  const GOOD = "Hi Candace - saw Friday 1:30pm was open on your link, so I've sent an invite for then to candace@example.com - just accept and we're set.";
+  const GOOD = "Hi Candace - saw Friday 1:30pm was open on your link, so I've sent an invite for then to make it easy for you - it's gone to candace@example.com, just accept and we're set.";
   console.log('\nlinkBookedDraftProblem (the shape of the post-booking message):');
   check('the shape Guy wants passes, with and without the length line', () => {
     assert.strictEqual(linkBookedDraftProblem(GOOD), null);
@@ -245,11 +245,11 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   console.log('\nreadable TidyCal link with 15-minute slots, booked this turn: the draft carries the length line:');
   {
     const tidyOk = async (url) => { assert.strictEqual(url, TIDY); return { ok: true, provider: 'tidycal', ownerName: 'Sam Trattles', eventName: 'Consultation', durationMins: 15, slots: [target.freeSlots[0].time] }; };
-    const SAM_GOOD = "Hi Sam - saw Friday 10am was open on your link, so I've sent an invite for then to sam@example.com - just accept and we're set. I've put 30 minutes on it, happy to keep it to 15 if that suits better.";
+    const SAM_GOOD = "Hi Sam - saw Friday 10am was open on your link, so I've sent an invite for then to make it easy for you - it's gone to sam@example.com, just accept and we're set. I've put 30 minutes on it, happy to keep it to 15 if that suits better.";
     const res = await runWingguyChatTurn({ ...base, profile: { name: 'Sam Trattles', location: 'Brisbane' }, conversation: samConvo, leadEmail: 'sam@example.com', deps: { client: fakeClient([
       { name: 'check_availability', input: {} },
       { name: 'book_meeting', input: { startISO: target.freeSlots[0].time } },
-      { name: 'propose_message', input: { message: "Hi Sam - saw Friday 10am was open on your link, so I've sent an invite for then to sam@example.com - just accept and we're set." } },
+      { name: 'propose_message', input: { message: "Hi Sam - saw Friday 10am was open on your link, so I've sent an invite for then to make it easy for you - it's gone to sam@example.com, just accept and we're set." } },
       { name: 'propose_message', input: { message: SAM_GOOD } },
     ]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: tidyOk, ...bookingDeps } });
     const [ca, bm, pm1, pm2] = toolResults(res);
