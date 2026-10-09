@@ -83,7 +83,10 @@ function toolResults(res) {
   return (res.messages || []).filter((m) => m.role === 'user' && Array.isArray(m.content) && m.content[0] && m.content[0].type === 'tool_result').map((m) => JSON.parse(m.content[0].content));
 }
 
-// Coach availability: three weekdays from 3 days out, 10:00 / 1:30 / 2:00 Brisbane.
+// Coach availability: twelve weekdays from 3 days out, 10:00 / 1:30 / 2:00 Brisbane. Every
+// check_availability call below passes includeFarWeeks so the fixture holds on any day of the week -
+// on a Saturday the 5th offerable day (target) sits in the week after next, which the normal
+// this-week-plus-next window drops (10 Oct 2026: four checks went red for no code reason).
 const tz = 'Australia/Brisbane';
 const days = [];
 for (let i = 3; days.length < 12; i++) {
@@ -107,7 +110,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
 (async () => {
   console.log('\ncheck_availability reads the thread link even when the model does not pass it:');
   {
-    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: {} }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
+    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
     const r = toolResults(res)[0];
     check('leadLink.read is true and the source is the thread', () => { assert.ok(r && r.leadLink && r.leadLink.read === true, JSON.stringify(r && r.leadLink)); assert.strictEqual(r.leadLink.source, 'thread'); assert.strictEqual(r.leadLink.url, LINK); });
     check('only the overlap survives: one day, one slot (the 1:30)', () => { assert.strictEqual(r.days.length, 1, JSON.stringify(r.days.map((d) => d.date))); assert.deepStrictEqual(r.days[0].freeSlots.map((s) => s.time), [target.freeSlots[1].time]); });
@@ -117,7 +120,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   {
     const seen = [];
     const readerSpy = async (url, opts) => { seen.push(url); return readerOk(url, opts); };
-    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: { leadBookingLink: 'https://calendly.com/candacengok/intr' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerSpy } });
+    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true, leadBookingLink: 'https://calendly.com/candacengok/intr' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerSpy } });
     const r = toolResults(res)[0];
     check('the reader is called with the thread\'s link, not the model\'s typo', () => assert.deepStrictEqual(seen, [LINK]));
     check('the result carries the thread link as its source', () => { assert.strictEqual(r.leadLink.source, 'thread'); assert.strictEqual(r.leadLink.url, LINK); });
@@ -132,7 +135,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   }
   console.log('\npropose_times refuses while a readable lead link exists:');
   {
-    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: {} }, { name: 'propose_times', input: { intro: 'Hi Candace -', slotTimes: [days[0].freeSlots[0].time, days[1].freeSlots[0].time], outro: 'Let me know.' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
+    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true } }, { name: 'propose_times', input: { intro: 'Hi Candace -', slotTimes: [days[0].freeSlots[0].time, days[1].freeSlots[0].time], outro: 'Let me know.' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
     const [, pt] = toolResults(res);
     check('propose_times came back STOPPED naming the link', () => { assert.ok(pt && pt.ok === false, JSON.stringify(pt)); assert.match(pt.error, /STOPPED/); assert.ok(pt.error.includes(LINK)); assert.match(pt.error, /book_meeting/); });
     check('no draft with a time list was produced', () => assert.ok(!res.draft || !/Would any of the following times/.test(res.draft), res.draft));
@@ -145,7 +148,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   }
   console.log('\nan unreadable link falls open to the normal list:');
   {
-    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: {} }, { name: 'propose_times', input: { intro: 'Hi Candace -', slotTimes: [days[0].freeSlots[0].time, days[1].freeSlots[1].time], outro: 'Let me know.' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerFail } });
+    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true } }, { name: 'propose_times', input: { intro: 'Hi Candace -', slotTimes: [days[0].freeSlots[0].time, days[1].freeSlots[1].time], outro: 'Let me know.' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerFail } });
     const [ca, pt] = toolResults(res);
     check('check_availability says the link could not be read and keeps Guy\'s slots', () => { assert.strictEqual(ca.leadLink.read, false); assert.match(ca.leadLink.reason, /503/); assert.ok(ca.days.length > 3); });
     check('propose_times still builds the list', () => { assert.ok(pt && pt.ok !== false, JSON.stringify(pt)); assert.strictEqual(pt.offered, 2); });
@@ -154,7 +157,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   {
     const tidyFail = async (url) => { assert.strictEqual(url, TIDY); return { ok: false, reason: 'TidyCal answered with a Cloudflare bot check instead of the page' }; };
     const res = await runWingguyChatTurn({ ...base, profile: { name: 'Sam Trattles', location: 'Brisbane' }, conversation: samConvo, leadEmail: 'sam@example.com', deps: { client: fakeClient([
-      { name: 'check_availability', input: {} },
+      { name: 'check_availability', input: { includeFarWeeks: true } },
       { name: 'propose_message', input: { message: "Hi Sam - Tuesday works for me. I'll grab a slot through your link now." } },
       { name: 'propose_times', input: { intro: 'Hi Sam - thanks, keen to chat.', slotTimes: [days[0].freeSlots[0].time, days[1].freeSlots[1].time, days[2].freeSlots[2].time], outro: 'Let me know.' } },
     ]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: tidyFail } });
@@ -182,7 +185,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   }
   console.log('\nthe promise guard holds whatever the read said, and stays out of the way with no link:');
   {
-    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: {} }, { name: 'propose_message', input: { message: "Hi Candace - I'll book via your Calendly for when you're back." } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
+    const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true } }, { name: 'propose_message', input: { message: "Hi Candace - I'll book via your Calendly for when you're back." } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
     const [, pm] = toolResults(res);
     check('readable Calendly link + "book via your Calendly" → REJECTED, told to book ONE via book_meeting', () => { assert.strictEqual(pm.ok, false, JSON.stringify(pm)); assert.match(pm.error, /Calendly link was read/); assert.match(pm.error, /book_meeting/); assert.ok(!res.draft, res.draft); });
     const res2 = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'propose_message', input: { message: "Hi Candace - I'll grab a slot through your link now." } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
@@ -194,7 +197,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   }
   console.log('\nno link in the thread: nothing changes:');
   {
-    const res = await runWingguyChatTurn({ ...base, conversation: [convo[0], { sender: 'Candace Ngok', text: 'Sure, what times suit?' }], deps: { client: fakeClient([{ name: 'check_availability', input: {} }, { name: 'propose_times', input: { intro: 'Hi -', slotTimes: [days[0].freeSlots[0].time], outro: 'x' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: async () => { throw new Error('must not be called'); } } });
+    const res = await runWingguyChatTurn({ ...base, conversation: [convo[0], { sender: 'Candace Ngok', text: 'Sure, what times suit?' }], deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true } }, { name: 'propose_times', input: { intro: 'Hi -', slotTimes: [days[0].freeSlots[0].time], outro: 'x' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: async () => { throw new Error('must not be called'); } } });
     const [ca, pt] = toolResults(res);
     check('no leadLink on the availability result, list produced', () => { assert.ok(!ca.leadLink); assert.strictEqual(pt.offered, 1); });
   }
@@ -236,7 +239,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   console.log('\nreadable Calendly link, booked this turn: the draft must acknowledge the link (Guy, 2026-10-09):');
   {
     const res = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([
-      { name: 'check_availability', input: {} },
+      { name: 'check_availability', input: { includeFarWeeks: true } },
       { name: 'book_meeting', input: { startISO: target.freeSlots[1].time } },
       { name: 'propose_message', input: { message: "Hi Candace - invite's on its way, see you Friday." } },
       { name: 'propose_message', input: { message: "Hi Candace - I've booked us in for Friday 1:30pm, you'll see it in your calendar." } },
@@ -267,7 +270,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
     const tidyOk = async (url) => { assert.strictEqual(url, TIDY); return { ok: true, provider: 'tidycal', ownerName: 'Sam Trattles', eventName: 'Consultation', durationMins: 15, slots: [target.freeSlots[0].time] }; };
     const SAM_GOOD = "Hi Sam - saw Friday 10am was open on your link, so I've sent an invite for then to make it easy for you - it's gone to sam@example.com, just accept and we're set. I've put 30 minutes on it, happy to keep it to 15 if that suits better.";
     const res = await runWingguyChatTurn({ ...base, profile: { name: 'Sam Trattles', location: 'Brisbane' }, conversation: samConvo, leadEmail: 'sam@example.com', deps: { client: fakeClient([
-      { name: 'check_availability', input: {} },
+      { name: 'check_availability', input: { includeFarWeeks: true } },
       { name: 'book_meeting', input: { startISO: target.freeSlots[0].time } },
       { name: 'propose_message', input: { message: "Hi Sam - saw Friday 10am was open on your link, so I've sent an invite for then to make it easy for you - it's gone to sam@example.com, just accept and we're set." } },
       { name: 'propose_message', input: { message: SAM_GOOD } },
@@ -283,7 +286,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   }
   console.log('\nthe read on one turn, Guy\'s yes and the booking on the next: the guard still knows the link was read:');
   {
-    const turn1 = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: {} }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
+    const turn1 = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
     const messages2 = [...turn1.messages, { role: 'user', content: 'yes, book it' }];
     const turn2 = await runWingguyChatTurn({ ...base, messages: messages2, deps: { client: fakeClient([
       { name: 'book_meeting', input: { startISO: target.freeSlots[1].time } },
@@ -300,11 +303,11 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
   console.log('\nthe acknowledgement guard stays out of the way:');
   {
     // Readable link, nothing booked this turn - an ordinary reply is fine.
-    const res1 = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: {} }, { name: 'propose_message', input: { message: 'Thanks for the link, Candace - will come back to you shortly.' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
+    const res1 = await runWingguyChatTurn({ ...base, deps: { client: fakeClient([{ name: 'check_availability', input: { includeFarWeeks: true } }, { name: 'propose_message', input: { message: 'Thanks for the link, Candace - will come back to you shortly.' } }]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerOk } });
     check('no booking this turn → not checked', () => { const [, pm] = toolResults(res1); assert.strictEqual(pm.ok, true, JSON.stringify(pm)); });
     // Unreadable link, Guy's own times went out, the lead picked one, booked - nothing to acknowledge.
     const res2 = await runWingguyChatTurn({ ...base, conversation: [...convo, { sender: 'Guy Wilson', text: 'Would any of the following times work for you?\n- Fri 1:30pm\n(all times are Brisbane time)' }, { sender: 'Candace Ngok', text: 'Friday 1:30 works' }], deps: { client: fakeClient([
-      { name: 'check_availability', input: {} },
+      { name: 'check_availability', input: { includeFarWeeks: true } },
       { name: 'book_meeting', input: { startISO: target.freeSlots[1].time } },
       { name: 'propose_message', input: { message: "Hi Candace - invite's on its way, see you Friday." } },
     ]), getAvailabilityForCoach, clashingSlots: noClashes, readBookingLink: readerFail, ...bookingDeps } });
