@@ -510,6 +510,19 @@ function detectLeadBookingLink(conversation = [], coachName = '') {
   return null;
 }
 
+/**
+ * A phrase in a draft that promises the lead we will book through THEIR link or page ("I'll grab a
+ * slot through your link now", "I'll book via your Calendly", "find a time on your TidyCal"). Guy
+ * never does that - his own invite is the one booking door (Sam Trattles, 2026-10-09: the panel
+ * drafted exactly that line over a TidyCal link it could not read, and left Guy booking by hand).
+ * Returns the offending phrase, or null.
+ */
+const LINK_PROMISE_RE = /\b(grab|grabbing|book|booking|pick|picking|take|taking|snag|lock(?:ing)?(?: in)?|schedule|scheduling|secure|choose|select|find|reserve|jump|jumping)\b[^.!?\n]{0,80}?\b(through|via|using|on|off|from|with)\s+(your|the|that)\s+(?:booking\s+|scheduling\s+|calendar\s+|tidycal\s+|calendly\s+)?(link|calendly|tidycal|page|calendar|site|scheduler)\b/i;
+function linkBookingPromise(text) {
+  const m = String(text || '').match(LINK_PROMISE_RE);
+  return m ? m[0].trim() : null;
+}
+
 /** Stage 1 by DATA: nobody but the coach has spoken, and the coach never asked for a call. */
 function isHandshakeOnly({ conversation, coachName, leadName, group }) {
   if (group) return false;
@@ -769,11 +782,17 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         const lead = await reader(linkUrl, { timezone: avail.yourTimezone || 'Australia/Brisbane', rangeStart: notBefore || undefined });
         leadLinkState = { url: linkUrl, ok: !!lead.ok, reason: lead.reason || null };
         const source = input.leadBookingLink ? 'model' : 'thread';
+        // "Calendly" / "TidyCal" / "booking" - from the reader when it says, else from the link itself.
+        const label = leadBookingLink.providerLabel(lead.provider || leadBookingLink.parseBookingLink(linkUrl).provider);
         if (lead.ok) {
           filtered = leadBookingLink.intersectAvailability(filtered, lead, { meetingMins: prefs.meetingLengthMins || 30 });
-          filtered.leadLink = { read: true, url: linkUrl, source, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, note: filtered.days.length ? 'The days below are ONLY the times BOTH Guy and the lead are free. Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting.' : 'No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, or booking through the link by hand).' };
+          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, note: filtered.days.length ? 'The days below are ONLY the times BOTH Guy and the lead are free. Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting.' : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
         } else {
-          filtered.leadLink = { read: false, url: linkUrl, source, reason: lead.reason, note: "The lead's booking link could not be read - the slots below are Guy's only. Say so, and either offer times from Guy's side or suggest he books through the link by hand." };
+          // The give-up path (Sam Trattles, 2026-10-09): an unreadable link means Guy's OWN times go
+          // out in the normal list. The old note ("or suggest he books through the link by hand")
+          // produced a draft promising "I'll grab a slot through your link now" and a booking Guy had
+          // to make by hand on a page Wingguy cannot see. propose_message now refuses that wording.
+          filtered.leadLink = { read: false, url: linkUrl, source, provider: label, reason: lead.reason, note: `The lead's ${label} link could not be read (${lead.reason}) - the slots below are Guy's only. Offer Guy's own times exactly as usual: call propose_times with slots from below (it writes the list and its timezone line). Tell Guy in chat, in one plain line, that the lead's ${label} link could not be read. NEVER write into the draft that Guy will book through their link or page - propose_message refuses that wording; Guy's own invite is the only booking door.` };
         }
       }
       return filtered;
@@ -1147,6 +1166,31 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     }
     if (name === 'propose_message') {
       const draft = unescapeModelNewlines(input && input.message).trim();
+      // NEVER PROMISE TO BOOK THROUGH THE LEAD'S LINK (Sam Trattles, 2026-10-09). He sent a TidyCal
+      // link the reader could not handle yet; the panel drafted "I'll grab a slot through your link
+      // now" and left Guy booking by hand on a page Wingguy cannot see. Guy never books through a
+      // lead's page - his own invite is the one booking door. So while the thread holds a lead's
+      // booking link, a draft that promises to use it is refused whatever the read said: readable
+      // means book ONE then the invite note; unreadable means Guy's own times via propose_times.
+      // Code, not prose - the prose version is what produced the draft.
+      if (threadBookingLink || leadLinkState) {
+        const promise = linkBookingPromise(draft);
+        if (promise) {
+          const url = (leadLinkState && leadLinkState.url) || threadBookingLink;
+          const label = leadBookingLink.providerLabel(leadBookingLink.parseBookingLink(url).provider);
+          const who = profile.name || 'the lead';
+          const next = !leadLinkState
+            ? 'has not been read yet - call check_availability first; it reads the page and says what it found'
+            : leadLinkState.ok
+              ? 'was read, so pick ONE of the times both are free, confirm it with Guy, book_meeting it, and only then draft the plain "invite is on its way" message'
+              : `could not be read (${leadLinkState.reason}) - offer Guy's own times instead: call propose_times with slots from check_availability, which writes the list and its timezone line`;
+          console.warn(`WINGGUY-LINK-PROMISE-GUARD refused "${promise}" for ${coach.clientId} → ${who} (${label} link)`);
+          return {
+            ok: false,
+            error: `REJECTED - draft NOT set. It says "${promise}" - a promise that Guy will book through ${who}'s ${label} link. Guy never books through a lead's page: his own invite (book_meeting) is the only booking door, and a draft like that leaves him booking by hand on a page Wingguy cannot see. The ${label} link ${next}. Tell Guy in chat, in one plain line, that ${who} sent a ${label} link and what happened when Wingguy read it. If Guy himself asked for this wording, tell him Wingguy will not draft a promise to use the lead's page, and why, rather than calling propose_message again with it.`,
+          };
+        }
+      }
       const wrongWay = wrongWayGreeting(draft, coach.clientName, profile.name);
       if (wrongWay) {
         console.warn(`WINGGUY-DIRECTION-GUARD refused "${wrongWay}" for ${coach.clientId} → ${profile.name || 'lead'}`);
@@ -1240,4 +1284,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, linkBookingPromise, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };

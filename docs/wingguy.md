@@ -5231,6 +5231,39 @@ propose_times REFUSES while a readable lead link exists (one slot via book_meeti
 falls open when the link is unreadable. Also fixed: the panel's notBefore regex had lost its
 backslashes on the way in (never matched). tests/wingguy-lead-booking-link-panel.test.js.
 
+## Lead booking links: TidyCal read too, and the give-up path offers Guy's own times (2026-10-09)
+
+Sam Trattles sent https://tidycal.com/thepowertoask/consultation. The reader said "tidycal.com is not a
+booking page Wingguy can read yet (Calendly only)", and the /wg panel - following the old "go along
+with their link" bullet - drafted "I'll grab a slot through your link now" and left Guy to book by hand
+on a page Wingguy could not see. Two changes:
+
+- **TidyCal reads like Calendly** (services/wingguyLeadBookingLink.js). Three plain calls, no login,
+  proven with curl from Guy's machine: `GET <page>?json` (the booking type: title, duration_minutes,
+  padding_minutes, numeric id), `GET <page>` as HTML (carries `booking-types/<short code>` - the slots
+  call wants that short code, not the id), then `GET /booking-types/<code>/available-bookings?start=&end=`
+  (UTC start times, one per open slot). Every call needs browser-style headers (Accept: application/json,
+  X-Requested-With: XMLHttpRequest, Referer = the page, a Mozilla user agent) or the slots call is a 405.
+  Same output shape as Calendly, so intersectAvailability and both callers needed no change beyond the
+  wording. `findBookingLink` now spots tidycal.com links too, so the panel's thread scanner catches them.
+  ⚠ TidyCal is behind Cloudflare and the recipe was only tested from a home IP - a bot-check page comes
+  back as `{ ok:false, reason }` like any other failure, and the live call FROM RENDER still needs
+  confirming on staging. Other hosts (cal.com, HubSpot) still parse as unreadable, naming the host.
+- **The give-up path.** An unreadable link now means Guy's OWN times go out, in the normal propose_times
+  list with its timezone line, and the note to Guy says plainly which kind of link (Calendly / TidyCal /
+  other) could not be read and why. The draft never promises the lead a booking through their page:
+  `propose_message` refuses any "grab a slot through your link" / "book via your Calendly" wording while
+  the thread holds a lead's link (`linkBookingPromise`, services/wingguyChat.js) - whether the link was
+  read (book ONE, then the invite note), unreadable (Guy's own times) or not read yet (check_availability
+  first). The old panel bullet that told the model to default the draft to "I'll grab a slot through your
+  link" is gone from config/wingguyTemplates.js. Booking THROUGH a lead's page stays deliberately unbuilt:
+  Guy's own invite is the one booking door.
+
+Tests: tests/wingguy-lead-booking-link.test.js (TidyCal recipe with recorded-shape responses via fetchImpl,
+headers, short code, UTC window, 405 / Cloudflare / missing-code failures) and
+tests/wingguy-lead-booking-link-panel.test.js (TidyCal link found in the thread; unreadable link -> the
+promise is refused and the draft carries Guy's times and no "through your link").
+
 ## The extension keeps its owner + the LinkedIn name must agree (0.3.29, 2026-09-30)
 
 **What went wrong.** Guy ran /wg on his own lead (Shiva Farabi) and the draft came back signed "Cheers,

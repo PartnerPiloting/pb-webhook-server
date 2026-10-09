@@ -1,10 +1,12 @@
 /**
- * Lead booking-link reader (2026-09-15, Candace Ngok: "here's a link to my calendar").
+ * Lead booking-link reader (2026-09-15, Candace Ngok: "here's a link to my calendar"; TidyCal added
+ * 2026-10-09, Sam Trattles: "https://tidycal.com/thepowertoask/consultation").
  *
- * WHAT IT DOES: when a lead hands over a Calendly link, read the free slots that link would show a
- * visitor, in the coach's clock, so check_availability can return ONLY the times both sides are
- * free. The public booking page pulls its slots from two plain unauthenticated calls (proven with
- * curl from Guy's laptop the day this shipped - no login, no bot wall):
+ * WHAT IT DOES: when a lead hands over a Calendly or TidyCal link, read the free slots that link
+ * would show a visitor, in the coach's clock, so check_availability can return ONLY the times both
+ * sides are free. Both providers answer plain unauthenticated calls - no login, no API key.
+ *
+ * CALENDLY (proven with curl from Guy's laptop the day this shipped - no bot wall):
  *
  *   GET /api/booking/event_types/lookup?event_type_slug=<event>&profile_slug=<profile>
  *       -> { uuid, duration, scheduling_link: { uid }, availability_timezone, name, profile.name }
@@ -12,24 +14,49 @@
  *       &scheduling_link_uuid=<uid>   (ranges over ~5 weeks are refused -> paged in 28-day chunks)
  *       -> { days: [{ date, status, spots: [{ status:'available', start_time }] }] }
  *
- * These calls are UNDOCUMENTED. When Calendly changes them the reader returns { ok:false, reason }
- * and the caller falls back to the coach-only slots with a plain "could not read the link" line -
- * exactly what happened before this existed. Never throw out of here.
+ * TIDYCAL (proven with curl from Guy's machine, 9 Oct 2026 - no cookies, no login). Every call needs
+ * browser-style headers (Accept: application/json, X-Requested-With: XMLHttpRequest, Referer = the
+ * booking page, a Mozilla user agent) or the slots call answers 405:
+ *
+ *   GET <booking page>?json
+ *       -> { bookingType: { id, title, duration_minutes, padding_minutes, url_slug, ... } }
+ *   GET <booking page>            (plain HTML) -> carries "booking-types/<short code>" somewhere in
+ *       the page. The slots call wants THIS short code, not the numeric id.
+ *   GET /booking-types/<code>/available-bookings?start=<ISO UTC>&end=<ISO UTC>
+ *       -> [ { starts_at, ends_at, available_bookings }, ... ]   (UTC, one per open start time)
+ *
+ * TidyCal sits behind Cloudflare. A bot-check page (HTML where JSON was expected) is reported as
+ * { ok:false, reason } like any other failure.
+ *
+ * All of these calls are UNDOCUMENTED. When a provider changes them the reader returns { ok:false,
+ * reason } and the caller falls back to the coach-only slots with a plain "could not read the link"
+ * line - exactly what happened before this existed. Never throw out of here.
  *
  * WHAT IT DOES NOT DO: book through the lead's page. The booking door stays wingguy_book_meeting
  * (coach's own invite, Zoom room, lead record) - the lead's link only tells us WHEN.
  *
- * Supported today: calendly.com/<profile>/<event>[?...]. Other providers (cal.com, HubSpot, Google
- * appointment pages) parse as { provider:null } and the caller says so.
+ * Supported today: calendly.com/<profile>/<event>[?...] and tidycal.com/<profile>/<booking-type>.
+ * Other providers (cal.com, HubSpot, Google appointment pages) parse as { provider:null } and the
+ * caller says so.
  */
 
-const CALENDLY_MAX_RANGE_DAYS = 28;   // the API refuses ~7 weeks; 35 worked, 49 did not
+const { DateTime } = require('luxon');
+
+const MAX_RANGE_DAYS = 28;   // Calendly refuses ~7 weeks (35 worked, 49 did not); TidyCal gets the same paging to be safe
+const CALENDLY_MAX_RANGE_DAYS = MAX_RANGE_DAYS;
 const FETCH_TIMEOUT_MS = 8000;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 
+const PROVIDER_LABELS = { calendly: 'Calendly', tidycal: 'TidyCal' };
+
+/** 'calendly' -> 'Calendly', 'tidycal' -> 'TidyCal', anything else -> 'booking' (as in "booking link"). */
+function providerLabel(provider) {
+  return PROVIDER_LABELS[String(provider || '').toLowerCase()] || 'booking';
+}
+
 /** Pull a booking link out of free text (a LinkedIn message, an email). First match wins. */
 function findBookingLink(text) {
-  const m = String(text || '').match(/https?:\/\/(?:www\.)?calendly\.com\/[^\s<>"')\]]+/i);
+  const m = String(text || '').match(/https?:\/\/(?:www\.)?(?:calendly\.com|tidycal\.com)\/[^\s<>"')\]]+/i);
   return m ? m[0].replace(/[.,;:!?]+$/, '') : null;
 }
 
@@ -45,19 +72,38 @@ function parseBookingLink(url) {
     if (parts.length < 2) return { provider: 'calendly', url, reason: 'profile page without an event - the lead must pick an event type' };
     return { provider: 'calendly', url, profileSlug: parts[0], eventSlug: parts[1] };
   }
-  return { provider: null, url, reason: `${host} is not a booking page Wingguy can read yet (Calendly only)` };
+  if (host === 'tidycal.com') {
+    const parts = u.pathname.split('/').filter(Boolean);
+    if (parts[0] === 'booking-types') return { provider: 'tidycal', url, reason: 'an internal TidyCal address, not a booking page - ask for the page link' };
+    if (parts.length < 2) return { provider: 'tidycal', url, reason: 'profile page without a booking type - the lead must pick one' };
+    // The page address without query or fragment: the ?json lookup, the Referer header and the HTML
+    // read all want exactly this.
+    const pageUrl = `https://tidycal.com/${parts.map(encodeURIComponent).join('/')}`;
+    return { provider: 'tidycal', url, profileSlug: parts[0], eventSlug: parts[1], pageUrl };
+  }
+  return { provider: null, url, reason: `${host} is not a booking page Wingguy can read yet (Calendly or TidyCal only)` };
 }
 
-async function getJson(url, fetchImpl) {
+/** One GET with a timeout. Returns { status, text, body } where body is the parsed JSON or null. */
+async function fetchPage(url, fetchImpl, headers) {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS) : null;
   try {
-    const res = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': UA }, signal: ctrl ? ctrl.signal : undefined });
+    const res = await fetchImpl(url, { headers, signal: ctrl ? ctrl.signal : undefined });
     const text = await res.text();
     let body = null;
     try { body = JSON.parse(text); } catch (_) { /* html or empty */ }
-    return { status: res.status, body };
+    return { status: res.status, text: String(text || ''), body };
   } finally { if (timer) clearTimeout(timer); }
+}
+
+async function getJson(url, fetchImpl) {
+  return fetchPage(url, fetchImpl, { Accept: 'application/json', 'User-Agent': UA });
+}
+
+/** Cloudflare's "Just a moment..." interstitial, or its block page, where a JSON answer was expected. */
+function isBotCheck(text) {
+  return /just a moment|cf-chl|cf_chl|challenge-platform|attention required/i.test(String(text || '').slice(0, 4000));
 }
 
 function addDays(dateStr, n) {
@@ -67,55 +113,135 @@ function addDays(dateStr, n) {
 }
 
 /**
- * Read the free slots a Calendly link offers between rangeStart and rangeEnd (YYYY-MM-DD, inclusive),
- * expressed in `timezone` (the coach's - so the ISO times line up with check_availability's).
+ * A provider timestamp as epoch ms, or NaN. Laravel-style "2026-10-14 23:00:00" (no zone marker)
+ * is UTC on TidyCal's side - Date.parse would read it as the server's local time, so pin it.
+ */
+function parseUtcStamp(s) {
+  const str = String(s || '').trim();
+  if (!str) return NaN;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(str)) return Date.parse(`${str.replace(' ', 'T')}Z`);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(str)) return Date.parse(`${str}Z`);
+  return Date.parse(str);
+}
+
+/**
+ * Read the free slots a Calendly or TidyCal link offers between rangeStart and rangeEnd (YYYY-MM-DD,
+ * inclusive), expressed in `timezone` (the coach's - so the ISO times line up with check_availability's).
  *
  * Returns { ok:true, provider, eventName, ownerName, durationMins, leadTimezone, slots:[ISO...] }
  *      or { ok:false, reason }.
  */
 async function readBookingLink(url, { timezone = 'Australia/Brisbane', rangeStart, rangeEnd, fetchImpl = global.fetch } = {}) {
   const parsed = parseBookingLink(url);
-  if (parsed.provider !== 'calendly' || !parsed.profileSlug) return { ok: false, reason: parsed.reason || 'unreadable link' };
+  if (!parsed.provider || !parsed.profileSlug) return { ok: false, reason: parsed.reason || 'unreadable link' };
   if (typeof fetchImpl !== 'function') return { ok: false, reason: 'no fetch available' };
+  const today = new Date().toISOString().slice(0, 10);
+  const start = rangeStart || today;
+  const end = rangeEnd || addDays(start, 48);
   try {
-    const lookupUrl = `https://calendly.com/api/booking/event_types/lookup?event_type_slug=${encodeURIComponent(parsed.eventSlug)}&profile_slug=${encodeURIComponent(parsed.profileSlug)}`;
-    const lk = await getJson(lookupUrl, fetchImpl);
-    if (lk.status !== 200 || !lk.body || !lk.body.uuid) return { ok: false, reason: `Calendly lookup failed (HTTP ${lk.status})` };
-    const uuid = lk.body.uuid;
-    const linkUid = lk.body.scheduling_link && lk.body.scheduling_link.uid;
-    const durationMins = Number(lk.body.duration) || 30;
-    const today = new Date().toISOString().slice(0, 10);
-    let start = rangeStart || today;
-    const end = rangeEnd || addDays(start, 48);
-    const slots = [];
-    while (start <= end) {
-      const chunkEnd = [addDays(start, CALENDLY_MAX_RANGE_DAYS - 1), end].sort()[0];
-      const rangeUrl = `https://calendly.com/api/booking/event_types/${encodeURIComponent(uuid)}/calendar/range?timezone=${encodeURIComponent(timezone)}&diagnostics=false&range_start=${start}&range_end=${chunkEnd}` + (linkUid ? `&scheduling_link_uuid=${encodeURIComponent(linkUid)}` : '');
-      const rg = await getJson(rangeUrl, fetchImpl);
-      if (rg.status !== 200 || !rg.body || !Array.isArray(rg.body.days)) return { ok: false, reason: `Calendly availability failed (HTTP ${rg.status})` };
-      for (const day of rg.body.days) {
-        for (const spot of day.spots || []) {
-          if (spot.status === 'available' && spot.start_time) {
-            const ms = Date.parse(spot.start_time);
-            if (Number.isFinite(ms)) slots.push(new Date(ms).toISOString());
-          }
-        }
-      }
-      start = addDays(chunkEnd, 1);
-    }
-    slots.sort();
-    return {
-      ok: true,
-      provider: 'calendly',
-      eventName: lk.body.name || '',
-      ownerName: (lk.body.profile && lk.body.profile.name) || '',
-      durationMins,
-      leadTimezone: lk.body.availability_timezone || (lk.body.profile && lk.body.profile.timezone) || null,
-      slots: [...new Set(slots)],
-    };
+    if (parsed.provider === 'tidycal') return await readTidyCal(parsed, { timezone, start, end, fetchImpl });
+    return await readCalendly(parsed, { timezone, start, end, fetchImpl });
   } catch (e) {
     return { ok: false, reason: `could not read the link (${e && e.name === 'AbortError' ? 'timed out' : (e && e.message) || 'error'})` };
   }
+}
+
+async function readCalendly(parsed, { timezone, start: rangeStart, end, fetchImpl }) {
+  const lookupUrl = `https://calendly.com/api/booking/event_types/lookup?event_type_slug=${encodeURIComponent(parsed.eventSlug)}&profile_slug=${encodeURIComponent(parsed.profileSlug)}`;
+  const lk = await getJson(lookupUrl, fetchImpl);
+  if (lk.status !== 200 || !lk.body || !lk.body.uuid) return { ok: false, reason: `Calendly lookup failed (HTTP ${lk.status})` };
+  const uuid = lk.body.uuid;
+  const linkUid = lk.body.scheduling_link && lk.body.scheduling_link.uid;
+  const durationMins = Number(lk.body.duration) || 30;
+  let start = rangeStart;
+  const slots = [];
+  while (start <= end) {
+    const chunkEnd = [addDays(start, MAX_RANGE_DAYS - 1), end].sort()[0];
+    const rangeUrl = `https://calendly.com/api/booking/event_types/${encodeURIComponent(uuid)}/calendar/range?timezone=${encodeURIComponent(timezone)}&diagnostics=false&range_start=${start}&range_end=${chunkEnd}` + (linkUid ? `&scheduling_link_uuid=${encodeURIComponent(linkUid)}` : '');
+    const rg = await getJson(rangeUrl, fetchImpl);
+    if (rg.status !== 200 || !rg.body || !Array.isArray(rg.body.days)) return { ok: false, reason: `Calendly availability failed (HTTP ${rg.status})` };
+    for (const day of rg.body.days) {
+      for (const spot of day.spots || []) {
+        if (spot.status === 'available' && spot.start_time) {
+          const ms = Date.parse(spot.start_time);
+          if (Number.isFinite(ms)) slots.push(new Date(ms).toISOString());
+        }
+      }
+    }
+    start = addDays(chunkEnd, 1);
+  }
+  slots.sort();
+  return {
+    ok: true,
+    provider: 'calendly',
+    eventName: lk.body.name || '',
+    ownerName: (lk.body.profile && lk.body.profile.name) || '',
+    durationMins,
+    leadTimezone: lk.body.availability_timezone || (lk.body.profile && lk.body.profile.timezone) || null,
+    slots: [...new Set(slots)],
+  };
+}
+
+/** The headers TidyCal wants on its JSON answers (without them the slots call is a 405). */
+function tidyJsonHeaders(pageUrl) {
+  return { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: pageUrl, 'User-Agent': UA };
+}
+
+/** The short booking-type code ("booking-types/1rlrxwx") from any text TidyCal served. */
+function tidyCodeFrom(text) {
+  const m = String(text || '').match(/booking-types\/([A-Za-z0-9]+)/);
+  return m ? m[1] : null;
+}
+
+async function readTidyCal(parsed, { timezone, start, end, fetchImpl }) {
+  const pageUrl = parsed.pageUrl;
+  // 1. The booking type behind the page: title, length, numeric id.
+  const lk = await fetchPage(`${pageUrl}?json`, fetchImpl, tidyJsonHeaders(pageUrl));
+  if (isBotCheck(lk.text) && !lk.body) return { ok: false, reason: 'TidyCal answered with a Cloudflare bot check instead of the page' };
+  if (lk.status !== 200 || !lk.body) return { ok: false, reason: `TidyCal page lookup failed (HTTP ${lk.status})` };
+  const bt = lk.body.bookingType || lk.body.booking_type || null;
+  if (!bt || typeof bt !== 'object') return { ok: false, reason: 'TidyCal page lookup returned no booking type' };
+  // 2. The short code the slots call keys on. It is not in the JSON by name, so take it from
+  //    wherever TidyCal wrote it - the JSON text when it happens to be there, else the HTML page.
+  let code = tidyCodeFrom(lk.text);
+  if (!code) {
+    const html = await fetchPage(pageUrl, fetchImpl, { Accept: 'text/html,application/xhtml+xml', Referer: pageUrl, 'User-Agent': UA });
+    if (isBotCheck(html.text)) return { ok: false, reason: 'TidyCal answered with a Cloudflare bot check instead of the page' };
+    if (html.status !== 200) return { ok: false, reason: `TidyCal page read failed (HTTP ${html.status})` };
+    code = tidyCodeFrom(html.text);
+  }
+  if (!code) return { ok: false, reason: 'TidyCal page carried no booking-type code' };
+  // 3. The open start times, in UTC, over the coach's window (whole days in the coach's clock).
+  const slots = [];
+  let chunkStart = start;
+  while (chunkStart <= end) {
+    const chunkEnd = [addDays(chunkStart, MAX_RANGE_DAYS - 1), end].sort()[0];
+    const startIso = DateTime.fromISO(chunkStart, { zone: timezone }).startOf('day').toUTC().toISO();
+    const endIso = DateTime.fromISO(chunkEnd, { zone: timezone }).endOf('day').toUTC().toISO();
+    const slotsUrl = `https://tidycal.com/booking-types/${encodeURIComponent(code)}/available-bookings?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
+    const av = await fetchPage(slotsUrl, fetchImpl, tidyJsonHeaders(pageUrl));
+    if (isBotCheck(av.text) && !av.body) return { ok: false, reason: 'TidyCal answered with a Cloudflare bot check instead of the slots' };
+    const list = Array.isArray(av.body) ? av.body : (av.body && Array.isArray(av.body.data) ? av.body.data : null);
+    if (av.status !== 200 || !list) return { ok: false, reason: `TidyCal availability failed (HTTP ${av.status})` };
+    for (const item of list) {
+      if (!item || !item.starts_at) continue;
+      if (item.available_bookings != null && Number(item.available_bookings) <= 0) continue;
+      const ms = parseUtcStamp(item.starts_at);
+      if (Number.isFinite(ms)) slots.push(new Date(ms).toISOString());
+    }
+    chunkStart = addDays(chunkEnd, 1);
+  }
+  slots.sort();
+  const owner = bt.user || bt.owner || lk.body.user || lk.body.owner || lk.body.profile || {};
+  return {
+    ok: true,
+    provider: 'tidycal',
+    eventName: bt.title || bt.name || parsed.eventSlug || '',
+    ownerName: owner.name || owner.display_name || owner.full_name || '',
+    durationMins: Number(bt.duration_minutes) || 30,
+    leadTimezone: bt.timezone || owner.timezone || lk.body.timezone || null,
+    slots: [...new Set(slots)],
+  };
 }
 
 /**
@@ -153,4 +279,4 @@ function intersectAvailability(filtered, lead, { meetingMins = 30 } = {}) {
   return { ...filtered, days, leadLinkSlotsBefore: (filtered.days || []).reduce((n, d) => n + (d.freeSlots || []).length, 0) };
 }
 
-module.exports = { findBookingLink, parseBookingLink, readBookingLink, leadFreeIntervals, intersectAvailability, CALENDLY_MAX_RANGE_DAYS };
+module.exports = { findBookingLink, parseBookingLink, readBookingLink, leadFreeIntervals, intersectAvailability, providerLabel, CALENDLY_MAX_RANGE_DAYS, MAX_RANGE_DAYS };
