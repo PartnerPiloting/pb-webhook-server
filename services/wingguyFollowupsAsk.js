@@ -45,10 +45,12 @@ const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'f
 
 // Same lane as the panel chat (latency-sensitive, interactive). Override per deploy with
 // WINGGUY_ASK_MODEL_ID; falls back to the drafting model id so one env flip moves both.
-const MODEL_ID = process.env.WINGGUY_ASK_MODEL_ID || process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
-// Thinking off, as in wingguyChat.js: with tools + a small answer budget, Sonnet 5's default
+const { noUpfrontThinking } = require('../config/wingguyThinking');
+const MODEL_ID = process.env.WINGGUY_ASK_MODEL_ID || process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
+// No upfront thinking, as in wingguyChat.js: with tools + a small answer budget, Sonnet 5's default
 // thinking produced empty turns there (2026-07-01). Answers here are short recall, not reasoning.
-const THINKING = { type: 'disabled' };
+// config/wingguyThinking.js picks the setting the model accepts (Sonnet 5.5 rejects `disabled`).
+const THINKING = noUpfrontThinking(MODEL_ID);
 const MAX_TOKENS = 2500;          // an answer, or an HTML draft body plus a line of commentary
 const MAX_TOOL_ITERATIONS = 6;    // availability -> draft -> push is three; headroom for a re-read
 const MAX_HISTORY_TURNS = 12;     // text turns kept from the screen's running conversation

@@ -33,12 +33,13 @@ const MAX_DRAFTS_PER_RUN = 40;    // cap on pre-written email drafts per run (th
                                   // next run — capped work is LOGGED, never silent.
 const THREAD_MSGS = 6;            // recent messages pulled per person for triage context
 const STALE_HOURS = 26;           // a brief older than this is flagged stale when served
-const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
-// Sonnet 5 THINKS BY DEFAULT — with a modest max_tokens the whole budget goes to thinking and the
+const { noUpfrontThinking } = require('../config/wingguyThinking');
+const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
+// Sonnet 5+ THINKS BY DEFAULT — with a modest max_tokens the whole budget goes to thinking and the
 // text comes back empty ("triage returned no JSON array", proven live 2026-07-23). Same seam as
-// wingguyChat's CHAT_THINKING: disable it — these are structured extract/draft calls, not deep
-// reasoning. Harmless on models without default thinking.
-const NO_THINKING = { type: 'disabled' };
+// wingguyChat's CHAT_THINKING: no upfront thinking — these are structured extract/draft calls, not
+// deep reasoning. config/wingguyThinking.js picks the setting the model accepts.
+const NO_THINKING = noUpfrontThinking(MODEL_ID);
 
 // ---------------------------------------------------------------------------
 // Store

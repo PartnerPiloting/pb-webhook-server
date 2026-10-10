@@ -39,10 +39,11 @@
 
 require('dotenv').config();
 const { Pool } = require('pg');
+const { noUpfrontThinking } = require('../config/wingguyThinking');
 
 const MS_DAY = 86400000;
-const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
-const NO_THINKING = { type: 'disabled' };
+const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
+const NO_THINKING = noUpfrontThinking(MODEL_ID);   // structured extract/draft calls, not deep reasoning
 const EMAIL_LIMIT = 12;
 const LI_LIMIT = 12;
 // Calendar look-ahead for the meeting-prep dossier pass: enough that a Monday-morning build has

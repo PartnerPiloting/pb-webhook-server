@@ -25,8 +25,9 @@ const QUIET_MAX_DAYS = 365;         // older = re-engagement campaign territory,
 const EMAIL_LOOKBACK_DAYS = 90;     // provider depth limit (volume finding 2026-07-22)
 const TRIAGE_BATCH = 20;            // people per triage LLM call
 const MAX_DRAFTS = 80;              // cap pre-written drafts; beyond = draft-on-request
-const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
-const NO_THINKING = { type: 'disabled' };
+const { noUpfrontThinking } = require('../config/wingguyThinking');
+const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
+const NO_THINKING = noUpfrontThinking(MODEL_ID);   // see config/wingguyThinking.js
 
 let pool;
 function getPool() {

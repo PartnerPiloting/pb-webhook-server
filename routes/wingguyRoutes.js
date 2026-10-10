@@ -7,8 +7,10 @@
 // (`authenticateUserWithTestMode` → req.client) and is additionally OWNER-GATED to Guy-Wilson,
 // because Slice 1 is just Guy. Multi-tenant is Slice 5.
 //
-// Model = Sonnet by default (WINGGUY_DRAFT_MODEL_ID, default claude-sonnet-4-6) — deliberately NOT
+// Model = Sonnet by default (WINGGUY_DRAFT_MODEL_ID, default claude-sonnet-5-5) — deliberately NOT
 // the repo-wide Opus default (CLAUDE_MODEL_ID=claude-opus-4-8). Cost lever per the cost/quality model.
+// Drafts run with no upfront thinking (DRAFT_THINKING, picked per model by config/wingguyThinking.js):
+// a 700-token note must not spend its budget thinking, and Sonnet 5.5 rejects `disabled` outright.
 // The stable voice/rules system block is prompt-CACHED (cache_control: ephemeral) so repeated drafts
 // only pay for the small per-profile delta.
 //
@@ -41,7 +43,9 @@ const setupFields = require('../config/wingguySetupFields');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
 // Sonnet-default; env-switchable without touching the repo-wide Opus default.
-const WINGGUY_DRAFT_MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-4-6';
+const { noUpfrontThinking } = require('../config/wingguyThinking');
+const WINGGUY_DRAFT_MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
+const DRAFT_THINKING = noUpfrontThinking(WINGGUY_DRAFT_MODEL_ID);
 const DRAFT_MAX_TOKENS = 700;             // a thanks-for-connecting note is short
 const PROFILE_CHAR_CAP = 6000;            // bound the input (About can be long); keeps cost + latency sane
 // Multi-tenant gate: Wingguy is switched on PER-CLIENT via the "Wingguy Enabled" field on their
@@ -666,6 +670,7 @@ module.exports = function mountWingguy(app) {
       const response = await client.messages.create({
         model: WINGGUY_DRAFT_MODEL_ID,
         max_tokens: DRAFT_MAX_TOKENS,
+        thinking: DRAFT_THINKING,
         system: await rulesSource.draftSystem(template.id, { tenantId }),
         messages: [
           {
@@ -741,6 +746,7 @@ module.exports = function mountWingguy(app) {
       const response = await client.messages.create({
         model: WINGGUY_DRAFT_MODEL_ID,
         max_tokens: DRAFT_MAX_TOKENS,
+        thinking: DRAFT_THINKING,
         system: await rulesSource.replySystem({ tenantId: req.client.clientId }),
         messages: [{ role: 'user', content: userContent }],
       });
@@ -1535,6 +1541,7 @@ module.exports = function mountWingguy(app) {
     const msg = await anthropic.messages.create({
       model: WINGGUY_DRAFT_MODEL_ID,
       max_tokens: maxTokens,
+      thinking: DRAFT_THINKING,
       system,
       messages: [{ role: 'user', content: userText }],
     });
