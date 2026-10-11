@@ -5,7 +5,7 @@ const { createLogger } = require('./utils/contextLogger');
 
 const { buildPrompt, slimLead } = require("./promptBuilder");
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
-const { geminiCandidateText } = require('./config/geminiClient');
+const { geminiCandidateText, geminiJsonText } = require('./config/geminiClient');
 
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10));
 
@@ -135,7 +135,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
     }
 
     try {
-        const cleanedJsonString = rawResponseText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+        const cleanedJsonString = geminiJsonText(rawResponseText);
         const parsedArrayOrObject = JSON.parse(cleanedJsonString);
 
         // Prepare result with token usage information

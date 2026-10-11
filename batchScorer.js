@@ -22,7 +22,7 @@ initLogger.info(`- LEAD_SCORING_LIMIT: ${process.env.LEAD_SCORING_LIMIT || 'not 
 initLogger.info(`- BATCH_PROCESSING_STREAM: ${process.env.BATCH_PROCESSING_STREAM || 'not set'}`);
 
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
-const { geminiCandidateText } = require('./config/geminiClient');
+const { geminiCandidateText, geminiJsonText } = require('./config/geminiClient');
 
 // --- Multi-Tenant Dependencies ---
 const clientService = require('./services/clientService');
@@ -588,7 +588,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
 
     let outputArray;
     try {
-        const cleanedJsonString = rawResponseText.replace(/^```(?:json)?\\s*/i, "").replace(/\s*```$/, "");
+        const cleanedJsonString = geminiJsonText(rawResponseText);
         outputArray = JSON.parse(cleanedJsonString);
         if (!Array.isArray(outputArray)) {
             log.warn("Gemini batch response was not an array, attempting to wrap it.");

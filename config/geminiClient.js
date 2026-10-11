@@ -49,6 +49,32 @@ function geminiCandidateText(candidate) {
         .join('');
 }
 
+// Model JSON output, made parseable: strips a ```json fence and escapes raw control characters
+// (newline, tab, ...) that appear INSIDE string literals. Gemini 3.5 Flash was seen emitting a raw
+// newline inside a string ("Bad control character in string literal", 11 Oct 2026 drift test),
+// which fails JSON.parse and costs the whole batch. Outside strings, whitespace is left alone.
+function geminiJsonText(raw) {
+    let s = String(raw == null ? '' : raw).trim();
+    s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    let out = '', inString = false, escaped = false;
+    for (const ch of s) {
+        if (inString) {
+            if (escaped) { escaped = false; out += ch; continue; }
+            if (ch === '\\') { escaped = true; out += ch; continue; }
+            if (ch === '"') { inString = false; out += ch; continue; }
+            const code = ch.charCodeAt(0);
+            if (code < 0x20) {
+                out += ch === '\n' ? '\\n' : ch === '\r' ? '\\r' : ch === '\t' ? '\\t' : '\\u' + code.toString(16).padStart(4, '0');
+                continue;
+            }
+            out += ch; continue;
+        }
+        if (ch === '"') inString = true;
+        out += ch;
+    }
+    return out;
+}
+
 function geminiResponseText(response) {
     const candidate = response && Array.isArray(response.candidates) ? response.candidates[0] : null;
     return geminiCandidateText(candidate);
@@ -87,5 +113,6 @@ module.exports = {
     geminiApiEndpoint: API_ENDPOINT || null,
     DEFAULT_GEMINI_MODEL_ID,
     geminiCandidateText,
-    geminiResponseText
+    geminiResponseText,
+    geminiJsonText
 };
