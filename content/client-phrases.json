@@ -137,6 +137,11 @@
     { "phrase": "help me set up my instructions", "not": "YOUR LINKED HELPER MACHINE", "expect": "YOUR INSTRUCTIONS" },
     { "phrase": "help me set up my Claude key", "not": "YOUR LINKED HELPER MACHINE" },
     { "phrase": "how do I open my Linked Helper machine", "not": "YOUR LINKED HELPER MACHINE", "expect": "OPEN YOUR LINKED HELPER MACHINE" },
-    { "phrase": "the icon on my desktop won't open", "expect": "OPEN YOUR LINKED HELPER MACHINE" }
+    { "phrase": "the icon on my desktop won't open", "expect": "OPEN YOUR LINKED HELPER MACHINE" },
+    { "phrase": "connection request note", "not": "WHO YOU'RE LOOKING FOR", "expect": "THANKS FOR CONNECTING" },
+    { "phrase": "what should the note on my connection request say?", "not": "WHO YOU'RE LOOKING FOR", "expect": "THANKS FOR CONNECTING" },
+    { "phrase": "can I change the invite wording?", "not": "YOUR FIRST CAMPAIGN", "expect": "THANKS FOR CONNECTING" },
+    { "phrase": "what do I write in my invite?", "not": "YOUR FIRST CAMPAIGN", "expect": "THANKS FOR CONNECTING" },
+    { "phrase": "how many invites go out a day?", "not": "THANKS FOR CONNECTING" }
   ]
 }

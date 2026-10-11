@@ -481,6 +481,23 @@ const MATCH_STOPWORDS = new Set(['what', 'about', 'your', 'you', 'the', 'and', '
 // no extension topic to land on - was served YOUR LINKED HELPER MACHINE with full confidence. A
 // wrong topic is worse than a miss: the miss is logged as a gap and the client is told to ask Guy,
 // which is the designed answer for a question the playbook does not cover yet.
+//
+// Subject aliases (2026-10-12): scoring is on TITLE words only, so a question about something a
+// topic covers under a different name is logged as a gap even though the answer is sitting there.
+// "connection request note" is the invite note - "Your first outreach message" inside THANKS FOR
+// CONNECTING - and no title says "connection", "request" or "note". Each alias is a set of
+// whole-word patterns that must ALL hit the question, in any order, mapped to a title prefix. A
+// whole-question title match still wins outright; an alias beats word-scoring, because the words
+// it keys on are the subject, not the vocabulary. Keep the patterns tight: an alias that fires on
+// the wrong question serves a confident wrong topic, which is the one failure the gap branch
+// exists to prevent. (Bare "connection" is deliberately NOT a key - "my connection sent me a
+// text" is not about the invite note.)
+const TOPIC_ALIASES = [
+  // the note that rides on the connection request: "connection request note", "invite wording",
+  // "what should the note on my connection request say?", "what do I write in my invite"
+  [[/\b(connection requests?|invites?|invitations?)\b/, /\b(notes?|wording|text|message|say|write|put)\b/], 'THANKS FOR CONNECTING'],
+];
+
 function findPlaybookTopic(topics, query) {
   const q = String(query || '').toLowerCase().trim();
   if (!q) return null;
@@ -494,6 +511,12 @@ function findPlaybookTopic(topics, query) {
     let score = title.includes(q) ? 100 : 0;
     for (const re of wordRes) if (re.test(title)) score += 1;
     if (score > bestScore) { bestScore = score; best = t; }
+  }
+  if (bestScore >= 100) return best;
+  for (const [res, prefix] of TOPIC_ALIASES) {
+    if (!res.every((re) => re.test(q))) continue;
+    const aliased = topics.find((t) => t.title.toUpperCase().startsWith(prefix));
+    if (aliased) return aliased;
   }
   return bestScore > 0 ? best : null;
 }
