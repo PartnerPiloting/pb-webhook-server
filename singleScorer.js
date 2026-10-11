@@ -5,6 +5,7 @@ const { createLogger } = require('./utils/contextLogger');
 
 const { buildPrompt, slimLead } = require("./promptBuilder");
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+const { geminiCandidateText } = require('./config/geminiClient');
 
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10));
 
@@ -92,9 +93,8 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
         modelFinishReason = candidate.finishReason;
         modelSafetyRatings = candidate.safetyRatings;
 
-        if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
-            rawResponseText = candidate.content.parts[0].text;
-        } else {
+        rawResponseText = geminiCandidateText(candidate);
+        if (!rawResponseText) {
             logger.warn('scoreLeadNow', `Candidate had no text content - Finish Reason: ${modelFinishReason || 'Unknown'}`);
         }
 

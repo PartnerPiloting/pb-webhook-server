@@ -4,7 +4,7 @@
  */
 const { DateTime } = require("luxon");
 const { buildSearchBlob } = require("./oesRuleScorer.js");
-const { vertexAIClient } = require("../config/geminiClient.js");
+const { vertexAIClient, geminiResponseText } = require("../config/geminiClient.js");
 
 /** Override on Render if your base uses a different table name (e.g. `Outbound Email`). */
 const SETTINGS_TABLE =
@@ -402,7 +402,7 @@ async function classifyOutreachAudienceWithAI(rawProfileStr, logger) {
         setTimeout(() => reject(new Error("Outreach classify timed out")), OUTREACH_CLASSIFY_TIMEOUT_MS)
       );
       const result = await Promise.race([callPromise, timeoutPromise]);
-      const text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const text = geminiResponseText(result?.response);
       if (!text || typeof text !== "string") {
         if (logger) logger.warn(`[OUTREACH-CLASSIFY] attempt ${attempt}: no content`);
         continue;
@@ -466,7 +466,7 @@ async function generatePersonalization(rawProfileStr, promptTemplate, logger, ru
         setTimeout(() => reject(new Error("Personal line generation timed out")), PERSONAL_LINE_TIMEOUT_MS)
       );
       const result = await Promise.race([callPromise, timeoutPromise]);
-      const text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const text = geminiResponseText(result?.response);
       if (!text || typeof text !== "string") {
         if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: AI returned no content`);
         continue;

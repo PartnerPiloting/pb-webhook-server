@@ -13,7 +13,7 @@
  *   nextSteps     : string[]
  */
 
-const { vertexAIClient, geminiModelId } = require('../config/geminiClient');
+const { vertexAIClient, geminiModelId, geminiResponseText } = require('../config/geminiClient');
 const { getMeetingById, getParticipantsForMeeting, saveMeetingSummary } = require('./recallWebhookDb');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
@@ -120,7 +120,7 @@ async function generateMeetingSummary(meetingId, opts = {}) {
       setTimeout(() => reject(new Error('summary generation timed out')), AI_TIMEOUT_MS));
     const result = await Promise.race([callPromise, timeoutPromise]);
 
-    const partText = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const partText = geminiResponseText(result?.response);
     if (!partText) return { ok: false, error: 'AI returned no content' };
 
     const parsed = extractJson(partText);

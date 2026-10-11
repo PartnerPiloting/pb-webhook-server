@@ -15,7 +15,7 @@ require('dotenv').config();
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
 // Use the existing Gemini client from config
-const { vertexAIClient } = require('../config/geminiClient');
+const { vertexAIClient, geminiCandidateText } = require('../config/geminiClient');
 
 // Use GEMINI_MODEL_ID (default gemini-2.5-flash for speed)
 const EMAIL_PARSER_MODEL = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
@@ -168,11 +168,10 @@ ${rawEmailText}`;
         }
 
         const candidate = result.response.candidates?.[0];
-        if (!candidate?.content?.parts?.[0]?.text) {
+        const responseText = geminiCandidateText(candidate);
+        if (!responseText) {
             return { messages: null, error: 'AI returned no content' };
         }
-
-        const responseText = candidate.content.parts[0].text;
         
         // Parse the JSON response
         let parsedMessages;

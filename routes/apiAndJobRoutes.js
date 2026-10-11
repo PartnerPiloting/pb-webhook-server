@@ -1008,7 +1008,7 @@ router.get("/debug-gemini-info", (_req, res) => {
   const modelIdForScoring =
     geminiConfig?.geminiModel?.model ||
     process.env.GEMINI_MODEL_ID ||
-    "gemini-2.5-pro-preview-05-06 (default)";
+    `${geminiConfig?.DEFAULT_GEMINI_MODEL_ID} (default)`;
 
   res.json({
     message: "Gemini Debug Info",
@@ -1016,6 +1016,7 @@ router.get("/debug-gemini-info", (_req, res) => {
     batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID,
     project_id: process.env.GCP_PROJECT_ID,
     location: process.env.GCP_LOCATION,
+    api_endpoint: geminiConfig?.geminiApiEndpoint || `${process.env.GCP_LOCATION}-aiplatform.googleapis.com`,
     global_client_available: !!vertexAIClient,
     default_model_instance_available:
       !!(geminiConfig && geminiConfig.geminiModel),
@@ -4480,7 +4481,7 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     logger.info(`apiAndJobRoutes.js: Debug - geminiConfig: ${JSON.stringify(geminiConfig ? Object.keys(geminiConfig) : 'null')}`);
 
     // Use the same model that works for scoring instead of a separate editing model
-    const editingModelId = geminiModelId || "gemini-2.5-pro-preview-05-06";
+    const editingModelId = geminiModelId || geminiConfig.geminiModelId;
     logger.info(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing (same as scoring)`);
     
     // Validate model ID
@@ -4540,9 +4541,8 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     const finishReason = candidate.finishReason;
     let responseText = "";
     
-    if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
-      responseText = candidate.content.parts[0].text.trim();
-    } else {
+    responseText = geminiConfig.geminiCandidateText(candidate).trim();
+    if (!responseText) {
       logger.warn(`apiAndJobRoutes.js: Candidate had no text content. Finish Reason: ${finishReason || 'Unknown'}.`);
       throw new Error(`Gemini API call returned no text content. Finish Reason: ${finishReason || 'Unknown'}`);
     }
@@ -4939,7 +4939,7 @@ USER REQUEST: ${userRequest}`;
 
       const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
       const model = vertexAIClient.getGenerativeModel({
-        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        model: geminiModelId || geminiConfig.geminiModelId,
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
           { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -4960,7 +4960,7 @@ USER REQUEST: ${userRequest}`;
         throw new Error("No response from AI");
       }
 
-      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      const responseText = geminiConfig.geminiCandidateText(candidate).trim();
       if (!responseText) {
         throw new Error("Empty response from AI");
       }
@@ -5015,7 +5015,7 @@ Answer their question directly and conversationally. If they ask about changing 
 
       const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
       const model = vertexAIClient.getGenerativeModel({
-        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        model: geminiModelId || geminiConfig.geminiModelId,
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
           { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -5043,7 +5043,7 @@ Answer their question directly and conversationally. If they ask about changing 
 
       logger.info(`apiAndJobRoutes.js: maxPoints candidate structure:`, JSON.stringify(candidate, null, 2));
 
-      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      const responseText = geminiConfig.geminiCandidateText(candidate).trim();
       if (!responseText) {
         logger.error(`apiAndJobRoutes.js: Empty maxPoints response text. Candidate:`, JSON.stringify(candidate, null, 2));
         logger.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
@@ -5105,7 +5105,7 @@ What level of requirement do you want this attribute to have?`;
 
       const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
       const model = vertexAIClient.getGenerativeModel({
-        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        model: geminiModelId || geminiConfig.geminiModelId,
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
           { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -5126,7 +5126,7 @@ What level of requirement do you want this attribute to have?`;
         throw new Error("No response from AI");
       }
 
-      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      const responseText = geminiConfig.geminiCandidateText(candidate).trim();
       if (!responseText) {
         throw new Error("Empty response from AI");
       }
@@ -5198,7 +5198,7 @@ USER REQUEST: ${userRequest}`;
 
       const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
       const model = vertexAIClient.getGenerativeModel({
-        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        model: geminiModelId || geminiConfig.geminiModelId,
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
           { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -5219,7 +5219,7 @@ USER REQUEST: ${userRequest}`;
         throw new Error("No response from AI");
       }
 
-      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      const responseText = geminiConfig.geminiCandidateText(candidate).trim();
       if (!responseText) {
         throw new Error("Empty response from AI");
       }
@@ -5278,7 +5278,7 @@ Answer their question directly and conversationally. If you have specific update
 
       const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
       const model = vertexAIClient.getGenerativeModel({
-        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        model: geminiModelId || geminiConfig.geminiModelId,
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
           { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -5306,7 +5306,7 @@ Answer their question directly and conversationally. If you have specific update
 
       logger.info(`apiAndJobRoutes.js: Instructions candidate structure:`, JSON.stringify(candidate, null, 2));
 
-      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      const responseText = geminiConfig.geminiCandidateText(candidate).trim();
       if (!responseText) {
         logger.error(`apiAndJobRoutes.js: Empty instructions response text. Candidate:`, JSON.stringify(candidate, null, 2));
         logger.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
@@ -5366,7 +5366,7 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
 
     const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
     const model = vertexAIClient.getGenerativeModel({
-      model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+      model: geminiModelId || geminiConfig.geminiModelId,
       safetySettings: [
         { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
         { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -5387,7 +5387,7 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
       throw new Error("No response from AI");
     }
 
-    const responseText = candidate.content?.parts?.[0]?.text?.trim();
+    const responseText = geminiConfig.geminiCandidateText(candidate).trim();
     if (!responseText) {
       throw new Error("Empty response from AI");
     }
@@ -9205,8 +9205,8 @@ CALENDAR DATA RANGE:
     let responseText;
     if (result.response && typeof result.response.text === 'function') {
       responseText = result.response.text();
-    } else if (result.response && result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
-      responseText = result.response.candidates[0].content.parts[0].text;
+    } else if (result.response && geminiConfig.geminiResponseText(result.response)) {
+      responseText = geminiConfig.geminiResponseText(result.response);
     } else if (typeof result.text === 'function') {
       responseText = result.text();
     } else {
@@ -9434,7 +9434,7 @@ RESPOND WITH ONLY THIS JSON FORMAT (no markdown):
 
     // Use the properly configured Gemini model (Vertex AI)
     const result = await geminiConfig.geminiModel.generateContent(prompt);
-    const responseText = result.response.candidates[0].content.parts[0].text;
+    const responseText = geminiConfig.geminiResponseText(result.response);
 
     if (!responseText) {
       logger.error('No response from Gemini for profile extraction');
@@ -9671,8 +9671,8 @@ Write an improved version incorporating this feedback.`;
     let text;
     if (result.response && typeof result.response.text === 'function') {
       text = result.response.text();
-    } else if (result.response && result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
-      text = result.response.candidates[0].content.parts[0].text;
+    } else if (result.response && geminiConfig.geminiResponseText(result.response)) {
+      text = geminiConfig.geminiResponseText(result.response);
     } else if (typeof result.text === 'function') {
       text = result.text();
     } else {
@@ -9799,8 +9799,8 @@ Respond with 2-4 sentences. Be concise. If no issues, say "These look clear and 
     let text;
     if (result.response && typeof result.response.text === 'function') {
       text = result.response.text();
-    } else if (result.response && result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
-      text = result.response.candidates[0].content.parts[0].text;
+    } else if (result.response && geminiConfig.geminiResponseText(result.response)) {
+      text = geminiConfig.geminiResponseText(result.response);
     } else {
       throw new Error('Unexpected AI response format');
     }
@@ -9893,8 +9893,8 @@ Only output the JSON, nothing else.`;
     let text;
     if (result.response && typeof result.response.text === 'function') {
       text = result.response.text();
-    } else if (result.response && result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
-      text = result.response.candidates[0].content.parts[0].text;
+    } else if (result.response && geminiConfig.geminiResponseText(result.response)) {
+      text = geminiConfig.geminiResponseText(result.response);
     } else if (typeof result.text === 'function') {
       text = result.text();
     } else {
@@ -10055,8 +10055,8 @@ Respond in JSON format only:
         let text;
         if (result.response && typeof result.response.text === 'function') {
           text = result.response.text();
-        } else if (result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-          text = result.response.candidates[0].content.parts[0].text;
+        } else if (geminiConfig.geminiResponseText(result.response)) {
+          text = geminiConfig.geminiResponseText(result.response);
         } else {
           throw new Error('Unexpected AI response format');
         }
@@ -11520,7 +11520,7 @@ Respond ONLY with valid JSON, no markdown.`;
       throw new Error("No response from AI");
     }
     
-    const responseText = candidate.content?.parts?.[0]?.text?.trim();
+    const responseText = geminiConfig.geminiCandidateText(candidate).trim();
     if (!responseText) {
       throw new Error("Empty response from AI");
     }

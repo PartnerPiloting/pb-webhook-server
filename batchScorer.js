@@ -22,6 +22,7 @@ initLogger.info(`- LEAD_SCORING_LIMIT: ${process.env.LEAD_SCORING_LIMIT || 'not 
 initLogger.info(`- BATCH_PROCESSING_STREAM: ${process.env.BATCH_PROCESSING_STREAM || 'not set'}`);
 
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+const { geminiCandidateText } = require('./config/geminiClient');
 
 // --- Multi-Tenant Dependencies ---
 const clientService = require('./services/clientService');
@@ -69,7 +70,6 @@ const { alertAdmin, isMissingCritical } = require('./utils/appHelpers.js');
 const { costGovernanceService } = require('./services/costGovernanceService.js'); 
 
 /* ---------- ENV CONFIGURATION for Batch Scorer Operations ----------- */
-const DEFAULT_MODEL_ID_FALLBACK = process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06";
 const CHUNK_SIZE = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "40", 10)); 
 // ***** INCREASED TIMEOUT FOR DEBUGGING LARGER BATCHES *****
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "900000", 10)); // 15 minutes
@@ -490,9 +490,8 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
 
             modelFinishReasonForBatch = candidate.finishReason;
 
-            if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
-                rawResponseText = candidate.content.parts[0].text;
-            } else { 
+            rawResponseText = geminiCandidateText(candidate);
+            if (!rawResponseText) { 
                 log.warn(`Candidate had no text content. Finish Reason: ${modelFinishReasonForBatch || 'Unknown'}`);
             }
 

@@ -16,7 +16,7 @@ const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 const { createLogger } = require('../utils/contextLogger');
 const { SMART_FUP_STATE_FIELDS } = require('../scripts/setup-smart-fup-airtable');
 const { getAllClients, getClientBase, getClientById, initializeClientsBase } = require('./clientService');
-const { vertexAIClient } = require('../config/geminiClient');
+const { vertexAIClient, geminiCandidateText, geminiResponseText } = require('../config/geminiClient');
 const { getSection } = require('../utils/notesSectionManager');
 const fetch = require('node-fetch');
 
@@ -409,11 +409,10 @@ Today's date is: ${new Date().toISOString().split('T')[0]}`;
     }
 
     const candidate = result.response.candidates?.[0];
-    if (!candidate?.content?.parts?.[0]?.text) {
+    let responseText = geminiCandidateText(candidate);
+    if (!responseText) {
       throw new Error('AI returned no content');
     }
-
-    let responseText = candidate.content.parts[0].text;
     if (typeof responseText !== 'string') responseText = String(responseText || '');
 
     // Extract JSON - same patterns as batchScorer and apiAndJobRoutes (handle markdown, truncation)
@@ -1244,7 +1243,7 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
     );
 
     const result = await Promise.race([callPromise, timeoutPromise]);
-    const responseText = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const responseText = geminiResponseText(result?.response);
     if (!responseText) throw new Error('AI returned no content');
 
     // Parse JSON — same approach as analyzeLeadNotes
