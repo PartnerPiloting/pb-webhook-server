@@ -185,8 +185,8 @@ one is five promises in an email that all work first go.
 
 ## The record doctrine
 
-- **Objectively-right fields: set immediately, no asking.** Timezone, phone, LinkedIn URL, launch
-  date, client email corrections, Calendar Read IDs=all at the calendar step, Thanks for
+- **Objectively-right fields: set immediately, no asking.** Timezone, phone and LinkedIn URL (through
+  their one door - below), launch date, client email corrections, Calendar Read IDs=all at the calendar step, Thanks for
   Connecting when the plan includes it - anything whose correct value is already known from
   emails, transcripts, or the checklist. Show Guy the batch as a short before→after diff in the
   same message that reports it done.
@@ -194,6 +194,12 @@ one is five promises in an email that all work first go.
   key, service level, Wingguy Enabled (extension), Followup Brief, calendar scope choices.
   Present as: recommendation + the argument against + one question.
 - **Verify every write** in the job output (blank→set), and re-read the field if anything looks off.
+- **Meeting link, phone, LinkedIn URL and timezone have ONE door** - never write Meeting Link /
+  Phone / LinkedIn URL / Timezone on the record directly. On a call, the client types them on
+  their setup page (the save writes the record too). Otherwise run
+  `node scripts/client-facts.js <Client-ID> meeting_link=<url> phone="..." linkedin=<url>
+  timezone=<city>` as a Render job, dry run first, then `--commit` - it writes the setup page and
+  the record together. A direct record edit is how Joshua got two different Meet links (12 Oct).
 
 ## Traps - every one of these actually happened
 

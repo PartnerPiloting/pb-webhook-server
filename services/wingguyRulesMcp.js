@@ -401,17 +401,32 @@ async function runRuleRevert({ rule_key, layer = 'client', campaign, to_version 
   return { text: `Reverted: "${r.ruleKey}" v${r.version} now carries the v${to_version} body (append-only — nothing was deleted).` };
 }
 
+// One home (13 Oct 2026, services/clientFactSync.js): a save to a fact the client record also holds
+// (phone, timezone, meeting link, LinkedIn) writes the record too, and the reply says so.
+async function recordFollows(tenant, scope, key, value) {
+  const sync = require('./clientFactSync');
+  const k = String(key).trim();
+  if (!sync.pairFor(scope, k)) return '';
+  const r = await sync.syncStoreToRecord({ tenantId: tenant, scope, key: k, value });
+  return r.synced
+    ? `\n(Also saved to the client record's ${r.field} - booking reads it from there.)`
+    : `\n(The client record's ${r.field} was NOT updated: ${r.reason}.)`;
+}
+
 async function runVariables({ set_key, set_value, description } = {}, tenant = TENANT) {
+  let recordNote = '';
   if (set_key !== undefined && set_key !== null && String(set_key).trim()) {
     await store.setVariable({ tenantId: tenant, varKey: set_key, value: set_value ?? null, description, actor: `mcp:${tenant}` });
+    recordNote = await recordFollows(tenant, 'variable', set_key, set_value);
   }
   const vars = await store.getVariables({ tenantId: tenant });
   if (!vars.length) return { text: 'No variables in the catalog yet (they arrive with the Notion import / de-personalisation pass).' };
   const lines = vars.map((v) => `- ${v.var_key} = ${v.value == null ? '(unset)' : JSON.stringify(v.value)}${v.required ? ' [required]' : ''}${v.description ? ` — ${v.description}` : ''}`);
-  return { text: `Wingguy variables for ${tenant}:\n${lines.join('\n')}` };
+  return { text: `Wingguy variables for ${tenant}:\n${lines.join('\n')}${recordNote}` };
 }
 
 async function runAssets({ set_key, set_url, set_kind, retire } = {}, tenant = TENANT) {
+  let recordNote = '';
   if (set_key !== undefined && set_key !== null && String(set_key).trim()) {
     await store.setAsset({
       tenantId: tenant,
@@ -421,11 +436,12 @@ async function runAssets({ set_key, set_url, set_kind, retire } = {}, tenant = T
       status: retire ? 'retired' : 'active',
       actor: `mcp:${tenant}`,
     });
+    recordNote = await recordFollows(tenant, 'asset', set_key, retire ? '' : set_url);
   }
   const assets = await store.getAssets({ tenantId: tenant });
   if (!assets.length) return { text: 'No assets in the library yet.' };
   const lines = assets.map((a) => `- ${a.asset_key}${a.kind ? ` [${a.kind}]` : ''} = ${a.url || '(no url)'}${a.status !== 'active' ? ` (${a.status})` : ''}`);
-  return { text: `Wingguy asset library for ${tenant} (rules reference these as {{asset:key}} — URLs go out EXACTLY as stored, never composed):\n${lines.join('\n')}` };
+  return { text: `Wingguy asset library for ${tenant} (rules reference these as {{asset:key}} — URLs go out EXACTLY as stored, never composed):\n${lines.join('\n')}${recordNote}` };
 }
 
 // Learn-from-my-edit: surface the pending generated-vs-sent pairs the extension logged on Send,

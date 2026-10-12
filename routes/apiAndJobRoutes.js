@@ -10907,7 +10907,18 @@ router.put("/api/update-client/:clientId", async (req, res) => {
     }
     
     logger.info(`Client ${clientId} updated successfully`);
-    
+
+    // One home (services/clientFactSync.js): phone / LinkedIn / timezone written here go to the
+    // setup page too, so drafting reads what booking reads. Never fails the update.
+    try {
+      const pushed = await require('../services/clientFactSync').syncRecordToStore({
+        tenantId: clientId, fields: updateFields, actor: 'admin:update-client',
+      });
+      if (pushed.length) logger.info(`Client ${clientId} setup page synced: ${pushed.join(', ')}`);
+    } catch (e) {
+      logger.error(`Client ${clientId} setup page sync failed: ${e.message}`);
+    }
+
     res.json({
       success: true,
       clientId,

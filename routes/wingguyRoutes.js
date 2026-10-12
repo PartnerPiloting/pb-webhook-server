@@ -39,6 +39,7 @@ const clientService = require('../services/clientService');
 const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../utils/linkedinCanonical');
 const wingguyStore = require('../services/wingguyRulesStore');
 const setupFields = require('../config/wingguySetupFields');
+const clientFactSync = require('../services/clientFactSync');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
@@ -1048,6 +1049,10 @@ module.exports = function mountWingguy(app) {
       ['network_name', String((client && client.clientName) || '').trim()],
       ['owner_first_name', String((client && client.clientFirstName) || '').trim()],
       ['timezone', String((client && client.timezone) || '').trim()],
+      // One home (13 Oct 2026, services/clientFactSync.js): the page is where the phone is typed, and
+      // a save there writes the record. A record that already has one shows it here rather than
+      // asking again.
+      ['owner_phone', String((client && client.coachPhone) || '').trim()],
       // Calendar invite titles use the full name. Derived rather than asked: the record has it,
       // and "what is your surname" is a silly question to put on a setup page.
       ['owner_last_name', lastNameFrom(client)],
@@ -1063,6 +1068,28 @@ module.exports = function mountWingguy(app) {
       }
     }
     if (filled) logger.info(`[Wingguy] filled ${filled} coach-managed variable(s) for ${tenantId}`);
+    return filled;
+  }
+
+  // Same pre-fill for the two links the record already holds (Meeting Link, LinkedIn URL), so the
+  // page shows what booking is using instead of an empty box inviting a second, different copy.
+  // Only ever fills a blank.
+  async function ensureRecordLinksOnPage(tenantId, client, existingAssets) {
+    const live = new Map((existingAssets || []).filter((r) => r.status !== 'retired').map((r) => [r.asset_key, r.url]));
+    const wanted = [
+      ['zoom_room', String((client && client.bookingZoom) || '').trim()],
+      ['owner_linkedin_profile', String((client && client.coachLinkedInUrl) || '').trim()],
+    ];
+    let filled = 0;
+    for (const [key, url] of wanted) {
+      if (!url || String(live.get(key) || '').trim() || !/^https?:\/\/\S+$/i.test(url)) continue;
+      try {
+        await wingguyStore.setAsset({ tenantId, assetKey: key, url, kind: 'url', status: 'active', actor: 'system:record-prefill' });
+        filled++;
+      } catch (e) {
+        logger.error(`[Wingguy] could not pre-fill "${key}" from the record for ${tenantId}: ${e.message}`);
+      }
+    }
     return filled;
   }
 
@@ -1121,7 +1148,10 @@ module.exports = function mountWingguy(app) {
       if (await ensureCoachManagedVariables(tenantId, req.client, variableRows)) {
         variableRows = await wingguyStore.getVariables({ tenantId });
       }
-      const assetRows = await wingguyStore.getAssets({ tenantId });
+      let assetRows = await wingguyStore.getAssets({ tenantId });
+      if (await ensureRecordLinksOnPage(tenantId, req.client, assetRows)) {
+        assetRows = await wingguyStore.getAssets({ tenantId });
+      }
 
       const varValues = new Map(variableRows.map((r) => [r.var_key, r.value]));
       const assetValues = new Map(
@@ -1203,7 +1233,12 @@ module.exports = function mountWingguy(app) {
         });
       }
       logger.info(`[Wingguy] setup ${scope} "${key}" updated by ${tenantId} (${clean ? 'set' : 'cleared'})`);
-      return res.json({ ok: true, scope, key, value: clean });
+      // One home: the record copy booking reads follows this save (services/clientFactSync.js).
+      const record = clientFactSync.pairFor(scope, key)
+        ? await clientFactSync.syncStoreToRecord({ tenantId, scope, key, value: clean })
+        : null;
+      if (record) logger.info(`[Wingguy] setup ${key} -> record ${record.field}: ${record.synced ? 'written' : record.reason}`);
+      return res.json({ ok: true, scope, key, value: clean, ...(record ? { record } : {}) });
     } catch (e) {
       logger.error(`[Wingguy] setup write failed for ${tenantId} (${scope}/${key}): ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });

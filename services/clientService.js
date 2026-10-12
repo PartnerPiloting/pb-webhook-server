@@ -1876,6 +1876,21 @@ async function updateClientRecorderFields(clientId, fields) {
 }
 
 /**
+ * Write a client's own contact facts (Meeting Link / Phone / LinkedIn URL / Timezone) - the record
+ * copy of what they typed on their setup page (services/clientFactSync.js, 13 Oct 2026).
+ */
+async function updateClientRecordFields(clientId, fields) {
+    const base = initializeClientsBase();
+    const client = await getClientById(clientId);
+    if (!client) throw new Error(`Client ${clientId} not found`);
+    await base('Clients').update([{ id: client.id, fields }], { typecast: true });
+    clientsCache = null;
+    clientsCacheTimestamp = null;
+    logger.info(`Record fields updated for client ${clientId} (setup-page sync): ${Object.keys(fields).join(', ')}`);
+    return true;
+}
+
+/**
  * Stamp a client's record when their stored key is rejected mid-flight ('revoked' | 'billing'),
  * so the portal can show "your key stopped working since X" instead of the client discovering it
  * draft-by-draft. Only the FIRST failure sets the timestamp ("failing since" stays honest);
@@ -1908,6 +1923,7 @@ async function noteClientKeyFailure(clientId, reason) {
 
 module.exports = {
     updateClientRecorderFields,
+    updateClientRecordFields,
     getAllClients,
     getAllActiveClients,
     getActiveClients,  // Add the new function

@@ -494,9 +494,19 @@ can't wander into your next one."
 
 **You do:**
 
-- [ ] Paste the link into the **Meeting Link** field on their row.
-- [ ] While you're on the row: fill their **LinkedIn URL** and **Phone** if empty - those go on
-      the invite too, so leads can reach them.
+- [ ] The client pastes the link into **"Your meeting room link"** on their own setup page
+      (portal > Setup and help), with you watching. That one save also writes the **Meeting
+      Link** field on their row - booking reads it from there.
+- [ ] While they're on the page: their **LinkedIn profile link** and **phone number** (same
+      page, Meetings section) - those go on the invite too, and save to the row the same way.
+
+**One home (since 13 Oct 2026):** meeting link, phone, LinkedIn and timezone are typed on the
+setup page, never straight into Meeting Link / Phone / LinkedIn URL / Timezone on the row. A
+hand edit on the row is the one change the page never hears about - that is how Joshua Tunstall
+ended up with two different Meet links on 12 Oct. If you have to set one without the client,
+use `node scripts/client-facts.js <Client-ID> meeting_link=<url> --commit` (Render one-off job),
+which writes both. `node scripts/client-facts.js` with no arguments lists every client whose two
+copies disagree.
 
 **Watch out - do not skip this step.** A blank Meeting Link means every invite Wingguy books goes
 out with NO way to join the call - and nobody notices until a lead is sitting there at meeting
