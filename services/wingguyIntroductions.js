@@ -6,7 +6,8 @@
 // wingguy_create_draft as ONE email to both people, so that is where it is caught:
 //
 //   1. DRAFT  - runCreateDraft calls logIntroductionDraft. A draft to exactly two people (To + Cc,
-//      the coach's own addresses aside) that reads like an introduction, where at least one of the
+//      the coach's own addresses aside, and not two colleagues on the same company domain) that
+//      reads like an introduction, where at least one of the
 //      two is one of the coach's clients, becomes a Referrals row: From Guy, Stage Promised, note
 //      "drafted, not sent yet". A draft that is never sent therefore never counts as made.
 //   2. SENT   - the overnight brief calls settleIntroductions. It looks for the sent email in the
@@ -27,6 +28,7 @@
 
 require('dotenv').config();
 const { Pool } = require('pg');
+const { isFreemailEmail } = require('./pendingLeadFilter');
 
 const CHECK_DAYS = 14;          // quiet this long after the send (or the last note) = worth a check
 const SEND_WAIT_DAYS = 14;      // a draft not sent after this long was dropped - stop looking
@@ -76,6 +78,11 @@ function detectIntroduction({ recipients, subject, text, selfEmails, clients }) 
   }
   // Exactly two: one person to another. A group email is not an introduction we can pair up.
   if (parties.length !== 2) return null;
+  // Two people at the same company are colleagues, not strangers being introduced: a client's wrap
+  // email with their boss on cc (Josh Tunstall + Matthew Armour, procurespot.com, 12 Oct 2026) was
+  // logged as an introduction three times. Freemail (gmail etc.) proves nothing, so it is exempt.
+  const domainOf = (e) => e.split('@')[1] || '';
+  if (domainOf(parties[0].email) === domainOf(parties[1].email) && !isFreemailEmail(parties[0].email)) return null;
   if (!INTRO_WORDS.test(`${subject || ''}\n${text || ''}`)) return null;
 
   const clientFor = (email) => (clients || []).find((c) => clientEmails(c).has(email)) || null;

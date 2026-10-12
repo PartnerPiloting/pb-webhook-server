@@ -67,6 +67,25 @@ check('no introduction wording -> not an introduction (a joint session note)', (
   }), null);
 });
 
+check('a client and a colleague at the same company -> not an introduction, even with intro wording', () => {
+  // Josh Tunstall's session-one wrap with his boss Matthew Armour on cc (12 Oct 2026).
+  const josh = client('Josh', 'Joshua Tunstall', 'josh@procurespot.example');
+  assert.strictEqual(intros.detectIntroduction({
+    recipients: [{ email: 'josh@procurespot.example' }, { email: 'Matthew@ProcureSpot.example', name: 'Matthew Armour' }],
+    subject: 'Session one wrap', text: 'Happy to introduce you to a couple of people next week.', selfEmails: self, clients: [...clients, josh],
+  }), null);
+});
+
+check('two people on the same freemail domain can still be introduced', () => {
+  const gmailDean = client('Dean', 'Dean Hobin', 'dean.hobin@gmail.com');
+  const r = intros.detectIntroduction({
+    recipients: [{ email: 'dean.hobin@gmail.com' }, { email: 'jane.smith@gmail.com', name: 'Jane Smith' }],
+    subject: 'Introduction: Dean, meet Jane', text: '', selfEmails: self, clients: [gmailDean],
+  });
+  assert.ok(r);
+  assert.strictEqual(r.other.name, 'Jane Smith');
+});
+
 check('three people -> not paired up', () => {
   assert.strictEqual(intros.detectIntroduction({
     recipients: [{ email: 'dean@hobin.example' }, { email: 'owen@pyrah.example' }, { email: 'jane@acme.example' }],
