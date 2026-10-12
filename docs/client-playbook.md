@@ -691,6 +691,19 @@ easiest. Your key is already installed, so I can get straight in and start build
 *(That box also shows a password. You don't need it and neither do I - but it's the only time it's
 ever displayed, so copy it somewhere if you'd like a spare way in.)*
 
+### 7. Switch off one alert
+
+Binary Lane emails you whenever the machine uses all of its memory. For a machine running Linked
+Helper all day, that's normal - it's just working hard, and nothing fails. So the email would turn
+up most days and mean nothing. I strongly suggest you switch it off now so it stops bugging you:
+
+- Go to https://home.binarylane.com.au/server/linkedinhelper/settings/alerts
+- Untick **Memory Consumption**
+- Click **Save**
+
+Nothing is lost by turning it off - I keep an eye on the machine myself, every few minutes. If you
+skip this step and one of those emails turns up, that's all it is, and you can switch it off then.
+
 **If anything stops you** - card knocked back, account held for a check, a screen that doesn't match
 what I've described - just text me on 0414 975 509. Don't try again with a different card. New
 accounts get held for a quick look now and then and it's easy for me to sort out; two half-made
