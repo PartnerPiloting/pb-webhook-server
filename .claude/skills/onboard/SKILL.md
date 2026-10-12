@@ -200,7 +200,11 @@ one is five promises in an email that all work first go.
 - **The connector URL is per-client**: `https://pb-webhook-server.onrender.com/mcp2/` + THEIR
   Portal Token. Never paste Guy's own URL to a client (Owen + Dean got Guy's, 2026-08-19).
 - **Followup Brief = Yes only AFTER their Anthropic API Key is on the row** (BYO clients) -
-  otherwise the overnight brief silently runs on Guy's key.
+  otherwise the brief just SKIPS them every night ("your Claude key isn't set up yet - message
+  Guy"). It never runs on Guy's key - a keyless BYO client is BLOCKED, not charged to Guy
+  (`config/anthropicClient.resolveClientAnthropic`, Guy's rule since 15 Aug 2026; the only
+  platform-key lanes are the owner, `Managed Claude Key = Yes`, or WINGGUY_PLATFORM_KEY_CLIENTS).
+  Never tell Guy a client is running on his key.
 - **Unipile calendar tenants: leave Calendar Email BLANK** - a set Calendar Email forces the
   Google service-account path (`providerForInfo` in services/wingguyCalendar.js).
 - **Wrong-account trap on every OAuth connect** - the permission screen belongs to whoever is
