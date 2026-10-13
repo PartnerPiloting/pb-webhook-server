@@ -1089,13 +1089,19 @@ export const saveAttributeChanges = async (attributeId, improvedRubric) => {
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to save changes: ${response.statusText}`);
+      // Show the server's reason (e.g. over the room available, or a check the shared scoring core
+      // failed) rather than a generic failure.
+      const data = await response.json().catch(() => ({}));
+      const reason = data?.details?.message
+        ? [data.details.message, data.details.suggestion].filter(Boolean).join(' ')
+        : (data?.error || `Failed to save changes: ${response.statusText}`);
+      throw new Error(reason);
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('Error in saveAttributeChanges:', error);
-    throw new Error('Failed to save attribute changes');
+    throw new Error(error.message || 'Failed to save attribute changes');
   }
 };
 

@@ -4618,15 +4618,15 @@ router.post("/api/attributes/:id/save", async (req, res) => {
           logger.info(`apiAndJobRoutes.js: Token budget exceeded for attribute ${attributeId}`);
           return res.status(400).json({
             success: false,
-            error: "Token budget exceeded",
+            error: "This would take your scoring instructions over the room available.",
             details: {
-              message: `Saving this attribute would exceed your token budget by ${budgetValidation.wouldExceedBy} tokens.`,
+              message: `This would take your scoring instructions over the room available by about ${Math.max(1, Math.round(budgetValidation.wouldExceedBy * 0.75))} words.`,
               currentUsage: budgetValidation.currentTotal,
               newTokens: budgetValidation.newTokens,
               projectedTotal: budgetValidation.projectedTotal,
               limit: budgetValidation.limit,
               maxAllowed: budgetValidation.maxAllowed,
-              suggestion: "Try reducing the text in Instructions, Examples, or Signals fields, or deactivate other attributes first."
+              suggestion: "Trim the text in Instructions, Examples or Detection Keywords, or switch another attribute off first."
             }
           });
         }

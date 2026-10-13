@@ -1123,7 +1123,9 @@ const SettingsWithParams = () => {
       {/* The purpose statement - profile scoring only, above everything else */}
       {isProfileView && <ScoringPurposeBox />}
 
-      {/* Token Usage Display - Only show on individual attribute screens (profile/posts) */}
+      {/* Room for scoring instructions. This is the SIZE of the briefing the AI reads on every
+          profile (the text of every active attribute) against a cap - not an allowance that scoring
+          spends. It used to say "5,258 of 6,000 tokens used", which clients read as a bill (Oct 2026). */}
       {(currentView === 'profile' || currentView === 'posts') && (
         <div className="flex justify-center">
           <div className="w-full max-w-md">
@@ -1131,21 +1133,23 @@ const SettingsWithParams = () => {
               <div className="text-center">
                 <div className="flex items-center justify-center space-x-2 mb-3">
                   <CogIcon className="h-5 w-5 text-gray-400" />
-                  <h3 className="text-sm font-medium text-gray-900">Token Usage</h3>
+                  <h3 className="text-sm font-medium text-gray-900">Room for scoring instructions</h3>
                 </div>
                 {tokenLoading ? (
-                  <p className="text-sm text-gray-500">Loading usage...</p>
+                  <p className="text-sm text-gray-500">Checking...</p>
                 ) : tokenUsage ? (
                   <div className="space-y-3">
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        {currentView === 'posts' ? 'Post Scoring' : 'Profile Scoring'} Token Usage
+                      <p className="text-lg font-semibold text-gray-900">
+                        Your attributes use {tokenUsage.percentUsed || 0}% of the room available
                       </p>
-                      <p className="text-lg font-semibold text-gray-900 mt-1">
-                        {tokenUsage.totalTokens?.toLocaleString() || '0'}
-                        <span className="text-sm font-normal text-gray-600 mx-1">of</span>
-                        {tokenUsage.limit?.toLocaleString() || '3,000'}
-                        <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {(() => {
+                          const wordsLeft = Math.max(0, Math.round(((tokenUsage.limit || 0) - (tokenUsage.totalTokens || 0)) * 0.75 / 10) * 10);
+                          return wordsLeft > 0
+                            ? `Room for about ${wordsLeft.toLocaleString()} more words.`
+                            : 'No room left - trim an attribute\'s text, or switch one off.';
+                        })()}
                       </p>
                     </div>
                     <div className="w-full">
@@ -1168,18 +1172,22 @@ const SettingsWithParams = () => {
                       </span>
                       {tokenUsage && tokenUsage.percentUsed >= 95 && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          At Limit (105% max)
+                          Full
                         </span>
                       )}
                       {tokenUsage && tokenUsage.percentUsed >= 90 && tokenUsage.percentUsed < 95 && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                          Near Limit
+                          Nearly full
                         </span>
                       )}
                     </div>
+                    <p className="text-xs text-gray-500">
+                      Every active attribute's text is read on every profile, so there's a limit on the total.
+                      Nothing is used up by scoring. Switching an attribute off, or trimming its text, frees up room.
+                    </p>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">Token usage unavailable</p>
+                  <p className="text-sm text-gray-500">Couldn't check the room available right now.</p>
                 )}
               </div>
             </div>
