@@ -14,6 +14,7 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const [isValidating, setIsValidating] = useState(true);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [noSession, setNoSession] = useState(false);
   
   useEffect(() => {
     const validateAccess = async () => {
@@ -29,7 +30,7 @@ function HomeContent() {
       
       // If no token or client ID, show error (don't redirect - stay on page with message)
       if (!token && !clientId) {
-        setValidationError('No active session. Please use your portal access link to log in.');
+        setNoSession(true);
         setIsValidating(false);
         return;
       }
@@ -90,6 +91,40 @@ function HomeContent() {
     );
   }
   
+  // No link at all - a client opening the bare address, or a stranger who found it. Say whose
+  // portal this is and where to go, rather than a dead end.
+  if (noSession) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-8">
+          <div className="text-center">
+            <h3 className="text-xl font-semibold text-gray-900">I Know A Guy - client portal</h3>
+            <p className="mt-4 text-gray-600">
+              Clients - open the portal link in your welcome email. You only need to do it once on each browser.
+            </p>
+            <p className="mt-4 text-gray-600">
+              Not a client yet? Have a look at what I Know A Guy does.
+            </p>
+            <div className="mt-6 space-y-3">
+              <a
+                href="https://knowaguy.com.au"
+                className="block w-full px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                Visit knowaguy.com.au
+              </a>
+              <a
+                href="mailto:guy@knowaguy.com.au"
+                className="block w-full px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+              >
+                Lost your link? Email Guy
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Show error if validation failed
   if (validationError) {
     return (
