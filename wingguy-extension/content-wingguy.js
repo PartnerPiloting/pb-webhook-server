@@ -2017,6 +2017,16 @@
   // into {Alt Emails}, so nothing is lost; a mistyped mobile is the lead's to correct). Only the
   // LEAD's messages are scanned — the coach's own signature must never become the lead's contact
   // info. Thread runs oldest→newest, so a later self-correction overrides an earlier mention.
+  function trimRunOnEmail(addr) {
+    const s = String(addr || '').trim();
+    const at = s.lastIndexOf('@');
+    if (at < 1) return s;
+    let domain = s.slice(at + 1);
+    const dotted = domain.match(/^(.+\.[A-Za-z]{2,})\.[A-Z][a-z]+$/);
+    if (dotted) domain = dotted[1];
+    else domain = domain.replace(/(\.[a-z]{2,})[A-Z][A-Za-z]*$/, '$1');
+    return `${s.slice(0, at)}@${domain}`;
+  }
   function extractProfferedContact(thread, leadFirst, leadLast) {
     let email = '';
     let phone = '';
@@ -2028,7 +2038,9 @@
       // Strip URLs first — profile links carry 9-digit slugs that would read as phone numbers.
       const text = String(m.text || '').replace(/(?:https?:\/\/|www\.)\S+/gi, ' ');
       const emails = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi);
-      if (emails && emails.length) email = emails[emails.length - 1];
+      // Flattened text glues the next sentence on ("gmail.comLooking", "gmail.com.Looking") - cut it,
+      // or the address bounces (Ayaan, 2026-10-12). Mirrors utils/runOnEmail.js on the server.
+      if (emails && emails.length) email = trimRunOnEmail(emails[emails.length - 1]);
       for (const c of (text.match(/[+(]?\d[\d ()-]{6,}\d/g) || [])) {
         const cand = c.trim();
         const digits = cand.replace(/\D/g, '');

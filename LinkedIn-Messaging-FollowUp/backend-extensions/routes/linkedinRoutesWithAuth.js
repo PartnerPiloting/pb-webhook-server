@@ -5,6 +5,7 @@ const { logNotesChange } = require('../../../utils/notesAuditLogger');
 const { stripCredentialSuffixes } = require('../../../utils/nameNormalizer');
 const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../../../utils/linkedinCanonical');
 const { isCoachOwnEmail } = require('../../../utils/coachOwnEmails');
+const { trimRunOnEmail } = require('../../../utils/runOnEmail');
 const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
@@ -2546,7 +2547,9 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     if (email !== undefined && isCoachOwnEmail(req.client, email)) {
       logger.warn(`LinkedIn Routes: quick-update refused ${req.client.clientId}'s own email for lead ${leadId}`);
     } else if (email !== undefined) {
-      const newPrimary = String(email || '').trim();
+      // The extension reads this from flattened LinkedIn text - cut any sentence glued onto the end
+      // ("gmail.comLooking"). Done here too so every installed extension version is covered.
+      const newPrimary = trimRunOnEmail(email);
       const oldPrimary = String(currentLead.fields['Email'] || '').trim();
       updates['Email'] = newPrimary;
       // Preserve the displaced primary into {Alt Emails} so a real address is never silently lost

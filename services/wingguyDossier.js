@@ -40,6 +40,7 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 const { noUpfrontThinking } = require('../config/wingguyThinking');
+const { trimRunOnEmail } = require('../utils/runOnEmail');
 
 const MS_DAY = 86400000;
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
@@ -480,14 +481,8 @@ function extractEmailsFromText(text, firstName) {
   for (const raw of raws) {
     const at = raw.lastIndexOf('@');
     let local = raw.slice(0, at);
-    // Same smash at the OTHER end: the next sentence runs onto the domain. "gmail.com.Looking
-    // forward" grabs ".Looking" as the TLD; "gmail.comLooking" fuses it in. Sentence case is the
-    // evidence again - a capitalised word after a dot, or a capital after lowercase, gets cut.
-    let domainRaw = raw.slice(at + 1);
-    const runOn = domainRaw.match(/^(.+\.[A-Za-z]{2,})\.[A-Z][a-z]+$/);
-    if (runOn) domainRaw = runOn[1];
-    else domainRaw = domainRaw.replace(/(\.[a-z]{2,})[A-Z][A-Za-z]*$/, '$1');
-    const domain = domainRaw.toLowerCase();
+    // Same smash at the OTHER end: the next sentence runs onto the domain ("gmail.com.Looking").
+    const domain = trimRunOnEmail(raw).slice(at + 1).toLowerCase();
     if (/[a-z.][A-Z]/.test(local) && fn.length >= 3) {
       const i = local.toLowerCase().lastIndexOf(fn);
       if (i > 0) local = local.slice(i);
