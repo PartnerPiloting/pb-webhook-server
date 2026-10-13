@@ -112,8 +112,9 @@ Now we make what I write sound like you - because from the next step on I'll be 
 messages to people you know, and a draft that doesn't sound like you is worse than no draft.
 
 Two things do that. First, **your own Claude key.** I run on your Claude account, not Guy's, so
-the writing is yours and so is the small bill for it. Guy sends you one email that walks you
-through setting it up.
+the writing is yours and so is the small bill for it. It takes about fifteen minutes - ask me
+**"how do I set up my Claude key?"** and I'll take you through it, or follow the steps on one page:
+https://knowaguy.com.au/your-claude-key
 
 And then the important one: **your instructions.** They're how my drafting becomes *your* voice -
 your spelling, your sign-off, the words you'd never use, what to pick out of someone's profile.

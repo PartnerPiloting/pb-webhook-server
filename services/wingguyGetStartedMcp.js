@@ -496,6 +496,11 @@ const TOPIC_ALIASES = [
   // the note that rides on the connection request: "connection request note", "invite wording",
   // "what should the note on my connection request say?", "what do I write in my invite"
   [[/\b(connection requests?|invites?|invitations?)\b/, /\b(notes?|wording|text|message|say|write|put)\b/], 'THANKS FOR CONNECTING'],
+  // the client's own Anthropic key (13 Oct 2026): "how do I set up my Anthropic account?", "what's
+  // the Anthropic console?", "where do I get an API key?" - none of those say "Claude key". Anthropic
+  // only ever comes up in this context; "api" must sit with "key"/"keys" so "API" alone stays a miss.
+  [[/\banthropic\b/], 'YOUR CLAUDE KEY'],
+  [[/\bapi\b/, /\bkeys?\b/], 'YOUR CLAUDE KEY'],
 ];
 
 function findPlaybookTopic(topics, query) {

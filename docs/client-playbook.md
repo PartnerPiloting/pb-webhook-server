@@ -912,6 +912,63 @@ quite how you'd have put it.
 
 ---
 
+## YOUR CLAUDE KEY - SETTING IT UP IN FIFTEEN MINUTES
+
+Two parts of Wingguy work for you away from your chat. Overnight, it goes through your follow-ups
+and gets your replies ready. And when you type **/wg** inside LinkedIn, the drafting happens on my
+servers. Both run on a Claude key that's yours, not mine - and until it's in, neither of them can
+run for you.
+
+**First, the bit that confuses everyone: this is not the Claude subscription you already pay for.**
+Same company, possibly the same email, but a separate account with separate billing. Your
+subscription powers your chat. This key powers the drafting inside LinkedIn and your overnight
+follow-ups. It's usually a few dollars a month.
+
+**And the reason you can relax about it:** you put a monthly spend limit on it, a number you choose,
+and you can switch it off any time. The worst case in the whole world is a bill the size of the
+limit you set.
+
+It takes about fifteen minutes, most of it Anthropic's website rather than you:
+
+1. **Go to console.anthropic.com** and sign in, or create the account if it's your first visit.
+   It's a different login from claude.ai, even if it's the same email - and the site now calls
+   itself **Claude Platform**, so don't worry when that's what you see.
+2. **Add a little credit.** Billing, in the left-hand menu, then add a payment method and a small
+   starting credit. US$5 is plenty. This is the part people trip on - your subscription doesn't
+   cover it. It's pay-as-you-go.
+3. **Create a workspace called Wingguy.** A workspace is just a walled-off compartment. It matters
+   because of the next step.
+4. **Set a monthly spend limit on that workspace** - say US$20. Because it sits on the workspace
+   rather than your whole account, it's a hard ceiling on what Wingguy can ever cost you. **Don't
+   skip this one.**
+5. **Create the key inside that workspace.** API keys, then Create key, and name it Wingguy. **Copy
+   it the moment it appears** - it's shown once and never again. If you miss it, no drama. Delete it
+   and make another.
+6. **Paste it into your Wingguy portal.** Settings, then **Your Claude Key** - or, if you can't see
+   Settings, open **My Wingguy** and you'll find the same box on your setup page. Paste, then **Save
+   key**. It checks the key with Anthropic before saving, so you'll know straight away whether it's
+   good.
+
+**The same steps on one page, to follow along with:**
+https://knowaguy.com.au/your-claude-key
+
+**Treat it like a password.** Don't email it to me or paste it anywhere else - it only ever needs to
+go into your own portal.
+
+**If it says the key didn't work,** the usual reason is step 2 - a real key on an account with no
+credit yet. Add the credit, then paste the same key again.
+
+**If your card is declined at step 2,** it's almost always your bank, not Anthropic - the charge is
+in US dollars, and Australian banks often block the first overseas online payment. Check your banking
+app for a blocked payment to approve, or try a different card, then try again. Choosing Card rather
+than Google Pay or Apple Pay lets you pick exactly which card it uses.
+
+**And if you ever change your mind,** you can revoke the key from the console in about ten seconds,
+and everything on my side simply stops. You're never locked in, and you can see exactly what it's
+spent any time you like.
+
+---
+
 ## YOUR INSTRUCTIONS - HOW WINGGUY LEARNS YOUR WAY
 
 Wingguy writes like you, not like an AI. That's not magic - it's instructions. Behind the scenes

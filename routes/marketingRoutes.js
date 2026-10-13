@@ -165,6 +165,17 @@ const PAGES = {
       'Standard for 12 months, the 45% annual discount plus 10% off with the promo code - '
       + 'where to click, and the one button not to press too early.',
   },
+  // The client's own Claude (Anthropic API) key (13 Oct 2026): the six console steps - credit,
+  // a "Wingguy" workspace, a spend limit on it, the key, then paste it into the portal's Your
+  // Claude Key box. Linked from the playbook topic YOUR CLAUDE KEY and sent by link in the setup
+  // email. No screenshots on purpose: the console moves its buttons and a stale picture misleads.
+  claudeKey: {
+    file: 'your-claude-key.html',
+    title: 'Setting up your Claude key - I Know A Guy',
+    description:
+      'The drafting inside LinkedIn and your overnight follow-ups run on a key that is yours, '
+      + 'under a spend limit you choose. Six steps, about fifteen minutes.',
+  },
   // A made-up introduction email in the real introduction-emails-html layout.
   // Linked as a "Picture:" from the playbook topic "The inner circle" - the
   // chat can only send text, so this is where a client sees what one looks like.
@@ -319,6 +330,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/open-your-machine', servePage(PAGES.openMachine));
   router.get('/your-campaign', servePage(PAGES.campaign));
   router.get('/your-licence', servePage(PAGES.licence));
+  router.get('/your-claude-key', servePage(PAGES.claudeKey));
   router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/follow-ups-example', servePage(PAGES.followupsExample));
   router.get('/thanks-for-connecting-example', servePage(PAGES.thanksExample));
