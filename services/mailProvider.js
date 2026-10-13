@@ -103,6 +103,11 @@ function attachmentNames(m) {
  * @returns {Promise<{ok:boolean, draftId?:string, error?:string, provider:string}>}
  */
 async function createDraft(coach, details = {}) {
+  // A draft to an address that cannot receive mail just bounces when the coach hits send - refuse it
+  // here, the one door every provider's draft goes through (same guard as the booking invite).
+  const { undeliverableAddresses, describeUndeliverable } = require('../utils/emailDeliverable');
+  const badRecipients = await undeliverableAddresses([].concat(details.to || [], details.cc || [], details.bcc || []));
+  if (badRecipients.length) return { ok: false, error: describeUndeliverable(badRecipients), provider: activeMailProvider(coach) };
   if (activeMailProvider(coach) === 'unipile') return createDraftViaUnipile(coach, details);
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach', provider: 'nylas' };

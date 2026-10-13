@@ -461,6 +461,11 @@ function meetingPlatformLabel(link) {
 async function createBookingEvent(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, title, note, meetingLink }) {
   if (!startISO) return { ok: false, error: 'startISO required' };
   if (!leadEmail) return { ok: false, error: 'leadEmail required (the invite needs a guest address)' };
+  // Last guard before an invite goes out: the address must be able to receive mail (Ayaan's invite
+  // went to "gmail.com.looking" and bounced, 2026-10-12).
+  const { undeliverableAddresses, describeUndeliverable } = require('../utils/emailDeliverable');
+  const badGuest = await undeliverableAddresses([leadEmail]);
+  if (badGuest.length) return { ok: false, error: describeUndeliverable(badGuest) };
   const start = new Date(startISO);
   if (isNaN(start.getTime())) return { ok: false, error: 'invalid startISO' };
 
