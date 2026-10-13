@@ -9,6 +9,9 @@
  *     attribute is switched off (active=false) or repurposed.
  *   - A row's category (Positive / Negative) is fixed; the purpose row (PREAMBLE) is changed via
  *     `purpose`, never as a row. Step / Global Rule rows are ignored by the scorer and not editable.
+ *   - The purpose row holds ONLY the client's purpose statement (since 13 Oct 2026). The scoring
+ *     workflow is fixed in code (services/scoringWorkflow.js) and is refused here if someone tries
+ *     to paste it back in.
  *
  * Field TYPES differ between bases: newer bases have Active / Bonus Points as checkboxes and
  * Disqualifying as a single select ("checked"); older ones (e.g. Dean's) have Active as a select
@@ -16,12 +19,15 @@
  */
 
 const crypto = require('crypto');
+const { looksLikeWorkflow } = require('./scoringWorkflow');
 
 const TABLE = process.env.ATTR_TABLE_NAME || 'Scoring Attributes';
 const TEXT_MAX = 15000;
 const POINTS_MAX = 50;
 
 const truthy = (v) => v === true || (typeof v === 'string' && v.trim() !== '');
+
+const PURPOSE_HAS_WORKFLOW = 'The purpose should say who the client is looking for and why - not how to score. The scoring workflow (disqualifier check, formula, bands) is fixed and added automatically, so leave it out.';
 
 function normalize(rec) {
   const g = (f) => rec.get(f);
@@ -105,6 +111,7 @@ function checkProposal(rows, proposal = {}) {
     const pre = after.find(isPurpose);
     if (!pre) errors.push('This table has no purpose (PREAMBLE) row to update.');
     else if (proposal.purpose.length > TEXT_MAX) errors.push(`The purpose text is too long (${proposal.purpose.length} characters, limit ${TEXT_MAX}).`);
+    else if (looksLikeWorkflow(proposal.purpose)) errors.push(PURPOSE_HAS_WORKFLOW);
     else if (proposal.purpose.trim() !== pre.instructions.trim()) {
       changes.push({ row: pre, field: 'instructions', from: pre.instructions, to: proposal.purpose.trim() });
       pre.instructions = proposal.purpose.trim();
@@ -218,6 +225,24 @@ function buildWrites(changedRows, kinds) {
   }));
 }
 
+/**
+ * Check a purpose statement on its own (the portal box). Empty is allowed - the scorer then runs on
+ * the workflow and attributes alone. Returns an error string, or null when it is fine.
+ */
+function checkPurposeText(text) {
+  const t = String(text || '');
+  if (t.length > TEXT_MAX) return `The purpose text is too long (${t.length} characters, limit ${TEXT_MAX}).`;
+  if (looksLikeWorkflow(t)) return PURPOSE_HAS_WORKFLOW;
+  return null;
+}
+
+/** The purpose row's write payload with new text (empty string clears it). Null when there is no purpose row. */
+function purposeWrite(rows, kinds, text) {
+  const pre = rows.find(isPurpose);
+  if (!pre) return null;
+  return buildWrites([{ ...pre, instructions: String(text || '').trim() }], kinds)[0];
+}
+
 async function writeRows(base, writes) {
   for (let i = 0; i < writes.length; i += 10) {
     await base(TABLE).update(writes.slice(i, i + 10));
@@ -226,5 +251,6 @@ async function writeRows(base, writes) {
 
 module.exports = {
   TABLE, readTable, normalize, fieldKinds, fingerprint, checkProposal, describeSet, touchedRows,
-  buildWrites, writeRows, shortText, fmt, LABEL, isPurpose, isScoring,
+  buildWrites, writeRows, shortText, fmt, LABEL, isPurpose, isScoring, checkPurposeText, purposeWrite,
+  PURPOSE_HAS_WORKFLOW,
 };

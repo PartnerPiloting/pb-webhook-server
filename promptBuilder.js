@@ -13,6 +13,7 @@ const path = require("path");
 const { StructuredLogger } = require('./utils/structuredLogger');
 
 const { loadAttributes } = require("./attributeLoader");
+const { buildScoringPreamble, extractPurposeStatement } = require("./services/scoringWorkflow");
 
 /* ------------------------------------------------------------------
    extractExperience  –  normalises a profile’s work-history array
@@ -134,9 +135,16 @@ IMPORTANT RULES:
 8.  The "ai_excluded" should be "Yes" only if very specific, hard disqualifying conditions are met as per your understanding of the attributes (e.g., if a 'disqualifying: true' negative attribute gets its full penalty).
 `;
 
-    // Construct the system prompt, including the preamble if it exists
+    // What the scorer is told first: the client's own purpose statement (the PREAMBLE row, may be
+    // empty), then the fixed scoring workflow from services/scoringWorkflow.js. See that file for why
+    // the two are kept apart. extractPurposeStatement is transition safety: a base whose PREAMBLE row
+    // still holds the old purpose+workflow block (not yet migrated) gets the workflow once, not twice.
     const systemPrompt = `
-${preamble ? preamble + "\n\n================= SCORING CRITERIA AND ATTRIBUTE DEFINITIONS =================" : "You are an expert AI lead-scoring engine. Your task is to analyze LinkedIn profiles based on a detailed set of positive and negative attributes, and then provide a structured JSON output."}
+You are an expert AI lead-scoring engine. Your task is to analyze LinkedIn profiles based on a detailed set of positive and negative attributes, and then provide a structured JSON output.
+
+${buildScoringPreamble(extractPurposeStatement(preamble))}
+
+================= SCORING CRITERIA AND ATTRIBUTE DEFINITIONS =================
 
 ================= POSITIVE ATTRIBUTES (with max scores) =================
 ${JSON.stringify(positives, null, 2)}

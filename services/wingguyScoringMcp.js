@@ -24,7 +24,7 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
 // The method, handed to the model with the tools. Guy's settled view (5 Oct 2026, Dean's rebuild).
 const METHOD =
-  ' HOW A GOOD SET IS BUILT: the score now decides the ORDER the client follows up new connections, not who gets a connection request - so (1) no minimums: set min_to_qualify 0, because a lead under a minimum scores 0 overall and loses its place; keep disqualifying negatives for people the client would genuinely never message. (2) Weight by what matters most: the final score is points awarded / points possible, so the attribute that defines their ideal person needs the biggest share of the points. A client\'s own weighting (e.g. "30% health alignment") maps straight onto max_points. (3) Few broad attributes beat many narrow ones - a long list of the client\'s ideas becomes the SIGNALS inside 4-6 main attributes. Nice-to-haves become bonus rows (bonus=true counts 25% in the total possible). (4) Every positive row gets: instructions (what to look for, strongest signals first) ending in score bands headed "Score bands" that cover the WHOLE range with a plain description per band; examples (3-4 short made-up profiles with the score each should get); signals (words and phrases to scan for, local terms included). (5) The scorer sees ONLY the profile headline, About section (often cut short) and job history - never posts or activity - so judge things like curiosity from how people describe their work and career moves, and don\'t lean on post-based signals. (6) The purpose row says whose business this is and what a valuable conversation looks like, plus guiding principles. (7) Fixed slots: repurpose existing rows and switch unwanted ones off (active=false); you cannot add or delete rows.';
+  ' HOW A GOOD SET IS BUILT: the score now decides the ORDER the client follows up new connections, not who gets a connection request - so (1) no minimums: set min_to_qualify 0, because a lead under a minimum scores 0 overall and loses its place; keep disqualifying negatives for people the client would genuinely never message. (2) Weight by what matters most: the final score is points awarded / points possible, so the attribute that defines their ideal person needs the biggest share of the points. A client\'s own weighting (e.g. "30% health alignment") maps straight onto max_points. (3) Few broad attributes beat many narrow ones - a long list of the client\'s ideas becomes the SIGNALS inside 4-6 main attributes. Nice-to-haves become bonus rows (bonus=true counts 25% in the total possible). (4) Every positive row gets: instructions (what to look for, strongest signals first) ending in score bands headed "Score bands" that cover the WHOLE range with a plain description per band; examples (3-4 short made-up profiles with the score each should get); signals (words and phrases to scan for, local terms included). (5) The scorer sees ONLY the profile headline, About section (often cut short) and job history - never posts or activity - so judge things like curiosity from how people describe their work and career moves, and don\'t lean on post-based signals. (6) The purpose row is the client\'s own statement - whose business this is, who they want to find and why, what a valuable conversation looks like, plus any guiding principles. It must NOT contain scoring mechanics (disqualifier check, formula, score bands): the scoring workflow is fixed in code and added after the purpose automatically, and a purpose that includes it is refused. The client can also edit the purpose themselves at the top of Settings > Profile Scoring Attributes in their portal. (7) Fixed slots: repurpose existing rows and switch unwanted ones off (active=false); you cannot add or delete rows.';
 
 async function clientBase(tenant) {
   const clientService = require('./clientService');
@@ -63,7 +63,7 @@ async function runGet(args = {}, tenant = TENANT) {
     '',
     core.describeSet(rows),
     '',
-    `PURPOSE (what the AI is told first):\n${purpose ? (full ? purpose.instructions : core.shortText(purpose.instructions, 400)) : '(no purpose row)'}`,
+    `PURPOSE (the client\'s own statement - the AI reads this first, then the fixed scoring workflow, then the rows):\n${purpose ? (purpose.instructions.trim() ? (full ? purpose.instructions : core.shortText(purpose.instructions, 400)) : '(empty - the scorer runs on the workflow and attributes alone; worth filling in)') : '(no purpose row)'}`,
     '',
     'ROWS:',
     ...scoring.map((r) => rowBlock(r, full)),
@@ -256,11 +256,11 @@ const rowJson = {
   required: ['id'],
 };
 const setZod = {
-  purpose: z.string().optional().describe('The full new text of the purpose row (what the AI is told first). Omit to leave it unchanged.'),
+  purpose: z.string().optional().describe('The full new purpose statement: who the client is looking for and why, in their words. Statement only - no scoring steps, formula or bands (those are fixed and added by code). Omit to leave it unchanged.'),
   rows: z.array(rowZod).optional().describe('Only the rows that change, each with only the fields that change.'),
 };
 const setJson = {
-  purpose: { type: 'string', description: 'The full new text of the purpose row (what the AI is told first). Omit to leave it unchanged.' },
+  purpose: { type: 'string', description: 'The full new purpose statement: who the client is looking for and why, in their words. Statement only - no scoring steps, formula or bands (those are fixed and added by code). Omit to leave it unchanged.' },
   rows: { type: 'array', items: rowJson, description: 'Only the rows that change, each with only the fields that change.' },
 };
 

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
+import { getScoringPurpose, saveScoringPurpose, getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
 import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon, CreditCardIcon, ShieldCheckIcon, KeyIcon, ExclamationTriangleIcon, ClipboardDocumentIcon, CheckIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
 import { getBackendBase, getAuthenticatedHeaders } from '../services/api';
 import Link from 'next/link';
@@ -11,6 +11,84 @@ import RescorePanel from './RescorePanel';
 import ClaudeKeySection from './ClaudeKeySection';
 import RecorderKeySection from './RecorderKeySection';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
+
+// The purpose box: the client's own statement of who they are looking for and why. The scorer reads
+// it first, before any attribute. Only the statement is shown here - the scoring workflow is fixed in
+// code and never editable (services/scoringWorkflow.js).
+const ScoringPurposeBox = () => {
+  const [saved, setSaved] = useState('');        // what the server holds
+  const [draft, setDraft] = useState('');
+  const [state, setState] = useState('loading'); // loading | ready | saving | unavailable
+  const [error, setError] = useState(null);
+  const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getScoringPurpose()
+      .then((data) => { if (!alive) return; setSaved(data.purpose || ''); setDraft(data.purpose || ''); setState(data.hasRow ? 'ready' : 'unavailable'); })
+      .catch((err) => { if (!alive) return; setError(err.message); setState('unavailable'); });
+    return () => { alive = false; };
+  }, []);
+
+  const dirty = draft.trim() !== saved.trim();
+
+  const handleSave = async () => {
+    setState('saving');
+    setError(null);
+    setJustSaved(false);
+    try {
+      const data = await saveScoringPurpose(draft.trim());
+      setSaved(data.purpose || '');
+      setDraft(data.purpose || '');
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 3000);
+    } catch (err) {
+      setError(err.message || 'Failed to save. Please try again.');
+    } finally {
+      setState('ready');
+    }
+  };
+
+  if (state === 'unavailable' && !error) return null;
+
+  return (
+    <div className="flex justify-center">
+      <div className="w-full max-w-3xl">
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900">What's the overall purpose of your scoring?</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            The AI reads this first, before any attribute. Say who you're trying to find and why - the attributes below do the detail.
+          </p>
+          <textarea
+            className="mt-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-50"
+            rows={5}
+            value={draft}
+            placeholder="Describe who you're trying to find and why."
+            disabled={state === 'loading' || state === 'saving'}
+            onChange={(e) => { setDraft(e.target.value); setJustSaved(false); }}
+          />
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="text-sm min-h-[1.25rem]">
+              {error && <span className="text-red-600">{error}</span>}
+              {!error && justSaved && (
+                <span className="inline-flex items-center text-green-700"><CheckIcon className="h-4 w-4 mr-1" />Saved - new leads are scored with this from now on.</span>
+              )}
+              {!error && !justSaved && state === 'loading' && <span className="text-gray-500">Loading...</span>}
+            </div>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!dirty || state !== 'ready'}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {state === 'saving' ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Component that uses useSearchParams wrapped in Suspense
 const SettingsWithParams = () => {
@@ -1041,6 +1119,9 @@ const SettingsWithParams = () => {
           </div>
         </div>
       </div>
+
+      {/* The purpose statement - profile scoring only, above everything else */}
+      {isProfileView && <ScoringPurposeBox />}
 
       {/* Token Usage Display - Only show on individual attribute screens (profile/posts) */}
       {(currentView === 'profile' || currentView === 'posts') && (

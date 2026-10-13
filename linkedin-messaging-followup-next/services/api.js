@@ -913,6 +913,27 @@ export const getAttributes = async () => {
   }
 };
 
+// Scoring purpose - the client's own "who I'm looking for and why", read first by the scorer.
+const scoringPurposeUrl = () => `${process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com'}/api/scoring-purpose`;
+
+export const getScoringPurpose = async () => {
+  const response = await fetch(scoringPurposeUrl(), { method: 'GET', headers: getAuthenticatedHeaders() });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) throw new Error(data.error || `Failed to load the scoring purpose: ${response.statusText}`);
+  return data;
+};
+
+export const saveScoringPurpose = async (purpose) => {
+  const response = await fetch(scoringPurposeUrl(), {
+    method: 'POST',
+    headers: getAuthenticatedHeaders(),
+    body: JSON.stringify({ purpose }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) throw new Error(data.error || `Failed to save the scoring purpose: ${response.statusText}`);
+  return data;
+};
+
 // Post Scoring Attributes management functions
 export const getPostAttributes = async () => {
   try {

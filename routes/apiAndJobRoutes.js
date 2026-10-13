@@ -4695,6 +4695,74 @@ function extractPlainText(richTextValue) {
 }
 
 // List all attributes for the library view
+// ---------------------------------------------------------------------------------------------
+// Scoring purpose - the client's own statement of who they are looking for and why. Lives in the
+// PREAMBLE row of their Scoring Attributes table, which GET /api/attributes deliberately hides.
+// The scorer reads it first, then the fixed workflow in services/scoringWorkflow.js. Shown and
+// edited at the top of Settings > Profile Scoring Attributes (13 Oct 2026).
+// ---------------------------------------------------------------------------------------------
+async function scoringPurposeContext(req, res, operation) {
+  const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ clientId, operation });
+  if (!clientId) {
+    res.status(400).json({ success: false, error: "Client ID required in x-client-id header" });
+    return null;
+  }
+  const clientService = require('../services/clientService');
+  const client = await clientService.getClientById(clientId);
+  if (!client || !client.airtableBaseId) {
+    res.status(400).json({ success: false, error: `Invalid client ID: ${clientId}` });
+    return null;
+  }
+  return { clientId, logger, baseId: client.airtableBaseId, clientBase: clientService.getClientBase(client.airtableBaseId) };
+}
+
+router.get("/api/scoring-purpose", async (req, res) => {
+  try {
+    const ctx = await scoringPurposeContext(req, res, 'get_scoring_purpose');
+    if (!ctx) return;
+    const core = require('../services/scoringAttributes');
+    const { rows } = await core.readTable(ctx.clientBase);
+    const pre = rows.find(core.isPurpose);
+    res.json({ success: true, purpose: pre ? pre.instructions.trim() : '', hasRow: !!pre });
+  } catch (error) {
+    await logRouteError(error, req).catch(() => {});
+    res.status(500).json({ success: false, error: error.message || "Failed to load the scoring purpose" });
+  }
+});
+
+router.post("/api/scoring-purpose", async (req, res) => {
+  try {
+    const ctx = await scoringPurposeContext(req, res, 'save_scoring_purpose');
+    if (!ctx) return;
+    const core = require('../services/scoringAttributes');
+    const text = String((req.body && req.body.purpose) || '').trim();
+    const problem = core.checkPurposeText(text);
+    if (problem) return res.status(400).json({ success: false, error: problem });
+
+    const { rows, kinds } = await core.readTable(ctx.clientBase);
+    const pre = rows.find(core.isPurpose);
+    if (!pre) return res.status(400).json({ success: false, error: "This scoring table has no purpose row to update." });
+    if (pre.instructions.trim() === text) return res.json({ success: true, purpose: text, changed: false });
+
+    // Same rule as the Claude route: never overwrite without a backup of what was there.
+    const store = require('../services/scoringBackupStore');
+    try {
+      await store.saveBackup({ tenantId: ctx.clientId, baseId: ctx.baseId, reason: 'before portal purpose save', rows: [pre] });
+    } catch (e) {
+      ctx.logger.error('save_scoring_purpose', `backup failed: ${e.message}`);
+      return res.status(500).json({ success: false, error: "Not saved: the previous purpose could not be backed up first. Try again in a minute." });
+    }
+    await core.writeRows(ctx.clientBase, [core.purposeWrite(rows, kinds, text)]);
+    try { require('../attributeLoader').clearAttributeCache(); } catch (_) { /* clears itself within 10 min */ }
+    ctx.logger.info('save_scoring_purpose', `purpose saved (${text.length} chars)`);
+    res.json({ success: true, purpose: text, changed: true });
+  } catch (error) {
+    await logRouteError(error, req).catch(() => {});
+    res.status(500).json({ success: false, error: error.message || "Failed to save the scoring purpose" });
+  }
+});
+
 router.get("/api/attributes", async (req, res) => {
   try {
     // Extract client ID for multi-tenant support

@@ -15,6 +15,7 @@ const core = require('../services/scoringAttributes');
 const backupStore = require('../services/scoringBackupStore');
 const clientService = require('../services/clientService');
 const mcp = require('../services/wingguyScoringMcp');
+const workflow = require('../services/scoringWorkflow');
 
 let failures = 0;
 const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); } };
@@ -226,6 +227,53 @@ const fpFrom = (text) => (text.match(/fingerprint=([0-9a-f]{12})/) || [])[1];
         assert.ok(!/STEP-A/.test(g.text));
         assert.ok(/detail="full"/.test(g.text));
       });
+    });
+  }
+
+  console.log('purpose statement vs fixed workflow (13 Oct 2026):');
+  await acheck('the scorer gets purpose first, then the fixed workflow; empty purpose = workflow alone', () => {
+    const both = workflow.buildScoringPreamble('Find council directors.');
+    assert.ok(both.startsWith('Find council directors.\n\nScoring workflow'), both.slice(0, 80));
+    assert.ok(/Disqualifying check/.test(both));
+    assert.strictEqual(workflow.buildScoringPreamble(''), workflow.SCORING_WORKFLOW);
+    assert.strictEqual(workflow.buildScoringPreamble(undefined), workflow.SCORING_WORKFLOW);
+  });
+  await acheck('a purpose that smuggles the workflow in is refused (propose and portal alike)', () => {
+    const c = core.checkProposal(rows, { purpose: 'Find directors.\n\n1. Disqualifying check - immediate stop. Final Score = 0 %' });
+    assert.ok(c.errors.some((e) => e === core.PURPOSE_HAS_WORKFLOW), c.errors.join('|'));
+    assert.strictEqual(core.checkPurposeText('Find directors.\n\nFinal % = awarded points / possible points x 100'), core.PURPOSE_HAS_WORKFLOW);
+    assert.strictEqual(core.checkPurposeText('Find council Directors of Infrastructure Services in North Queensland.'), null);
+    assert.strictEqual(core.checkPurposeText(''), null);
+  });
+  await acheck('purposeWrite clears or sets the PREAMBLE row only, keeping the base\'s field types', () => {
+    const recs = oldStyleRecords();
+    const w = core.purposeWrite(recs.map(core.normalize), core.fieldKinds(recs), '');
+    assert.strictEqual(w.id, 'recPRE');
+    assert.strictEqual(w.fields.Instructions, '');
+    assert.ok(!('Active' in w.fields), 'meta row: no scoring fields written');
+    assert.strictEqual(core.purposeWrite(recs.map(core.normalize), core.fieldKinds(recs), '  New purpose  ').fields.Instructions, 'New purpose');
+  });
+  await acheck('extractPurposeStatement: template block -> the sentence before the rule', () => {
+    const legacy = '**Purpose**\n\nEvaluate profiles to build a trusted referral network.\n\n---\n\n## Scoring workflow (overview)\n\n1. **Disqualifying check**\n\n## AI Updating Instructions\n\n1. tables';
+    assert.strictEqual(workflow.extractPurposeStatement(legacy), 'Evaluate profiles to build a trusted referral network.');
+  });
+  await acheck('extractPurposeStatement: Purpose / Method / Guiding principles -> drops Method only', () => {
+    const legacy = '**Purpose**\n\nEvaluate for Project Helix.\n\n**Method**\n\n1. If a disqualifier fires, Final Score = 0.\n2. Final % = awarded / possible x 100.\n\n**Guiding principles**\n\n- Health alignment is the anchor.\n- Substance over keywords.';
+    assert.strictEqual(workflow.extractPurposeStatement(legacy), 'Evaluate for Project Helix.\n\n**Guiding principles**\n\n- Health alignment is the anchor.\n- Substance over keywords.');
+  });
+  await acheck('extractPurposeStatement: plain paragraphs -> drops the Disqualifier note, keeps the rest', () => {
+    const legacy = 'Score profiles for Matthew.\n\nIdeal contact: a council director.\n\nPrinciples: order of follow-up, not who qualifies.\n\nDisqualifier: if a negative marked Disqualifying applies, final score = 0%.';
+    assert.strictEqual(workflow.extractPurposeStatement(legacy), 'Score profiles for Matthew.\n\nIdeal contact: a council director.\n\nPrinciples: order of follow-up, not who qualifies.');
+    assert.strictEqual(workflow.extractPurposeStatement('Already just a statement.'), 'Already just a statement.');
+    assert.strictEqual(workflow.extractPurposeStatement(''), '');
+  });
+  {
+    const recs = oldStyleRecords();
+    recs.find((r) => r.id === 'recPRE').fields.Instructions = '';
+    const base = stubBase(recs);
+    await withClient(base, async () => {
+      const g = await mcp.runGet({}, 'Dean-Hobin');
+      await acheck('get says plainly when the purpose is empty', () => assert.ok(/PURPOSE[^\n]*\n\(empty - the scorer runs on the workflow/.test(g.text), g.text));
     });
   }
 
