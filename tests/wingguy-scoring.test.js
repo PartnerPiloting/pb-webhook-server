@@ -277,6 +277,43 @@ const fpFrom = (text) => (text.match(/fingerprint=([0-9a-f]{12})/) || [])[1];
     });
   }
 
+  console.log('portal form -> shared core (negative rows, 13 Oct 2026):');
+  await acheck('a negative row saved from the portal maps to penalty / disqualifying only', () => {
+    const n4 = rows.find((r) => r.id === 'N4');
+    const p = core.portalProposal(n4, { heading: 'Anti-Entrepreneurial', disqualifying: false, penalty: 15, maxPoints: 15, minToQualify: 3, bonusPoints: true, active: 'true', instructions: 'x', signals: 's', examples: 'e' });
+    assert.deepStrictEqual(p, { id: 'N4', heading: 'Anti-Entrepreneurial', instructions: 'x', examples: 'e', signals: 's', active: true, disqualifying: false, penalty: 15 });
+    const c = core.checkProposal(rows, { rows: [p] });
+    assert.strictEqual(c.errors.length, 0, c.errors.join('|'));
+    const after = c.after.find((r) => r.id === 'N4');
+    assert.strictEqual(after.disqualifying, false);
+    assert.strictEqual(after.penalty, 15);
+  });
+  await acheck('switching a disqualifier off actually writes the select empty, and clears stray Max Points', () => {
+    const recs = oldStyleRecords();
+    recs.find((r) => r.id === 'recN4').fields['Max Points'] = 15; // Matthew's stray "15"
+    const t = recs.map(core.normalize);
+    const c = core.checkProposal(t, { rows: [core.portalProposal(t.find((r) => r.id === 'N4'), { disqualifying: false, penalty: 15 })] });
+    const [w] = core.buildWrites(core.touchedRows(c.changes), core.fieldKinds(recs));
+    assert.strictEqual(w.id, 'recN4');
+    assert.strictEqual(w.fields.Disqualifying, null);
+    assert.strictEqual(w.fields.Penalty, 15);
+    assert.strictEqual(w.fields['Max Points'], null);
+    assert.strictEqual(w.fields['Min To Qualify'], null);
+  });
+  await acheck('a positive row from the portal: emptied minimum means 0, bonus can go off', () => {
+    const a = rows.find((r) => r.id === 'A');
+    const p = core.portalProposal(a, { maxPoints: 20, minToQualify: null, bonusPoints: false, penalty: 9, disqualifying: true });
+    assert.deepStrictEqual(p, { id: 'A', max_points: 20, min_to_qualify: 0, bonus: false });
+    const c = core.checkProposal(rows, { rows: [p] });
+    assert.strictEqual(c.errors.length, 0, c.errors.join('|'));
+    assert.strictEqual(c.after.find((r) => r.id === 'A').minToQualify, 0);
+  });
+  await acheck('the toggle (active only) still works through the same path', () => {
+    const p = core.portalProposal(rows.find((r) => r.id === 'B'), { active: false });
+    assert.deepStrictEqual(p, { id: 'B', active: false });
+    assert.strictEqual(core.checkProposal(rows, { rows: [p] }).errors.length, 0);
+  });
+
   backupStore.__setTestPool(null);
   console.log(failures ? `\n${failures} FAILED` : '\nall passed');
   process.exit(failures ? 1 : 0);

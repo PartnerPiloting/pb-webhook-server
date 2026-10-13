@@ -4640,18 +4640,46 @@ router.post("/api/attributes/:id/save", async (req, res) => {
       }
     }
     
-    // Get client-specific base and update attribute
-    const clientBase = await getClientBase(clientId);
-    if (!clientBase) {
+    // Since 13 Oct 2026 the write goes through services/scoringAttributes.js - the same checks and
+    // writes as wingguy_scoring_commit. That is what lets the portal set a negative row's penalty or
+    // disqualifying (in whatever field type the base holds), switch Bonus or Disqualifying OFF, and
+    // back the row up before touching it. The old helper (updateAttributeWithClientBase) could do
+    // none of those: it omitted false checkboxes, which Airtable reads as "leave it alone".
+    const clientService = require('../services/clientService');
+    const client = await clientService.getClientById(clientId);
+    if (!client || !client.airtableBaseId) {
       return res.status(400).json({
         success: false,
         error: `Invalid client ID: ${clientId}`
       });
     }
+    const core = require('../services/scoringAttributes');
+    const clientBase = clientService.getClientBase(client.airtableBaseId);
+    const { rows, kinds } = await core.readTable(clientBase);
+    const row = rows.find((r) => r.recordId === attributeId);
+    if (!row) {
+      return res.status(404).json({ success: false, error: "That attribute was not found in your scoring table." });
+    }
+    if (!core.isScoring(row)) {
+      return res.status(400).json({ success: false, error: "That row is not a scoring attribute and can't be edited here." });
+    }
+    const check = core.checkProposal(rows, { rows: [core.portalProposal(row, updatedData)] });
+    if (check.errors.length) {
+      return res.status(400).json({ success: false, error: check.errors[0] });
+    }
+    if (check.changes.length) {
+      const store = require('../services/scoringBackupStore');
+      try {
+        await store.saveBackup({ tenantId: clientId, baseId: client.airtableBaseId, reason: `before portal save of ${row.id}`, rows: [row] });
+      } catch (e) {
+        logger.error(`apiAndJobRoutes.js: backup before saving ${row.id} failed: ${e.message}`);
+        return res.status(500).json({ success: false, error: "Not saved: the previous version could not be backed up first. Try again in a minute." });
+      }
+      await core.writeRows(clientBase, core.buildWrites(core.touchedRows(check.changes), kinds));
+      try { require('../attributeLoader').clearAttributeCache(); } catch (_) { /* clears itself within 10 min */ }
+    }
 
-    await updateAttributeWithClientBase(attributeId, updatedData, clientBase);
-    
-    logger.info(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId}`);
+    logger.info(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId} (${check.changes.length} field changes)`);
     res.json({
       success: true,
       message: "Attribute updated successfully"

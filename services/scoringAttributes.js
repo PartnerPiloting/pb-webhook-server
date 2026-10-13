@@ -219,7 +219,9 @@ function buildWrites(changedRows, kinds) {
         'Active': yesNo(kinds['Active'], r.active),
         ...(r.category.toLowerCase() === 'positive'
           ? { 'Max Points': r.maxPoints, 'Min To Qualify': r.minToQualify || null, 'Bonus Points': yesNo(kinds['Bonus Points'], r.bonus) }
-          : { 'Penalty': r.penalty, 'Disqualifying': yesNo(kinds['Disqualifying'], r.disqualifying) }),
+          // A negative row is Penalty + Disqualifying. Max Points / Min To Qualify mean nothing on it;
+          // the old portal form used to write them there (Matthew's "15", Oct 2026), so clear them.
+          : { 'Penalty': r.penalty, 'Disqualifying': yesNo(kinds['Disqualifying'], r.disqualifying), 'Max Points': null, 'Min To Qualify': null }),
       } : {}),
     },
   }));
@@ -243,6 +245,32 @@ function purposeWrite(rows, kinds, text) {
   return buildWrites([{ ...pre, instructions: String(text || '').trim() }], kinds)[0];
 }
 
+/**
+ * The portal's Edit Attribute form payload (camelCase, every field every time) -> one proposal row
+ * for checkProposal, so a portal save goes through exactly the checks and writes the Claude tools
+ * use. Fields that do not belong to the row's category are ignored rather than refused, because
+ * the form has always sent the full set.
+ */
+function portalProposal(row, data = {}) {
+  const p = { id: row.id };
+  const has = (k) => data[k] !== undefined && data[k] !== null;
+  if (has('heading')) p.heading = data.heading;
+  if (has('instructions')) p.instructions = data.instructions;
+  if (has('examples')) p.examples = data.examples;
+  if (has('signals')) p.signals = data.signals;
+  if (has('active')) p.active = data.active === true || String(data.active).toLowerCase() === 'true';
+  if (row.category.toLowerCase() === 'positive') {
+    if (has('maxPoints') && data.maxPoints !== '') p.max_points = Number(data.maxPoints);
+    // An emptied Min to Qualify box means "no minimum", not "leave it".
+    if (data.minToQualify !== undefined) p.min_to_qualify = data.minToQualify === null || data.minToQualify === '' ? 0 : Number(data.minToQualify);
+    if (data.bonusPoints !== undefined) p.bonus = data.bonusPoints === true || String(data.bonusPoints).toLowerCase() === 'true';
+  } else if (row.category.toLowerCase() === 'negative') {
+    if (data.disqualifying !== undefined) p.disqualifying = data.disqualifying === true || String(data.disqualifying).toLowerCase() === 'true';
+    if (has('penalty') && data.penalty !== '') p.penalty = Number(data.penalty);
+  }
+  return p;
+}
+
 async function writeRows(base, writes) {
   for (let i = 0; i < writes.length; i += 10) {
     await base(TABLE).update(writes.slice(i, i + 10));
@@ -251,6 +279,6 @@ async function writeRows(base, writes) {
 
 module.exports = {
   TABLE, readTable, normalize, fieldKinds, fingerprint, checkProposal, describeSet, touchedRows,
-  buildWrites, writeRows, shortText, fmt, LABEL, isPurpose, isScoring, checkPurposeText, purposeWrite,
+  buildWrites, writeRows, shortText, fmt, LABEL, isPurpose, isScoring, checkPurposeText, purposeWrite, portalProposal,
   PURPOSE_HAS_WORKFLOW,
 };

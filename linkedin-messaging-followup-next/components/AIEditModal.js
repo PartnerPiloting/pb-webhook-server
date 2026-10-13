@@ -15,6 +15,10 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   // Completely separate field definitions for profile vs post scoring
   const isPostAttribute = attribute?.isPostAttribute === true;
   
+  // A negative row either takes points off or sets the whole score to 0. It has no Max Points and no
+  // minimum - the old form showed both anyway, and the numbers typed there went nowhere (Oct 2026).
+  const isNegativeAttribute = !isPostAttribute && attribute?.category === 'Negative';
+
   // Profile Scoring Fields - Complex scoring system with bonuses, qualifications, etc.
   const profileFields = [
     {
@@ -24,13 +28,18 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       placeholder: 'Enter attribute name',
       description: 'The display name shown in the profile scoring interface'
     },
-    {
+    ...(isNegativeAttribute ? [{
+      key: 'negativeKind',
+      label: 'What happens when this applies',
+      type: 'negative-kind',
+      description: 'Take a set number of points off, or set the whole score to 0.'
+    }] : [{
       key: 'maxPoints',
       label: 'Max Points',
       type: 'number',
       placeholder: '15',
       description: 'Maximum points this attribute can award'
-    },
+    }]),
     // Only show Bonus Points field for positive profile attributes
     ...(attribute?.category === 'Positive' ? [{
       key: 'bonusPoints',
@@ -47,13 +56,13 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       description: 'Core rubric content sent to AI for scoring (most important field)',
       rows: 6
     },
-    {
+    ...(isNegativeAttribute ? [] : [{
       key: 'minToQualify',
       label: 'Min to Qualify',
       type: 'number',
       placeholder: '0',
       description: 'Minimum points required to qualify for scoring'
-    },
+    }]),
     {
       key: 'signals',
       label: 'Detection Keywords',
@@ -188,6 +197,8 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           heading: (attribute.heading && attribute.heading !== 'null') ? String(attribute.heading) : '',
           maxPoints: (attribute.maxPoints && attribute.maxPoints !== 'null') ? String(attribute.maxPoints) : '',
           bonusPoints: !!attribute.bonusPoints,
+          negativeKind: attribute.disqualifying ? 'disqualify' : 'penalty',
+          penalty: (attribute.penalty && attribute.penalty !== 'null') ? String(Math.abs(Number(attribute.penalty))) : '',
           instructions: (attribute.instructions && attribute.instructions !== 'null') ? String(attribute.instructions) : '',
           minToQualify: (attribute.minToQualify && attribute.minToQualify !== 'null') ? String(attribute.minToQualify) : '',
           signals: (attribute.signals && attribute.signals !== 'null') ? String(attribute.signals) : '',
@@ -238,6 +249,15 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
 Current Max Points: ${currentValue || '0'}
 
 To change this number, type the new value into the field above. If you need an explanation of how max points works, ask below.`;
+    } else if (fieldKey === 'negativeKind') {
+      const kind = fieldValues.negativeKind === 'disqualify' ? 'set the score to 0' : `take ${fieldValues.penalty || '?'} points off`;
+      initialMessage = `A negative attribute can do one of two things when it applies to a profile.
+
+Take points off: the profile keeps its score minus the amount you set. Use this for things that make someone less worth a follow-up, not a no-go.
+
+Disqualify: the profile's score becomes 0 whatever else it has going for it. Use this only for people you would genuinely never message.
+
+Right now this attribute will ${kind}. To change it, pick the other option above. Ask below if you want help deciding.`;
     } else if (fieldKey === 'minToQualify') {
       initialMessage = `Profiles with points for this attribute less than your specified minimum will automatically score zero overall.
 
@@ -534,6 +554,24 @@ Examples:
           lowScoreExample: fieldValues.lowScoreExample,
           active: fieldValues.active
         };
+      } else if (isNegativeAttribute) {
+        // Negative row: penalty or disqualify - never Max Points / Min to Qualify.
+        const disqualify = fieldValues.negativeKind === 'disqualify';
+        const amount = Number(fieldValues.penalty);
+        if (!disqualify && (!Number.isInteger(amount) || amount < 1 || amount > 50)) {
+          setError('Enter how many points to take off - a whole number from 1 to 50.');
+          setIsSaving(false);
+          return;
+        }
+        updatedData = {
+          heading: fieldValues.heading,
+          disqualifying: disqualify,
+          ...(disqualify ? {} : { penalty: amount }),
+          instructions: fieldValues.instructions,
+          signals: fieldValues.signals,
+          examples: fieldValues.examples,
+          active: fieldValues.active
+        };
       } else {
         // Profile Scoring Attributes - traditional field set
         updatedData = {
@@ -606,6 +644,43 @@ Examples:
                 </button>
               </div>
               
+              {field.type === 'negative-kind' && (
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="negativeKind"
+                      className="h-4 w-4 text-blue-600 border-gray-300"
+                      checked={fieldValues.negativeKind !== 'disqualify'}
+                      onChange={() => handleFieldChange('negativeKind', 'penalty')}
+                    />
+                    <span className="text-sm text-gray-900">Take points off</span>
+                    {fieldValues.negativeKind !== 'disqualify' && (
+                      <input
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={fieldValues.penalty || ''}
+                        onChange={(e) => handleFieldChange('penalty', e.target.value)}
+                        placeholder="5"
+                        className="w-24 px-3 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    )}
+                    {fieldValues.negativeKind !== 'disqualify' && <span className="text-sm text-gray-500">points</span>}
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="negativeKind"
+                      className="h-4 w-4 text-blue-600 border-gray-300"
+                      checked={fieldValues.negativeKind === 'disqualify'}
+                      onChange={() => handleFieldChange('negativeKind', 'disqualify')}
+                    />
+                    <span className="text-sm text-gray-900">Disqualify - set the score to 0</span>
+                  </label>
+                </div>
+              )}
+
               {field.type === 'text' && (
                 <input
                   type="text"

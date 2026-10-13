@@ -491,7 +491,8 @@ const SettingsWithParams = () => {
             const name = String(attribute.heading || 'Unnamed Attribute');
             const maxPoints = String(attribute.maxPoints || 0);
             const minToQualify = String(attribute.minToQualify || 0);
-            const penalty = String(attribute.penalty || 0);
+            const penalty = String(Math.abs(Number(attribute.penalty) || 0));
+            const isDisqualifying = Boolean(attribute.disqualifying);
             const isActive = attribute.active !== false;
             const needsSetup = Boolean(attribute.isEmpty);
             const isPositive = attribute.category === 'Positive';
@@ -528,10 +529,9 @@ const SettingsWithParams = () => {
                           <span>Min to Qualify: {minToQualify}</span>
                         </>
                       ) : (
-                        <>
-                          <span>Penalty: {penalty}</span>
-                          <span>Min to Qualify: {minToQualify}</span>
-                        </>
+                        <span className={isDisqualifying ? 'text-red-700' : ''}>
+                          {isDisqualifying ? 'Disqualifying - score set to 0' : `Takes off ${penalty} points`}
+                        </span>
                       )}
                     </div>
                   </div>
