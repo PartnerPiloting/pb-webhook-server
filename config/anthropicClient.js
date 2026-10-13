@@ -217,16 +217,29 @@ function platformKeyClientIds() {
  *   `anthropic lane=` log lines and any greps over them keep working unchanged).
  */
 function resolveClientAnthropic(client) {
+    const lane = anthropicLane(client);
+    if (lane === 'client-stored-key') {
+        return { llm: getAnthropicClientForKey(String(client.anthropicApiKey).trim()), lane, message: null };
+    }
+    if (lane === 'platform-fallback') {
+        return { llm: getAnthropicClient(), lane, message: null };
+    }
+    return { llm: null, lane, message: NO_ANTHROPIC_KEY_MSG };
+}
+
+/**
+ * The lane alone - the same decision resolveClientAnthropic makes, without building an SDK client.
+ * For the places that only need to know whether a client CAN draft before anything is attempted
+ * (Guy, 13 Oct 2026: no point installing or updating the extension for a client with no key behind
+ * it): the preflight's step 9, the portal install page, and the extension's /identity check.
+ * 'none-blocked' = a BYO client with no key on file.
+ */
+function anthropicLane(client) {
     const cid = String((client && client.clientId) || '').trim();
-    const storedKey = String((client && client.anthropicApiKey) || '').trim();
-    if (storedKey) {
-        return { llm: getAnthropicClientForKey(storedKey), lane: 'client-stored-key', message: null };
-    }
+    if (String((client && client.anthropicApiKey) || '').trim()) return 'client-stored-key';
     const managed = !!(client && client.managedClaudeKey);
-    if (managed || (cid && platformKeyClientIds().has(cid))) {
-        return { llm: getAnthropicClient(), lane: 'platform-fallback', message: null };
-    }
-    return { llm: null, lane: 'none-blocked', message: NO_ANTHROPIC_KEY_MSG };
+    if (managed || (cid && platformKeyClientIds().has(cid))) return 'platform-fallback';
+    return 'none-blocked';
 }
 
 /**
@@ -264,6 +277,7 @@ module.exports = {
     getAnthropicClient,
     getAnthropicClientForKey,
     resolveClientAnthropic,
+    anthropicLane,
     NO_ANTHROPIC_KEY_MSG,
     isAnthropicConfigured,
     anthropicKeyError,

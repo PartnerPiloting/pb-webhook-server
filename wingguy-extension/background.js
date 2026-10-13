@@ -158,7 +158,10 @@ async function identityVerdict(viewerName) {
   const key = `${held.environment || 'production'}|${held.portalToken}|${viewer.toLowerCase()}`;
   const v = held.identityVerdict;
   // A refusal is re-asked after a minute, so a corrected record lets its owner straight back in.
-  if (v && v.key === key && (Date.now() - v.at) < (v.matches === false ? 60 * 1000 : VERDICT_TTL_MS)) return v;
+  // "No Claude key yet" is never served from memory: the client is off saving one, and the panel
+  // must notice the moment they have.
+  const keyMissing = Boolean(v && v.claudeKey && v.claudeKey.ready === false);
+  if (v && v.key === key && !keyMissing && (Date.now() - v.at) < (v.matches === false ? 60 * 1000 : VERDICT_TTL_MS)) return v;
   let who = null;
   try { who = await askIdentity(held, viewer); } catch (_) { return null; }
   if (!who || who.invalid) return null; // a rejected sign-in is the ordinary calls' error to report
@@ -168,7 +171,11 @@ async function identityVerdict(viewerName) {
     clientId: who.clientId,
     clientName: who.clientName || '',
     matches: who.matches === false ? false : (who.matches === true ? true : null),
-    message: who.message || ''
+    message: who.message || '',
+    // Can this client draft at all? (0.3.34) Null from a server too old to say - carry on as before.
+    claudeKey: who.claudeKey && typeof who.claudeKey.ready === 'boolean'
+      ? { ready: who.claudeKey.ready, lane: who.claudeKey.lane || '' }
+      : null
   };
   const extra = who.clientId ? { ownerClientId: who.clientId, ownerName: who.clientName || '' } : {};
   await storageSet({ identityVerdict: fresh, ...extra });
@@ -291,6 +298,19 @@ function handleMessage(message, sender, sendResponse) {
           chrome.tabs.create({ url, active: true }, () => sendResponse({ success: true, reused: false }));
         }
       });
+    });
+    return true;
+  }
+
+  // The client's own "Your Claude key" box, for the panel's no-key card. Opened with the sign-in
+  // this copy holds - by this point the panel has checked that it is the person on LinkedIn - so
+  // the page lands on their key box, not on whoever last used the Portal in this browser.
+  if (message.type === 'OPEN_CLAUDE_KEY') {
+    chrome.storage.local.get(['environment', 'portalToken'], (data) => {
+      const base = PORTAL_ENDPOINTS[data.environment || 'production'] || PORTAL_ENDPOINTS.production;
+      if (!data.portalToken) { sendResponse({ success: false, error: 'not signed in' }); return; }
+      const url = `${base}my-wingguy/setup?token=${encodeURIComponent(data.portalToken)}#claude-key`;
+      chrome.tabs.create({ url, active: true }, () => sendResponse({ success: true }));
     });
     return true;
   }

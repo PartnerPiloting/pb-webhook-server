@@ -26,6 +26,7 @@ const AdmZip = require('adm-zip');
 
 const clientService = require('../services/clientService');
 const { recordCheckin, latestForClient } = require('../services/extensionDistStore');
+const { anthropicLane } = require('../config/anthropicClient');
 const { tailscaleAddress, buildRdpFile } = require('../services/clientMachineRdp');
 const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 const { createSafeLogger } = require('../utils/loggerHelper');
@@ -264,6 +265,11 @@ router.get('/installer.sh', requireClient, serveUpdater('wingguy-update.sh', 'te
  * behind - best-effort, and it never fails the download.
  */
 router.get('/download', requireClient, async (req, res) => {
+  // No Claude key, no extension (Guy, 13 Oct 2026): it would install, read a whole profile and then
+  // fail at the draft. The page shows the key box instead of the button; this is the back door.
+  if (claudeKeyNeeded(req.wgClient)) {
+    return res.status(409).json({ ok: false, claudeKeyNeeded: true, error: 'Set up your Claude key first - the extension cannot draft without it.' });
+  }
   try {
     const { version } = buildList();
     const zip = new AdmZip();
@@ -297,6 +303,12 @@ router.get('/download', requireClient, async (req, res) => {
   }
 });
 
+// A BYO client with no Claude key on file. The owner and managed-plan clients run on the platform
+// key and never need one - the same lane rule the drafting routes apply (config/anthropicClient).
+function claudeKeyNeeded(client) {
+  return anthropicLane(client) === 'none-blocked';
+}
+
 /**
  * GET /extension/dist/portal-status
  * Drives the portal install page and the "you're a version behind" nag. Returns the current
@@ -309,6 +321,9 @@ router.get('/download', requireClient, async (req, res) => {
  *
  * Best-effort: any failure still returns the current version with installed = null, so the page
  * degrades to "here is how to install it" rather than an error.
+ *
+ *   claudeKeyNeeded = true -> a BYO client with no Claude key yet: the page shows the key box
+ *                             first and holds the download back until a key is saved.
  */
 router.get('/portal-status', requireClient, async (req, res) => {
   const { version } = buildList();
@@ -330,6 +345,7 @@ router.get('/portal-status', requireClient, async (req, res) => {
     behind: Boolean(installed) && installed !== version,
     neverInstalled: !installed,
     lastSeen,
+    claudeKeyNeeded: claudeKeyNeeded(req.wgClient),
   });
 });
 

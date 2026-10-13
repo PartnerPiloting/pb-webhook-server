@@ -917,7 +917,8 @@ quite how you'd have put it.
 Two parts of Wingguy work for you away from your chat. Overnight, it goes through your follow-ups
 and gets your replies ready. And when you type **/wg** inside LinkedIn, the drafting happens on my
 servers. Both run on a Claude key that's yours, not mine - and until it's in, neither of them can
-run for you.
+run for you. That's why it goes in **before** the extension: your portal won't offer you the
+extension's download until your key is saved.
 
 **First, the bit that confuses everyone: this is not the Claude subscription you already pay for.**
 Same company, possibly the same email, but a separate account with separate billing. Your

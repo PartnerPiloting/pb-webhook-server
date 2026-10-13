@@ -738,6 +738,9 @@ button.door{background:transparent;border-style:dashed}
     </div>
     <div class="stage-body">
       <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="Set up {{first}}'s extension folder - they're on OneDrive, Windows."></button><button type="button" class="q" data-q="Ship the extension to {{first}} and confirm it landed."></button></div>
+      <div class="gist"><b>Blocked until step 11 (BYO clients)</b>No Claude key, no extension. The
+      preflight prints BLOCKED here, the portal install page shows the key box instead of the
+      download, and /wg asks for the key before it reads anything. Owner and managed plan skip this.</div>
       <div class="gist"><b>Ask first, then send ONE card</b>1. Own machine or company-managed?
       2. Personal Microsoft account? Own + personal = OneDrive. Company-managed = zip.</div>
       <div class="lanes" data-lanegroup="ship">
@@ -830,7 +833,7 @@ button.door{background:transparent;border-style:dashed}
           <li>Stale version = the folder isn't flowing, back to step 9</li>
         </ul></div>
         <div class="col col--proof"><h4>What this proves</h4><ul>
-          <li>The install. <strong>Not drafting</strong> - that needs the key at step 11.</li>
+          <li>The install. Drafting needs the key from step 11, which is in before step 9.</li>
         </ul></div>
       </div>
       <div class="traps"><span class="lbl">Traps</span>
@@ -844,7 +847,8 @@ button.door{background:transparent;border-style:dashed}
       <div class="numeral">11</div>
       <div class="stage-title"><h3>Anthropic key - by email</h3>
         <p class="sub">For the overnight brief and extension drafting, which run on our servers.
-        Their key, their cap, their off switch. Emailed, not walked through live.</p></div>
+        Their key, their cap, their off switch. Emailed, not walked through live. <strong>Done
+        before step 9</strong> - the extension waits on it.</p></div>
       <div class="tags"><span class="tag tag--home">Homework</span><span class="tag tag--only">BYO only</span></div>
     </div>
     <div class="stage-body">

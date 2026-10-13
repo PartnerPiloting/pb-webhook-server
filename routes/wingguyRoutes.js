@@ -28,7 +28,7 @@ const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const setupAssistJson = require('../utils/setupAssistJson');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
-const { getAnthropicClient, getAnthropicClientForKey, resolveClientAnthropic, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError, claudeModelId } = require('../config/anthropicClient');
+const { getAnthropicClient, getAnthropicClientForKey, resolveClientAnthropic, anthropicLane, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError, claudeModelId } = require('../config/anthropicClient');
 const rulesSource = require('../services/wingguyRulesSource');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
@@ -559,6 +559,10 @@ module.exports = function mountWingguy(app) {
       if (v.matches === false) {
         logger.warn(`[Wingguy] IDENTITY MISMATCH: LinkedIn is "${viewerName}", extension is signed in as ${req.client.clientId}`);
       }
+      // Can this client draft at all? (Guy, 13 Oct 2026.) /wg asks this before it reads the page, so
+      // a client with no Claude key is told so up front instead of after the whole profile has been
+      // read. Same lane rule as the drafting routes; additive, so older extensions ignore it.
+      const lane = anthropicLane(record || req.client);
       res.json({
         ok: true,
         clientId: req.client.clientId,
@@ -566,6 +570,7 @@ module.exports = function mountWingguy(app) {
         viewerName,
         matches: v.matches,
         message: v.matches === false ? wingguyIdentity.mismatchMessage({ viewerName, clientName }) : '',
+        claudeKey: { ready: lane !== 'none-blocked', lane, message: lane === 'none-blocked' ? NO_ANTHROPIC_KEY_MSG : '' },
       });
     } catch (e) {
       logger.error(`[Wingguy] identity failed: ${e.message}`);

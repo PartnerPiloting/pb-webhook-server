@@ -15,12 +15,17 @@
  *     clicked the card gets told why there is nothing to manage, not a blank screen)
  *
  * `authHeaders(extra?)` must be a STABLE callback (useCallback) - it is an effect dependency.
+ * `onSaved()` (optional) is called after a key is checked and saved - the install page uses it to
+ * swap "do your key first" for the download without a reload.
+ *
+ * The install page (WingguyInstall) uses variant="settings" inside its own "Do your Claude key
+ * first" card: no heading of its own, since the card says what it is for.
  */
 
 import React, { useState, useEffect } from 'react';
 import { getBackendBase } from '../services/api';
 
-export default function ClaudeKeySection({ authHeaders, variant = 'setup' }) {
+export default function ClaudeKeySection({ authHeaders, variant = 'setup', onSaved }) {
   const [st, setSt] = useState({ status: 'loading' }); // loading | managed | hidden | ready(+key status)
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false); // false | 'save' | 'recheck' | 'remove'
@@ -44,6 +49,16 @@ export default function ClaudeKeySection({ authHeaders, variant = 'setup' }) {
     return () => { cancelled = true; };
   }, [endpoint, authHeaders]);
 
+  // Opened from the extension's "no Claude key yet" card (…/setup#claude-key). The section only
+  // exists once its status has loaded, after the browser has already tried the anchor - so scroll
+  // to it ourselves.
+  useEffect(() => {
+    if (st.status !== 'ready' || variant !== 'setup') return;
+    try {
+      if (window.location.hash === '#claude-key') document.getElementById('claude-key')?.scrollIntoView({ block: 'start' });
+    } catch (e) { /* cosmetic only */ }
+  }, [st.status, variant]);
+
   const call = async (kind, options) => {
     setBusy(kind); setMsg(null);
     try {
@@ -52,6 +67,7 @@ export default function ClaudeKeySection({ authHeaders, variant = 'setup' }) {
       if (res.ok && data.ok) {
         setSt({ status: 'ready', ...data });
         setDraft('');
+        if (kind !== 'remove' && data.hasKey && onSaved) onSaved();
         setMsg({
           kind: 'ok',
           text: kind === 'remove'
@@ -173,7 +189,7 @@ export default function ClaudeKeySection({ authHeaders, variant = 'setup' }) {
   if (inSettings) return <div className="flex flex-col gap-4">{body}</div>;
 
   return (
-    <section className="flex flex-col gap-4">
+    <section id="claude-key" className="flex flex-col gap-4 scroll-mt-6">
       <div className="flex flex-col gap-3 pb-4 border-b border-slate-200">
         <h2 className="font-serif text-2xl text-slate-900">Your Claude key</h2>
         <p className="text-slate-600 max-w-2xl">

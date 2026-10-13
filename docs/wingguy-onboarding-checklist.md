@@ -68,6 +68,10 @@ their own progress - is `content/client-journey.json`. Change names or order THE
   never demo drafting before step 6, or the first message they see will not sound like them.
 - **Session two is the wow.** Extension in, their Reconnect list switched on, and their first real
   messages sent to people who know them.
+- **The key is a hard gate on the extension (13 Oct 2026).** A BYO client with no Claude key does
+  not get the extension: the preflight prints step 9 as BLOCKED, their portal shows the key box
+  instead of the download, and /wg asks for the key before it reads anything. Check the key is in
+  before session two starts, not on the call.
 - **Existing clients** (set up before this) are not on this road. They are offered Reconnect one at
   a time, when Guy chooses; setting `Client Journey` = Yes on their record shows them the journey.
 
@@ -136,7 +140,8 @@ Wingguy inside LinkedIn. I install a small updater on your computer over a remot
 fetches every improvement I make from my server by itself, daily and at login, so nothing ever
 reaches you as a download. (Older setups use a shared OneDrive folder for the same job.) Then we load
 it into your browser together - it's the fiddliest single step in the journey, so we do it on a
-call.
+call. It only goes in once your Claude key is in (step 11) - without the key there's nothing for it
+to write with, so your portal won't offer the download until the key is saved.
 
 **Step 10 - We prove the extension works for you. [proof]** Installed isn't the same as working. You
 open your portal once in that browser - that's how the extension knows it's you - then open any
@@ -148,7 +153,7 @@ does happen on our servers while you're asleep - overnight it reads your follow-
 your drafts - and your LinkedIn drafting runs there too. That work runs on a Claude API key that's
 yours: you create it, you put a monthly spend cap on it, and you can switch it off any time. I send
 this one as an email rather than walking it live: it's fifteen minutes of clicking around a website
-that isn't ours, and it's better done at your own pace. (On a managed plan? Skip this - your
+that isn't ours, and it's better done at your own pace. It comes before the extension, not after. (On a managed plan? Skip this - your
 drafting runs on my account and there's nothing for you to do.)
 
 **Step 12 - We put /wg to work on a real profile. [live]** The payoff. Your key is in, your
@@ -795,6 +800,15 @@ Wingguy 'update my rules'."
 The extension is the piece that puts Wingguy inside LinkedIn. It installs once, but it gets improved
 - and updates must reach the client's computer with ZERO ongoing effort from them.
 
+**Blocked until step 11 for BYO clients (decided 13 Oct 2026).** No Claude key, no extension. Guy
+McPhee hit the "refresh this page" card on a live call with no key behind it - after the refresh,
+/wg would have read the whole profile and then failed at the draft. So, three places now say so:
+the preflight prints step 9 as `BLOCKED - no Claude key yet, do the key first (step 11)`; the
+portal install page shows "Do your Claude key first" with the paste box instead of the download
+(and the server refuses the download); and /wg asks first and shows "Your Claude key isn't set up
+yet" with the fix on a button. The owner and managed-plan clients are never blocked. If the
+preflight says BLOCKED, do step 11 - never install around it.
+
 **The mechanism, and the reference material.** Two lanes deliver updates. **The pull updater is
 the default since 2026-09-03**: a scheduled job on the client's own machine fetches the extension
 from our server into a fixed local folder (`C:\Wingguy` or `~/Wingguy`), daily at 3am and again at
@@ -867,8 +881,9 @@ until the portal has been opened once in that browser.
 them driving.
 
 **Note what this does and doesn't prove.** The panel appearing proves the *install*. It does not yet
-prove *drafting* - that needs their Anthropic key, which is the next step. Don't let a client try to
-draft here and conclude the extension is broken.
+prove *drafting* - that is step 12, on their key (in since step 11, before the install) and their
+instructions. If the panel says "Your Claude key isn't set up yet", step 11 isn't done - go back to
+it.
 
 **Watch out - the extension's storage is PER BROWSER.** A fresh install in Edge inherits nothing
 from the same person's Chrome copy, and vice versa. The portal-opened-once step is not optional, and
@@ -880,7 +895,9 @@ it has to happen in whichever browser they're actually using.
 
 **Sent as homework, not walked through live (2026-09-06).** It is fifteen minutes of the client
 clicking around a website that is not ours, and it goes better at their own pace than on a call
-with you waiting. Send it as an email after step 10; they paste the key into their portal themselves. Everything below is the content of that email, plus your half.
+with you waiting. Send it as homework straight after session one, with the instructions (step 6) -
+it must be in before step 9, because the extension waits on it. They paste the key into their portal
+themselves. Everything below is the content of that email, plus your half.
 
 **Skip this entirely for managed-plan clients** (Managed Claude Key = Yes). This step is only for
 clients who run their drafting on their own key - the default.

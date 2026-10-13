@@ -2712,6 +2712,10 @@
     try { who = await bg({ type: 'WG_IDENTITY' }); } catch (_) { who = null; }
     if (who && who.matches === false) { renderWrongPersonCard(who); return; }
     setDraftingAs(who && who.clientName);
+    // No Claude key behind this client: say so now, before the page is read, not after the whole
+    // profile has been read and the draft fails (Guy McPhee, 13 Oct 2026). After the refresh check
+    // on purpose - a stale tab cannot reach the server to ask.
+    if (who && who.claudeKey && who.claudeKey.ready === false) { renderClaudeKeyCard(); return; }
 
     const profile = await scrapeProfile();
     if (!profile.name && !profile.headline && !profile.about && !profile.pageText) {
@@ -2745,7 +2749,7 @@
     renderRoute(profile, thread);
   }
 
-  // ---- the two "can't start yet" cards --------------------------------------
+  // ---- the "can't start yet" cards -------------------------------------------
   // Client-facing wording rules: name the cause in plain English, put the fix on a button, and never
   // ask them to go and do plumbing in another tab and then remember to come back and retype /wg.
 
@@ -2780,6 +2784,41 @@
       <p class="wingguy-muted">Nothing has been drafted or saved. To put it right:</p>
       <p class="wingguy-muted">1. Click the Wingguy icon in the browser toolbar and choose Disconnect.<br>2. Open your own Portal link - the one that was sent to you.<br>3. Come back to this tab and type /wg again.</p>
     `);
+  }
+
+  // A client on their own Claude key who has not put one in yet. Drafting runs on it, so nothing
+  // here can work until it is saved. The button opens their own key box; the panel then watches
+  // for the key and carries on by itself, so there is no coming back to retype /wg.
+  function renderClaudeKeyCard() {
+    const body = setBody(`
+      <div class="wingguy-warn">Your Claude key isn't set up yet, so Wingguy can't write anything for you.</div>
+      <p class="wingguy-muted">It's a key from your own Anthropic account that pays for the drafting - about fifteen minutes to make, once. Paste it into your Portal and I'll carry on here.</p>
+      <div class="wingguy-row"><button class="wingguy-primary" id="wingguy-open-claude-key">Paste my key in</button></div>
+      <p class="wingguy-muted">Not made one yet? <a href="https://knowaguy.com.au/your-claude-key" target="_blank" rel="noopener">Here's how, step by step</a>.</p>
+      <div class="wingguy-status" id="wingguy-claude-key-status"></div>
+    `);
+    body?.querySelector('#wingguy-open-claude-key')?.addEventListener('click', async () => {
+      const status = () => document.getElementById('wingguy-claude-key-status');
+      try { await bg({ type: 'OPEN_CLAUDE_KEY' }); } catch (_) { renderRefreshCard(); return; }
+      if (status()) status().textContent = 'Waiting for your key to be saved…';
+    });
+    waitForClaudeKey();
+  }
+
+  // Ask every few seconds whether the key has landed, then open the panel for real. Stops when the
+  // panel is closed or the card is replaced; gives up after twenty minutes (making a key is mostly
+  // Anthropic's website, and fifteen minutes is the honest estimate).
+  async function waitForClaudeKey() {
+    for (let i = 0; i < 240; i++) {
+      await sleep(5000);
+      if (!document.getElementById(OVERLAY_ID)) return;
+      if (!document.getElementById('wingguy-claude-key-status')) return;
+      let who = null;
+      try { who = await bg({ type: 'WG_IDENTITY' }); } catch (_) { continue; }
+      if (who && who.claudeKey && who.claudeKey.ready === true) { closePanel(); openPanel(); return; }
+    }
+    const status = document.getElementById('wingguy-claude-key-status');
+    if (status) status.textContent = 'Still no key. Once it is saved in your Portal, type /wg here again.';
   }
 
   // This browser has never had the Portal open (fresh install, new browser profile, or Disconnect was
