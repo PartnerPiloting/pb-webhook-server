@@ -232,6 +232,8 @@ const allowedOrigins = [
     /^http:\/\/localhost(:\d+)?$/i,
     'https://pb-webhook-server.onrender.com',
     'https://pb-webhook-server.vercel.app',
+    // The portal's branded address (Oct 2026) - same Vercel project as the line above.
+    'https://portal.knowaguy.com.au',
     'https://pb-webhook-server-staging.vercel.app',
     /^https:\/\/[a-z0-9-]+\.vercel\.app$/i,
     'https://australiansidehustles.com.au',

@@ -22,6 +22,14 @@ const PORTAL_ENDPOINTS = {
   staging: 'https://pb-webhook-server-staging.vercel.app/'
 };
 
+// Every address the Portal answers on, for finding an open Portal tab. portal.knowaguy.com.au is the
+// branded address (Oct 2026); the vercel.app one keeps working for links clients already hold.
+const PORTAL_TAB_PATTERNS = [
+  'https://pb-webhook-server.vercel.app/*',
+  'https://portal.knowaguy.com.au/*',
+  'https://pb-webhook-server-staging.vercel.app/*'
+];
+
 // Calendar/booking endpoints (Slice 2 — reused as-is; they auth on x-client-id which we already send).
 const CALENDAR_ENDPOINTS = {
   production: 'https://pb-webhook-server.onrender.com/api/calendar',
@@ -275,7 +283,7 @@ function handleMessage(message, sender, sendResponse) {
   // Check for open portal tab
   if (message.type === 'CHECK_PORTAL_TAB') {
     chrome.tabs.query({
-      url: ['https://pb-webhook-server.vercel.app/*', 'https://pb-webhook-server-staging.vercel.app/*']
+      url: PORTAL_TAB_PATTERNS
     }, (tabs) => {
       sendResponse({ hasPortalTab: tabs.length > 0, tabCount: tabs.length });
     });
@@ -289,7 +297,7 @@ function handleMessage(message, sender, sendResponse) {
     chrome.storage.local.get(['environment'], (data) => {
       const url = PORTAL_ENDPOINTS[data.environment || 'production'] || PORTAL_ENDPOINTS.production;
       chrome.tabs.query({
-        url: ['https://pb-webhook-server.vercel.app/*', 'https://pb-webhook-server-staging.vercel.app/*']
+        url: PORTAL_TAB_PATTERNS
       }, (tabs) => {
         const existing = tabs && tabs[0];
         if (existing && existing.id) {

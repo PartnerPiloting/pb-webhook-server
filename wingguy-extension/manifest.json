@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Wingguy (LinkedIn)",
-  "version": "0.3.34",
+  "version": "0.3.35",
   "description": "Wingguy — type /wg in a LinkedIn message box for a full-screen assistant that drafts your next message in your voice (auto-detecting the campaign). You click send.",
   "permissions": [
     "storage",
@@ -11,6 +11,7 @@
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://pb-webhook-server.vercel.app/*",
+    "https://portal.knowaguy.com.au/*",
     "https://pb-webhook-server-staging.vercel.app/*",
     "https://pb-webhook-server.onrender.com/*",
     "https://pb-webhook-server-staging.onrender.com/*"
@@ -33,7 +34,7 @@
       "world": "MAIN"
     },
     {
-      "matches": ["https://pb-webhook-server.vercel.app/*", "https://pb-webhook-server-staging.vercel.app/*"],
+      "matches": ["https://pb-webhook-server.vercel.app/*", "https://portal.knowaguy.com.au/*", "https://pb-webhook-server-staging.vercel.app/*"],
       "js": ["content-portal.js"]
     }
   ],
