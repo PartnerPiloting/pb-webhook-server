@@ -15,9 +15,10 @@
  *   - No more per-person reply tokens. Old tokens from V1 emails still resolve through
  *     pendingReplyHandler; replies to the digest itself just land in the inbound pipe.
  *
- * DELIVERY unchanged: Mailgun alerts domain, From "Wingguy", BCC to Guy (PENDING_NOTIFY_BCC,
- * default on) while the feature is young. SAFETY unchanged: PENDING_NOTIFY_ENABLED gates the
- * whole pass; { force, onlyClientId } lets a one-off job test a single tenant.
+ * DELIVERY unchanged: Mailgun alerts domain, From "Wingguy". The BCC to Guy on every client's
+ * digest is OFF by default since 2026-10-14 (Guy: "just noise"); set PENDING_NOTIFY_BCC to an
+ * address to switch it back on. Guy's own digest still goes to him as the recipient.
+ * SAFETY unchanged: PENDING_NOTIFY_ENABLED gates the whole pass; { force, onlyClientId } lets a one-off job test a single tenant.
  */
 
 const https = require('https');
@@ -30,7 +31,7 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'pending_notify');
 
-const BCC = (process.env.PENDING_NOTIFY_BCC || 'guyralphwilson@gmail.com').trim();
+const BCC = String(process.env.PENDING_NOTIFY_BCC || '').trim();
 const PORTAL_BASE = (process.env.PORTAL_BASE_URL || 'https://pb-webhook-server.vercel.app').replace(/\/$/, '');
 const DIGEST_INTERVAL_DAYS = Number(process.env.PENDING_DIGEST_INTERVAL_DAYS) || 7;
 
