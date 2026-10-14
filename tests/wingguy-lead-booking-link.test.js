@@ -56,7 +56,7 @@ check('a bare www. Calendly link is found too', () => assert.strictEqual(link.fi
 check('a bare TidyCal address parses as https', () => assert.strictEqual(link.parseBookingLink('tidycal.com/thepowertoask/consultation').pageUrl, TIDY_PAGE));
 check('a bare Calendly address parses', () => assert.strictEqual(link.parseBookingLink('calendly.com/candacengok/intro').eventSlug, 'intro'));
 check('plain words are still not a link', () => assert.strictEqual(link.findBookingLink('see you on calendly sometime'), null));
-check('the other-host reason now names both providers', () => assert.match(link.parseBookingLink('https://cal.com/someone/30min').reason, /Calendly or TidyCal only/));
+check('the other-host reason now names every readable provider', () => assert.match(link.parseBookingLink('https://cal.com/someone/30min').reason, /Calendly, TidyCal or TimeTrade only/));
 check('providerLabel: Calendly / TidyCal / booking', () => { assert.strictEqual(link.providerLabel('calendly'), 'Calendly'); assert.strictEqual(link.providerLabel('tidycal'), 'TidyCal'); assert.strictEqual(link.providerLabel(null), 'booking'); });
 
 // Google appointment pages (Laura Gardner, 2026-10-10): recognised so the panel guards engage, never read.
@@ -65,7 +65,7 @@ const LAURA = 'https://calendar.app.google/Rt3HARJvfXUBpviz7';
 check('a calendar.app.google link is found, mixed-case code intact, trailing stop dropped', () => assert.strictEqual(link.findBookingLink(`Happy to chat - grab a time here: ${LAURA}. Laura`), LAURA));
 check('the long calendar.google.com form is found too', () => assert.strictEqual(link.findBookingLink('see https://calendar.google.com/calendar/appointments/schedules/AcZssZ3YEPpceCy3fzjJaMTtDD5fmvAc2NyYPxOS4HG_RMRwRPMDERi4jkn_EBOaqpjnEJExL_kLOkt1?gv=true thanks'), 'https://calendar.google.com/calendar/appointments/schedules/AcZssZ3YEPpceCy3fzjJaMTtDD5fmvAc2NyYPxOS4HG_RMRwRPMDERi4jkn_EBOaqpjnEJExL_kLOkt1?gv=true'));
 check('a bare calendar.app.google address is found and given https', () => assert.strictEqual(link.findBookingLink('book me at calendar.app.google/Rt3HARJvfXUBpviz7'), LAURA));
-check('parse: provider google, no slugs, a plain reason naming Google', () => { const p = link.parseBookingLink(LAURA); assert.strictEqual(p.provider, 'google'); assert.ok(!p.profileSlug); assert.match(p.reason, /Google Calendar appointment page/); assert.match(p.reason, /Calendly or TidyCal only/); });
+check('parse: provider google, no slugs, a plain reason naming Google', () => { const p = link.parseBookingLink(LAURA); assert.strictEqual(p.provider, 'google'); assert.ok(!p.profileSlug); assert.match(p.reason, /Google Calendar appointment page/); assert.match(p.reason, /Calendly, TidyCal or TimeTrade only/); });
 check('parse: the schedules form is google too', () => assert.strictEqual(link.parseBookingLink('https://calendar.google.com/appointments/schedules/AcZssZ3Y').provider, 'google'));
 check('an ordinary Google Calendar event link is NOT a booking link', () => { assert.strictEqual(link.findBookingLink('https://calendar.google.com/calendar/event?eid=abc'), null); assert.strictEqual(link.parseBookingLink('https://calendar.google.com/calendar/u/0/r').provider, null); });
 check('providerLabel: google → Google appointment', () => assert.strictEqual(link.providerLabel('google'), 'Google appointment'));
@@ -347,6 +347,18 @@ const fakeFetch = (calls, { lookupStatus = 200, rangeStatus = 200, spots = {} } 
     await checkAsync('an unreadable Calendly link names Calendly the same way', async () => {
       const r = await runCheckAvailability({ lead_booking_link: 'https://calendly.com/x/y' }, 'Guy-Wilson', { readBookingLink: async () => ({ ok: false, reason: 'Calendly lookup failed (HTTP 503)' }) });
       assert.match(r.text, /Could not read the lead's Calendly link \(Calendly lookup failed \(HTTP 503\)\)/);
+    });
+    // TimeTrade (Steve Brossman, 2026-10-14): the page never shows a meeting length, so each start is
+    // taken as free for the coach's own 30 minutes, and the READ line says so instead of "null min".
+    await checkAsync('a readable TimeTrade link with no length: TimeTrade named, fit at the coach\'s length, said plainly', async () => {
+      const target = days[8];
+      const readBookingLink = async () => ({ ok: true, provider: 'timetrade', ownerName: '', eventName: 'Prominence and Persuasion Review with Steve', durationMins: null, slots: [target.freeSlots[1].time] });
+      const r = await runCheckAvailability({ not_before: notBefore, lead_booking_link: 'https://bit.ly/StevePPcall' }, 'Guy-Wilson', { readBookingLink });
+      assert.match(r.text, /LEAD'S OWN CALENDAR READ: the lead's TimeTrade page \("Prominence and Persuasion Review with Steve", length not shown - each start time taken as free for the coach's usual 30 min\) offered 1 slots/);
+      assert.ok(!/null min|shorter than/.test(r.text), r.text);
+      const slotLines = r.text.split('\n').filter((l) => /label=/.test(l));
+      assert.strictEqual(slotLines.length, 1, r.text);
+      assert.ok(slotLines[0].includes(target.freeSlots[1].time), slotLines[0]);
     });
     await checkAsync('no link, no not_before → the result is exactly as before (no new lines)', async () => {
       const r = await runCheckAvailability({}, 'Guy-Wilson');
