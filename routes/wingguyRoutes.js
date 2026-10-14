@@ -25,6 +25,7 @@
 //   POST /draft-thanks  { templateId, profile } -> { ok, draft, model }
 
 const express = require('express');
+const CONNECTOR_BASE_URL = (process.env.CONNECTOR_BASE_URL || 'https://pb-webhook-server.onrender.com').replace(/\/$/, '');
 const { createLogger } = require('../utils/contextLogger');
 const setupAssistJson = require('../utils/setupAssistJson');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
@@ -1287,6 +1288,20 @@ module.exports = function mountWingguy(app) {
       messages: [{ role: 'user', content: 'ping' }],
     });
   }
+
+  // "Connect Wingguy to your Claude" (14 Oct 2026, after Ashley Knowles' Claude ran as Guy on the
+  // shared secret). The client's OWN connector link, built from the token they opened the page
+  // with, plus when their Claude last used it. Never for an assistant: the link is the client's
+  // own key, and an assistant works in the portal, not in the client's Claude.
+  router.get('/setup/connector', async (req, res) => {
+    if (req.assistant) return res.json({ ok: true, hidden: true });
+    const token = req.client && req.client.portalToken;
+    if (!token) return res.json({ ok: true, hidden: true });
+    const url = `${CONNECTOR_BASE_URL}/mcp2/${encodeURIComponent(token)}`;
+    let seen = null;
+    try { seen = await require('../services/connectorSeenStore').getSeen(req.client.clientId); } catch (e) { seen = null; }
+    return res.json({ ok: true, url, lastSeen: seen ? seen.lastSeen : null });
+  });
 
   router.get('/setup/claude-key', async (req, res) => {
     try {

@@ -35,6 +35,7 @@ const { registerRecallImportTools } = require('./recallImportMcp');
 const { registerCaptureControlTools } = require('./captureControlMcp');
 const { registerWingguyContactsTools } = require('./wingguyContactsMcp');
 const { registerMachineClipboardTools } = require('./machineClipboardMcp');
+const connectorSeen = require('./connectorSeenStore');
 
 const BASE = '/mcp2';
 const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -483,10 +484,14 @@ function mountRecallMcp(app, log = console) {
 
   app.post(`${BASE}/:token`, express.json({ limit: '2mb' }), async (req, res) => {
     const coachClientId = await resolveCoachClientId(req.params.token);
-    hit(req, coachClientId ? `auth=ok tenant=${coachClientId}` : 'auth=BAD');
+    // "via" says which kind of link the call came in on: a shared secret cannot say who is
+    // calling (Ashley Knowles' Claude ran as Guy on one, 14 Oct 2026), a personal link can.
+    const via = validTokens().includes(String(req.params.token || '')) ? 'shared' : 'personal';
+    hit(req, coachClientId ? `auth=ok tenant=${coachClientId} via=${via}` : 'auth=BAD');
     if (!coachClientId) {
       return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'unauthorized' } });
     }
+    if (via === 'personal') connectorSeen.markSeen(coachClientId);
     const server = createRecallMcpServer(coachClientId, { hasFathom: await tenantHasFathom(coachClientId) });
     try {
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
