@@ -116,6 +116,7 @@ function payloadFromSession(session) {
     customerId: session.customer ? String(session.customer) : '',
     subscriptionId: session.subscription ? String(session.subscription) : '',
     referrer: (session.metadata && session.metadata.referrer) || '',
+    plan: (session.metadata && session.metadata.plan) || '',
   };
 }
 
@@ -289,7 +290,7 @@ async function stepCreateRow(job, logger) {
     // force-pause off them, and names their billing caretaker.
     'Status Management': 'Manual',
     'Billing Source': 'stripe',
-    'Coach Notes': `Joined via knowaguy /join${p.referrer ? ` (ref: ${p.referrer})` : ''} - provisioning in progress`,
+    'Coach Notes': `Joined via knowaguy /join${p.plan === 'builder' ? ' as a NETWORK BUILDER ($30/month)' : ''}${p.referrer ? ` (ref: ${p.referrer})` : ''} - provisioning in progress`,
   };
   if (p.customerId) record['Stripe Customer ID'] = p.customerId;
   if (p.subscriptionId) record['Stripe Subscription ID'] = p.subscriptionId;
@@ -543,6 +544,7 @@ async function stepNotifyGuy(job, logger) {
     : null;
   const text = [
     `${fullName} <${p.email}> is fully provisioned.`,
+    p.plan === 'builder' ? 'Joined as a NETWORK BUILDER - $30 a month, no set-up fee.' : null,
     '',
     `Client ID: ${job.client_id}`,
     `Base: ${job.base_id}`,

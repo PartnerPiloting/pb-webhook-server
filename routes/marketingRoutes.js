@@ -114,6 +114,15 @@ const PAGES = {
       'What you are saying yes to, plainly: what it makes possible, the road we build in order, '
       + 'what it costs, and what happens in the first 24 hours.',
   },
+  // The private network builder join (Guy, 14 Oct 2026): $30/month, no set-up fee, everything a
+  // full member gets. Sent by link to the builders Guy invites - never linked from anywhere, and
+  // noindex so it can't be found by search. See services/builderPlan.js.
+  joinBuilder: {
+    file: 'join-builder.html',
+    title: 'Joining as a network builder - I Know A Guy',
+    description: 'The network builder membership - $30 a month, everything included.',
+    noindex: true,
+  },
   // The three Binary Lane screens a client meets when they buy their Linked
   // Helper machine, with the SSH key to paste. Linked from the playbook topic
   // "Your Linked Helper machine", which their own Claude reads out - the chat
@@ -266,13 +275,13 @@ function loadBody(page) {
   return cachedBodies[key];
 }
 
-function fullPage(body, host, { title, description }) {
+function fullPage(body, host, { title, description, noindex }) {
   // Index the real domain; never the onrender.com hostname. Doing it by host
   // rather than a flag means pointing the domain is the ONLY step — there's no
   // "remember to turn indexing on" left lying around, and no risk of the
   // preview hostname competing with the real site in search results.
   const isPreview = !host || /onrender\.com$/i.test(String(host).split(':')[0]);
-  const robots = isPreview
+  const robots = isPreview || noindex
     ? '<meta name="robots" content="noindex, nofollow">'
     : '';
   return `<!doctype html>
@@ -324,6 +333,7 @@ module.exports = function mountMarketingSite(app) {
   // created on first use, so nothing has to be pre-clicked in the dashboard.
   router.get('/join', servePage(PAGES.join));
   router.get('/join/thanks', servePage(PAGES.joinThanks));
+  router.get('/join/builder', servePage(PAGES.joinBuilder));
   // Sent by link, never linked from the site's own navigation.
   router.get('/the-numbers', servePage(PAGES.numbers));
   router.get('/your-machine', servePage(PAGES.machine));
@@ -338,6 +348,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/privacy', servePage(PAGES.privacy));
   router.get('/terms', servePage(PAGES.terms));
 
+  const { BUILDER_LOOKUP, BUILDER_PLAN, isBuilderSubscription } = require('../services/builderPlan');
   const MONTHLY_LOOKUP = 'ikag_membership_150_monthly';
   const SETUP_LOOKUP = 'ikag_setup_fee_100';
   const parseForm2 = express.urlencoded({ extended: false, limit: '8kb' });
@@ -373,6 +384,29 @@ module.exports = function mountMarketingSite(app) {
     }
     cachedPriceIds = { monthly: monthly.id, setup: setup.id };
     return cachedPriceIds;
+  }
+
+  // The network builder price ($30/month, services/builderPlan.js), found by lookup key and
+  // created on first use like the two above. Its own product, so Stripe's page and receipts say
+  // what it is rather than "membership" at a price nobody else pays.
+  let cachedBuilderPriceId = null;
+  async function ensureBuilderPrice(stripe) {
+    if (cachedBuilderPriceId) return cachedBuilderPriceId;
+    const found = await stripe.prices.list({ lookup_keys: [BUILDER_LOOKUP], limit: 1 });
+    let price = found.data[0];
+    if (!price) {
+      const product = await stripe.products.create({
+        name: 'I Know A Guy network builder membership',
+        description: 'Everything in the membership, at the network builder rate.',
+      });
+      price = await stripe.prices.create({
+        product: product.id, currency: 'aud', unit_amount: 3000,
+        recurring: { interval: 'month' }, lookup_key: BUILDER_LOOKUP,
+        nickname: 'Network builder $30/month',
+      });
+    }
+    cachedBuilderPriceId = price.id;
+    return cachedBuilderPriceId;
   }
 
   router.post('/site/join/checkout', parseForm2, async (req, res) => {
@@ -417,6 +451,39 @@ module.exports = function mountMarketingSite(app) {
     }
   });
 
+  // The network builder checkout - the /join/builder button. Same source as a normal join, so the
+  // webhook runs the full provisioning chain; plan=builder on the session and the subscription is
+  // what the referral sweep and the restart link read. One line item: $30 now, $30 monthly.
+  router.post('/site/join/builder/checkout', parseForm2, async (req, res) => {
+    try {
+      const { stripe, isStripeAvailable } = require('../config/stripeClient');
+      if (!isStripeAvailable()) {
+        return res.status(503).send('Payments are briefly unavailable - please try again shortly, or reply to any email from Guy.');
+      }
+      const price = await ensureBuilderPrice(stripe);
+      const ref = String((req.body && req.body.ref) || '').slice(0, 80).trim();
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const meta = { source: 'knowaguy-join', plan: BUILDER_PLAN, referrer: ref || '' };
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        line_items: [{ price, quantity: 1 }],
+        success_url: `${origin}/join/thanks`,
+        cancel_url: `${origin}/join/builder`,
+        metadata: meta,
+        subscription_data: { metadata: meta },
+        custom_fields: [
+          { key: 'first_name', label: { type: 'custom', custom: 'First name' }, type: 'text' },
+          { key: 'last_name', label: { type: 'custom', custom: 'Last name' }, type: 'text' },
+        ],
+      });
+      logger.info(`[site] builder join checkout session created${ref ? ` (ref=${ref})` : ''}`);
+      return res.redirect(303, session.url);
+    } catch (err) {
+      logger.error(`[site] builder join checkout failed: ${err && err.message}`);
+      return res.status(500).send('Something went wrong starting the payment - please try again, or reply to any email from Guy.');
+    }
+  });
+
   // Restarting after a lapse. The link lives in the "your account has paused"
   // draft (services/billingLapseService) and is signed per client, so it can
   // sit in an inbox for months. It opens a fresh Checkout for the $150 monthly
@@ -436,13 +503,21 @@ module.exports = function mountMarketingSite(app) {
       if (!isStripeAvailable()) {
         return res.status(503).send('Payments are briefly unavailable - please try again shortly, or reply to any email from Guy.');
       }
-      const prices = await ensureJoinPrices(stripe);
+      // A network builder restarts at $30, not $150 - judged from the subscription that lapsed.
+      let wasBuilder = false;
+      if (client.stripeSubscriptionId) {
+        const old = await stripe.subscriptions.retrieve(client.stripeSubscriptionId).catch(() => null);
+        wasBuilder = isBuilderSubscription(old);
+      }
+      const price = wasBuilder ? await ensureBuilderPrice(stripe) : (await ensureJoinPrices(stripe)).monthly;
       const origin = `${req.protocol}://${req.get('host')}`;
-      const meta = { source: 'knowaguy-rejoin', clientId };
+      const meta = wasBuilder
+        ? { source: 'knowaguy-rejoin', clientId, plan: BUILDER_PLAN }
+        : { source: 'knowaguy-rejoin', clientId };
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         customer: client.stripeCustomerId,
-        line_items: [{ price: prices.monthly, quantity: 1 }],
+        line_items: [{ price, quantity: 1 }],
         success_url: `${origin}/rejoin/thanks`,
         cancel_url: `${origin}/`,
         metadata: meta,

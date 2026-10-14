@@ -39,6 +39,8 @@ const clientService = require('./clientService');
 const referrals = require('./referralService');
 const { createLogger } = require('../utils/contextLogger');
 
+const { isBuilderSubscription } = require('./builderPlan');
+
 const defaultLogger = createLogger({ runId: 'REFRATE', clientId: 'SYSTEM', operation: 'referral_rate' });
 
 const CREDIT_CENTS = 12000;                  // $150 -> $30
@@ -73,7 +75,8 @@ function referredClientIsPaying(client, sub) {
   if (!client) return false;
   const source = lower(client.billingSource);
   if (source === 'complimentary') return false;
-  if (source === 'stripe') return subscriptionIsPaying(sub);
+  // Network builders ($30, Guy 14 Oct 2026) never count toward anyone's three.
+  if (source === 'stripe') return !isBuilderSubscription(sub) && subscriptionIsPaying(sub);
   return client.status === 'Active';
 }
 
@@ -224,6 +227,10 @@ async function runReferralRateSweep({ dryRun = false, now = Date.now(), logger =
     const s = await standingFor(r, all, stripe, cache);
     const line = { clientId: r.clientId, clientName: r.clientName, billingSource: lower(r.billingSource) || 'pmpro', count: s.count, payingNames: s.payingNames, atRate: s.atRate, credit: null };
     const transition = standingTransition(prev.get(r.clientId), s);
+    // A builder referrer is already on $30 - their standing is recorded, but there is no credit to
+    // give and no "rate reached / lost" news for Guy.
+    const ownSub = lower(r.billingSource) === 'stripe' && stripe ? await fetchSubscription(stripe, r, cache) : null;
+    const referrerIsBuilder = isBuilderSubscription(ownSub);
 
     // The credit: only for stripe-billed referrers at the rate whose renewal is close.
     if (s.atRate && lower(r.billingSource) === 'stripe' && stripe) {
@@ -231,6 +238,8 @@ async function runReferralRateSweep({ dryRun = false, now = Date.now(), logger =
       const periodEnd = periodEndOf(sub);
       if (!sub || !LIVE_SUB_STATUSES.includes(sub.status)) {
         line.credit = 'skipped: their own subscription is not active';
+      } else if (isBuilderSubscription(sub)) {
+        line.credit = 'skipped: network builder - already on $30';
       } else if (!renewalDue(periodEnd, now)) {
         line.credit = `not yet: renewal ${periodEnd ? new Date(periodEnd * 1000).toISOString().slice(0, 10) : 'unknown'}`;
       } else {
@@ -271,7 +280,7 @@ async function runReferralRateSweep({ dryRun = false, now = Date.now(), logger =
       line.credit = `cannot apply: billed via ${line.billingSource} - apply by hand until they are on Stripe`;
     }
 
-    if (transition) {
+    if (transition && !referrerIsBuilder) {
       report.transitions.push({ clientId: r.clientId, transition, count: s.count, payingNames: s.payingNames });
       if (!dryRun) {
         const subject = transition === 'reached'

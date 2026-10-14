@@ -61,6 +61,13 @@ check('legacy (blank or pmpro): judged by Status Active', () => {
 check('complimentary never counts, even when Active with a paid sub', () => {
   assert.strictEqual(rate.referredClientIsPaying({ billingSource: 'complimentary', status: 'Active' }, { status: 'active', latest_invoice: { status: 'paid', amount_paid: 15000 } }), false);
 });
+check('a network builder ($30) never counts, even paid up', () => {
+  const c = { billingSource: 'stripe', status: 'Active' };
+  const paid = { status: 'paid', amount_paid: 3000 };
+  assert.strictEqual(rate.referredClientIsPaying(c, { status: 'active', latest_invoice: paid, metadata: { plan: 'builder' } }), false, 'by metadata');
+  assert.strictEqual(rate.referredClientIsPaying(c, { status: 'active', latest_invoice: paid, items: { data: [{ price: { lookup_key: 'ikag_builder_30_monthly' } }] } }), false, 'by price');
+  assert.strictEqual(rate.referredClientIsPaying(c, { status: 'active', latest_invoice: paid, items: { data: [{ price: { lookup_key: 'ikag_membership_150_monthly' } }] } }), true, 'a $150 member still counts');
+});
 
 console.log('periodEndOf + renewalDue');
 check('reads the period end from either API shape', () => {
