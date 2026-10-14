@@ -633,15 +633,24 @@ how you get back into the control panel later.
 
 Picture: https://knowaguy.com.au/your-machine#configure
 
-Everything on this screen is already set correctly except one thing. I'll come to that.
+Work down this screen from the top. There are three things to choose, and Binary Lane may have
+some of them picked for you already - if so, just check they match.
 
-- **Location** - any Australian city, yours if it's on the list. Same price, same speed
-- **Ubuntu**, and under Select Version, the newest one marked **LTS**
-- **Resources** - stay on the **Standard** tab
+**First, Location.** A list of cities. Click an Australian one - yours if it's on the list, any of
+them if not. They all cost the same and run at the same speed. The only wrong answer is Singapore.
 
-**Here's the one that matters.** The row selected by default is the small one at $4.90. You need to
-click the **2 VCPUs / 4 GB / 60 GB** row at **$19.60**. It will not select itself, and it's the only
-place on these screens where doing nothing gives you the wrong answer.
+**Second, the operating system.** This is just the kind of software the machine runs on the inside.
+You'll see a row of names - click **Ubuntu**. Then look just below it at **Select Version**: choose
+the newest one with **LTS** after it (the biggest number with LTS). You never see or use Ubuntu
+yourself - it's what I build your machine on.
+
+**Third, the size - and this is the one that matters.** Stay on the **Standard** tab. The row
+selected by default is the small one at $4.90. You need to click the **2 VCPUs / 4 GB / 60 GB** row
+at **$19.60**. It will not select itself, and it's the only place on these screens where doing
+nothing gives you the wrong answer.
+
+If you pick the wrong city or the wrong version, it doesn't matter - tell me and we'll sort it. The
+size is the only one worth double-checking before you go on.
 
 ### 3. Add my key so I can build it
 
@@ -650,7 +659,9 @@ Picture: https://knowaguy.com.au/your-machine#ssh-key
 Still on that screen, under "Configure your server's settings", click **View All**. That opens the
 fields Binary Lane keeps folded away - and one of them saves us both a job.
 
-- **Hostname:** linkedinhelper
+- **Hostname:** linkedhelper
+- **Backups:** click **Backups are not required** - I take my own copy of your machine every night,
+  so there's no need to pay for theirs
 - **SSH Keys:** click **+ Add SSH Key**
 
 In the box that opens:
@@ -665,13 +676,18 @@ In the box that opens:
 
 It's a lock, not a key - it lets me in to build your machine and it's safe to paste anywhere.
 
-Leave everything else on that screen alone. The backup settings are already off, which is what we
-want - I run the backups.
+**That's all you fill in on this screen - Hostname, Backups and the key.** View All opens more
+boxes than that, and you can ignore every other one. Leave blank boxes blank, and leave anything
+already ticked or chosen exactly as it is. You don't need to set a password, add extra storage or
+IP addresses, or pick any add-ons. If a box makes you wonder whether you need it, you don't.
 
 ### 4. Your details
 
 Name, address, and your mobile. Press **Send Validation SMS** and they'll text you a six-digit code
 to type in.
+
+Anything marked optional, leave blank - a company name or ABN isn't needed. The machine is fine in
+your own name.
 
 ### 5. Your card, and buy it
 
@@ -691,13 +707,17 @@ easiest. Your key is already installed, so I can get straight in and start build
 *(That box also shows a password. You don't need it and neither do I - but it's the only time it's
 ever displayed, so copy it somewhere if you'd like a spare way in.)*
 
+Ignore the advice at the bottom of that box about creating a user account and turning off root
+login. That's for people running the machine themselves - I take care of all of it. Click
+**Close** and you're done with Binary Lane.
+
 ### 7. Switch off one alert
 
 Binary Lane emails you whenever the machine uses all of its memory. For a machine running Linked
 Helper all day, that's normal - it's just working hard, and nothing fails. So the email would turn
 up most days and mean nothing. I strongly suggest you switch it off now so it stops bugging you:
 
-- Go to https://home.binarylane.com.au/server/linkedinhelper/settings/alerts
+- Go to https://home.binarylane.com.au/server/linkedhelper/settings/alerts
 - Untick **Memory Consumption**
 - Click **Save**
 

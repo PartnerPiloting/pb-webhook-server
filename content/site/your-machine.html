@@ -125,6 +125,8 @@
   }
   .shot figcaption b { color: var(--ink-mid); }
   .shot-narrow img { max-width: 420px; margin: 0 auto; }
+  .steps { margin: 0 0 18px; padding-left: 22px; }
+  .steps li { margin-bottom: 10px; }
   .asof {
     margin: 0 0 4px;
     padding: 12px 14px;
@@ -158,7 +160,7 @@
 
     <div class="op-c">
       <h1 class="op-t">Your Linked Helper machine</h1>
-      <p class="op-dek">The three screens worth seeing before you meet them. Ten minutes, and you can't break anything.</p>
+      <p class="op-dek">The screens worth seeing before you meet them. Ten minutes, and you can't break anything.</p>
       <hr class="op-r">
 
       <div class="op-body">
@@ -169,9 +171,15 @@
 
         <h2 id="configure">Choosing the machine</h2>
 
-        <p>This is the first screen after you make an account. Almost everything on it is already set the way you want it - Ubuntu, the newest LTS version, and the location, which only needs to be an Australian city. Yours if it is on the list, any of them if not. Not Singapore.</p>
+        <p>This is the first screen after you make an account. Work down it from the top - there are three things to choose. Binary Lane may have some of them picked for you already; if so, just check they match.</p>
 
-        <p><b>One thing is not.</b> Look at section 2. The row selected by default is the small one at $4.90. You need the <b>2 VCPUs / 4 GB / 60 GB</b> row at <b>$19.60</b>, and it will not select itself. It's the only place on these screens where doing nothing gives you the wrong answer.</p>
+        <ol class="steps">
+          <li><b>Location.</b> A list of cities. Click an Australian one - yours if it's on the list, any of them if not. They all cost the same. The only wrong answer is Singapore.</li>
+          <li><b>Operating system.</b> A row of names - click <b>Ubuntu</b>. Then just below it, under <b>Select Version</b>, choose the newest one with <b>LTS</b> after it. You never see or use Ubuntu yourself - it's just what I build your machine on.</li>
+          <li><b>Size.</b> This is the one that matters - see below.</li>
+        </ol>
+
+        <p><b>The size will not pick itself.</b> Stay on the <b>Standard</b> tab. The row selected by default is the small one at $4.90. You need the <b>2 VCPUs / 4 GB / 60 GB</b> row at <b>$19.60</b>. It's the only place on these screens where doing nothing gives you the wrong answer.</p>
 
         <figure class="shot shot-narrow">
           <img src="/assets/machine-size.png" alt="The server size list. The small one at four dollars ninety is ticked by default; the two VCPU, four gigabyte, sixty gigabyte row at nineteen sixty is marked.">
@@ -180,12 +188,14 @@
 
         <h2 id="ssh-key">Adding my key</h2>
 
-        <p>In section 3, type <b>linkedinhelper</b> in the Hostname box, then click <b>View All</b>. It's the grey button on the right, level with the section heading. That opens the fields Binary Lane keeps folded away, and one of them saves us both a job: <b>SSH Keys</b>, with a <b>+ Add SSH Key</b> button.</p>
+        <p>In section 3, type <b>linkedhelper</b> in the Hostname box, then click <b>View All</b>. It's the grey button on the right, level with the section heading. That opens the fields Binary Lane keeps folded away, and one of them saves us both a job: <b>SSH Keys</b>, with a <b>+ Add SSH Key</b> button.</p>
 
         <figure class="shot">
           <img src="/assets/machine-view-all.png" alt="Section 3, Configure your server's settings, with a Hostname box and three backup options, and a grey View All button at the top right, level with the heading.">
           <figcaption><b>Section 3, 14 October 2026.</b> The <b>View All</b> button is the grey one at the top right. Before you click it, choose <b>Backups are not required</b> - I take my own copy of the machine every night, so you don't need to pay for theirs.</figcaption>
         </figure>
+
+        <p><b>That's all you fill in on this screen - Hostname, Backups and my key.</b> View All opens more boxes than that, and you can ignore every other one. Leave blank boxes blank, and leave anything already ticked or chosen exactly as it is. You don't need to set a password, add extra storage or IP addresses, or pick any add-ons. If a box makes you wonder whether you need it, you don't.</p>
 
         <p>Put my key in there and I can get straight into your machine and build it, without you having to send me anything private. Name it <b>Wingguy</b>, paste this into the Public Key box exactly as it is, tick the box to use it for future machines, and click Create:</p>
 
@@ -206,6 +216,8 @@
           <img src="/assets/machine-ready.png" alt="The Your server is ready dialog, showing hostname, primary IP address highlighted, user, a hidden password and the installed SSH key.">
           <figcaption><b>The finished box, 19 September 2026.</b> The Primary Ip is circled - that's the bit I need. It also shows a password, blanked out here; you don't need it and neither do I, but it's the only time it's ever displayed, so copy it somewhere if you'd like a spare way in.</figcaption>
         </figure>
+
+        <p>Ignore the advice at the bottom of that box about creating a user account and turning off root login. That's for people running the machine themselves - I take care of all of it. Click <b>Close</b> and you're done with Binary Lane.</p>
 
         <h2>Then it's mine</h2>
 

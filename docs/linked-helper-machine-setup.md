@@ -32,7 +32,7 @@ batch size, the days, the search (since 29-30 Sep 2026).
 ★ **Every client's machine is a small Ubuntu VPS at Binary Lane** (binarylane.com.au), bought by
 the client in their own account on their own card, so it is theirs and the exit is clean: the
 2 vCPU / 4 GB / 60 GB plan, about A$19.60 a month before GST, any Australian city (same price, same
-speed - the client's own if it is on the list), the newest Ubuntu LTS, hostname `linkedinhelper`,
+speed - the client's own if it is on the list), the newest Ubuntu LTS, hostname `linkedhelper`,
 the wg_clients SSH key added at purchase. The client-facing purchase walk-through is the playbook
 topic YOUR LINKED HELPER MACHINE; the concierge run sheet buys it in step 5. No proxy - one client
 per VPS is its own Australian IP. Guy's access is RDP over Tailscale; the client's is a web link
