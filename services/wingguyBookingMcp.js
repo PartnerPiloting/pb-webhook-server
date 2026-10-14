@@ -30,7 +30,7 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 // Executors — return { text, isError? }
 // ---------------------------------------------------------------------------
 
-async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends, include_far_weeks, lead_booking_link, not_before } = {}, tenant = TENANT, deps = {}) {
+async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends, include_far_weeks, weekdays, lead_booking_link, not_before } = {}, tenant = TENANT, deps = {}) {
   const prefs = getBookingPrefs(tenant);
   const avail = await wingguyCalendar.getAvailabilityForCoach(tenant, lead_location || '');
   // A stated earliest date ("away for the next 1.5 weeks", "after the 20th") outranks the nearness
@@ -41,11 +41,13 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
     includeSoon: !!include_soon,
     includeWeekends: !!include_weekends,
     includeFarWeeks: !!include_far_weeks || !!notBefore,
+    weekdays,
   });
   if (notBefore) filtered = { ...filtered, days: filtered.days.filter((d) => String(d.date) >= notBefore) };
   const win = filtered.window || wingguyCalendar.offerWindowInfo(filtered.yourTimezone || 'Australia/Brisbane');
   const windowLine = `TODAY IS ${win.today} (${win.timezone}). This week = ${win.thisWeek}; next week = ${win.nextWeek}; later days are FALLBACK WEEKS. Resolve every relative date phrase ("next week", "Tuesday") against this anchor — never guess today's date.`
-    + (notBefore ? ` Days before ${notBefore} were removed because the lead is not available until then (not_before).` : '');
+    + (notBefore ? ` Days before ${notBefore} were removed because the lead is not available until then (not_before).` : '')
+    + (filtered.lookAhead ? `\n\nNAMED WEEKDAYS: ${filtered.lookAhead}` : '');
   // The lead handed over a booking link (Candace, 2026-09-15): read the free slots THEIR page
   // shows and keep only the times BOTH sides can make. The link never becomes the booking door -
   // wingguy_book_meeting still sends the coach's own invite; the link only says WHEN.
@@ -114,7 +116,7 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
         ? `The lead's clock DIFFERS from the coach's on every date below (${wingguyCalendar.clockGapLabel(gaps[0], coachTz, leadTz)}). Take the lead's time from each slot's label and the coach's from its "coach:" value — never convert yourself. When you write these times into a message, add ONE line under the list — "(all times are ${leadCity} time)" — never a marker on every line, and never leave converted times unlabelled. `
         : `⚠ DAYLIGHT-SAVING CHANGE INSIDE THIS WINDOW: ${leadCity} and ${coachCity} read the same on some dates below and differ on others (same clock on ${firstSame ? firstSame.date : '?'}; ${wingguyCalendar.clockGapLabel(firstDiff ? dayGap(firstDiff) : 0, coachTz, leadTz)} on ${firstDiff ? firstDiff.date : '?'}). Each day line below says CLOCKS: which — trust that per date, never assume one gap applies to the whole window. Take the lead's time from each slot's label and the coach's from its "coach:" value; on a same-clock date show ONE time. Add ONE "(all times are ${leadCity} time)" line under any list. `;
   const lines = filtered.days.map((d) =>
-    `${d.date} (${d.day}, ${d.meetingCount || 0} meetings)${clocks(d)}${busy(d)}${d.fallbackWeek ? ' ⚠ FALLBACK WEEK — beyond next week; use ONLY to top up when the nearer days (including busy ones) can\'t fill the options, and never call these "next week"' : ''}:\n` +
+    `${d.date} (${d.day}, ${d.meetingCount || 0} meetings)${clocks(d)}${busy(d)}${d.laterWeek ? ' (later week - beyond next week, never call it "next week")' : ''}${d.fallbackWeek ? ' ⚠ FALLBACK WEEK — beyond next week; use ONLY to top up when the nearer days (including busy ones) can\'t fill the options, and never call these "next week"' : ''}:\n` +
     d.freeSlots.map((s) => `  - label="${s.label}" (coach: ${s.display}) time=${s.time}${pinch(s)}`).join('\n'));
   return {
     text:
@@ -517,6 +519,7 @@ const EVENT_ID_DESC = 'Required with confirm=true: the event_id the preview show
 const SOON_DESC ='Set true ONLY when the coach explicitly asks for today/tomorrow — normally everything before the day after tomorrow is withheld (his one-clear-day rule). Past times never appear regardless.';
 const LUNCH_DESC = 'Set true ONLY when the coach explicitly wants a lunch-time meeting — otherwise his lunch hold is stripped.';
 const WEEKEND_DESC = 'Set true ONLY when the coach explicitly wants a weekend meeting — weekdays-only is enforced otherwise.';
+const WEEKDAYS_DESC = 'Set when the coach names particular weekdays ("next Tuesday or Wednesday", "a Friday") - e.g. ["Tue","Wed"]. Only those weekdays come back, looking ahead about three weeks, so when next week\'s are full the following weeks\' are already there. Offer the FIRST clear one with a one-line reason (the result names the nearer days that were full) - never stop to ask whether to look further.';
 const FAR_WEEKS_DESC = 'Set true ONLY when the coach explicitly wants times beyond next week (e.g. "book them for when I\'m back from holidays") — normally the window is THIS week + NEXT week, with later days appearing only as flagged fallbacks when the near window can\'t fill the options.';
 const LINK_DESC = "The lead's OWN booking link when they sent one (Calendly or TidyCal, e.g. https://calendly.com/name/intro or https://tidycal.com/name/consultation). The tool reads the free slots their page shows and returns ONLY the times both sides are free - then book ONE with wingguy_book_meeting rather than offering a list. Pass it whenever the thread contains one. If the link cannot be read the result says so: offer the coach's own times as usual and never promise the lead a booking through their link.";
 const NOT_BEFORE_DESC = "Earliest date the lead can meet, YYYY-MM-DD, when the thread says so (\"away for the next 1.5 weeks\", \"back on the 26th\", \"after Easter\"). Work it out from TODAY in the coach's timezone. Days before it are removed and later weeks stop being fallbacks.";
@@ -553,6 +556,7 @@ const TOOL_DEFS = [
       include_soon: z.boolean().optional().describe(SOON_DESC),
       include_weekends: z.boolean().optional().describe(WEEKEND_DESC),
       include_far_weeks: z.boolean().optional().describe(FAR_WEEKS_DESC),
+      weekdays: z.array(z.string()).optional().describe(WEEKDAYS_DESC),
       lead_booking_link: z.string().optional().describe(LINK_DESC),
       not_before: z.string().optional().describe(NOT_BEFORE_DESC),
     },
@@ -564,6 +568,7 @@ const TOOL_DEFS = [
         include_soon: { type: 'boolean', description: SOON_DESC },
         include_weekends: { type: 'boolean', description: WEEKEND_DESC },
         include_far_weeks: { type: 'boolean', description: FAR_WEEKS_DESC },
+        weekdays: { type: 'array', items: { type: 'string' }, description: WEEKDAYS_DESC },
         lead_booking_link: { type: 'string', description: LINK_DESC },
         not_before: { type: 'string', description: NOT_BEFORE_DESC },
       },

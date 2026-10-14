@@ -622,6 +622,54 @@ const AVAIL_MAX_DAYS = 35;         // bound the availability result (tokens) —
                                    // window is <2 weeks); the larger payload only materialises on an explicit
                                    // far-week request, which is exactly when the coach wants to look that far.
 const AVAIL_MAX_SLOTS_PER_DAY = 8;
+const WEEKDAY_LOOKAHEAD_WEEKS = 2; // weeks past NEXT week a named-weekday request reaches (~3 weeks of that weekday)
+
+// "Tuesday", "tue", 2 → luxon weekday numbers (Mon=1 … Sun=7). Null when nothing usable was given.
+const WEEKDAY_NAMES = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 7 };
+function parseWeekdays(input) {
+  if (!input) return null;
+  const list = Array.isArray(input) ? input : String(input).split(/[\s,/]+|\band\b|\bor\b/i);
+  const out = new Set();
+  for (const v of list) {
+    const n = Number(v);
+    if (Number.isInteger(n) && n >= 1 && n <= 7) { out.add(n); continue; }
+    const k = String(v || '').trim().toLowerCase().slice(0, 3);
+    if (WEEKDAY_NAMES[k]) out.add(WEEKDAY_NAMES[k]);
+  }
+  return out.size ? out : null;
+}
+
+// NAMED WEEKDAYS (Ashley Knowles, 2026-10-14: "let's find the next Tuesday or Wednesday" - both were
+// full next week, and the panel stopped and handed him options instead of looking at the week
+// after). The coach wants THAT weekday, not that week: keep only the named weekdays, look ahead
+// through next week + WEEKDAY_LOOKAHEAD_WEEKS more, and say which nearer named days were full so
+// the agent offers the FIRST clear one with a one-line reason. The nearness rule does not apply -
+// looking further for the named day is the point.
+function filterRequestedWeekdays(avail, prefs, wanted, { includeLunch, includeSoon, includeWeekends }) {
+  const aTz = avail.yourTimezone || 'Australia/Brisbane';
+  const window = offerWindowInfo(aTz);
+  const horizon = DateTime.fromISO(window.farWeeksStart, { zone: aTz }).plus({ weeks: WEEKDAY_LOOKAHEAD_WEEKS }).toFormat('yyyy-MM-dd');
+  const isWanted = (d) => wanted.has(DateTime.fromISO(String(d.date), { zone: aTz }).weekday);
+  // Named weekend days are an explicit ask for a weekend, so they are not stripped.
+  const namedWeekend = wanted.has(6) || wanted.has(7);
+  const narrowed = { ...avail, days: (avail.days || []).filter((d) => isWanted(d) && String(d.date) < horizon) };
+  const r = filterAvailability(narrowed, prefs, { includeLunch, includeSoon, includeWeekends: includeWeekends || namedWeekend, includeFarWeeks: true });
+  const days = r.days.map((d) => (d.date >= window.farWeeksStart ? { ...d, laterWeek: true } : d));
+  // Named days, from the notice date up to the first clear one, that had nothing to offer.
+  const earliestDate = earliestOfferDate(aTz, prefs, includeSoon);
+  const firstOpen = days.length ? days[0].date : horizon;
+  const offered = new Set(days.map((d) => d.date));
+  const full = narrowed.days
+    .filter((d) => String(d.date) >= earliestDate && String(d.date) < firstOpen && !offered.has(d.date))
+    .map((d) => ({ date: d.date, day: d.day, meetingCount: d.meetingCount || 0 }));
+  const names = [...wanted].sort().map((n) => DateTime.fromObject({ weekday: n }).toFormat('cccc')).join(' / ');
+  const lookAhead = days.length
+    ? `The coach asked for a ${names}. Only ${names}s are below, looking ahead to ${horizon}. Offer the FIRST clear one (earliest date) - do not stop to ask whether to look further.`
+      + (full.length ? ` These nearer ${names}s were full: ${full.map((d) => `${d.day} ${d.date}`).join(', ')} - say so in one plain line ("${full[0].day} is full, so the first clear one is ${days[0].day}").` : '')
+      + ' Days marked laterWeek are beyond next week - never call them "next week".'
+    : `The coach asked for a ${names}, and there is no clear ${names} up to ${horizon}. Tell the coach plainly and ask which to bend (another day, lunch, earlier or later hours).`;
+  return { ...r, window, days, requestedWeekdays: names, lookAheadTo: horizon, fullRequestedDays: full, lookAhead };
+}
 
 /**
  * The one offer-time pipeline: raw availability → what an agent is ALLOWED to offer. Drops days
@@ -631,7 +679,9 @@ const AVAIL_MAX_SLOTS_PER_DAY = 8;
  * slot with EXACTLY how it will read in the lead's timezone. Also returns `window` (today +
  * this-week/next-week boundaries in the coach's tz) so agents resolve "next week" from data.
  */
-function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = false, includeWeekends = false, includeFarWeeks = false } = {}) {
+function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = false, includeWeekends = false, includeFarWeeks = false, weekdays = null } = {}) {
+  const wanted = parseWeekdays(weekdays);
+  if (wanted) return filterRequestedWeekdays(avail, prefs, wanted, { includeLunch, includeSoon, includeWeekends });
   const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
   const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
   const aTz = avail.yourTimezone || 'Australia/Brisbane';
@@ -969,7 +1019,7 @@ module.exports = {
   matchLeadMeetings, findLeadMeetings, rescheduleMeetingGuarded, cancelMeetingGuarded,
   formatInTz, wallClockToISO,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
-  filterAvailability, bookMeetingGuarded, fmtSlot, tzCity, clockGapMins, clockGapLabel, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
+  filterAvailability, parseWeekdays, bookMeetingGuarded, fmtSlot, tzCity, clockGapMins, clockGapLabel, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
   // read-only calendar listing (provider-agnostic) + its display helper
   listEventsForCoach, resolveListWindow, timeOnlyInTz,
   // coach calendar identity (roster fields incl. multi-calendar read/write scope) — for setup/check scripts

@@ -54,6 +54,7 @@ const AGENT_TOOLS = [
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a lunch-time meeting — then the held-back 12:00–12:45 slots are included. Leave unset/false otherwise.' },
         includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asks for today or tomorrow (e.g. "tomorrow\'s fine") — then those days are included. Normally the system holds back everything before the day after tomorrow (his one-clear-day rule). Times already in the past never appear regardless.' },
         includeWeekends: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a weekend meeting — weekdays-only is enforced otherwise.' },
+        weekdays: { type: 'array', items: { type: 'string' }, description: 'Set when Guy names particular weekdays ("next Tuesday or Wednesday", "a Friday") - e.g. ["Tue","Wed"]. Only those weekdays come back, looking ahead about three weeks, so when next week\'s are full the following weeks\' are already there. Offer the FIRST clear one with a one-line reason (the result\'s "lookAhead" says which nearer days were full) - never stop to ask Guy whether to look further.' },
         includeFarWeeks: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants times beyond next week (e.g. "book her for when I\'m back from holidays") — normally the offer window is THIS week + NEXT week, with later days appearing only as flagged fallbacks when the near window can\'t fill the options.' },
       },
     },
@@ -971,7 +972,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
       // daily meeting cap — and labels each slot exactly as it will read in the lead's timezone.
       const notBefore = /^\d{4}-\d{2}-\d{2}$/.test(String(input.notBefore || '')) ? String(input.notBefore) : '';
-      let filtered = wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon, includeWeekends: input.includeWeekends, includeFarWeeks: input.includeFarWeeks || !!notBefore });
+      let filtered = wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon, includeWeekends: input.includeWeekends, includeFarWeeks: input.includeFarWeeks || !!notBefore, weekdays: input.weekdays });
       if (notBefore) filtered = { ...filtered, days: filtered.days.filter((d) => String(d.date) >= notBefore), notBefore };
       // The lead sent their OWN booking link (Candace, 2026-09-15): read the slots their page shows
       // and keep only the times both can make. Booking still goes through book_meeting (Guy's invite).

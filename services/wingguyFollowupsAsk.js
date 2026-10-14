@@ -181,6 +181,7 @@ function buildTools(person) {
         properties: {
           lead_location: { type: 'string', description: 'The person\'s location as the story states it (e.g. "Greater Sydney Area") - drives their-clock labels. Omit if unknown.' },
           include_far_weeks: { type: 'boolean', description: 'true ONLY when the coach wants times beyond next week ("the week after", "when I\'m back").' },
+          weekdays: { type: 'array', items: { type: 'string' }, description: 'Set when the coach names particular weekdays ("next Tuesday or Wednesday") - e.g. ["Tue","Wed"]. Only those weekdays come back, about three weeks ahead; offer the FIRST clear one and say in one line which nearer ones were full.' },
           include_soon: { type: 'boolean', description: 'true ONLY when the coach explicitly wants today or tomorrow.' },
           include_lunch: { type: 'boolean', description: 'true ONLY when the coach explicitly wants a lunch-time slot.' },
           include_weekends: { type: 'boolean', description: 'true ONLY when the coach explicitly wants a weekend.' },
@@ -244,6 +245,7 @@ function makeToolRunner({ clientId, person, mailTools, bookingTools }) {
       for (const k of ['include_far_weeks', 'include_soon', 'include_lunch', 'include_weekends']) if (input[k] === true) args[k] = true;
       if (input.lead_booking_link) args.lead_booking_link = String(input.lead_booking_link);
       if (input.not_before) args.not_before = String(input.not_before);
+      if (Array.isArray(input.weekdays) && input.weekdays.length) args.weekdays = input.weekdays.map(String);
       return call(bookingTools, 'wingguy_check_availability', args);
     }
     if (name === 'replied_since') {
