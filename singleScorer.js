@@ -5,9 +5,15 @@ const { createLogger } = require('./utils/contextLogger');
 
 const { buildPrompt, slimLead } = require("./promptBuilder");
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
-const { geminiCandidateText, geminiJsonText } = require('./config/geminiClient');
+const { geminiCandidateText, geminiJsonText, isRetryableRateLimitError } = require('./config/geminiClient');
 
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10));
+
+// Same retry settings as batchScorer: a "429 TPM quota exhausted / no spare capacity" from Vertex's
+// shared pool usually clears in seconds, so wait 5s, then 10s, before failing (and alerting). Before
+// 14 Oct 2026 the instant score gave up on the first 429 while the batch retried.
+const GEMINI_429_RETRY_ATTEMPTS = Math.max(1, parseInt(process.env.GEMINI_429_RETRY_ATTEMPTS || "3", 10));
+const GEMINI_429_INITIAL_BACKOFF_MS = Math.max(1000, parseInt(process.env.GEMINI_429_INITIAL_BACKOFF_MS || "5000", 10));
 
 async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
     const { vertexAIClient, geminiModelId, clientId } = dependencies || {};
@@ -65,10 +71,26 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
             contents: [{ role: "user", parts: [{ text: userPromptContent }] }],
         };
         
-        const callPromise = modelInstanceForRequest.generateContent(requestPayload);
-        const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for single lead scoring")), GEMINI_TIMEOUT_MS));
-        
-        const result = await Promise.race([callPromise, timer]);
+        let result;
+        for (let attempt = 1; attempt <= GEMINI_429_RETRY_ATTEMPTS; attempt++) {
+            let timerId;
+            try {
+                const callPromise = modelInstanceForRequest.generateContent(requestPayload);
+                const timer = new Promise((_, rej) => { timerId = setTimeout(() => rej(new Error("Gemini API call timeout for single lead scoring")), GEMINI_TIMEOUT_MS); });
+                result = await Promise.race([callPromise, timer]);
+                break;
+            } catch (callError) {
+                if (attempt < GEMINI_429_RETRY_ATTEMPTS && isRetryableRateLimitError(callError)) {
+                    const backoffMs = GEMINI_429_INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
+                    logger.warn('scoreLeadNow', `Transient Vertex/Gemini error on attempt ${attempt}/${GEMINI_429_RETRY_ATTEMPTS} (${callError?.message || callError}). Waiting ${backoffMs}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                    continue;
+                }
+                throw callError;
+            } finally {
+                clearTimeout(timerId);
+            }
+        }
 
         if (!result || !result.response) {
             logger.error('scoreLeadNow', 'Gemini API call returned no response object');

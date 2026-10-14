@@ -80,6 +80,43 @@ function geminiResponseText(response) {
     return geminiCandidateText(candidate);
 }
 
+/**
+ * Returns true if the Vertex/Gemini error looks transient and worth retrying.
+ * Covers both rate-limit (429 / resource exhausted) AND common transient network /
+ * server-side hiccups that Vertex wraps in generic messages (e.g. the SDK's
+ * "exception posting request to model", 5xx, socket resets, DNS blips, timeouts).
+ * Shared by batchScorer and singleScorer. Keeping this broad means a brief Google/Vertex/network blip retries silently
+ * instead of instantly failing a whole chunk of leads and emailing an alert.
+ */
+function isRetryableRateLimitError(error) {
+    const msg = String(error?.message || error || '').toLowerCase();
+    const code = String(error?.code || '').toLowerCase();
+    return (
+        msg.includes('429') ||
+        msg.includes('resource exhausted') ||
+        msg.includes('resource_exhausted') ||
+        msg.includes('too many requests') ||
+        msg.includes('rate limit') ||
+        msg.includes('exception posting request') ||
+        msg.includes('unavailable') ||
+        msg.includes('deadline') ||
+        msg.includes('internal error') ||
+        msg.includes('socket hang up') ||
+        msg.includes('econnreset') ||
+        msg.includes('etimedout') ||
+        msg.includes('enotfound') ||
+        msg.includes('eai_again') ||
+        msg.includes('fetch failed') ||
+        msg.includes('network error') ||
+        msg.includes('timeout') ||
+        /\b5\d\d\b/.test(msg) ||
+        code === 'econnreset' ||
+        code === 'etimedout' ||
+        code === 'enotfound' ||
+        code === 'eai_again'
+    );
+}
+
 const API_ENDPOINT = resolveApiEndpoint(GCP_LOCATION);
 
 let initializedVertexAIClient = null;
@@ -114,5 +151,6 @@ module.exports = {
     DEFAULT_GEMINI_MODEL_ID,
     geminiCandidateText,
     geminiResponseText,
-    geminiJsonText
+    geminiJsonText,
+    isRetryableRateLimitError
 };

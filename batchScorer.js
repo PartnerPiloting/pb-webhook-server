@@ -22,7 +22,7 @@ initLogger.info(`- LEAD_SCORING_LIMIT: ${process.env.LEAD_SCORING_LIMIT || 'not 
 initLogger.info(`- BATCH_PROCESSING_STREAM: ${process.env.BATCH_PROCESSING_STREAM || 'not set'}`);
 
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
-const { geminiCandidateText, geminiJsonText } = require('./config/geminiClient');
+const { geminiCandidateText, geminiJsonText, isRetryableRateLimitError } = require('./config/geminiClient');
 
 // --- Multi-Tenant Dependencies ---
 const clientService = require('./services/clientService');
@@ -80,43 +80,6 @@ const GEMINI_CHUNK_DELAY_MS = Math.max(0, parseInt(process.env.GEMINI_CHUNK_DELA
 /** Retry config for 429/RESOURCE_EXHAUSTED: max attempts, initial backoff (ms). Exponential backoff: 5s, 10s, 20s. */
 const GEMINI_429_RETRY_ATTEMPTS = Math.max(1, parseInt(process.env.GEMINI_429_RETRY_ATTEMPTS || "3", 10));
 const GEMINI_429_INITIAL_BACKOFF_MS = Math.max(1000, parseInt(process.env.GEMINI_429_INITIAL_BACKOFF_MS || "5000", 10));
-
-/**
- * Returns true if the Vertex/Gemini error looks transient and worth retrying.
- * Covers both rate-limit (429 / resource exhausted) AND common transient network /
- * server-side hiccups that Vertex wraps in generic messages (e.g. the SDK's
- * "exception posting request to model", 5xx, socket resets, DNS blips, timeouts).
- * Keeping this broad means a brief Google/Vertex/network blip retries silently
- * instead of instantly failing a whole chunk of leads and emailing an alert.
- */
-function isRetryableRateLimitError(error) {
-    const msg = String(error?.message || error || '').toLowerCase();
-    const code = String(error?.code || '').toLowerCase();
-    return (
-        msg.includes('429') ||
-        msg.includes('resource exhausted') ||
-        msg.includes('resource_exhausted') ||
-        msg.includes('too many requests') ||
-        msg.includes('rate limit') ||
-        msg.includes('exception posting request') ||
-        msg.includes('unavailable') ||
-        msg.includes('deadline') ||
-        msg.includes('internal error') ||
-        msg.includes('socket hang up') ||
-        msg.includes('econnreset') ||
-        msg.includes('etimedout') ||
-        msg.includes('enotfound') ||
-        msg.includes('eai_again') ||
-        msg.includes('fetch failed') ||
-        msg.includes('network error') ||
-        msg.includes('timeout') ||
-        /\b5\d\d\b/.test(msg) ||
-        code === 'econnreset' ||
-        code === 'etimedout' ||
-        code === 'enotfound' ||
-        code === 'eai_again'
-    );
-}
 
 // MODIFIED a few turns ago to indicate "Prompt Length Log" to help confirm version - keeping it
 initLogger.info(`▶︎ batchScorer module loaded (DEBUG Profile, High Output, Increased Timeout, filterByFormula, Prompt Length Log). CHUNK_SIZE: ${CHUNK_SIZE}, TIMEOUT: ${GEMINI_TIMEOUT_MS}ms, CHUNK_DELAY: ${GEMINI_CHUNK_DELAY_MS}ms, 429_RETRIES: ${GEMINI_429_RETRY_ATTEMPTS}. Ready for dependencies.`);
