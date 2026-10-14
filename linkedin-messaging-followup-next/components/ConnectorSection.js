@@ -75,13 +75,7 @@ export default function ConnectorSection({ authHeaders }) {
         <p className="text-[15px] text-emerald-800">
           <strong>Connected</strong> - your Claude last used Wingguy {whenText(st.lastSeen)}.
         </p>
-      ) : (
-        <div className="border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-[15px] text-amber-900">
-          <strong>Not connected yet.</strong> Follow the three steps below. If Wingguy already
-          answers in your Claude but this still says not connected, it was added with a different
-          link - remove it and add it again with the one below.
-        </div>
-      )}
+      ) : null}
 
       <div className="flex flex-col sm:flex-row gap-3 max-w-2xl">
         <input
