@@ -516,17 +516,37 @@ function detectLeadBookingLink(conversation = [], coachName = '') {
 }
 
 /**
+ * detectLeadBookingLink, plus short links (Steve Brossman, 2026-10-14: "https://bit.ly/StevePPcall",
+ * a TimeTrade page behind bit.ly). Only when no plain booking link is found are the lead's short links
+ * followed - and one counts only when it lands on a booking page, so an article link never sets off
+ * the booking-link guards. Returns the booking page's own address.
+ */
+async function detectLeadBookingLinkResolved(conversation = [], coachName = '', { fetchImpl } = {}) {
+  const direct = detectLeadBookingLink(conversation, coachName);
+  if (direct) return direct;
+  for (const m of (Array.isArray(conversation) ? conversation : [])) {
+    if (!m || !m.text) continue;
+    const s = normName(m.sender);
+    if (senderIs(s, coachName) || s === 'you' || s === 'me') continue;
+    if (!leadBookingLink.findShortLinks(m.text).length) continue;
+    const url = await leadBookingLink.findBookingLinkResolved(m.text, fetchImpl ? { fetchImpl } : {});
+    if (url) return url;
+  }
+  return null;
+}
+
+/**
  * A phrase in a draft that promises the lead we will book through THEIR link or page ("I'll grab a
  * slot through your link now", "I'll book via your Calendly", "find a time on your TidyCal"). Guy
  * never does that - his own invite is the one booking door (Sam Trattles, 2026-10-09: the panel
  * drafted exactly that line over a TidyCal link it could not read, and left Guy booking by hand).
  * Returns the offending phrase, or null.
  */
-const LINK_PROMISE_RE = /\b(grab|grabbing|book|booking|pick|picking|take|taking|snag|lock(?:ing)?(?: in)?|schedule|scheduling|secure|choose|select|find|reserve|jump|jumping)\b[^.!?\n]{0,80}?\b(through|via|using|on|off|from|with)\s+(your|the|that)\s+(?:booking\s+|scheduling\s+|calendar\s+|tidycal\s+|calendly\s+)?(link|calendly|tidycal|page|calendar|site|scheduler)\b/i;
+const LINK_PROMISE_RE = /\b(grab|grabbing|book|booking|pick|picking|take|taking|snag|lock(?:ing)?(?: in)?|schedule|scheduling|secure|choose|select|find|reserve|jump|jumping)\b[^.!?\n]{0,80}?\b(through|via|using|on|off|from|with)\s+(your|the|that)\s+(?:booking\s+|scheduling\s+|calendar\s+|tidycal\s+|calendly\s+|timetrade\s+)?(link|calendly|tidycal|timetrade|page|calendar|site|scheduler)\b/i;
 // And a draft must never CONFESS to the lead that their link could not be read ("I wasn't able to
 // pull your diary link in from here", Sam Trattles 2026-10-09, third run). The lead learns nothing
 // from that except that something is off on Guy's side; the times go out as if no link was sent.
-const LINK_FAIL_RE = /\b(couldn't|could not|can't|cannot|wasn't able|was not able|unable|not able|didn't manage|failed|struggled|having trouble|had trouble|trouble)\b[^.!?\n]{0,60}?\b(link|calendly|tidycal|page|diary link|calendar link|booking page|scheduler)\b/i;
+const LINK_FAIL_RE = /\b(couldn't|could not|can't|cannot|wasn't able|was not able|unable|not able|didn't manage|failed|struggled|having trouble|had trouble|trouble)\b[^.!?\n]{0,60}?\b(link|calendly|tidycal|timetrade|page|diary link|calendar link|booking page|scheduler)\b/i;
 // Fourth run, same day: "thanks for the diary link. Couldn't quite get it to load on my end" - the
 // noun sat in the sentence before, so the pattern above missed it. While the thread holds a lead's
 // link (the only time this guard runs), any "couldn't load / open / get it to work / on my end"
@@ -547,7 +567,7 @@ function linkBookingPromise(text) {
  * usual (TidyCal 15-minute slots vs his 30: "I've put 30 minutes on it, happy to keep it to 15 if that
  * suits better"). Returns null when the draft passes, else the plain-English reason it does not.
  */
-const LINK_MENTION_RE = /\b(link|page|calendly|tidycal)\b/i;
+const LINK_MENTION_RE = /\b(link|page|calendly|tidycal|timetrade)\b/i;
 const INVITE_SENT_RE = /\b(sent|on its way|heading your way|coming through)\b/i;
 const IN_YOUR_CALENDAR_RE = /\b(in|into|on)\s+your\s+(calendar|diary)\b/i;
 const NAMES_A_TIME_RE = /\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b(today|tomorrow)\b/i;
@@ -936,7 +956,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   let enrichContact = null;
   let availTz = {}; // { yourTimezone, leadTimezone } captured from check_availability, used by propose_times
   // The lead's own booking link, from THEIR messages (data, not the model), and what reading it gave.
-  const threadBookingLink = detectLeadBookingLink(conversation, coach.clientName);
+  const threadBookingLink = await detectLeadBookingLinkResolved(conversation, coach.clientName, { fetchImpl: deps.fetchImpl });
   let leadLinkState = null; // { url, ok, reason } once check_availability has read one
   // The coach's own clock line (see coachSlotLine above). coachTz in the same order the offer window
   // uses; the lead's zone from this turn's check_availability when it ran, else the record, else
@@ -1003,13 +1023,15 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           const slotNote = filtered.leadSlotsShorter
             ? ` The lead's page offers ${filtered.leadSlotMins}-minute slots, shorter than Guy's usual ${coachMins} minutes: a slot below means the lead is free at that START time. book_meeting still sends Guy's usual length - the message after the booking gives the length ("I've put ${coachMins} minutes on it, happy to keep it to ${filtered.leadSlotMins} if that suits better").`
             : '';
+          // TimeTrade never shows its meeting length (Steve Brossman, 2026-10-14): say the fit used Guy's.
+          const lengthNote = lead.durationMins ? '' : ` Their ${label} page does not show a meeting length, so each start time on it was taken as free for Guy's usual ${coachMins} minutes.`;
           leadLinkState.leadSlotMins = filtered.leadSlotMins; // the ack guard below needs it on a same-turn booking
           // Each surviving slot carries "both": the slot on the lead's clock and the coach's own, from
           // code for that date (Sam Trattles, 2026-10-09 - the confirm question told Guy 11:00 am when
           // his own clock said 10:00). The model quotes it; the reply guard below writes it anyway.
           const leadTzNow = avail.leadTzDetected ? (avail.leadTimezone || null) : null;
           filtered = { ...filtered, days: filtered.days.map((d) => ({ ...d, freeSlots: d.freeSlots.map((s) => ({ ...s, both: coachSlotLine(s.time, avail.yourTimezone || coachTz, leadTzNow) })) })) };
-          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, leadSlotMins: filtered.leadSlotMins, coachMins, note: filtered.days.length ? `The days below are ONLY the times BOTH Guy and the lead are free.${slotNote} Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. When you ask Guy to confirm, quote the slot's "both" value word for word - it gives his own clock for that date, worked out in code. Never tell Guy the clocks match unless "both" says so. The message that follows the booking ACKNOWLEDGES their ${label} link (propose_message checks for this): name the time you saw open on their link and say the invite has been SENT to ${currentLeadEmail || 'their email'} - never "booked, you'll see it in your calendar", Guy's invite is a request they accept. Shape: "Saw Friday 11am was open on your link, so I've sent an invite for then to ${currentLeadEmail || '<email>'} - just accept and we're set."` : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
+          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins || null, leadSlots: lead.slots.length, leadSlotMins: filtered.leadSlotMins, coachMins, note: filtered.days.length ? `The days below are ONLY the times BOTH Guy and the lead are free.${slotNote}${lengthNote} Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. When you ask Guy to confirm, quote the slot's "both" value word for word - it gives his own clock for that date, worked out in code. Never tell Guy the clocks match unless "both" says so. The message that follows the booking ACKNOWLEDGES their ${label} link (propose_message checks for this): name the time you saw open on their link and say the invite has been SENT to ${currentLeadEmail || 'their email'} - never "booked, you'll see it in your calendar", Guy's invite is a request they accept. Shape: "Saw Friday 11am was open on your link, so I've sent an invite for then to ${currentLeadEmail || '<email>'} - just accept and we're set."` : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
         } else {
           // The give-up path (Sam Trattles, 2026-10-09): an unreadable link means Guy's OWN times go
           // out in the normal list. The old note ("or suggest he books through the link by hand")
@@ -1555,4 +1577,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: clocked.reply, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };

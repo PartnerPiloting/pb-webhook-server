@@ -35,8 +35,34 @@
  * WHAT IT DOES NOT DO: book through the lead's page. The booking door stays wingguy_book_meeting
  * (coach's own invite, Zoom room, lead record) - the lead's link only tells us WHEN.
  *
- * Supported today: calendly.com/<profile>/<event>[?...] and tidycal.com/<profile>/<booking-type>.
+ * Supported today: calendly.com/<profile>/<event>[?...], tidycal.com/<profile>/<booking-type> and
+ * TimeTrade (my.timetrade.com/book/<code>, my-schedule.timetrade.com/app/<td>/workflows/<wf>/...).
  * Other providers (cal.com, HubSpot) parse as { provider:null } and the caller says so.
+ *
+ * TIMETRADE (Steve Brossman, 14 Oct 2026: "https://bit.ly/StevePPcall"; proven with plain curl the same
+ * day - no browser, no bot wall). TimeTrade is a step-by-step booking wizard held together by a session
+ * id ("wfsid") the page hands out, and the slots call answers only once that session has walked past the
+ * welcome step (a fresh session asking for slots straight away gets {"errors":null,"code":null}):
+ *
+ *   GET my.timetrade.com/book/<code>  -> 301 -> my-schedule.timetrade.com/app/<td>/workflows/<wf>/schedule
+ *       -> a JavaScript shell whose script carries "wfsid=<session id>"
+ *   GET .../schedule/index/deviceformat?wfsid=<sid>&dd=b&view=full&d=<IANA tz>  -> the welcome step
+ *   POST .../schedule/welcome/submit?wfsid=<sid>  (X-Requested-With: XMLHttpRequest)
+ *       -> { data: { nextUrl } }; nextUrl 301s through appointment-type and resource to availability
+ *       when those steps hold no real choice. A step that DOES want a choice (pick a meeting type, pick
+ *       a person) falls open - Wingguy never chooses on the lead's behalf.
+ *   GET .../schedule/availability/range/?wfsid=<sid>&view=full&start=YYYY-MM-DD&end=YYYY-MM-DD&tz=<IANA>
+ *       -> { data: { "2026-10-15": { options: [{ date, id: "<UTC ISO start>", time }] } } }
+ *       Date-only start/end (an ISO time part came back empty). Days past the lead's booking window
+ *       simply have no entry.
+ *   The meeting length is NOT on any of these pages, so durationMins comes back null and the fit uses
+ *   the coach's own length (the READ line says so).
+ *
+ * SHORT LINKS (bit.ly, tinyurl and friends - Steve's link above): findBookingLink stays synchronous and
+ * never matches one, because a short link can point anywhere and a plain article link must not set off
+ * the booking-link guards. findBookingLinkResolved follows a short link's redirects (without fetching
+ * the destination) and returns the destination ONLY when it is a booking page; readBookingLink does the
+ * same for a short link the model passes.
  *
  * GOOGLE APPOINTMENT PAGES (calendar.app.google/<code>, calendar.google.com/calendar/appointments/
  * schedules/<token>) are RECOGNISED BUT NOT READ (Laura Gardner, 2026-10-10). The page is a JavaScript
@@ -56,10 +82,15 @@ const CALENDLY_MAX_RANGE_DAYS = MAX_RANGE_DAYS;
 const FETCH_TIMEOUT_MS = 8000;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 
-const PROVIDER_LABELS = { calendly: 'Calendly', tidycal: 'TidyCal', google: 'Google appointment' };
-const GOOGLE_REASON = 'a Google Calendar appointment page - Google only serves its slots to a browser, so Wingguy cannot read it (Calendly or TidyCal only)';
+const PROVIDER_LABELS = { calendly: 'Calendly', tidycal: 'TidyCal', timetrade: 'TimeTrade', google: 'Google appointment' };
+const READABLE = 'Calendly, TidyCal or TimeTrade only';
+const GOOGLE_REASON = `a Google Calendar appointment page - Google only serves its slots to a browser, so Wingguy cannot read it (${READABLE})`;
+// Hosts that only ever redirect somewhere else. LinkedIn's own lnkd.in is one: it wraps links in posts.
+const SHORTENER_HOSTS = new Set(['bit.ly', 'bitly.com', 'tinyurl.com', 'ow.ly', 'buff.ly', 'rebrand.ly', 'cutt.ly', 'is.gd', 't.ly', 'rb.gy', 'tiny.cc', 'shorturl.at', 'lnkd.in', 'bl.ink', 's.id']);
+const SHORT_LINK_RE = /(?:https?:\/\/)?(?:www\.)?(?:bit\.ly|bitly\.com|tinyurl\.com|ow\.ly|buff\.ly|rebrand\.ly|cutt\.ly|is\.gd|t\.ly|rb\.gy|tiny\.cc|shorturl\.at|lnkd\.in|bl\.ink|s\.id)\/[A-Za-z0-9_\-/]+/gi;
+const MAX_SHORT_HOPS = 5;
 
-/** 'calendly' -> 'Calendly', 'tidycal' -> 'TidyCal', anything else -> 'booking' (as in "booking link"). */
+/** 'calendly' -> 'Calendly', 'tidycal' -> 'TidyCal', 'timetrade' -> 'TimeTrade', anything else -> 'booking' (as in "booking link"). */
 function providerLabel(provider) {
   return PROVIDER_LABELS[String(provider || '').toLowerCase()] || 'booking';
 }
@@ -73,15 +104,15 @@ function providerLabel(provider) {
  * URL". A bare host+path is returned with https:// put back so every caller sees one shape.
  */
 function findBookingLink(text) {
-  const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com\/|tidycal\.com\/|calendar\.app\.google\/|calendar\.google\.com\/(?:calendar\/)?appointments\/)[^\s<>"')\]]+/i);
+  const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com\/|tidycal\.com\/|(?:[a-z0-9-]+\.)?timetrade\.com\/(?:book|app)\/|calendar\.app\.google\/|calendar\.google\.com\/(?:calendar\/)?appointments\/)[^\s<>"')\]]+/i);
   if (!m) return null;
   let raw = m[0];
   // LinkedIn's full-thread view glues the next line onto the link with no space between
   // ("…/consultationLook forward to chatting", Sam Trattles 2026-10-09, third run - the reader then
   // fetched a page that does not exist). Slugs on Calendly and TidyCal are lower case, so the path
-  // ends at the first capital letter after the host. Google's codes are mixed case (Rt3HARJvfXUBpviz7),
-  // so a Google link is left as matched - it is never fetched anyway.
-  if (!/calendar\.(?:app\.)?google/i.test(raw)) raw = raw.replace(/^((?:https?:\/\/)?[^/]+\/[^A-Z]*)[A-Z].*$/, '$1');
+  // ends at the first capital letter after the host. Google's codes are mixed case (Rt3HARJvfXUBpviz7)
+  // and TimeTrade's are upper case (my.timetrade.com/book/V4KFJ), so those are left as matched.
+  if (!/calendar\.(?:app\.)?google|timetrade\.com/i.test(raw)) raw = raw.replace(/^((?:https?:\/\/)?[^/]+\/[^A-Z]*)[A-Z].*$/, '$1');
   raw = raw.replace(/[.,;:!?]+$/, '');
   return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 }
@@ -90,9 +121,24 @@ function findBookingLink(text) {
 function parseBookingLink(url) {
   let u;
   const str = String(url || '').trim();
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(str) ? str : (/^(?:www\.)?(?:calendly\.com|tidycal\.com|calendar\.app\.google|calendar\.google\.com)\//i.test(str) ? `https://${str}` : str);
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(str) ? str : (/^(?:www\.)?(?:calendly\.com|tidycal\.com|(?:[a-z0-9-]+\.)?timetrade\.com|calendar\.app\.google|calendar\.google\.com)\//i.test(str) || isShortLink(str) ? `https://${str}` : str);
   try { u = new URL(withScheme); } catch (_) { return { provider: null, url, reason: 'not a URL' }; }
   const host = u.hostname.replace(/^www\./, '').toLowerCase();
+  // A short link says nothing until it is followed - readBookingLink resolves it, then parses again.
+  if (SHORTENER_HOSTS.has(host)) return { provider: null, url, short: true, reason: `a ${host} short link that did not lead to a booking page` };
+  if (host === 'timetrade.com' || host.endsWith('.timetrade.com')) {
+    const parts = u.pathname.split('/').filter(Boolean);
+    // my-schedule.timetrade.com/app/<td>/workflows/<wf>/schedule... - the address the /book/ code
+    // redirects to, and the one a lead copies out of the address bar.
+    if (parts[0] === 'app' && parts[1] && parts[2] === 'workflows' && parts[3]) {
+      const pageUrl = `https://${u.hostname}/app/${encodeURIComponent(parts[1])}/workflows/${encodeURIComponent(parts[3])}/schedule?view=full`;
+      return { provider: 'timetrade', url, profileSlug: parts[1], eventSlug: parts[3], pageUrl };
+    }
+    if (parts[0] === 'book' && parts[1]) {
+      return { provider: 'timetrade', url, profileSlug: parts[1], eventSlug: parts[1], pageUrl: `https://${u.hostname}/book/${encodeURIComponent(parts[1])}` };
+    }
+    return { provider: 'timetrade', url, reason: 'a TimeTrade address that is not a booking page - ask for the booking link' };
+  }
   // Recognised, never read - see the header. No slugs, so readBookingLink falls open without a call.
   if (host === 'calendar.app.google' || (host === 'calendar.google.com' && /^\/(?:calendar\/)?appointments\//i.test(u.pathname))) {
     return { provider: 'google', url, reason: GOOGLE_REASON };
@@ -113,7 +159,72 @@ function parseBookingLink(url) {
     const pageUrl = `https://tidycal.com/${parts.map(encodeURIComponent).join('/')}`;
     return { provider: 'tidycal', url, profileSlug: parts[0], eventSlug: parts[1], pageUrl };
   }
-  return { provider: null, url, reason: `${host} is not a booking page Wingguy can read yet (Calendly or TidyCal only)` };
+  return { provider: null, url, reason: `${host} is not a booking page Wingguy can read yet (${READABLE})` };
+}
+
+/** True for a link on a known URL shortener (bit.ly, tinyurl, lnkd.in, ...), with or without https://. */
+function isShortLink(url) {
+  const str = String(url || '').trim();
+  try { return SHORTENER_HOSTS.has(new URL(/^https?:\/\//i.test(str) ? str : `https://${str}`).hostname.replace(/^www\./, '').toLowerCase()); } catch (_) { return false; }
+}
+
+/** Every short link in free text, https:// put back, trailing punctuation dropped. */
+function findShortLinks(text) {
+  return (String(text || '').match(SHORT_LINK_RE) || [])
+    .map((raw) => raw.replace(/[.,;:!?/]+$/, ''))
+    .map((raw) => (/^https?:\/\//i.test(raw) ? raw : `https://${raw}`));
+}
+
+/** A header from a fetch Response (or a test fake with a plain object), or ''. */
+function headerOf(res, name) {
+  const h = res && res.headers;
+  if (!h) return '';
+  if (typeof h.get === 'function') return h.get(name) || '';
+  return h[name] || h[name.toLowerCase()] || '';
+}
+
+/**
+ * Follow a short link's redirects until it lands off the shortener hosts, WITHOUT fetching the
+ * destination (Steve Brossman, 14 Oct 2026: bit.ly/StevePPcall -> my.timetrade.com/book/V4KFJ). Returns
+ * the destination URL, or null when it does not redirect anywhere. A shortener that answers with a page
+ * instead of a redirect (an interstitial) is searched for a booking link. Never throws.
+ */
+async function resolveShortLink(url, fetchImpl = global.fetch) {
+  if (typeof fetchImpl !== 'function') return null;
+  let cur = /^https?:\/\//i.test(String(url || '')) ? String(url) : `https://${url}`;
+  try {
+    for (let hop = 0; hop < MAX_SHORT_HOPS; hop++) {
+      if (!isShortLink(cur)) return cur;
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS) : null;
+      let res;
+      try { res = await fetchImpl(cur, { redirect: 'manual', headers: { 'User-Agent': UA }, signal: ctrl ? ctrl.signal : undefined }); } finally { if (timer) clearTimeout(timer); }
+      const loc = headerOf(res, 'location');
+      if (res.status >= 300 && res.status < 400 && loc) { cur = new URL(loc, cur).href; continue; }
+      if (res.status !== 200 || typeof res.text !== 'function') return null;
+      const text = await res.text();
+      const refresh = String(text || '').match(/http-equiv=["']?refresh["']?[^>]*url=([^"'>\s]+)/i);
+      if (refresh) { cur = new URL(refresh[1].replace(/&amp;/g, '&'), cur).href; continue; }
+      return findBookingLink(text);
+    }
+    return isShortLink(cur) ? null : cur;
+  } catch (_) { return null; }
+}
+
+/**
+ * findBookingLink, plus short links: a bit.ly in the text that leads to a booking page returns that
+ * booking page's address. A short link that leads anywhere else is ignored, so a plain article link
+ * never sets off the booking-link guards. Network only when the text holds a short link.
+ */
+async function findBookingLinkResolved(text, { fetchImpl = global.fetch } = {}) {
+  const direct = findBookingLink(text);
+  if (direct) return direct;
+  for (const shortUrl of findShortLinks(text).slice(0, 3)) {
+    const dest = await resolveShortLink(shortUrl, fetchImpl);
+    const found = dest ? findBookingLink(dest) : null;
+    if (found) return found;
+  }
+  return null;
 }
 
 /** One GET with a timeout. Returns { status, text, body } where body is the parsed JSON or null. */
@@ -164,14 +275,22 @@ function parseUtcStamp(s) {
  *      or { ok:false, reason }.
  */
 async function readBookingLink(url, { timezone = 'Australia/Brisbane', rangeStart, rangeEnd, fetchImpl = global.fetch } = {}) {
-  const parsed = parseBookingLink(url);
-  if (!parsed.provider || !parsed.profileSlug) return { ok: false, reason: parsed.reason || 'unreadable link' };
+  let parsed = parseBookingLink(url);
+  // A short link (bit.ly...): follow it first, then read whatever booking page it lands on.
+  if (parsed.short) {
+    const dest = await resolveShortLink(url, fetchImpl);
+    const reparsed = dest ? parseBookingLink(dest) : null;
+    if (!reparsed || !reparsed.provider) return { ok: false, reason: dest ? `a short link that leads to ${(() => { try { return new URL(dest).hostname; } catch (_) { return 'another site'; } })()}, not a booking page Wingguy can read (${READABLE})` : parsed.reason };
+    parsed = reparsed;
+  }
+  if (!parsed.provider || !parsed.profileSlug) return { ok: false, provider: parsed.provider || undefined, reason: parsed.reason || 'unreadable link' };
   if (typeof fetchImpl !== 'function') return { ok: false, reason: 'no fetch available' };
   const today = new Date().toISOString().slice(0, 10);
   const start = rangeStart || today;
   const end = rangeEnd || addDays(start, 48);
   try {
     if (parsed.provider === 'tidycal') return await readTidyCal(parsed, { timezone, start, end, fetchImpl });
+    if (parsed.provider === 'timetrade') return await readTimeTrade(parsed, { timezone, start, end, fetchImpl });
     return await readCalendly(parsed, { timezone, start, end, fetchImpl });
   } catch (e) {
     return { ok: false, reason: `could not read the link (${e && e.name === 'AbortError' ? 'timed out' : (e && e.message) || 'error'})` };
@@ -277,6 +396,112 @@ async function readTidyCal(parsed, { timezone, start, end, fetchImpl }) {
 }
 
 /**
+ * One TimeTrade request with redirects followed BY HAND, so cookies set on a redirect are kept (the
+ * load balancer's AWSALB sticky cookie arrives on the /book/ 301) and the final address is known - it
+ * says which wizard step the session landed on. Returns { status, url, text, body }.
+ */
+async function ttFetch(url, fetchImpl, jar, { method = 'GET', headers = {} } = {}) {
+  let cur = url;
+  let verb = method;
+  for (let hop = 0; hop < 8; hop++) {
+    const host = new URL(cur).hostname;
+    const cookies = Object.entries(jar[host] || {}).map(([k, v]) => `${k}=${v}`).join('; ');
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS) : null;
+    let res;
+    try {
+      res = await fetchImpl(cur, { method: verb, redirect: 'manual', headers: { 'User-Agent': UA, ...headers, ...(cookies ? { Cookie: cookies } : {}) }, signal: ctrl ? ctrl.signal : undefined });
+    } finally { if (timer) clearTimeout(timer); }
+    const setCookies = res.headers && typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : String(headerOf(res, 'set-cookie') || '').split(/,(?=\s*[A-Za-z0-9_-]+=)/).filter(Boolean);
+    for (const c of setCookies) {
+      const m = String(c).match(/^\s*([^=;\s]+)=([^;]*)/);
+      if (m) jar[host] = { ...(jar[host] || {}), [m[1]]: m[2] };
+    }
+    const loc = headerOf(res, 'location');
+    if (res.status >= 300 && res.status < 400 && loc) {
+      cur = new URL(loc, cur).href;
+      if (res.status === 303 || ((res.status === 301 || res.status === 302) && verb === 'POST')) verb = 'GET';
+      continue;
+    }
+    const text = String((await res.text()) || '');
+    let body = null;
+    try { body = JSON.parse(text); } catch (_) { /* html */ }
+    return { status: res.status, url: cur, text, body };
+  }
+  return { status: 0, url: cur, text: '', body: null };
+}
+
+/** The wizard step a TimeTrade address is on ("welcome", "appointment-type", "availability"...). */
+function ttStep(url) {
+  const m = String(url || '').match(/\/schedule\/([a-z-]+)/i);
+  return m ? m[1].toLowerCase() : '';
+}
+
+/** The meeting name from a TimeTrade page title ("Prominence and Persuasion Review with Steve - TimeTrade - ..."). */
+function ttTitle(html) {
+  const m = String(html || '').match(/<title>\s*([^<]*?)\s*<\/title>/i);
+  if (!m) return '';
+  const parts = m[1].split(/\s+-\s+TimeTrade\s+-\s+/i).map((s) => s.trim()).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1] : '';
+}
+
+async function readTimeTrade(parsed, { timezone, start, end, fetchImpl }) {
+  const jar = {};
+  // 1. The page: follows /book/<code> to the wizard and hands out the session id.
+  const page = await ttFetch(parsed.pageUrl, fetchImpl, jar, { headers: { Accept: 'text/html,application/xhtml+xml' } });
+  if (page.status !== 200) return { ok: false, reason: `TimeTrade page read failed (HTTP ${page.status})` };
+  const wf = String(page.url).match(/^(https:\/\/[^/]+\/app\/[^/]+\/workflows\/[^/]+\/schedule)/i);
+  if (!wf) return { ok: false, reason: 'the TimeTrade link did not lead to a booking page' };
+  const base = wf[1];
+  const sidM = (page.text + ' ' + page.url).match(/wfsid=([A-Za-z0-9]+)/);
+  if (!sidM) return { ok: false, reason: 'the TimeTrade page carried no session id' };
+  const sid = sidM[1];
+  const xhr = { Accept: 'application/json, text/javascript, */*', 'X-Requested-With': 'XMLHttpRequest', Referer: page.url };
+  // 2. Tell it the visitor's clock; it answers with the first wizard step.
+  let step = await ttFetch(`${base}/index/deviceformat?wfsid=${sid}&dd=b&view=full&d=${encodeURIComponent(timezone)}`, fetchImpl, jar, { headers: { Accept: 'text/html', Referer: page.url } });
+  let eventName = ttTitle(step.text) || ttTitle(page.text);
+  // 3. Walk past the welcome step. Steps with nothing to choose redirect on to availability; a step
+  //    that wants a choice (meeting type, person, location) stops the read - never choose for the lead.
+  for (let i = 0; i < 4 && ttStep(step.url) !== 'availability'; i++) {
+    const at = ttStep(step.url);
+    if (step.status !== 200) return { ok: false, reason: `TimeTrade step "${at || 'start'}" failed (HTTP ${step.status})` };
+    if (at !== 'welcome') return { ok: false, reason: `the TimeTrade page asks the visitor to choose ${at ? `an option ("${at.replace(/-/g, ' ')}")` : 'something'} before it shows times` };
+    const sub = await ttFetch(`${base}/welcome/submit?wfsid=${sid}`, fetchImpl, jar, { method: 'POST', headers: xhr });
+    const next = sub.body && sub.body.data && sub.body.data.nextUrl;
+    if (sub.status !== 200 || !next) return { ok: false, reason: `TimeTrade welcome step failed (HTTP ${sub.status})` };
+    step = await ttFetch(new URL(next, base).href, fetchImpl, jar, { headers: { Accept: 'text/html', Referer: page.url } });
+    eventName = eventName || ttTitle(step.text);
+  }
+  if (ttStep(step.url) !== 'availability') return { ok: false, reason: 'the TimeTrade page never reached its calendar' };
+  // 4. The open start times: ids are UTC ISO starts. Date-only range, whole days.
+  const slots = [];
+  let chunkStart = start;
+  while (chunkStart <= end) {
+    const chunkEnd = [addDays(chunkStart, MAX_RANGE_DAYS - 1), end].sort()[0];
+    const rg = await ttFetch(`${base}/availability/range/?wfsid=${sid}&view=full&start=${chunkStart}&end=${chunkEnd}&tz=${encodeURIComponent(timezone)}`, fetchImpl, jar, { headers: xhr });
+    if (rg.status !== 200 || !rg.body || !('data' in rg.body)) return { ok: false, reason: `TimeTrade availability failed (HTTP ${rg.status})` };
+    const data = rg.body.data && typeof rg.body.data === 'object' ? rg.body.data : {};
+    for (const day of Object.values(data)) {
+      for (const opt of (day && Array.isArray(day.options) ? day.options : [])) {
+        const ms = Date.parse(opt && opt.id);
+        if (Number.isFinite(ms)) slots.push(new Date(ms).toISOString());
+      }
+    }
+    chunkStart = addDays(chunkEnd, 1);
+  }
+  slots.sort();
+  return {
+    ok: true,
+    provider: 'timetrade',
+    eventName,
+    ownerName: '',
+    durationMins: null, // TimeTrade never shows the meeting length - the fit uses the coach's own
+    leadTimezone: null,
+    slots: [...new Set(slots)],
+  };
+}
+
+/**
  * Merge the lead's bookable start times into free intervals [startMs, endMs). A spot means the lead
  * is free for `durationMins` from that start; adjacent/overlapping spots merge, so a coach slot that
  * straddles two of the lead's 15-minute grid points still counts as free.
@@ -307,9 +532,11 @@ function leadFreeIntervals(slotsISO, durationMins) {
  * times; the coach's invite still goes out at his usual length (the callers say so in their note).
  */
 function intersectAvailability(filtered, lead, { meetingMins = 30 } = {}) {
-  const intervals = leadFreeIntervals(lead.slots, lead.durationMins);
   const coachMins = Number(meetingMins) || 30;
+  // No length on the lead's page (TimeTrade never shows one): each start counts as free for the
+  // coach's own meeting length.
   const leadMins = Number(lead.durationMins) || coachMins;
+  const intervals = leadFreeIntervals(lead.slots, leadMins);
   const fitMins = Math.min(coachMins, leadMins);
   const len = fitMins * 60000;
   const free = (iso) => {
@@ -329,4 +556,4 @@ function intersectAvailability(filtered, lead, { meetingMins = 30 } = {}) {
   };
 }
 
-module.exports = { findBookingLink, parseBookingLink, readBookingLink, leadFreeIntervals, intersectAvailability, providerLabel, CALENDLY_MAX_RANGE_DAYS, MAX_RANGE_DAYS };
+module.exports = { findBookingLink, findBookingLinkResolved, findShortLinks, isShortLink, resolveShortLink, parseBookingLink, readBookingLink, leadFreeIntervals, intersectAvailability, providerLabel, CALENDLY_MAX_RANGE_DAYS, MAX_RANGE_DAYS };
