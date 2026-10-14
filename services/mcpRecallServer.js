@@ -47,6 +47,19 @@ function validTokens() {
     .filter(Boolean);
 }
 
+// THE SHARED "MASTER" CONNECTOR ADDRESS (14 Oct 2026). A shared secret cannot say who is calling,
+// so it maps to the owner - Ashley Knowles' Claude ran as Guy on it for weeks. Every client and the
+// owner now connect on a personal link (their Portal Token), so the shared secret can be switched
+// off: CONNECTOR_SHARED_SECRET=off on Render and nothing maps to the owner by default any more.
+// Read per call, so flipping the env var is the whole change. Default stays ON so nobody is cut
+// off by a deploy.
+function sharedSecretAllowed() {
+  return String(process.env.CONNECTOR_SHARED_SECRET || '').trim().toLowerCase() !== 'off';
+}
+function isSharedSecret(token) {
+  return validTokens().includes(String(token || ''));
+}
+
 // Multi-tenant connector auth (roadmap step 3). OFF by default: until this flag is on, ONLY the
 // shared connector secrets authenticate and everything maps to Guy — byte-identical to before.
 // Flip WINGGUY_CONNECTOR_MULTITENANT=1 (staging first) to also accept per-client Portal Tokens.
@@ -62,7 +75,7 @@ const CONNECTOR_MULTITENANT = String(process.env.WINGGUY_CONNECTOR_MULTITENANT |
 async function resolveCoachClientId(token) {
   const t = String(token || '');
   if (!t) return null;
-  if (validTokens().includes(t)) return DEFAULT_COACH_CLIENT_ID;
+  if (isSharedSecret(t)) return sharedSecretAllowed() ? DEFAULT_COACH_CLIENT_ID : null;
   if (!CONNECTOR_MULTITENANT) return null;
   try {
     const client = await clientService.getClientByPortalToken(t);
@@ -486,7 +499,7 @@ function mountRecallMcp(app, log = console) {
     const coachClientId = await resolveCoachClientId(req.params.token);
     // "via" says which kind of link the call came in on: a shared secret cannot say who is
     // calling (Ashley Knowles' Claude ran as Guy on one, 14 Oct 2026), a personal link can.
-    const via = validTokens().includes(String(req.params.token || '')) ? 'shared' : 'personal';
+    const via = isSharedSecret(req.params.token) ? 'shared' : 'personal';
     hit(req, coachClientId ? `auth=ok tenant=${coachClientId} via=${via}` : 'auth=BAD');
     if (!coachClientId) {
       return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'unauthorized' } });
@@ -554,4 +567,4 @@ function mountRecallMcp(app, log = console) {
   log.info && log.info(`mcpRecallServer: mounted ${BASE}/:token (streamable POST, SDK) — recall_latest_transcript + recall_find_transcript + fathom tools (Fathom tenants only)`);
 }
 
-module.exports = { mountRecallMcp, BASE };
+module.exports = { sharedSecretAllowed, isSharedSecret, mountRecallMcp, BASE };

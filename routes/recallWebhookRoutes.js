@@ -1202,7 +1202,10 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
   // request at all). MCP_CONNECTOR_TOKEN is a clean hex token for the connector URL; the old
   // secret keeps working so nothing else breaks.
   const alt = (process.env.MCP_CONNECTOR_TOKEN || '').trim();
-  const authOk = (expected && req.params.token === expected) || (alt && req.params.token === alt);
+  // Same off-switch as the /mcp2 door (CONNECTOR_SHARED_SECRET=off) - this door only ever took the
+  // shared secret, so off means closed.
+  const sharedOff = String(process.env.CONNECTOR_SHARED_SECRET || '').trim().toLowerCase() === 'off';
+  const authOk = !sharedOff && ((expected && req.params.token === expected) || (alt && req.params.token === alt));
   logMcpConnectorHit(req, authOk ? 'auth=ok' : 'auth=BAD');
   if (!authOk) {
     const id = req.body?.id ?? null;
