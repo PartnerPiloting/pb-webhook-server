@@ -18,7 +18,7 @@ const express = require('express');
 const router = express.Router();
 
 const { stripe, isStripeAvailable } = require('../config/stripeClient');
-const { generateInvoicePdf, getBusinessConfig } = require('../services/invoicePdfService');
+const { generateInvoicePdf, getBusinessConfig, invoicePdfData } = require('../services/invoicePdfService');
 const { createLogger } = require('../utils/contextLogger');
 const { sendMailgunEmail } = require('../services/emailNotificationService');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
@@ -529,17 +529,7 @@ router.get('/api/billing/invoice/:id/pdf', authenticateUserWithTestMode, require
                 return res.status(404).json({ success: false, error: 'Invoice not found' });
             }
 
-            pdfData = {
-                id: invoice.id,
-                number: invoice.number,
-                created: invoice.created,
-                amount_paid: invoice.amount_paid,
-                status: invoice.status,
-                customer_name: invoice.customer_name || invoice.customer?.name,
-                customer_email: invoice.customer_email || invoice.customer?.email,
-                lines: invoice.lines
-            };
-            filename = `Invoice-${invoice.number || 'ASH-' + invoice.id.slice(-8)}.pdf`;
+            ({ pdfData, filename } = invoicePdfData(invoice));
 
         } else if (id.startsWith('ch_')) {
             // It's a one-time charge
@@ -839,6 +829,25 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
                         customerId: invoice.customer
                     }, logger);
                 }
+
+                // The client's bookkeeper gets the GST tax invoice PDF by email - nobody
+                // needs the portal link for billing (services/invoiceEmailService).
+                try {
+                    const sent = await require('../services/invoiceEmailService').onInvoicePaid({ invoice, logger });
+                    if (sent.error) {
+                        await sendAdminAlert({
+                            subject: `Tax invoice not emailed: ${sent.clientId || invoice.customer_email || invoice.customer}`,
+                            text: [
+                                `Invoice ${invoice.number || invoice.id} was paid, but emailing its tax invoice failed: ${sent.error}.`,
+                                '',
+                                `Recipients: ${(sent.recipients || []).join(', ') || 'none found'}`,
+                                `It can be resent with POST /api/billing/invoice-email/send {"clientId":"${sent.clientId || '?'}","invoiceIds":["${invoice.id}"]}.`,
+                            ].join('\n')
+                        }, logger);
+                    }
+                } catch (e) {
+                    logger.error(`[invoice-email] ${invoice.id}: ${e.message}`);
+                }
                 break;
             }
 
@@ -917,6 +926,29 @@ function requireDebugKey(req, res) {
     }
     return true;
 }
+
+/**
+ * POST /api/billing/invoice-email/send  (x-debug-key)
+ * Email a client's tax invoice PDFs to their Billing Email (blank = Client Email Address):
+ * every paid invoice not yet sent, or just invoiceIds. One email. Already-sent invoices are
+ * skipped unless force. dryRun shows recipients and wording without sending.
+ * Body: { clientId, invoiceIds?, force?, dryRun? }
+ */
+router.post('/api/billing/invoice-email/send', express.json(), async (req, res) => {
+    if (!requireDebugKey(req, res)) return;
+    const logger = createLogger({ runId: 'BILLING', clientId: req.body?.clientId || 'UNKNOWN', operation: 'invoice_email_send' });
+    try {
+        const { clientId, invoiceIds, force, dryRun } = req.body || {};
+        if (!clientId) return res.status(400).json({ success: false, error: 'clientId required' });
+        const result = await require('../services/invoiceEmailService').sendForClient({
+            clientId, invoiceIds, force: !!force, dryRun: !!dryRun, logger
+        });
+        res.status(result.error ? 422 : 200).json({ success: !result.error, ...result });
+    } catch (e) {
+        logger.error(`[invoice-email] send door: ${e.message}`);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
 
 router.get('/api/join-provision/jobs', async (req, res) => {
     if (!requireDebugKey(req, res)) return;

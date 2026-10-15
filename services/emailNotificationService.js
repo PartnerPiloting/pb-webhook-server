@@ -242,7 +242,52 @@ async function sendAlertEmail(subject, htmlBody, recipient = null, options = {})
     }
 }
 
+/**
+ * sendMailgunEmail with file attachments. The url-encoded send above can't carry files, so
+ * this posts multipart/form-data. attachments: [{ filename, content: Buffer, contentType }].
+ * Every other field is passed through as-is (from, to, cc, subject, text, html, h:Reply-To...).
+ */
+async function sendMailgunEmailWithAttachments({ attachments = [], ...fields }) {
+    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+        throw new Error("Mailgun not configured - missing API key or domain");
+    }
+    const FormData = require('form-data');
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) {
+        if (value === undefined || value === null || value === '') continue;
+        for (const v of (Array.isArray(value) ? value : [value])) form.append(key, String(v));
+    }
+    for (const a of attachments) {
+        form.append('attachment', a.content, { filename: a.filename, contentType: a.contentType || 'application/octet-stream' });
+    }
+    const body = form.getBuffer();
+    const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
+    return new Promise((resolve, reject) => {
+        const req = https.request({
+            hostname: 'api.mailgun.net',
+            port: 443,
+            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
+            method: 'POST',
+            headers: { ...form.getHeaders(), 'Authorization': `Basic ${auth}`, 'Content-Length': body.length }
+        }, (res) => {
+            let responseData = '';
+            res.on('data', (chunk) => { responseData += chunk; });
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try { resolve(JSON.parse(responseData)); } catch (_) { resolve({ id: 'unknown', message: responseData }); }
+                } else {
+                    reject(new Error(`Mailgun API error: ${res.statusCode} - ${responseData}`));
+                }
+            });
+        });
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+    });
+}
+
 module.exports = {
+    sendMailgunEmailWithAttachments,
     sendTemplatedEmail,
     sendBulkTemplatedEmails,
     sendAlertEmail,

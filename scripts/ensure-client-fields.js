@@ -162,6 +162,11 @@ const MASTER_FIELDS = [
     }
   },
   {
+    name: 'Billing Email',
+    type: 'singleLineText',
+    description: 'Where this client\'s monthly GST tax invoice PDF is emailed after each Stripe payment (services/invoiceEmailService.js). One or more addresses separated by commas, e.g. "owner@firm.com, accounts@firm.com" - lets a bookkeeper get proper tax invoices without the client\'s portal link. Blank = Client Email Address. Added 2026-10-16 (Paul Faix / Fortix wanted invoices at accounts@fortix.com.au).'
+  },
+  {
     name: 'Email Series Start Date',
     type: 'date',
     description: 'When the client email series (22 emails - twice a week for 1-15, then weekly; order in config/onePagerSeriesManifest.js) starts for this client. Per-client choice, set during onboarding; the convention is the END of onboarding (the Linked Helper launch session), so the drip takes over the drumbeat when the weekly sessions stop and fills the collection quiet zone. Blank = series not started. The drip engine (not yet built) sends nothing before this date. Added 2026-08-23.',

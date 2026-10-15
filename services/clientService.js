@@ -213,6 +213,9 @@ async function getAllClients() {
                 const stripeSubscriptionId = record.get('Stripe Subscription ID') || null;
                 // Who manages Status: pmpro (blank = legacy pmpro) | stripe | complimentary.
                 const billingSource = record.get('Billing Source') || null;
+                // Where the monthly tax invoice PDF is emailed (services/invoiceEmailService.js).
+                // One or more addresses, comma-separated; blank = Client Email Address.
+                const billingEmail = record.get('Billing Email') || '';
                 // Generic direct-provider calendar credentials (e.g. Zoho), populated only when the
                 // calendar is on a provider Nylas can't serve; blank for Nylas/Google clients. The
                 // calendarProvider.js seam reads these for the 'zoho' (and future direct) branches.
@@ -360,6 +363,7 @@ async function getAllClients() {
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,
                     billingSource: billingSource,
+                    billingEmail: billingEmail,
                     emailProvider: emailProvider,
                     calendarProviderToken: calendarProviderToken,
                     calendarProviderDomain: calendarProviderDomain,

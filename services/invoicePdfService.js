@@ -300,8 +300,31 @@ function plainDescription(description) {
     return String(description || 'Subscription').replace(/Ã—|×/g, 'x');
 }
 
+/**
+ * A Stripe invoice (customer expanded or not) -> the data generateInvoicePdf takes, plus
+ * the download filename. One shape for the portal download and the emailed copy
+ * (services/invoiceEmailService.js), so a bookkeeper gets the same document the portal serves.
+ */
+function invoicePdfData(invoice) {
+    const cust = (invoice.customer && typeof invoice.customer === 'object') ? invoice.customer : {};
+    return {
+        pdfData: {
+            id: invoice.id,
+            number: invoice.number,
+            created: invoice.created,
+            amount_paid: invoice.amount_paid,
+            status: invoice.status,
+            customer_name: invoice.customer_name || cust.name,
+            customer_email: invoice.customer_email || cust.email,
+            lines: invoice.lines
+        },
+        filename: `Invoice-${invoice.number || 'ASH-' + invoice.id.slice(-8)}.pdf`
+    };
+}
+
 module.exports = {
     generateInvoicePdf,
+    invoicePdfData,
     getBusinessConfig,
     BUSINESS_CONFIG
 };
