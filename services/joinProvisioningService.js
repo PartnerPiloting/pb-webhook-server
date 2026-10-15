@@ -446,6 +446,9 @@ async function stepFinishRow(job) {
     // Every new client sees the eight-stop journey on Start Here from day one (Guy, 6 Oct 2026).
     'Client Journey': 'Yes',
     'Top Scoring Leads': 'No',
+    // Three-tab portal (Today / Leads / Setup and help) for everyone (Guy, 11 Oct 2026) -
+    // missed here, so Alex Solti and David Gould joined on the old tab row (15 Oct).
+    'Today Layout': 'Yes',
     // Re-score Leads for everyone (Guy, 5 Oct 2026).
     ...require('../config/rescoreDefaults').rescoreDefaults(),
     'Coach': COACH_ID,
