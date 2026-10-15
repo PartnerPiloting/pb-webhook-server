@@ -48,6 +48,9 @@ function harness() {
   assert.deepStrictEqual(svc.billingRecipients({ ...paul, billingEmail: '' }, invoice('a')).recipients, ['paul@fortix.com.au']);
   assert.deepStrictEqual(svc.billingRecipients(null, invoice('a')).recipients, ['pavol@fortix.com.au'], 'unmatched payer still gets it');
 
+  const slip = svc.buildInvoiceEmail({ client: { clientId: 'Paul-Faix', clientFirstName: 'Paul-Faix' }, invoices: [invoice('a')] });
+  assert.ok(/^Hi Paul,/.test(slip.text), 'Client ID in First Name never reaches the greeting');
+
   // 2. A paid invoice sends once; the replay is skipped.
   const h = harness();
   const deps = { ...h.deps, retrieveInvoice: async (id) => invoice(id), findClientForCustomer: async () => paul };

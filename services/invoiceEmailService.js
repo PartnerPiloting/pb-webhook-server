@@ -126,7 +126,9 @@ function billingRecipients(client, invoice) {
 // ---------------------------------------------------------------------------
 
 function firstNameFor(client, invoice) {
-  const first = (client && client.clientFirstName) || String((invoice && invoice.customer_name) || '').trim().split(/\s+/)[0];
+  let first = (client && client.clientFirstName) || String((invoice && invoice.customer_name) || '').trim().split(/\s+/)[0];
+  // A First Name filled with the Client ID ("Paul-Faix", seen 16 Oct 2026) must not reach the greeting.
+  if (client && first && first === client.clientId) first = first.split('-')[0];
   return first || 'there';
 }
 
