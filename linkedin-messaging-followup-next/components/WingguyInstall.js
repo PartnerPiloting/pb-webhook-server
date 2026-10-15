@@ -18,11 +18,12 @@
  * The download is fetched WITH the portal-token header and saved as a blob, so the token never
  * rides in a URL.
  *
- * KEY FIRST (Guy, 13 Oct 2026). A client on their own Claude key who has not saved one yet
- * (portal-status claudeKeyNeeded) gets the key box INSTEAD of the download: the extension drafts
- * on that key, so installing it first only ends in a draft that fails after the whole profile has
- * been read. The owner and managed-plan clients never see this. Saving the key swaps the page to the
- * download in place. The server refuses the download too, so this is not just a hidden button.
+ * KEY AS STEP 1, DOWNLOAD AS STEP 2 (Guy, 15 Oct 2026). A client on their own Claude key who has
+ * not saved one yet (portal-status claudeKeyNeeded) sees the key box first and the download right
+ * under it. From 13 Oct the download was held back until the key was saved, but that stalled live
+ * calls (Paul Faix could not install with Guy on screen). /wg checks the key before it reads
+ * anything, so an install without a key just waits - it never fails half way. The owner and
+ * managed-plan clients never see the key box. Saving the key ticks step 1 off in place.
  *
  * STANDALONE like the other portal pages: the token in ?token= is the whole authentication story.
  */
@@ -35,15 +36,16 @@ import ClaudeKeySection from './ClaudeKeySection';
 
 const KEY_GUIDE_URL = 'https://knowaguy.com.au/your-claude-key';
 
-// Shown instead of the download while a BYO client has no Claude key on file.
-function KeyFirstCard({ authHeaders, onSaved }) {
+// Step 1, shown above the download while a BYO client has no Claude key on file.
+function KeyStepCard({ authHeaders, onSaved }) {
   return (
-    <div className="rounded-[14px] border border-amber-300 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(31,39,51,.05)]">
-      <h2 className="text-[19px] font-semibold text-slate-900">Do your Claude key first</h2>
+    <div className="mb-8 rounded-[14px] border border-amber-300 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(31,39,51,.05)]">
+      <h2 className="text-[19px] font-semibold text-slate-900">Step 1 - your Claude key</h2>
       <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
         The extension writes your LinkedIn messages with Claude, on a key from your own Anthropic
-        account. So the key goes in before the extension does - without it, the extension would
-        install perfectly and then have nothing to write with.
+        account. You can install the extension before the key is in - it just won&rsquo;t write
+        anything until it is. When you type /wg it will tell you, and start working the moment the
+        key is saved.
       </p>
       <p className="mt-3 text-[15px] leading-relaxed text-slate-600">
         Making one takes about fifteen minutes, once, and the steps are all on one page:{' '}
@@ -51,8 +53,7 @@ function KeyFirstCard({ authHeaders, onSaved }) {
           className="font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-800">
           knowaguy.com.au/your-claude-key
         </a>
-        . Then paste it below. It gets checked with Anthropic before it&rsquo;s saved, and the download
-        appears here straight after.
+        . Then paste it below. It gets checked with Anthropic before it&rsquo;s saved.
       </p>
       <div className="mt-4">
         <ClaudeKeySection authHeaders={authHeaders} variant="settings" onSaved={onSaved} />
@@ -263,25 +264,8 @@ function WingguyInstallInner() {
   }
 
   const showUpdate = status && !status.error && status.behind;
-  const keyFirst = Boolean(status && !status.error && status.claudeKeyNeeded && !keySaved);
-
-  if (keyFirst) {
-    return (
-      <div className="max-w-[680px]">
-        <h1 className="font-serif text-4xl leading-tight text-slate-900">Install your Wingguy extension</h1>
-        <p className="mb-6 mt-[10px] max-w-[56ch] text-[16.5px] leading-relaxed text-slate-600">
-          One thing comes before the download.
-        </p>
-        <KeyFirstCard authHeaders={authHeaders} onSaved={() => setKeySaved(true)} />
-        <div className="mt-8 rounded-[14px] border border-slate-200 bg-white px-5 py-[18px] shadow-[0_1px_2px_rgba(31,39,51,.05)]">
-          <p className="mb-1 text-[15px] font-semibold text-slate-900">Stuck anywhere?</p>
-          <p className="text-[15px] text-slate-600">
-            Don&rsquo;t guess - message me and we&rsquo;ll do it together on a quick call.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Key box above the download, never instead of it. Stays up (ticked) once saved on this visit.
+  const keyStep = Boolean(status && !status.error && (status.claudeKeyNeeded || keySaved));
 
   return (
     <div className="max-w-[680px]">
@@ -291,12 +275,14 @@ function WingguyInstallInner() {
         slightly technical-sounding names - don&rsquo;t let that put you off. I&rsquo;ll tell you exactly what to click.
       </p>
 
+      {keyStep && !keySaved && <KeyStepCard authHeaders={authHeaders} onSaved={() => setKeySaved(true)} />}
       {keySaved && (
         <div className="mb-4 flex items-center gap-[10px] rounded-[12px] border border-emerald-200 bg-emerald-50 px-[14px] py-[12px] text-[14.5px] text-emerald-800">
           <span className="h-[9px] w-[9px] flex-none rounded-full bg-emerald-600" aria-hidden="true" />
           <span><b className="font-semibold">Your Claude key is in.</b> Now the extension.</span>
         </div>
       )}
+      {keyStep && <h2 className="mb-4 text-[19px] font-semibold text-slate-900">Step 2 - the extension</h2>}
       <div className="mb-6"><StatusBanner status={status && !status.error ? status : null} /></div>
 
       <div className="flex flex-wrap items-center gap-4">

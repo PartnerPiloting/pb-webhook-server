@@ -265,11 +265,10 @@ router.get('/installer.sh', requireClient, serveUpdater('wingguy-update.sh', 'te
  * behind - best-effort, and it never fails the download.
  */
 router.get('/download', requireClient, async (req, res) => {
-  // No Claude key, no extension (Guy, 13 Oct 2026): it would install, read a whole profile and then
-  // fail at the draft. The page shows the key box instead of the button; this is the back door.
-  if (claudeKeyNeeded(req.wgClient)) {
-    return res.status(409).json({ ok: false, claudeKeyNeeded: true, error: 'Set up your Claude key first - the extension cannot draft without it.' });
-  }
+  // Served with or without a Claude key (Guy, 15 Oct 2026). From 13 Oct a keyless BYO client was
+  // refused here, but that only cost live calls (Paul Faix could not install with Guy on screen):
+  // the real guard is /wg, which checks the key before it reads anything and says what to do. So
+  // the install can happen on the call and drafting simply starts once the key is saved.
   try {
     const { version } = buildList();
     const zip = new AdmZip();
@@ -322,8 +321,8 @@ function claudeKeyNeeded(client) {
  * Best-effort: any failure still returns the current version with installed = null, so the page
  * degrades to "here is how to install it" rather than an error.
  *
- *   claudeKeyNeeded = true -> a BYO client with no Claude key yet: the page shows the key box
- *                             first and holds the download back until a key is saved.
+ *   claudeKeyNeeded = true -> a BYO client with no Claude key yet: the page shows the key box as
+ *                             step 1, above the download (which is never held back).
  */
 router.get('/portal-status', requireClient, async (req, res) => {
   const { version } = buildList();

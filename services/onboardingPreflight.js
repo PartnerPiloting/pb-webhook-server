@@ -208,11 +208,11 @@ async function runPreflight(clientId) {
   // Until 2026-09-09 only the folder fields were read, so every updater client printed as
   // "hand-delivered" the morning after their machine had updated itself. Check-ins win.
   //
-  // KEY FIRST (Guy, 13 Oct 2026): a BYO client with no Claude key is BLOCKED here whatever the
-  // install looks like - the extension cannot draft without it, so installing or updating it first
-  // only ends in a failed draft on a live call. Judged from the record, so it holds even where the
-  // check-in ledger cannot be read. The owner and managed-plan clients are never blocked.
-  const KEY_BLOCK = 'BLOCKED - no Claude key yet, do the key first (step 11)';
+  // A BYO client with no Claude key can still install (Guy, 15 Oct 2026 - the 13 Oct block only
+  // stalled live calls). Step 9 is judged on the install alone; the evidence just says drafting
+  // waits on step 11, because /wg checks the key before reading anything. Owner and managed-plan
+  // clients never need a key.
+  const KEY_WAIT = 'drafting waits on the Claude key (step 11) - /wg asks for it before reading anything';
   const keyBlocked = anthropicLane(client) === 'none-blocked';
   let extensionOnJourney = false;
   try {
@@ -238,10 +238,7 @@ async function runPreflight(clientId) {
       } else {
         verdict = OWED; evidence = 'no delivery lane - install the pull updater over remote access (node scripts/extension-install-command.js <Client-ID> prints the one paste-able line), or set up a OneDrive folder; updates are hand-delivered until one of those is in place';
       }
-      if (keyBlocked) {
-        verdict = OWED;
-        evidence = `${KEY_BLOCK} - the portal holds the download back until it is saved, and /wg asks for it before reading anything · install so far: ${checkin || folder ? evidence : 'nothing installed'}`;
-      }
+      if (keyBlocked) evidence = `${evidence} · ${KEY_WAIT}`;
       step(9, 'ship + install', verdict, evidence);
     } else if (checkin || provider || ref) {
       step(9, 'ship + install', OWED, `${checkin ? `pull updater is checking in (${where})` : 'folder fields set'} but Wingguy Enabled is off - flip the gate or clear the delivery`);
@@ -249,7 +246,7 @@ async function runPreflight(clientId) {
       step(9, 'ship + install', MANUAL, 'Wingguy Enabled is off - chat-only client, no extension on this journey');
     }
   } catch (e) {
-    step(9, 'ship + install', OWED, keyBlocked && client.wingguyEnabled ? `${KEY_BLOCK} (install probe failed: ${e.message})` : `probe failed: ${e.message}`);
+    step(9, 'ship + install', OWED, `probe failed: ${e.message}`);
   }
 
   // ---- STEP 10: prove the extension works for them (manual by design) ----------
@@ -269,7 +266,7 @@ async function runPreflight(clientId) {
     step(11, 'own Claude key', managed || hasKey ? DONE : OWED,
       managed ? 'managed plan - runs on the platform key by design'
         : hasKey ? `client key SET · Followup Brief=${client.followupBrief || 'off'}`
-        : `BYO with no key - /wg drafting and the overnight brief are BLOCKED until sk-ant- is on the row${client.wingguyEnabled ? ', and so is step 9 (the extension waits on the key)' : ''} · Followup Brief=${client.followupBrief || 'off'}${briefOn ? '' : ' (correct order)'}`);
+        : `BYO with no key - /wg drafting and the overnight brief are BLOCKED until sk-ant- is on the row${client.wingguyEnabled ? ' (the extension can go in first - step 9 - it just will not draft yet)' : ''} · Followup Brief=${client.followupBrief || 'off'}${briefOn ? '' : ' (correct order)'}`);
   } catch (e) { step(11, 'own Claude key', OWED, `probe failed: ${e.message}`); }
 
   // ---- STEP 12: demonstrate /wg on LinkedIn (manual by design) -----------------
@@ -348,8 +345,6 @@ async function runPreflight(clientId) {
   const unreachable = new Set();
   for (const s of steps) {
     if (s.verdict !== OWED) continue;
-    // A key block is read off the record, not a store - it stands wherever this runs.
-    if (/^BLOCKED - no Claude key/.test(String(s.evidence || ''))) continue;
     const missing = NEEDS[s.n] && !reach[NEEDS[s.n]] ? NEEDS[s.n] : null;
     const probeFailed = /^probe failed:/.test(String(s.evidence || ''));
     if (!missing && !probeFailed) continue;

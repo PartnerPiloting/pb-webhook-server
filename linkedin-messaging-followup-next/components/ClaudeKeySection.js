@@ -16,10 +16,10 @@
  *
  * `authHeaders(extra?)` must be a STABLE callback (useCallback) - it is an effect dependency.
  * `onSaved()` (optional) is called after a key is checked and saved - the install page uses it to
- * swap "do your key first" for the download without a reload.
+ * tick off step 1 (the key) above the download without a reload.
  *
- * The install page (WingguyInstall) uses variant="settings" inside its own "Do your Claude key
- * first" card: no heading of its own, since the card says what it is for.
+ * The install page (WingguyInstall) uses variant="settings" inside its own "Step 1 - your Claude
+ * key" card: no heading of its own, since the card says what it is for.
  */
 
 import React, { useState, useEffect } from 'react';

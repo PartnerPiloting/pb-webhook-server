@@ -140,8 +140,8 @@ Wingguy inside LinkedIn. I install a small updater on your computer over a remot
 fetches every improvement I make from my server by itself, daily and at login, so nothing ever
 reaches you as a download. (Older setups use a shared OneDrive folder for the same job.) Then we load
 it into your browser together - it's the fiddliest single step in the journey, so we do it on a
-call. It only goes in once your Claude key is in (step 11) - without the key there's nothing for it
-to write with, so your portal won't offer the download until the key is saved.
+call. It can go in before your Claude key (step 11) - it just won't write anything until the key is
+saved, and /wg will tell you so.
 
 **Step 10 - We prove the extension works for you. [proof]** Installed isn't the same as working. You
 open your portal once in that browser - that's how the extension knows it's you - then open any
@@ -153,7 +153,7 @@ does happen on our servers while you're asleep - overnight it reads your follow-
 your drafts - and your LinkedIn drafting runs there too. That work runs on a Claude API key that's
 yours: you create it, you put a monthly spend cap on it, and you can switch it off any time. I send
 this one as an email rather than walking it live: it's fifteen minutes of clicking around a website
-that isn't ours, and it's better done at your own pace. It comes before the extension, not after. (On a managed plan? Skip this - your
+that isn't ours, and it's better done at your own pace. The extension can go in before it, but won't write anything until it's in. (On a managed plan? Skip this - your
 drafting runs on my account and there's nothing for you to do.)
 
 **Step 12 - We put /wg to work on a real profile. [live]** The payoff. Your key is in, your
@@ -800,14 +800,13 @@ Wingguy 'update my rules'."
 The extension is the piece that puts Wingguy inside LinkedIn. It installs once, but it gets improved
 - and updates must reach the client's computer with ZERO ongoing effort from them.
 
-**Blocked until step 11 for BYO clients (decided 13 Oct 2026).** No Claude key, no extension. Guy
-McPhee hit the "refresh this page" card on a live call with no key behind it - after the refresh,
-/wg would have read the whole profile and then failed at the draft. So, three places now say so:
-the preflight prints step 9 as `BLOCKED - no Claude key yet, do the key first (step 11)`; the
-portal install page shows "Do your Claude key first" with the paste box instead of the download
-(and the server refuses the download); and /wg asks first and shows "Your Claude key isn't set up
-yet" with the fix on a button. The owner and managed-plan clients are never blocked. If the
-preflight says BLOCKED, do step 11 - never install around it.
+**The key is no longer a gate on the install (15 Oct 2026).** From 13 Oct a BYO client with no
+Claude key could not download the extension (Guy McPhee hit the "refresh this page" card on a live
+call with no key). That stalled Paul Faix's install on a live call on 15 Oct, so the download is
+served to everyone again. The real guard stays: /wg checks the key before it reads anything and shows
+"Your Claude key isn't set up yet" with the fix on a button. The portal install page shows the key box
+as step 1 above the download, and the preflight judges step 9 on the install alone, noting that
+drafting waits on step 11. The owner and managed-plan clients never need a key.
 
 **The mechanism, and the reference material.** Two lanes deliver updates. **The pull updater is
 the default since 2026-09-03**: a scheduled job on the client's own machine fetches the extension

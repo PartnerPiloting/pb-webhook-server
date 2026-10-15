@@ -5,10 +5,11 @@
  * Contracts:
  *   1. ONE lane rule: anthropicLane says exactly what resolveClientAnthropic does - stored key ->
  *      theirs; owner / managed -> platform; any other client with a blank key -> none-blocked.
- *   2. The preflight prints step 9 as BLOCKED for a keyless BYO client, whatever the install looks
- *      like, and even where the check-in ledger cannot be read. Owner and managed are never blocked.
- *   3. The portal install page is told claudeKeyNeeded, and the download itself is refused (409)
- *      for a keyless BYO client - not just a hidden button. Owner and managed download as before.
+ *   2. The preflight judges step 9 on the install alone; for a keyless BYO client its evidence says
+ *      drafting waits on the key (step 11). Never BLOCKED (Guy, 15 Oct 2026 - the block only
+ *      stalled live calls). Owner and managed never mention the key.
+ *   3. The portal install page is told claudeKeyNeeded (it shows the key box as step 1), but the
+ *      download is served to every client, keyless BYO included (15 Oct 2026; was 409 from 13 Oct).
  *   4. POST /identity carries claudeKey { ready, lane } - additive, the old fields unchanged.
  *   5. The extension that ships: the background verdict carries the key status and never serves a
  *      "no key" verdict from memory; /wg shows the key card AFTER the refresh / connect /
@@ -92,28 +93,29 @@ check('resolveClientAnthropic agrees with anthropicLane, and only none-blocked h
 const { runPreflight } = require('../services/onboardingPreflight');
 const step9 = async (id) => (await runPreflight(id)).steps.find((s) => s.n === 9);
 
-check('preflight: keyless BYO, nothing installed -> BLOCKED, and readable without a database', async () => {
+check('preflight: keyless BYO, nothing installed -> owed for the install, never BLOCKED', async () => {
   CHECKINS = {};
   const s = await step9('Nell-Nokey');
-  assert.strictEqual(s.verdict, 'owed');
-  assert.match(s.evidence, /^BLOCKED - no Claude key yet, do the key first \(step 11\)/);
+  // No database here, so an unproven install reads as "can't check" - exactly as for a keyed client.
+  assert.ok(['owed', 'unknown'].includes(s.verdict), s.verdict);
+  assert.doesNotMatch(s.evidence, /BLOCKED/);
 });
-check('preflight: keyless BYO with a working install is STILL blocked (the McPhee case)', async () => {
+check('preflight: keyless BYO with a working install is DONE, and still says the key is owed', async () => {
   CHECKINS = { 'Nell-Nokey': { version: '0.3.33', action: 'downloaded', checked_in_at: new Date().toISOString(), machine: 'portal-download' } };
   const s = await step9('Nell-Nokey');
-  assert.strictEqual(s.verdict, 'owed');
-  assert.match(s.evidence, /^BLOCKED - no Claude key yet/);
-  assert.match(s.evidence, /0\.3\.33/, 'still says what is installed');
+  assert.strictEqual(s.verdict, 'done');
+  assert.match(s.evidence, /0\.3\.33/, 'says what is installed');
+  assert.match(s.evidence, /drafting waits on the Claude key/);
 });
 check('preflight: step 11 says the extension waits on the key', async () => {
   const r = await runPreflight('Nell-Nokey');
   assert.match(r.steps.find((s) => s.n === 11).evidence, /step 9/);
 });
-check('preflight: owner, managed and keyed clients are never key-blocked', async () => {
+check('preflight: owner, managed and keyed clients never mention the key at step 9', async () => {
   CHECKINS = {};
   for (const id of ['Olive-Owner', 'Mona-Managed', 'Kim-Keyed']) {
     const s = await step9(id);
-    assert.doesNotMatch(s.evidence, /BLOCKED - no Claude key/, id);
+    assert.doesNotMatch(s.evidence, /Claude key/, id);
   }
 });
 
@@ -162,11 +164,8 @@ check('portal-status: claudeKeyNeeded only for the keyless BYO client', async ()
     assert.ok(r.json.current, 'still reports the current version');
   }
 });
-check('download: refused (409) for the keyless BYO client, served to the others', async () => {
-  const no = await call('GET', '/extension/dist/download', 'tok-nokey');
-  assert.strictEqual(no.status, 409);
-  assert.strictEqual(no.json.claudeKeyNeeded, true);
-  for (const tok of ['tok-keyed', 'tok-owner', 'tok-managed']) {
+check('download: served to every client, the keyless BYO client included', async () => {
+  for (const tok of ['tok-nokey', 'tok-keyed', 'tok-owner', 'tok-managed']) {
     const ok = await call('GET', '/extension/dist/download', tok);
     assert.strictEqual(ok.status, 200, tok);
   }
