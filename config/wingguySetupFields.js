@@ -48,9 +48,10 @@ const VARIABLE_FIELDS = [
     tier: 'essential',
     group: 'The essentials',
     label: 'How do you sign off a message?',
-    hint: 'Exactly as you would write it - this goes out letter for letter. Leave it and it just uses your first name.',
+    hint: 'Exactly as you would write it - this goes out letter for letter, line breaks and all. Leave it and it just uses your first name.',
     example: 'Cheers, Guy',
-    type: 'text',
+    // 'long' so a sign-off can run over several lines (David Gould, 15 Oct 2026: name, then a saying).
+    type: 'long',
   },
   {
     key: 'timezone',

@@ -433,9 +433,10 @@ function Field({ field, value, status, onChange, onCommit }) {
         <textarea
           id={`f-${field.key}`}
           rows={3}
-          className={inputClasses}
+          ref={(el) => growToFit(el)}
+          className={`${inputClasses} resize-y`}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => { growToFit(e.target); onChange(e.target.value); }}
           onBlur={(e) => commit(e.target.value.trim())}
         />
       ) : (
@@ -460,6 +461,13 @@ function Field({ field, value, status, onChange, onCommit }) {
       </div>
     </div>
   );
+}
+
+/** Grow a textarea to show everything typed in it, so a long answer is never hidden behind a scroll. */
+function growToFit(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight + 2}px`;
 }
 
 /** A voice box: the shape, the live example, the read-back button, and the optional box itself. */

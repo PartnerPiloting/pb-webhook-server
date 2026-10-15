@@ -184,6 +184,20 @@ function chooseSignoff(conversation, coachName, vp, campaignSignoff) {
   return full;
 }
 
+// A multi-line sign-off (David Gould, 15 Oct 2026: "Warm regards" / "David" / a saying) must reach the
+// draft with its line breaks. The model sometimes flattens it onto one line; when the draft holds the
+// sign-off's words in order but with the breaks gone, put the exact sign-off back. Single-line
+// sign-offs and drafts that don't contain it are returned untouched.
+function restoreSignoffLayout(draft, signoff) {
+  const text = String(draft == null ? '' : draft);
+  const exact = String(signoff || '').trim();
+  if (!text || !exact.includes('\n') || text.includes(exact)) return draft;
+  const words = exact.split(/\s+/).filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!words.length) return draft;
+  const flattened = new RegExp(words.join('\\s+'));
+  return flattened.test(text) ? text.replace(flattened, () => exact) : draft;
+}
+
 // STORE-FIRST voice identity (2026-08-12 — the Julian "(I know a) Guy" leak): the /my-wingguy setup
 // page saves each tenant's sign-off LETTER-FOR-LETTER as the store variable `signoff` (blank = "just
 // use their first name"), plus `owner_first_name` — but this path only ever read
@@ -247,7 +261,9 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, leadName
     (voice.greetWithFirstName
       ? `- OPEN every message with a warm greeting that uses the LEAD'S FIRST NAME, fitting the moment: "Hi <First>," on a first/cold touch; "Great, <First> —" / "Perfect, <First> —" / "Thanks, <First> —" when replying to something they said. Always work their first name in — people like seeing their name.\n`
       : '') +
-    `- SIGN OFF with EXACTLY this closing line: "${voice.signoff}". Use it verbatim as the last line; do not add or drop the tagline yourself — that choice is already made for you.\n` +
+    (String(voice.signoff).includes('\n')
+      ? `- SIGN OFF with EXACTLY these closing lines, keeping every line break as shown (between the markers):\n<<<\n${voice.signoff}\n>>>\nUse them verbatim as the last lines; do not join them onto one line, and do not add or drop anything — that choice is already made for you.\n`
+      : `- SIGN OFF with EXACTLY this closing line: "${voice.signoff}". Use it verbatim as the last line; do not add or drop the tagline yourself — that choice is already made for you.\n`) +
     `- When you OFFER TIMES (propose_times), put the greeting in the intro; the sign-off is appended automatically, so DON'T put a sign-off in the outro.\n\n`
   ) : '';
   // The model's DATE ANCHOR (2026-07-10, the Vikas mis-offer): without this the model has no idea
@@ -1574,7 +1590,8 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     console.warn(`WINGGUY-CLOCK-GUARD dropped ${clocked.dropped.map((d) => `"${d}"`).join(', ')} for ${coach.clientId} → ${profile.name || 'lead'}${clocked.line ? ` (code wrote: ${clocked.line})` : ''}`);
   }
 
-  return { ok: true, reply: clocked.reply, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
+  const draftOut = voice && voice.signoff ? restoreSignoffLayout(currentDraft, voice.signoff) : currentDraft;
+  return { ok: true, reply: clocked.reply, draft: draftOut, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, restoreSignoffLayout,meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
