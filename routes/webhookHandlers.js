@@ -195,6 +195,24 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             return res.json({ message: `No leads provided in /lh-webhook/upsertLeadOnly payload for client ${clientId}.` });
         }
 
+        // --- Sample-data filter: drop LH test payloads before they become leads ---
+        // Clicking "Test" on a "Send person to webhook" step posts made-up sample data (2026-10-15:
+        // "Alex Morgan" <alex.morgan@acme.example> / taylor-brooks landed in Guy's Leads and tripped
+        // the sender guard). Reserved example/test domains can never be a real LinkedIn login, so
+        // anything sent from one is dropped quietly - no lead, no alert.
+        const RESERVED_SENDER_DOMAIN = /@(?:[^@\s]+\.)?(?:example|test|invalid|localhost|example\.(?:com|net|org))$/i;
+        const isSamplePayload = lh => RESERVED_SENDER_DOMAIN.test(String(lh?.my_email || '').trim());
+        const sampleCount = rawLeadsFromWebhook.filter(isSamplePayload).length;
+        if (sampleCount > 0) {
+            log.info(`Dropped ${sampleCount} sample/test lead(s) for client ${clientId} (sender on a reserved example domain)`);
+            for (let i = rawLeadsFromWebhook.length - 1; i >= 0; i--) {
+                if (isSamplePayload(rawLeadsFromWebhook[i])) rawLeadsFromWebhook.splice(i, 1);
+            }
+            if (rawLeadsFromWebhook.length === 0) {
+                return res.json({ message: `Sample/test payload ignored for client ${clientId}.`, ignoredSampleLeads: sampleCount });
+            }
+        }
+
         // --- LH sender guard: does this payload actually come from this client's account? ---
         const guardMode = String(process.env.LH_SENDER_GUARD || 'warn').toLowerCase();
         const expectedSenderEmail = String(client.lhAccountEmail || client.clientEmailAddress || '').trim().toLowerCase();
