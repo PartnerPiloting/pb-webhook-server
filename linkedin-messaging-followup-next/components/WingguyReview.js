@@ -168,6 +168,8 @@ function VoicePage({ query }) {
         </Beat>
       </section>
 
+      <Mechanics />
+
       <div className="border-t-2 border-slate-900 pt-8 flex flex-col gap-4">
         <p className="font-serif text-2xl text-slate-900">Not done the setup yet?</p>
         <p className="text-slate-600">
@@ -189,6 +191,44 @@ function VoicePage({ query }) {
         with notes in the margin. Ask Guy for the link.
       </p>
     </Shell>
+  );
+}
+
+/** The mechanics, folded away (Guy, 17 Oct 2026): a fold on the same page rather than a link to
+ *  another one, so the curious get it in place and everyone else never sees it. Client words only -
+ *  no stash, ledger or pair. What it describes: content-wingguy.js (LinkedIn: stash on Insert, pair on
+ *  Send, 15-minute window, same conversation) and wingguyMailMcp.js (email: body recorded at draft
+ *  time, settled against sent mail when "review my edits" runs, 14-day expiry). */
+function Mechanics() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-3">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        className="self-start text-[15px] font-semibold text-emerald-800 underline underline-offset-2 hover:text-emerald-900">
+        Curious how it does that? {open ? '\u25B4' : '\u25BE'}
+      </button>
+      {open && (
+        <div className="flex flex-col gap-4 bg-white border border-slate-200 px-5 py-4 text-[15px] leading-relaxed text-slate-700">
+          <p>
+            <strong>On LinkedIn.</strong> The moment you press Insert, the Wingguy window remembers the
+            draft exactly as it wrote it. When you press Send, it reads the message that actually went
+            out and keeps the two side by side - but only if they differ. It only pairs a draft with a
+            send in the same conversation, within fifteen minutes, so nothing gets mixed up.
+          </p>
+          <p>
+            <strong>Email.</strong> When Wingguy puts a draft in your mailbox, it keeps a copy of the
+            wording. Nothing watches you in Gmail or Outlook. The next time you say{' '}
+            <Say>review my edits</Say>, it looks in your mailbox for the sent version of each draft,
+            trims off the quoted history underneath, and compares. A draft you never sent is
+            forgotten after a fortnight.
+          </p>
+          <p>
+            <strong>Then.</strong> <Say>review my edits</Say> shows both kinds, one at a time, and
+            asks: one-off, or pattern? Nothing becomes an instruction until you say so.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
