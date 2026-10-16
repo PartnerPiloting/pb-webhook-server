@@ -264,18 +264,21 @@ async function loadRows(client, deps = {}) {
 }
 
 /** The client's own email: their campaigns' lines, short. */
-function clientEmail({ clientFirstName, clientName, coachName, campaigns }) {
+function clientEmail({ clientFirstName, clientName, coachName, campaigns, machineLink }) {
   const first = String(clientFirstName || '').trim() || String(clientName || '').trim().split(/\s+/)[0] || 'there';
   const { signoffName } = require('./lhSignoutWatch');
   const camps = campaigns.map(campaignLines);
   const tail = camps.some((c) => c.topUp)
     ? 'When a campaign is close to empty, a fresh search keeps the invitations going - just reply if you want a hand with it.'
     : '';
+  // Their own machine's web link, so checking a number or topping up a search is one click away.
+  const open = `To open your Linked Helper machine: ${machineLink || 'ask your Claude to "open my Linked Helper machine"'}`;
   const text = [
     `Hi ${first},`,
     "Here's how your Linked Helper campaigns went last week.",
     camps.map((c) => `${c.name}\n${c.lines.map((l) => `- ${l}`).join('\n')}`).join('\n\n'),
     tail,
+    open,
     `Cheers,\n${signoffName(coachName)}`,
   ].filter(Boolean).join('\n\n');
   const html = [
@@ -283,6 +286,7 @@ function clientEmail({ clientFirstName, clientName, coachName, campaigns }) {
     "<p>Here's how your Linked Helper campaigns went last week.</p>",
     ...camps.map((c) => `<p style="margin:12px 0 2px"><b>${esc(c.name)}</b></p><ul style="margin-top:0">${c.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`),
     tail ? `<p>${esc(tail)}</p>` : '',
+    machineLink ? `<p><a href="${esc(machineLink)}">Open your Linked Helper machine</a></p>` : `<p>${esc(open)}</p>`,
     `<p>Cheers,<br>${esc(signoffName(coachName))}</p>`,
   ].filter(Boolean).join('\n');
   return { subject: 'Your campaign numbers this week', text, html };
@@ -311,7 +315,7 @@ async function sendClientEmails(rows, deps = {}, now = Date.now()) {
       const coachEmail = String((coach && coach.clientEmailAddress) || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim();
       const addr = String(process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`).trim();
       const to = String(r.client.clientEmailAddress).trim();
-      const cm = clientEmail({ clientFirstName: r.client.clientFirstName, clientName: r.clientName, coachName, campaigns: r.campaigns });
+      const cm = clientEmail({ clientFirstName: r.client.clientFirstName, clientName: r.clientName, coachName, campaigns: r.campaigns, machineLink: r.client.machineLink });
       const sendClient = deps.sendClientEmail || require('./emailNotificationService').sendMailgunEmail;
       await sendClient({
         from: addr.includes('<') ? addr : `${coachName} <${addr}>`,

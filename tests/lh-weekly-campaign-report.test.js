@@ -106,6 +106,10 @@ check("the client's own email: first name, their campaigns, a top-up nudge only 
   assert.ok(e.text.includes('a fresh search keeps the invitations going'));
   assert.ok(e.text.endsWith('Cheers,\n(I know a) Guy'));
   assert.ok(!w.clientEmail({ clientFirstName: 'Rick', coachName: 'Guy Wilson', campaigns: [frac] }).text.includes('fresh search'));
+  assert.ok(e.text.includes('ask your Claude to "open my Linked Helper machine"'), 'no link on record - the Claude fallback');
+  const linked = w.clientEmail({ clientFirstName: 'Rick', coachName: 'Guy Wilson', campaigns: [frac], machineLink: 'https://m.example/rick' });
+  assert.ok(linked.text.includes('To open your Linked Helper machine: https://m.example/rick'));
+  assert.ok(linked.html.includes('<a href="https://m.example/rick">Open your Linked Helper machine</a>'));
   assert.ok(!/[–—]/.test(e.text + e.html), 'no em or en dashes');
 });
 
