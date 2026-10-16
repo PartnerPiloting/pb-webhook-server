@@ -29,6 +29,14 @@ import Layout from '../../components/Layout';
 import ClientJourney from '../../components/ClientJourney';
 import { getClientProfile, buildAuthUrl, wingguyHubPath } from '../../utils/clientUtils';
 
+// The journey is only drawn here for a client with no hub (Wingguy off). A component, not an
+// inline check: JSX children are built when StartHerePage renders, BEFORE Layout has loaded the
+// profile, so an inline getClientProfile() was always null and the map showed for everyone
+// (caught on staging, 16 Oct 2026). Rendered as a child, this runs after Layout's init.
+const JourneyUnlessWingguy: React.FC = () => (
+  getClientProfile()?.features?.wingguy === true ? null : <ClientJourney />
+);
+
 export const dynamic = 'force-dynamic';
 
 // The client view of the series library. Without ?audience=client it serves the PROSPECT version.
@@ -137,9 +145,14 @@ const WhatWingguyCanDo: React.FC = () => {
   // The Claude and /wg parts only work once Wingguy is switched on. Without it the Claude links would
   // open plain Claude answering from general knowledge, so phrases render as plain text and a note says why.
   const wingguyOn = profile?.features?.wingguy === true;
+  const todayLayout = profile?.features?.todayLayout === true;
 
   return (
     <div className="mx-auto max-w-5xl px-2 pb-10">
+      {/* The same way back Settings has: on the three-tab layout this page sits under Setup and help. */}
+      {todayLayout && (
+        <a className="mb-3 block text-sm text-gray-500 hover:text-gray-800" href={buildAuthUrl('/setup')}>&larr; Setup and help</a>
+      )}
       <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Where Wingguy lives</h1>
       <p className="mt-2 text-base text-gray-600">
         Most of it doesn&apos;t live in these tabs. It happens in three places - here&apos;s each one.
@@ -305,7 +318,7 @@ export default function StartHerePage() {
             {/* The eight-stop journey (content/client-journey.json) lives on the Wingguy hub now
                 (16 Oct 2026), where every stop can lead to its page. It is only drawn here for a
                 client who has no hub - Wingguy not switched on - so nobody loses the map. */}
-            {getClientProfile()?.features?.wingguy !== true && <ClientJourney />}
+            <JourneyUnlessWingguy />
             <WhatWingguyCanDo />
           </div>
         </Layout>

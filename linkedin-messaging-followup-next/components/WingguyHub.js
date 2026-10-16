@@ -101,7 +101,9 @@ function ExtensionCard({ status, href }) {
     ? 'border-amber-300 bg-amber-50 hover:border-amber-400 focus-visible:ring-amber-600'
     : 'border-slate-200 bg-white hover:border-slate-300 focus-visible:ring-slate-700';
   let title = 'Install the browser extension';
-  let body = 'The Wingguy window on LinkedIn - get it into your browser in a couple of minutes.';
+  let body = status && status.current
+    ? `The Wingguy window on LinkedIn - get version ${status.current} into your browser in a couple of minutes.`
+    : 'The Wingguy window on LinkedIn - get it into your browser in a couple of minutes.';
   let cta = 'Install it';
   if (behind) {
     title = 'A new version of your browser extension is ready';
