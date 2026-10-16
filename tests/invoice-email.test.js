@@ -102,6 +102,9 @@ function harness() {
   assert.deepStrictEqual(rs.sent, ['in_9']);
   assert.strictEqual(hs.sends[0].to, 'guyralphwilson@gmail.com');
   assert.ok(hs.sends[0].subject.startsWith('[TEST - staging, would have gone to accounts@fortix.com.au]'));
+  const own = await svc.sendInvoices({ client: { clientId: 'Guy-Wilson', billingEmail: 'guyralphwilson@gmail.com, guy@wilsoar.com' }, invoices: [invoice('in_8')], deps: hs.deps });
+  assert.deepStrictEqual(own.sent, ['in_8']);
+  assert.strictEqual(hs.sends[1].to, 'guyralphwilson@gmail.com, guy@wilsoar.com', "Guy's own addresses receive for real on staging");
   delete process.env.RENDER_GIT_BRANCH;
 
   // 7. The portal field: blank allowed, list normalised, bad address named, dead domain refused.

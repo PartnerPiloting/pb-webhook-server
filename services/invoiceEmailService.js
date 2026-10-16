@@ -244,7 +244,12 @@ async function sendInvoices({ client, invoices, force = false, dryRun = false, d
     const replyTo = await replyToAddress(deps);
     let to = recipients;
     let { subject, text, html } = email;
-    if (isStagingServer()) {
+    // Staging: Guy's own addresses may receive for real (that's how a several-address list is
+    // proven end to end); anything else goes to Guy instead.
+    const guyOwn = parseAddresses(process.env.STAGING_EMAIL_ALLOW || `${GUY_EMAIL}, guy@wilsoar.com`);
+    if (isStagingServer() && recipients.every((r) => guyOwn.includes(r))) {
+      subject = `[TEST - staging] ${subject}`;
+    } else if (isStagingServer()) {
       to = [process.env.ALERT_EMAIL || GUY_EMAIL];
       subject = `[TEST - staging, would have gone to ${recipients.join(', ')}] ${subject}`;
       text = `THIS IS A TEST from the staging server - no client was emailed.\n\n${text}`;
