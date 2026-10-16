@@ -607,6 +607,51 @@ router.get('/api/billing/invoice/:id/pdf', authenticateUserWithTestMode, require
  * Uses x-client-id header to look up client email from Master Clients table,
  * or accepts email as query param for direct access.
  */
+/**
+ * GET /api/billing/invoice-email
+ * Where this client's monthly tax invoices are emailed (portal Billing & Invoices screen).
+ * billingEmail blank = their login email (Client Email Address), resolved at send time.
+ */
+router.get('/api/billing/invoice-email', authenticateUserWithTestMode, async (req, res) => {
+    try {
+        const svc = require('../services/invoiceEmailService');
+        res.json({
+            success: true,
+            billingEmail: req.client?.billingEmail || '',
+            loginEmail: req.client?.clientEmailAddress || '',
+            lastSent: await svc.lastSentFor(req.client?.clientId)
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * PUT /api/billing/invoice-email  { billingEmail }
+ * Save where tax invoices go. Tax invoices ONLY - card-failure and other billing emails keep
+ * going to the client's own email. Each address is checked (looks like an email, domain takes
+ * mail) and the first bad one is named.
+ */
+router.put('/api/billing/invoice-email', express.json(), authenticateUserWithTestMode, async (req, res) => {
+    const logger = createLogger({ runId: 'BILLING', clientId: req.client?.clientId || 'UNKNOWN', operation: 'invoice_email_save' });
+    try {
+        const svc = require('../services/invoiceEmailService');
+        const checked = await svc.validateBillingEmailInput(req.body?.billingEmail);
+        if (!checked.ok) return res.status(400).json({ success: false, error: checked.error });
+        const recordId = req.client?.id;
+        if (!recordId) return res.status(400).json({ success: false, error: 'Account not found' });
+        const Airtable = require('airtable');
+        Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+        await Airtable.base(process.env.MASTER_CLIENTS_BASE_ID)('Clients').update(recordId, { 'Billing Email': checked.value });
+        try { require('../services/clientService').clearCache(); } catch (_) {}
+        logger.info(`[invoice-email] ${req.client.clientId} set Billing Email to "${checked.value || '(login email)'}"`);
+        res.json({ success: true, billingEmail: checked.value, loginEmail: req.client.clientEmailAddress || '' });
+    } catch (e) {
+        logger.error(`[invoice-email] save failed: ${e.message}`);
+        res.status(500).json({ success: false, error: 'Could not save - please try again.' });
+    }
+});
+
 router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStripe, async (req, res) => {
     const logger = createLogger({
         runId: 'BILLING',

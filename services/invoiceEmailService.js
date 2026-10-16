@@ -324,7 +324,48 @@ async function sendForClient({ clientId, invoiceIds, force = false, dryRun = fal
   return sendInvoices({ client, invoices, force, dryRun, deps, logger });
 }
 
+// ---------------------------------------------------------------------------
+// The portal field (Settings > Billing & Invoices): the client picks where invoices go
+// ---------------------------------------------------------------------------
+
+/**
+ * Check what a client typed into "Where should we send your monthly tax invoices?".
+ * Blank is allowed (= their login email, resolved at send time). Otherwise every comma-separated
+ * address must look like an email AND its domain must accept mail (the Ayaan run-on guard,
+ * utils/emailDeliverable.js). Returns { ok, value } with value normalised to "a@x.com, b@y.com",
+ * or { ok: false, error } naming the address that failed.
+ */
+async function validateBillingEmailInput(raw, deps = {}) {
+  const parts = String(raw || '').split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return { ok: true, value: '' };
+  const emails = [];
+  for (const p of parts) {
+    const e = p.toLowerCase();
+    if (!EMAIL_RE.test(e)) return { ok: false, error: `"${p}" doesn't look like an email address.` };
+    if (!emails.includes(e)) emails.push(e);
+  }
+  if (emails.length > 5) return { ok: false, error: 'Up to five addresses, please.' };
+  const check = deps.undeliverableAddresses || require('../utils/emailDeliverable').undeliverableAddresses;
+  const bad = await check(emails);
+  if (bad.length) return { ok: false, error: `${bad[0].email} can't receive email - check the part after the @.` };
+  return { ok: true, value: emails.join(', ') };
+}
+
+/** The last tax invoice emailed for this client on this server: { at, recipients } or null. */
+async function lastSentFor(clientId) {
+  if (!clientId) return null;
+  const res = await withDb((db) => db.query(
+    `SELECT created_at, recipients FROM invoice_email_sends
+     WHERE client_id = $1 AND send_key LIKE $2 ORDER BY created_at DESC LIMIT 1`,
+    [clientId, `${envTag()}:%`]
+  ));
+  const row = res && res.rows[0];
+  return row ? { at: row.created_at, recipients: row.recipients } : null;
+}
+
 module.exports = {
+  validateBillingEmailInput,
+  lastSentFor,
   onInvoicePaid,
   sendForClient,
   sendInvoices,

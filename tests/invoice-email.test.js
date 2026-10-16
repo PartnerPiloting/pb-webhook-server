@@ -104,5 +104,16 @@ function harness() {
   assert.ok(hs.sends[0].subject.startsWith('[TEST - staging, would have gone to accounts@fortix.com.au]'));
   delete process.env.RENDER_GIT_BRANCH;
 
+  // 7. The portal field: blank allowed, list normalised, bad address named, dead domain refused.
+  const dns = { undeliverableAddresses: async (list) => list.filter((e) => e.endsWith('.looking')).map((email) => ({ email, reason: 'x' })) };
+  assert.deepStrictEqual(await svc.validateBillingEmailInput('  ', dns), { ok: true, value: '' });
+  assert.deepStrictEqual(await svc.validateBillingEmailInput(' Paul@Fortix.com.au ,accounts@fortix.com.au,', dns),
+    { ok: true, value: 'paul@fortix.com.au, accounts@fortix.com.au' });
+  const bad = await svc.validateBillingEmailInput('paul@fortix.com.au, accounts fortix', dns);
+  assert.strictEqual(bad.ok, false);
+  assert.ok(bad.error.includes('"accounts fortix"'), bad.error);
+  const dead = await svc.validateBillingEmailInput('a@gmail.com.looking', dns);
+  assert.ok(!dead.ok && dead.error.startsWith('a@gmail.com.looking'), dead.error);
+
   console.log('invoice-email tests passed');
 })().catch((e) => { console.error(e); process.exit(1); });

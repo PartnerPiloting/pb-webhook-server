@@ -25,6 +25,10 @@ export default function Billing() {
   const [billingStatus, setBillingStatus] = useState(null);
   const [coachInfo, setCoachInfo] = useState({ name: null, email: null });
   const [portalLoading, setPortalLoading] = useState(false);
+  // Where monthly tax invoices are emailed (blank = login email, resolved at send time)
+  const [invoiceEmail, setInvoiceEmail] = useState({ value: '', saved: '', loginEmail: '', lastSent: null, loaded: false });
+  const [invoiceEmailSaving, setInvoiceEmailSaving] = useState(false);
+  const [invoiceEmailMsg, setInvoiceEmailMsg] = useState(null);
 
   // Get headers with x-client-id and portal token for authenticated API calls
   const getHeaders = useCallback(() => {
@@ -100,6 +104,44 @@ export default function Billing() {
     }
   }, [getHeaders]);
 
+  // Fetch where tax invoices go - never blocks the rest of the page
+  const fetchInvoiceEmail = useCallback(async () => {
+    try {
+      const backendBase = getBackendBase();
+      const response = await fetch(`${backendBase}/api/billing/invoice-email`, { headers: getHeaders() });
+      const data = await response.json();
+      if (data.success) {
+        setInvoiceEmail({ value: data.billingEmail || '', saved: data.billingEmail || '', loginEmail: data.loginEmail || '', lastSent: data.lastSent || null, loaded: true });
+      }
+    } catch (e) {
+      console.error('Error fetching invoice email:', e);
+    }
+  }, [getHeaders]);
+
+  const saveInvoiceEmail = async () => {
+    setInvoiceEmailSaving(true);
+    setInvoiceEmailMsg(null);
+    try {
+      const backendBase = getBackendBase();
+      const response = await fetch(`${backendBase}/api/billing/invoice-email`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ billingEmail: invoiceEmail.value })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setInvoiceEmail((s) => ({ ...s, value: data.billingEmail, saved: data.billingEmail }));
+        setInvoiceEmailMsg({ ok: true, text: `Saved. Your next tax invoice goes to ${data.billingEmail || data.loginEmail || 'your login email'}.` });
+      } else {
+        setInvoiceEmailMsg({ ok: false, text: data.error || 'Could not save - please try again.' });
+      }
+    } catch (e) {
+      setInvoiceEmailMsg({ ok: false, text: 'Could not save - please try again.' });
+    } finally {
+      setInvoiceEmailSaving(false);
+    }
+  };
+
   // Load all billing data
   useEffect(() => {
     const loadBillingData = async () => {
@@ -140,7 +182,8 @@ export default function Billing() {
         // Backend will look up email from Master Clients table using x-client-id header
         await Promise.all([
           fetchSubscription(),
-          fetchInvoices()
+          fetchInvoices(),
+          fetchInvoiceEmail()
         ]);
 
       } catch (e) {
@@ -152,7 +195,7 @@ export default function Billing() {
     };
 
     loadBillingData();
-  }, [checkBillingStatus, getClientEmail, fetchSubscription, fetchInvoices]);
+  }, [checkBillingStatus, getClientEmail, fetchSubscription, fetchInvoices, fetchInvoiceEmail]);
 
   // Generate PDF download URL. A plain <a> link carries no headers, so the
   // portal token (or dev key) rides along as query params for the auth gate.
@@ -340,6 +383,44 @@ export default function Billing() {
               {portalLoading ? 'Opening...' : 'Update Payment Method'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Where tax invoices are emailed */}
+      {invoiceEmail.loaded && (
+        <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Tax invoices by email</h2>
+          <label htmlFor="invoice-email" className="block text-sm text-gray-700 mb-2">
+            Where should we send your monthly tax invoices?
+          </label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              id="invoice-email"
+              type="text"
+              value={invoiceEmail.value}
+              onChange={(e) => { setInvoiceEmail((s) => ({ ...s, value: e.target.value })); setInvoiceEmailMsg(null); }}
+              placeholder={invoiceEmail.loginEmail ? `Using your login email (${invoiceEmail.loginEmail})` : 'Using your login email'}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={saveInvoiceEmail}
+              disabled={invoiceEmailSaving || invoiceEmail.value.trim() === invoiceEmail.saved}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {invoiceEmailSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            To send to more than one address, put a comma between them - handy if your bookkeeper needs a copy. Leave it empty to use your login email.
+          </p>
+          {invoiceEmailMsg && (
+            <p className={`text-sm mt-2 ${invoiceEmailMsg.ok ? 'text-green-700' : 'text-red-700'}`}>{invoiceEmailMsg.text}</p>
+          )}
+          <p className="text-sm text-gray-600 mt-3">
+            {invoiceEmail.lastSent
+              ? `Last tax invoice emailed ${new Date(invoiceEmail.lastSent.at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })} to ${invoiceEmail.lastSent.recipients}.`
+              : 'No tax invoices emailed yet - the next one goes out when your next payment goes through.'}
+          </p>
         </div>
       )}
 
