@@ -1,5 +1,5 @@
 /**
- * Two warnings about a client's Linked Helper campaign, decided on each 5-minute machine report.
+ * Three warnings about a client's Linked Helper campaign, decided on each 5-minute machine report.
  *
  * WHY (Guy, 8 Oct 2026): Rick Wong's campaign sent nothing for two days and nobody knew, and his
  * trial was five days from running out with no licence bought. Guy normally emails about the
@@ -24,9 +24,23 @@
  *    It catches what the trial warning cannot: a PAID licence running out a year from now
  *    (the machine cannot see a paid licence's end date).
  *
+ * 3. CAMPAIGN PAUSED WITH PEOPLE WAITING - the fast one. WHY (Guy, 16 Oct 2026): on 15 Oct he
+ *    paused his own live campaign by hand while copying its settings for a client, forgot, and
+ *    a lead who accepted that evening was never checked, visited or sent to Wingguy - a paused
+ *    campaign stops LOOKING for acceptances, so people say yes unseen. The four-day rule would
+ *    not have spoken until the 19th. So: a campaign the machine reports as PAUSED (not archived)
+ *    with people still queued to invite, which sent an invitation within DORMANT_DAYS (a live
+ *    campaign, not one parked months ago), and which has stayed that way for PAUSED_HOURS
+ *    (first seen stamped on the row; a pause of a few minutes to tweak settings is normal) ->
+ *    the coach is emailed once, and the client too, naming the campaign, the hours and the
+ *    people waiting. The episode clears when no such campaign is left in the report (resumed,
+ *    emptied or archived), and the coach gets an all-clear.
+ *    A machine still on a watchdog without `paused_campaigns` never enters this rule.
+ *
  * State on the client's master row (all written by the machine report route):
  *   'LH First Action', 'Last Invite Sent', 'Invites Waiting' - the facts, readable in Airtable
  *   'Trial Warning Sent', 'Quiet Campaign Alerted'           - once-per-episode stamps
+ *   'Campaign Paused Since', 'Paused Campaign Alerted'       - the paused episode: first seen, told
  *
  * Client emails: ON since 8 Oct 2026 (Guy approved the wording), coach copied, replies to the coach.
  * With EMAIL_CLIENT false the coach's alert carries the message ready to forward instead.
@@ -47,6 +61,10 @@ const WARN_DAYS_BEFORE = 5;
 // (Rick Wong, 3 to 6 Oct 2026), and an alert that fires on a normal weekend stops being read.
 const QUIET_DAYS = 4;
 const DORMANT_DAYS = 30;
+// Two hours, not two reports: a pause to copy settings or fix a message is normal and over in
+// minutes; one that outlives a long lunch is a pause somebody forgot.
+const HOUR = 3600000;
+const PAUSED_HOURS = 2;
 
 const LICENCE_PAGE = 'https://knowaguy.com.au/your-licence';
 
@@ -56,6 +74,8 @@ const FIELDS = {
   waiting: 'Invites Waiting',
   trialWarned: 'Trial Warning Sent',
   quietAlerted: 'Quiet Campaign Alerted',
+  pausedSince: 'Campaign Paused Since',
+  pausedAlerted: 'Paused Campaign Alerted',
 };
 
 function ms(iso) {
@@ -86,16 +106,42 @@ function quietKind({ waitingRunning, waitingPaused, lastAttemptAt, failedRecent,
 }
 
 /**
+ * The paused campaign worth shouting about, from the machine's `paused_campaigns` list: paused,
+ * people still queued, and an invitation of its own within DORMANT_DAYS. Several -> the one that
+ * sent most recently (the live one). Null when none qualifies.
+ */
+function pausedCampaignOf(report, now = Date.now()) {
+  const list = Array.isArray(report && report.paused_campaigns) ? report.paused_campaigns : [];
+  let best = null;
+  for (const c of list) {
+    if (!c || typeof c !== 'object') continue;
+    const waiting = num(c.waiting);
+    const last = ms(c.last_invite_at);
+    if (waiting <= 0 || last === null || now - last >= DORMANT_DAYS * DAY) continue;
+    if (!best || last > best.lastInviteAt) {
+      best = { id: c.id, name: String(c.name || '').trim() || 'your campaign', waiting, lastInviteAt: last };
+    }
+  }
+  return best;
+}
+
+/**
  * What one machine report means for the campaign. Pure.
  *
  * report  - the machine's `campaign` block ({first_action_at, last_invite_at, waiting_running,
- *           waiting_paused}); absent on a machine still on the old watchdog -> nothing happens
- * client  - the stamps already on the row (trialWarningSent, quietCampaignAlerted)
+ *           waiting_paused, paused_campaigns}); absent on a machine still on the old watchdog ->
+ *           nothing happens
+ * client  - the stamps already on the row (trialWarningSent, quietCampaignAlerted,
+ *           campaignPausedSince, pausedCampaignAlerted)
  *
- * Returns { fields, trialWarn, quietAlert, quietRecovered, kind }.
+ * Returns { fields, trialWarn, quietAlert, quietRecovered, kind, pausedAlert, pausedRecovered, paused }
+ * where `paused` is the campaign the alert is about ({ name, waiting, hours }).
  */
 function campaignStep({ report, client = {}, now = Date.now() } = {}) {
-  const out = { fields: {}, trialWarn: false, quietAlert: false, quietRecovered: false, kind: null };
+  const out = {
+    fields: {}, trialWarn: false, quietAlert: false, quietRecovered: false, kind: null,
+    pausedAlert: false, pausedRecovered: false, paused: null,
+  };
   if (!report || typeof report !== 'object' || !Object.keys(report).length) return out;
 
   const first = ms(report.first_action_at);
@@ -125,6 +171,32 @@ function campaignStep({ report, client = {}, now = Date.now() } = {}) {
       out.quietAlert = true;
       out.kind = quietKind({ waitingRunning, waitingPaused, lastAttemptAt: report.last_invite_attempt_at, failedRecent: report.failed_invites_recent, now });
       out.fields[FIELDS.quietAlerted] = iso(now);
+    }
+  }
+
+  // 3. Paused with people waiting - only on a watchdog that lists the paused campaigns.
+  if (Array.isArray(report.paused_campaigns)) {
+    const paused = pausedCampaignOf(report, now);
+    let since = ms(client.campaignPausedSince);
+    const told = ms(client.pausedCampaignAlerted);
+    if (!paused) {
+      // Nothing paused with people in it any more: resumed, emptied or archived. Episode over.
+      if (since !== null || told !== null) {
+        out.fields[FIELDS.pausedSince] = null;
+        out.fields[FIELDS.pausedAlerted] = null;
+        out.pausedRecovered = told !== null;
+      }
+    } else {
+      if (since === null || paused.lastInviteAt > since) {
+        // First sight of this pause - or it ran and sent since we first saw it, so this is a new one.
+        since = now;
+        out.fields[FIELDS.pausedSince] = iso(now);
+        if (told !== null) out.fields[FIELDS.pausedAlerted] = null;
+      } else if (told === null && now - since >= PAUSED_HOURS * HOUR) {
+        out.pausedAlert = true;
+        out.fields[FIELDS.pausedAlerted] = iso(now);
+      }
+      out.paused = { name: paused.name, waiting: paused.waiting, hours: Math.floor((now - since) / HOUR) };
     }
   }
   return out;
@@ -169,6 +241,13 @@ function quietCoachLine({ clientName, kind, lastInviteAt, waiting, machineStatus
   }
   const status = machineStatus ? ` Machine says: ${String(machineStatus).slice(0, 120)}.` : '';
   return `${who} campaign has stopped sending - no invitation since ${since}, with ${waiting} people still waiting. Usual causes: the licence has run out, LinkedIn signed out, or Linked Helper is stuck.${status}`;
+}
+
+function pausedCoachLine({ clientName, campaignName, hours, waiting, self = false }) {
+  const who = self ? 'Your' : `${clientName}'s`;
+  const h = `${hours} hour${hours === 1 ? '' : 's'}`;
+  const people = `${waiting} ${waiting === 1 ? 'person' : 'people'}`;
+  return `${who} Linked Helper machine's campaign "${campaignName}" has been paused for ${h} with ${people} waiting - resume it or they will accept unseen.`;
 }
 
 function htmlFrom(text) {
@@ -231,6 +310,23 @@ function quietClientEmail({ clientFirstName, clientName, coachName, kind, lastIn
   return { subject, text, html: htmlFrom(text) };
 }
 
+function pausedClientEmail({ clientFirstName, clientName, coachName, campaignName, hours, waiting, machineLink }) {
+  const first = firstName(clientFirstName || clientName, 'there');
+  const coach = signoffName(coachName);
+  const h = `${hours} hour${hours === 1 ? '' : 's'}`;
+  const people = `${waiting} ${waiting === 1 ? 'person' : 'people'}`;
+  const subject = `Your campaign "${campaignName}" is paused with ${people} waiting`;
+  const text = [
+    `Hi ${first},`,
+    `Your Linked Helper campaign "${campaignName}" has been paused for about ${h}, with ${people} waiting in it.`,
+    'While it\'s paused, nothing checks who has accepted your invitation - so people can say yes and neither of us hears about it.',
+    `If you paused it on purpose, that's fine - ignore this. If not, open your Linked Helper machine and press play on the campaign:\n${machineLink || 'ask your Claude to "open my Linked Helper machine"'}`,
+    'Or reply and I\'ll switch it back on with you.',
+    `Cheers,\n${coach}`,
+  ].join('\n\n');
+  return { subject, text, html: htmlFrom(text) };
+}
+
 // ---------------------------------------------------------------------------
 // Sending - best-effort throughout, never fails the machine's report
 // ---------------------------------------------------------------------------
@@ -243,8 +339,11 @@ async function coachFor(client, deps) {
   } catch (_e) { return null; }
 }
 
-/** Send the coach's alert, and the client's email when allowed. Returns what happened. */
-async function sendCampaignAlert({ client, alert, kind = null, report = {}, deps = {}, now = Date.now() }) {
+/**
+ * Send the coach's alert, and the client's email when allowed. Returns what happened.
+ * alert = 'trial' | 'quiet' (with kind) | 'paused' (with paused = { name, waiting, hours }).
+ */
+async function sendCampaignAlert({ client, alert, kind = null, paused = null, report = {}, deps = {}, now = Date.now() }) {
   const coach = await coachFor(client, deps);
   const self = !client.coach;
   const coachName = (coach && coach.clientName) || 'Guy Wilson';
@@ -252,13 +351,19 @@ async function sendCampaignAlert({ client, alert, kind = null, report = {}, deps
   const name = client.clientName || client.clientId;
   const waiting = num(report.waiting_running) + num(report.waiting_paused);
 
+  const p = paused || { name: 'your campaign', waiting: 0, hours: 0 };
   const line = alert === 'trial'
     ? trialCoachLine({ clientName: name, firstActionAt: report.first_action_at, timeZone: coachTz, self })
-    : quietCoachLine({ clientName: name, kind, lastInviteAt: report.last_invite_at, waiting, machineStatus: client.machineStatus, timeZone: coachTz, self, now });
+    : alert === 'paused'
+      ? pausedCoachLine({ clientName: name, campaignName: p.name, hours: p.hours, waiting: p.waiting, self })
+      : quietCoachLine({ clientName: name, kind, lastInviteAt: report.last_invite_at, waiting, machineStatus: client.machineStatus, timeZone: coachTz, self, now });
 
+  const who = { clientFirstName: client.clientFirstName, clientName: client.clientName, coachName };
   const cm = alert === 'trial'
-    ? trialClientEmail({ clientFirstName: client.clientFirstName, clientName: client.clientName, coachName, firstActionAt: report.first_action_at, timeZone: client.timezone })
-    : quietClientEmail({ clientFirstName: client.clientFirstName, clientName: client.clientName, coachName, kind, lastInviteAt: report.last_invite_at, machineLink: client.machineLink, timeZone: client.timezone });
+    ? trialClientEmail({ ...who, firstActionAt: report.first_action_at, timeZone: client.timezone })
+    : alert === 'paused'
+      ? pausedClientEmail({ ...who, campaignName: p.name, hours: p.hours, waiting: p.waiting, machineLink: client.machineLink })
+      : quietClientEmail({ ...who, kind, lastInviteAt: report.last_invite_at, machineLink: client.machineLink, timeZone: client.timezone });
 
   const result = { clientId: client.clientId, alert, kind, clientEmailed: false };
   let tail = '';
@@ -282,10 +387,13 @@ async function sendCampaignAlert({ client, alert, kind = null, report = {}, deps
         tail = '\n\nWingguy has emailed them - you are copied.';
         const record = deps.recordComm || require('./commsLog').recordComm;
         await record({
-          coachClientId: client.clientId, channel: alert === 'trial' ? 'lh-trial-ending' : 'lh-campaign-quiet',
+          coachClientId: client.clientId,
+          channel: alert === 'trial' ? 'lh-trial-ending' : alert === 'paused' ? 'lh-campaign-paused' : 'lh-campaign-quiet',
           recipient: String(client.clientEmailAddress).trim(), subject: cm.subject,
-          summary: alert === 'trial' ? 'Linked Helper trial ending - licence page sent' : `Campaign quiet (${kind}) - told them`,
-          meta: { alert, kind, report },
+          summary: alert === 'trial' ? 'Linked Helper trial ending - licence page sent'
+            : alert === 'paused' ? `Campaign "${p.name}" paused ${p.hours}h with ${p.waiting} waiting - told them`
+              : `Campaign quiet (${kind}) - told them`,
+          meta: { alert, kind, paused, report },
         });
       } catch (e) {
         result.clientEmailError = e.message;
@@ -296,7 +404,9 @@ async function sendCampaignAlert({ client, alert, kind = null, report = {}, deps
 
   const subject = alert === 'trial'
     ? `${self ? 'Your' : `${name}'s`} Linked Helper trial ends soon`
-    : `${self ? 'Your' : `${name}'s`} campaign: ${kind === 'exhausted' ? 'run out of fresh people' : kind === 'empty' ? 'run out of people' : kind === 'paused' ? 'paused' : 'stopped sending'}`;
+    : alert === 'paused'
+      ? `${self ? 'Your' : `${name}'s`} campaign "${p.name}": paused with ${p.waiting} people waiting`
+      : `${self ? 'Your' : `${name}'s`} campaign: ${kind === 'exhausted' ? 'run out of fresh people' : kind === 'empty' ? 'run out of people' : kind === 'paused' ? 'paused' : 'stopped sending'}`;
   const text = `${line}${tail}`;
   try {
     const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
@@ -305,7 +415,7 @@ async function sendCampaignAlert({ client, alert, kind = null, report = {}, deps
   } catch (e) {
     result.coachEmailError = e.message;
   }
-  log.warn(`LH-CAMPAIGN ${client.clientId} ${alert}${kind ? `/${kind}` : ''}: coach ${result.coachEmailed ? 'emailed' : 'NOT emailed'}, client ${result.clientEmailed ? 'emailed' : 'not emailed'}`);
+  log.warn(`LH-CAMPAIGN ${client.clientId} ${alert}${kind ? `/${kind}` : ''}${paused ? `/"${p.name}" ${p.hours}h ${p.waiting} waiting` : ''}: coach ${result.coachEmailed ? 'emailed' : 'NOT emailed'}, client ${result.clientEmailed ? 'emailed' : 'not emailed'}`);
   return result;
 }
 
@@ -319,6 +429,20 @@ async function sendSendingAgainNote({ client, deps = {} }) {
     return { ok: true };
   } catch (e) {
     log.warn(`LH-CAMPAIGN ${client.clientId} sending-again note failed: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
+/** The all-clear once a paused campaign with people waiting is paused no more. */
+async function sendPausedClearedNote({ client, deps = {} }) {
+  const who = !client.coach ? 'Your' : `${client.clientName || client.clientId}'s`;
+  const text = `${who} paused campaign is no longer paused with people waiting - it has been resumed, emptied or archived.`;
+  try {
+    const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
+    await send(`${who} paused campaign: all clear`, `<p>${text}</p>`, null, { text });
+    return { ok: true };
+  } catch (e) {
+    log.warn(`LH-CAMPAIGN ${client.clientId} paused-cleared note failed: ${e.message}`);
     return { ok: false, error: e.message };
   }
 }
@@ -372,7 +496,8 @@ async function quietCampaignsForCoach(coachClientId) {
 }
 
 module.exports = {
-  campaignStep, sendCampaignAlert, sendSendingAgainNote, quietCampaignAlerts, quietCampaignsForCoach,
-  trialClientEmail, quietClientEmail, trialCoachLine, quietCoachLine, trialEndsAt, quietKind, dayWords,
-  FIELDS, EMAIL_CLIENT, TRIAL_DAYS, WARN_DAYS_BEFORE, QUIET_DAYS, DORMANT_DAYS, LICENCE_PAGE,
+  campaignStep, sendCampaignAlert, sendSendingAgainNote, sendPausedClearedNote, quietCampaignAlerts, quietCampaignsForCoach,
+  trialClientEmail, quietClientEmail, pausedClientEmail, trialCoachLine, quietCoachLine, pausedCoachLine,
+  trialEndsAt, quietKind, pausedCampaignOf, dayWords,
+  FIELDS, EMAIL_CLIENT, TRIAL_DAYS, WARN_DAYS_BEFORE, QUIET_DAYS, DORMANT_DAYS, PAUSED_HOURS, LICENCE_PAGE,
 };
