@@ -166,21 +166,21 @@ check('first sight of a paused campaign with people waiting - stamp when, no ema
   assert.equal(s.pausedAlert, false);
   assert.equal(s.fields[PS], new Date(NOW).toISOString());
   assert.equal(PA in s.fields, false);
-  assert.deepEqual(s.paused, { name: 'Fractional in profile', waiting: 65, hours: 0 });
+  assert.deepEqual(s.paused, { name: 'Fractional in profile', waiting: 65, since: new Date(NOW).toISOString() });
 });
 
 check('paused under two hours - still no email', () => {
   const s = step(pausedReport(), { campaignPausedSince: hoursAgo(1.9) });
   assert.equal(s.pausedAlert, false);
   assert.equal(PS in s.fields, false);
-  assert.equal(s.paused.hours, 1);
+  assert.equal(s.paused.since, hoursAgo(1.9));
 });
 
-check('paused over two hours with people waiting - ONE email, naming the campaign, hours and people', () => {
+check('paused over two hours with people waiting - ONE email, naming the campaign, when first seen and people', () => {
   const s = step(pausedReport(), { campaignPausedSince: hoursAgo(2.5) });
   assert.equal(s.pausedAlert, true);
   assert.equal(s.fields[PA], new Date(NOW).toISOString());
-  assert.deepEqual(s.paused, { name: 'Fractional in profile', waiting: 65, hours: 2 });
+  assert.deepEqual(s.paused, { name: 'Fractional in profile', waiting: 65, since: hoursAgo(2.5) });
 });
 
 check('still paused on the next report - no second email', () => {
@@ -188,7 +188,7 @@ check('still paused on the next report - no second email', () => {
   assert.equal(s.pausedAlert, false);
   assert.equal(s.pausedRecovered, false);
   assert.equal(PA in s.fields, false);
-  assert.equal(s.paused.hours, 2);
+  assert.equal(s.paused.since, hoursAgo(2.6));
 });
 
 check('resumed (no paused campaign with people left) - episode cleared and the all-clear goes', () => {
@@ -245,7 +245,7 @@ check('it ran and sent since we first saw it paused - a fresh pause, clock resta
   assert.equal(s.pausedAlert, false);
   assert.equal(s.fields[PS], new Date(NOW).toISOString());
   assert.equal(s.fields[PA], null);
-  assert.equal(s.paused.hours, 0);
+  assert.equal(s.paused.since, new Date(NOW).toISOString());
 });
 
 check('the quiet rule and the facts are untouched by the paused rule', () => {
@@ -361,25 +361,30 @@ check('the exhausted email: run out of fresh people, a fresh search, signed (I k
   assert.match(w.quietCoachLine({ clientName: 'Sam Noble', kind: 'exhausted', lastInviteAt: daysAgo(5), waiting: 1835, now: NOW }), /^Sam Noble's campaign has run out of fresh people/);
 });
 
-check('paused: client email names the campaign, hours and people, says why it matters, how to fix, signed (I know a) Guy', () => {
-  const m = w.pausedClientEmail({ clientFirstName: 'Guy', coachName: 'Guy Wilson', campaignName: 'Fractional in profile', hours: 2, waiting: 65, machineLink: 'https://guy.example.com' });
+check('paused: client email names the campaign, when first seen (their clock), people still to invite, why it matters, how to fix, signed (I know a) Guy', () => {
+  // First seen 06:56Z = 4:56pm Brisbane, 2:56pm Perth. Never a duration: two hours is how long WE have known.
+  const m = w.pausedClientEmail({ clientFirstName: 'Guy', coachName: 'Guy Wilson', campaignName: 'Fractional in profile', since: '2026-10-16T06:56:00Z', waiting: 65, machineLink: 'https://guy.example.com' });
   assert.equal(m.subject, 'Your campaign "Fractional in profile" is paused with 65 people waiting');
   assert.match(m.text, /^Hi Guy,/);
-  assert.match(m.text, /paused for about 2 hours, with 65 people waiting/);
+  assert.match(m.text, /has been paused since at least Fri 16 Oct, 4:56pm, with 65 people still waiting to be invited\./);
+  assert.ok(!/\bhours?\b/.test(m.text), 'no duration in the client email');
+  const perth = w.pausedClientEmail({ clientFirstName: 'Sam', coachName: 'Guy', campaignName: 'X', since: '2026-10-16T06:56:00Z', waiting: 65, timeZone: 'Australia/Perth' });
+  assert.match(perth.text, /since at least Fri 16 Oct, 2:56pm/);
   assert.match(m.text, /people can say yes and neither of us hears about it/);
   assert.match(m.text, /press play on the campaign:\nhttps:\/\/guy\.example\.com/);
   assert.match(m.text, /paused it on purpose, that's fine/);
   assert.match(m.text, /Cheers,\n\(I know a\) Guy$/);
   nodash(m.subject + m.text);
-  const one = w.pausedClientEmail({ clientFirstName: 'A', coachName: 'Guy', campaignName: 'X', hours: 1, waiting: 1 });
-  assert.match(one.text, /about 1 hour, with 1 person waiting/);
+  const one = w.pausedClientEmail({ clientFirstName: 'A', coachName: 'Guy', campaignName: 'X', since: '2026-10-16T06:56:00Z', waiting: 1 });
+  assert.match(one.text, /with 1 person still waiting to be invited/);
   assert.match(one.text, /open my Linked Helper machine/);
 });
 
 check('paused: coach line reads as asked', () => {
-  const line = w.pausedCoachLine({ clientName: 'Client A', campaignName: 'Fractional in profile', hours: 3, waiting: 65 });
-  assert.equal(line, 'Client A\'s Linked Helper machine\'s campaign "Fractional in profile" has been paused for 3 hours with 65 people waiting - resume it or they will accept unseen.');
-  assert.match(w.pausedCoachLine({ clientName: 'A', campaignName: 'X', hours: 2, waiting: 5, self: true }), /^Your Linked Helper machine's campaign/);
+  const line = w.pausedCoachLine({ clientName: 'Client A', campaignName: 'Fractional in profile', since: '2026-10-16T06:56:00Z', waiting: 65 });
+  assert.equal(line, 'Client A\'s Linked Helper machine\'s campaign "Fractional in profile" has been paused since at least Fri 16 Oct, 4:56pm with 65 people still waiting to be invited - resume it or they will accept unseen.');
+  assert.match(w.pausedCoachLine({ clientName: 'A', campaignName: 'X', since: '2026-10-16T06:56:00Z', waiting: 5, self: true }), /^Your Linked Helper machine's campaign/);
+  assert.match(w.pausedCoachLine({ clientName: 'A', campaignName: 'X', since: '2026-10-16T06:56:00Z', waiting: 5, timeZone: 'Australia/Perth' }), /since at least Fri 16 Oct, 2:56pm/);
   nodash(line);
 });
 
@@ -389,7 +394,7 @@ check('paused: the client is emailed (coach copied), logged on channel lh-campai
   const logged = [];
   const r = await w.sendCampaignAlert({
     client: { clientId: 'Client-A', clientName: 'Client A', clientFirstName: 'Alex', coach: COACH, clientEmailAddress: 'a@example.com', machineLink: 'https://a.example.com' },
-    alert: 'paused', paused: { name: 'Fractional in profile', waiting: 65, hours: 2 }, report: pausedReport(), now: NOW,
+    alert: 'paused', paused: { name: 'Fractional in profile', waiting: 65, since: '2026-10-08T06:30:00Z' }, report: pausedReport(), now: NOW,
     deps: {
       getClientById: async () => ({ clientName: 'Guy Wilson', clientEmailAddress: 'coach@example.com', timezone: 'Australia/Brisbane' }),
       sendAlertEmail: async (subject, html, to, opts) => { sent.push({ subject, text: opts.text }); },
@@ -402,9 +407,10 @@ check('paused: the client is emailed (coach copied), logged on channel lh-campai
   assert.equal(toClient[0].cc, 'coach@example.com');
   assert.equal(toClient[0].subject, 'Your campaign "Fractional in profile" is paused with 65 people waiting');
   assert.equal(logged[0].channel, 'lh-campaign-paused');
-  assert.match(logged[0].summary, /paused 2h with 65 waiting/);
+  assert.match(logged[0].summary, /paused since at least 2026-10-08T06:30:00Z with 65 waiting to be invited/);
   assert.equal(sent[0].subject, 'Client A\'s campaign "Fractional in profile": paused with 65 people waiting');
-  assert.match(sent[0].text, /^Client A's Linked Helper machine's campaign "Fractional in profile" has been paused for 2 hours with 65 people waiting - resume it or they will accept unseen\./);
+  assert.match(sent[0].text, /^Client A's Linked Helper machine's campaign "Fractional in profile" has been paused since at least Thu 8 Oct, 4:30pm with 65 people still waiting to be invited - resume it or they will accept unseen\./);
+  assert.match(toClient[0].text, /paused since at least Thu 8 Oct, 4:30pm, with 65 people still waiting to be invited/);
   assert.match(sent[0].text, /Wingguy has emailed them - you are copied\./);
 });
 

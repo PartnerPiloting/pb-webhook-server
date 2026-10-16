@@ -32,10 +32,17 @@
  *    with people still queued to invite, which sent an invitation within DORMANT_DAYS (a live
  *    campaign, not one parked months ago), and which has stayed that way for PAUSED_HOURS
  *    (first seen stamped on the row; a pause of a few minutes to tweak settings is normal) ->
- *    the coach is emailed once, and the client too, naming the campaign, the hours and the
- *    people waiting. The episode clears when no such campaign is left in the report (resumed,
- *    emptied or archived), and the coach gets an all-clear.
+ *    the coach is emailed once, and the client too, naming the campaign, when it was first seen
+ *    paused and the people still waiting to be invited. The episode clears when no such campaign
+ *    is left in the report (resumed, emptied or archived), and the coach gets an all-clear.
  *    A machine still on a watchdog without `paused_campaigns` never enters this rule.
+ *    Two things the first live alert got wrong (Guy's campaign #40, 16 Oct 2026):
+ *      - "paused for 2 hours" - the clock starts when the watchdog FIRST SAW it paused, not when
+ *        it was paused, so the wording is "paused since at least <when first seen>", in the
+ *        reader's own time zone, never a duration.
+ *      - the count is the machine's `waiting`, which must be Linked Helper's own "Profiles to
+ *        process" on the invite step (lh-watchdog.py campaign_state reads the table Linked Helper
+ *        keeps for it); the email says what the number is: people still waiting to be invited.
  *
  * State on the client's master row (all written by the machine report route):
  *   'LH First Action', 'Last Invite Sent', 'Invites Waiting' - the facts, readable in Airtable
@@ -135,7 +142,8 @@ function pausedCampaignOf(report, now = Date.now()) {
  *           campaignPausedSince, pausedCampaignAlerted)
  *
  * Returns { fields, trialWarn, quietAlert, quietRecovered, kind, pausedAlert, pausedRecovered, paused }
- * where `paused` is the campaign the alert is about ({ name, waiting, hours }).
+ * where `paused` is the campaign the alert is about ({ name, waiting, since }) - `since` being the
+ * ISO time the watchdog first saw it paused, which is as early as anyone can truthfully say.
  */
 function campaignStep({ report, client = {}, now = Date.now() } = {}) {
   const out = {
@@ -196,7 +204,7 @@ function campaignStep({ report, client = {}, now = Date.now() } = {}) {
         out.pausedAlert = true;
         out.fields[FIELDS.pausedAlerted] = iso(now);
       }
-      out.paused = { name: paused.name, waiting: paused.waiting, hours: Math.floor((now - since) / HOUR) };
+      out.paused = { name: paused.name, waiting: paused.waiting, since: iso(since) };
     }
   }
   return out;
@@ -243,11 +251,10 @@ function quietCoachLine({ clientName, kind, lastInviteAt, waiting, machineStatus
   return `${who} campaign has stopped sending - no invitation since ${since}, with ${waiting} people still waiting. Usual causes: the licence has run out, LinkedIn signed out, or Linked Helper is stuck.${status}`;
 }
 
-function pausedCoachLine({ clientName, campaignName, hours, waiting, self = false }) {
+function pausedCoachLine({ clientName, campaignName, since, waiting, timeZone, self = false }) {
   const who = self ? 'Your' : `${clientName}'s`;
-  const h = `${hours} hour${hours === 1 ? '' : 's'}`;
   const people = `${waiting} ${waiting === 1 ? 'person' : 'people'}`;
-  return `${who} Linked Helper machine's campaign "${campaignName}" has been paused for ${h} with ${people} waiting - resume it or they will accept unseen.`;
+  return `${who} Linked Helper machine's campaign "${campaignName}" has been paused since at least ${whenWords(since, timeZone)} with ${people} still waiting to be invited - resume it or they will accept unseen.`;
 }
 
 function htmlFrom(text) {
@@ -310,15 +317,14 @@ function quietClientEmail({ clientFirstName, clientName, coachName, kind, lastIn
   return { subject, text, html: htmlFrom(text) };
 }
 
-function pausedClientEmail({ clientFirstName, clientName, coachName, campaignName, hours, waiting, machineLink }) {
+function pausedClientEmail({ clientFirstName, clientName, coachName, campaignName, since, waiting, machineLink, timeZone }) {
   const first = firstName(clientFirstName || clientName, 'there');
   const coach = signoffName(coachName);
-  const h = `${hours} hour${hours === 1 ? '' : 's'}`;
   const people = `${waiting} ${waiting === 1 ? 'person' : 'people'}`;
   const subject = `Your campaign "${campaignName}" is paused with ${people} waiting`;
   const text = [
     `Hi ${first},`,
-    `Your Linked Helper campaign "${campaignName}" has been paused for about ${h}, with ${people} waiting in it.`,
+    `Your Linked Helper campaign "${campaignName}" has been paused since at least ${whenWords(since, timeZone)}, with ${people} still waiting to be invited.`,
     'While it\'s paused, nothing checks who has accepted your invitation - so people can say yes and neither of us hears about it.',
     `If you paused it on purpose, that's fine - ignore this. If not, open your Linked Helper machine and press play on the campaign:\n${machineLink || 'ask your Claude to "open my Linked Helper machine"'}`,
     'Or reply and I\'ll switch it back on with you.',
@@ -341,7 +347,7 @@ async function coachFor(client, deps) {
 
 /**
  * Send the coach's alert, and the client's email when allowed. Returns what happened.
- * alert = 'trial' | 'quiet' (with kind) | 'paused' (with paused = { name, waiting, hours }).
+ * alert = 'trial' | 'quiet' (with kind) | 'paused' (with paused = { name, waiting, since }).
  */
 async function sendCampaignAlert({ client, alert, kind = null, paused = null, report = {}, deps = {}, now = Date.now() }) {
   const coach = await coachFor(client, deps);
@@ -351,18 +357,18 @@ async function sendCampaignAlert({ client, alert, kind = null, paused = null, re
   const name = client.clientName || client.clientId;
   const waiting = num(report.waiting_running) + num(report.waiting_paused);
 
-  const p = paused || { name: 'your campaign', waiting: 0, hours: 0 };
+  const p = paused || { name: 'your campaign', waiting: 0, since: null };
   const line = alert === 'trial'
     ? trialCoachLine({ clientName: name, firstActionAt: report.first_action_at, timeZone: coachTz, self })
     : alert === 'paused'
-      ? pausedCoachLine({ clientName: name, campaignName: p.name, hours: p.hours, waiting: p.waiting, self })
+      ? pausedCoachLine({ clientName: name, campaignName: p.name, since: p.since, waiting: p.waiting, timeZone: coachTz, self })
       : quietCoachLine({ clientName: name, kind, lastInviteAt: report.last_invite_at, waiting, machineStatus: client.machineStatus, timeZone: coachTz, self, now });
 
   const who = { clientFirstName: client.clientFirstName, clientName: client.clientName, coachName };
   const cm = alert === 'trial'
     ? trialClientEmail({ ...who, firstActionAt: report.first_action_at, timeZone: client.timezone })
     : alert === 'paused'
-      ? pausedClientEmail({ ...who, campaignName: p.name, hours: p.hours, waiting: p.waiting, machineLink: client.machineLink })
+      ? pausedClientEmail({ ...who, campaignName: p.name, since: p.since, waiting: p.waiting, machineLink: client.machineLink, timeZone: client.timezone })
       : quietClientEmail({ ...who, kind, lastInviteAt: report.last_invite_at, machineLink: client.machineLink, timeZone: client.timezone });
 
   const result = { clientId: client.clientId, alert, kind, clientEmailed: false };
@@ -391,7 +397,7 @@ async function sendCampaignAlert({ client, alert, kind = null, paused = null, re
           channel: alert === 'trial' ? 'lh-trial-ending' : alert === 'paused' ? 'lh-campaign-paused' : 'lh-campaign-quiet',
           recipient: String(client.clientEmailAddress).trim(), subject: cm.subject,
           summary: alert === 'trial' ? 'Linked Helper trial ending - licence page sent'
-            : alert === 'paused' ? `Campaign "${p.name}" paused ${p.hours}h with ${p.waiting} waiting - told them`
+            : alert === 'paused' ? `Campaign "${p.name}" paused since at least ${p.since} with ${p.waiting} waiting to be invited - told them`
               : `Campaign quiet (${kind}) - told them`,
           meta: { alert, kind, paused, report },
         });
@@ -415,7 +421,7 @@ async function sendCampaignAlert({ client, alert, kind = null, paused = null, re
   } catch (e) {
     result.coachEmailError = e.message;
   }
-  log.warn(`LH-CAMPAIGN ${client.clientId} ${alert}${kind ? `/${kind}` : ''}${paused ? `/"${p.name}" ${p.hours}h ${p.waiting} waiting` : ''}: coach ${result.coachEmailed ? 'emailed' : 'NOT emailed'}, client ${result.clientEmailed ? 'emailed' : 'not emailed'}`);
+  log.warn(`LH-CAMPAIGN ${client.clientId} ${alert}${kind ? `/${kind}` : ''}${paused ? `/"${p.name}" since ${p.since} ${p.waiting} waiting` : ''}: coach ${result.coachEmailed ? 'emailed' : 'NOT emailed'}, client ${result.clientEmailed ? 'emailed' : 'not emailed'}`);
   return result;
 }
 
