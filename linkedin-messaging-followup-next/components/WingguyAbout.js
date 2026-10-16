@@ -14,7 +14,7 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { PageNav, usePageAuth } from './WingguyReview';
+import { PageNav, usePageAuth, Shell } from './WingguyReview';
 
 const DEMO_MOMENTS = [
   {
@@ -91,7 +91,7 @@ function WingguyAboutInner() {
   const href = (path) => (q ? `${path}?${q}` : path);
 
   return (
-    <div className="flex flex-col gap-16 max-w-3xl">
+    <Shell wide gap="gap-16">
       <PageNav current="about" query={q} />
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
@@ -243,7 +243,7 @@ function WingguyAboutInner() {
           Give Wingguy your instructions <span aria-hidden="true">&rarr;</span>
         </a>
       </div>
-    </div>
+    </Shell>
   );
 }
 
