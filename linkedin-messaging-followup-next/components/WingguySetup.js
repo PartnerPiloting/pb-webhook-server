@@ -227,7 +227,7 @@ function WingguySetupInner() {
           Your instructions
         </div>
         <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] text-slate-900">
-          Now let&apos;s make it sound like you
+          Tell Wingguy about you
         </h1>
         <p className="font-serif text-lg leading-relaxed text-slate-600 max-w-2xl">
           Wingguy reads a set of instructions before every single thing it writes - and some of
@@ -317,7 +317,7 @@ function WingguySetupInner() {
             notes in the margin. Linked rather than embedded so this page stays the working
             surface and a glance stays a glance. */}
         <p className="text-sm text-slate-500 -mt-4">
-          Once this page is done, you will not be back here much - it learns from every draft you fix.{' '}
+          Once this is done, it keeps learning from every draft you fix.{' '}
           <a className="underline hover:text-slate-700" href={`/my-wingguy/review?${searchParams.toString()}`}>
             How that works
           </a>.

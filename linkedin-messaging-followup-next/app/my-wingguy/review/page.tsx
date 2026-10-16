@@ -12,7 +12,7 @@ import WingguyReview from "../../../components/WingguyReview";
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: "Making it sound like you",
+  title: "Making it sound more like you",
   description: "Setting up is once. After that, every draft you fix teaches it - in a chat.",
 };
 

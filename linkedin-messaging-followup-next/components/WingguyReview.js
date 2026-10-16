@@ -107,10 +107,10 @@ function VoicePage({ query }) {
       <PageNav current="review" query={query} />
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
-          Any time, in Claude
+          Then, every day, in Claude
         </div>
         <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] text-slate-900">
-          Making it sound like you
+          Making it sound more like you
         </h1>
         <p className="font-serif text-lg leading-relaxed text-slate-600">
           Every client I have worked with says the same thing when it clicks: &ldquo;that doesn&rsquo;t
@@ -178,7 +178,7 @@ function VoicePage({ query }) {
         </p>
         <a href={query ? `/my-wingguy/setup?${query}` : '/my-wingguy/setup'}
           className="self-start px-5 py-3 bg-slate-900 text-white text-[15px] font-medium hover:bg-slate-800">
-          Give Wingguy your instructions <span aria-hidden="true">&rarr;</span>
+          Tell Wingguy about you <span aria-hidden="true">&rarr;</span>
         </a>
       </div>
 
@@ -399,7 +399,7 @@ function PageNav({ current, query }) {
       <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href(hub)}>&larr; {hub === '/setup' ? 'Setup and help' : 'My Wingguy'}</a>
       {tab('What Wingguy does', '/my-wingguy/about', 'about')}
       {tab('Your instructions', '/my-wingguy/setup', 'setup')}
-      {tab('Making it sound like you', '/my-wingguy/review', 'review')}
+      {tab('Making it sound more like you', '/my-wingguy/review', 'review')}
       {current === 'install' ? tab('Install the browser extension', '/my-wingguy/install', 'install') : null}
     </div>
   );
