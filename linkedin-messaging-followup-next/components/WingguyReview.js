@@ -881,10 +881,12 @@ function ExampleBlock({ ex }) {
   );
 }
 
-function Shell({ children }) {
+/** The centred reading column every page in this section sits in - the setup page has its own
+ *  copy with a `wide` option. `wide` = max-w-3xl for the longer pages (About, Install). */
+function Shell({ children, wide, gap = 'gap-6' }) {
   return (
     <div className="min-h-screen bg-[#F4F6F4]">
-      <div className="mx-auto px-6 py-14 flex flex-col max-w-2xl gap-6">
+      <div className={`mx-auto px-6 py-14 flex flex-col ${wide ? 'max-w-3xl' : 'max-w-2xl'} ${gap}`}>
         {children}
       </div>
     </div>
@@ -899,4 +901,4 @@ export default function WingguyReview() {
   );
 }
 
-export { PageNav, usePageAuth };
+export { PageNav, usePageAuth, Shell };

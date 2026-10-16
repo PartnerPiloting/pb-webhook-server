@@ -31,7 +31,7 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
-import { PageNav, usePageAuth } from './WingguyReview';
+import { PageNav, usePageAuth, Shell } from './WingguyReview';
 import ClaudeKeySection from './ClaudeKeySection';
 
 const KEY_GUIDE_URL = 'https://knowaguy.com.au/your-claude-key';
@@ -253,13 +253,13 @@ function WingguyInstallInner() {
 
   if (ready && !hasAuth) {
     return (
-      <div className="max-w-[680px]">
+      <Shell wide>
         <h1 className="font-serif text-4xl leading-tight text-slate-900">Install the browser extension</h1>
         <p className="mt-4 text-[16px] text-slate-600">
           Open this page from your own Wingguy link so it knows who you are. If you don&rsquo;t have it
           handy, message me and I&rsquo;ll resend it.
         </p>
-      </div>
+      </Shell>
     );
   }
 
@@ -268,7 +268,7 @@ function WingguyInstallInner() {
   const keyStep = Boolean(status && !status.error && (status.claudeKeyNeeded || keySaved));
 
   return (
-    <div className="max-w-[680px]">
+    <Shell wide>
       <div className="mb-8"><PageNav current="install" query={query} /></div>
       <h1 className="font-serif text-4xl leading-tight text-slate-900">Install your Wingguy browser extension</h1>
       <p className="mb-6 mt-[10px] max-w-[56ch] text-[16.5px] leading-relaxed text-slate-600">
@@ -328,7 +328,7 @@ function WingguyInstallInner() {
           Don&rsquo;t guess - message me and we&rsquo;ll do it together on a quick call. It takes two minutes.
         </p>
       </div>
-    </div>
+    </Shell>
   );
 }
 
