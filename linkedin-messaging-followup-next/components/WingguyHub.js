@@ -37,10 +37,10 @@ const DOORS = [
   },
   {
     href: '/my-wingguy/review',
-    eyebrow: 'Any time',
-    title: "What's changed lately",
-    body: 'Every change to your instructions - what it said before, what it says now, and when. Undo any of them, leave a note, or tell it to do something differently.',
-    cta: 'Review recent changes',
+    eyebrow: 'Any time, in a chat',
+    title: 'Making it sound like you',
+    body: 'The goal is messages that sound more like you than you do. Setting up is once. After that, every time you fix a draft, it learns.',
+    cta: 'How that works',
     tone: 'slate',
   },
 ];

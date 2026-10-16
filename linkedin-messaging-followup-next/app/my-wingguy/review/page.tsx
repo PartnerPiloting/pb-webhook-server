@@ -12,8 +12,8 @@ import WingguyReview from "../../../components/WingguyReview";
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: "What's changed lately",
-  description: "Every change to this Wingguy's instructions - who made it, before and after, with notes.",
+  title: "Making it sound like you",
+  description: "Setting up is once. After that, every draft you fix teaches it - in a chat.",
 };
 
 export default function MyWingguyReviewPage() {

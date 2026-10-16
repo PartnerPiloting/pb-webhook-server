@@ -19,7 +19,7 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
-import { wingguyHubPath } from '../utils/clientUtils';
+import { wingguyHubPath, getClientProfile } from '../utils/clientUtils';
 
 
 /**
@@ -90,9 +90,107 @@ function friendlyWhen(iso) {
     + ', ' + d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
 }
 
+
+/**
+ * "Making it sound like you" (Guy, 16 Oct 2026) - what a client without an assistant sees at
+ * /my-wingguy/review. The change history below was built for the owner-plus-VA case (who changed
+ * what, notes in the margin) and read as a system log to everyone else, so they never used it.
+ * This page is the thing Guy says to every client instead: the goal is messages that sound more
+ * like you than you do, setup is once, and after that it learns from every draft you fix - in
+ * chat. The history stays for accounts with an assistant (their key says so) and for anyone Guy
+ * hands the ?full=1 link.
+ */
+function VoicePage({ query }) {
+  const hub = wingguyHubPath();
+  return (
+    <Shell>
+      <PageNav current="review" query={query} />
+      <header className="flex flex-col gap-4">
+        <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
+          Any time, in a chat
+        </div>
+        <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] text-slate-900">
+          Making it sound like you
+        </h1>
+        <p className="font-serif text-lg leading-relaxed text-slate-600">
+          Every client I have worked with says the same thing when it clicks: &ldquo;that doesn&rsquo;t
+          sound like AI, that sounds like me.&rdquo; Not close to me. Me on a good day. That is the whole
+          point of the setup you have just done, and it is why it is worth ten minutes of effort rather
+          than skipping.
+        </p>
+        <p className="text-[15px] text-slate-600">
+          Here is the part most people miss. The setup page is the once. Everything after it happens
+          in the normal flow of the day.
+        </p>
+      </header>
+
+      <section className="flex flex-col gap-8">
+        <Beat title="You fix a draft, it takes the hint.">
+          Type <span className="rounded bg-slate-900 px-1.5 py-0.5 font-mono text-[14px] text-white">/wg</span> on
+          a LinkedIn conversation and it drafts the reply. You change a word, cut a sentence, add
+          something it could not have known. Send. Wingguy quietly keeps a note of the difference. It
+          does not interrupt you at the time - nobody wants a quiz while they are mid-message.
+        </Beat>
+        <Beat title={<>Then, when you feel like it, say <Say>review my edits</Say>.</>}>
+          In a chat, it walks you through what you changed, one message at a time, and asks the only
+          question that matters: was that a one-off for that person, or is that how you would always
+          do it? Say &ldquo;pattern&rdquo; and it becomes a standing instruction on the spot. Every draft
+          after that comes out your way first time. Three or four of these and people stop being able
+          to tell.
+        </Beat>
+        <Beat title="Or just tell it.">
+          <Say>Never say reach out</Say> <Say>Always mention I&rsquo;m Brisbane based</Say>{' '}
+          <Say>Don&rsquo;t promise timeframes</Say> - any instruction, in whatever words come out, in a
+          chat or in the Wingguy window on LinkedIn. It writes it up properly, checks nothing already
+          covers it, and shows you before anything saves.
+        </Beat>
+        <Beat title="Nothing is ever lost.">
+          <Say>What have I changed?</Say> shows everything you have told it, newest first, in plain
+          English. <Say>Undo that</Say> or <Say>Go back to the standard one</Say> puts any instruction
+          back how it was.
+        </Beat>
+      </section>
+
+      <div className="border-t-2 border-slate-900 pt-8 flex flex-col gap-4">
+        <p className="font-serif text-2xl text-slate-900">Not done the setup yet?</p>
+        <p className="text-slate-600">
+          Ten minutes, nothing you can break, nothing you cannot undo - and everything above works
+          better once it is in.
+        </p>
+        <a href={query ? `/my-wingguy/setup?${query}` : '/my-wingguy/setup'}
+          className="self-start px-5 py-3 bg-slate-900 text-white text-[15px] font-medium hover:bg-slate-800">
+          Give Wingguy your instructions <span aria-hidden="true">&rarr;</span>
+        </a>
+      </div>
+
+      <p className="text-sm text-slate-500">
+        If someone else works your Wingguy with you, there is a page that shows who changed what,
+        with notes in the margin. Ask Guy for the link.
+      </p>
+    </Shell>
+  );
+}
+
+function Beat({ title, children }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="font-serif text-2xl text-slate-900">{title}</h2>
+      <p className="text-[15px] leading-relaxed text-slate-700">{children}</p>
+    </div>
+  );
+}
+
+/** A phrase to say out loud - drawn as the thing you type, not as a quote. */
+function Say({ children }) {
+  return <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13.5px] text-slate-900">&ldquo;{children}&rdquo;</span>;
+}
+
 function WingguyReviewInner() {
   const searchParams = useSearchParams();
   const { token, client, devKey, hasAuth, ready, query } = usePageAuth(searchParams);
+  // The history is for accounts worked by an assistant (their key says so) and for the ?full=1
+  // link Guy hands out; everyone else gets the page that explains the chat side.
+  const showHistory = searchParams.get('full') === '1' || !!getClientProfile()?.assistant;
 
   const authHeaders = useCallback((extra = {}) => {
     const h = { ...extra };
@@ -145,6 +243,7 @@ function WingguyReviewInner() {
       </Shell>
     );
   }
+  if (!showHistory) return <VoicePage query={query} />;
   if (state.status === 'loading') return <Shell><p className="text-slate-500">Opening the change history…</p></Shell>;
   if (state.status === 'error') {
     return (
@@ -215,7 +314,7 @@ function PageNav({ current, query }) {
       <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href(hub)}>&larr; {hub === '/setup' ? 'Setup and help' : 'My Wingguy'}</a>
       {tab('What Wingguy does', '/my-wingguy/about', 'about')}
       {tab('Your instructions', '/my-wingguy/setup', 'setup')}
-      {tab("What's changed lately", '/my-wingguy/review', 'review')}
+      {tab('Making it sound like you', '/my-wingguy/review', 'review')}
       {current === 'install' ? tab('Install the browser extension', '/my-wingguy/install', 'install') : null}
     </div>
   );
