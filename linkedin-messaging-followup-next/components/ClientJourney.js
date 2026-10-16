@@ -1,5 +1,5 @@
 "use client";
-// The client journey at the top of Start Here: the eight stops, and where THIS client is up to.
+// The client journey at the top of the Wingguy hub: the eight stops, and where THIS client is up to.
 //
 // The words and the order come from the server (content/client-journey.json, served with this
 // client's progress by GET /api/wingguy/journey). Nothing about the journey is written in this
@@ -10,6 +10,19 @@
 
 import React, { useEffect, useState } from 'react';
 import { getBackendBase, getAuthenticatedHeaders } from '../services/api';
+import { buildAuthUrl } from '../utils/clientUtils';
+
+// Where each stop happens in the portal, so the map is also the way there (16 Oct 2026). A stop
+// with no entry happens somewhere else (a Claude connection, a call with Guy) and shows no link.
+// Keys are the stop keys in content/client-journey.json; the words are the stop's own.
+const GO = {
+  reconnect: { href: '/today', label: 'Open Today - your Reconnect list is there' },
+  voice: { href: '/my-wingguy/setup', label: 'Give Wingguy your instructions' },
+  linkedin: { href: '/my-wingguy/install', label: 'Install the extension' },
+  calls: { href: '/settings?view=recorder', label: 'Connect your meeting recorder' },
+  rhythm: { href: '/today', label: 'Open Today' },
+  newpeople: { href: '/today', label: 'Open Today - new connections are there' },
+};
 
 const MARK = {
   done: { label: 'In place', cls: 'bg-emerald-100 text-emerald-800' },
@@ -17,7 +30,10 @@ const MARK = {
   todo: { label: 'To come', cls: 'bg-gray-100 text-gray-500' },
 };
 
-export default function ClientJourney() {
+/** `embedded`: drawn inside another page's column (the hub) rather than as a page of its own.
+ *  `onLoad(journey)`: the host page hears whether this client is done, so it can hide or show
+ *  its own "set up and running" furniture instead of contradicting the map. */
+export default function ClientJourney({ embedded = false, onLoad } = {}) {
   const [journey, setJourney] = useState(null);
   const [open, setOpen] = useState(null);       // key of the stop whose detail is showing
   const [showAll, setShowAll] = useState(false); // a finished client can still unfold it
@@ -30,6 +46,7 @@ export default function ClientJourney() {
       .then((data) => {
         if (cancelled || !data || !data.ok || !data.journey) return;
         setJourney(data.journey);
+        if (onLoad) onLoad(data.journey);
         const here = data.journey.stops.find((s) => s.current);
         if (here) setOpen(here.key);
       })
@@ -39,9 +56,12 @@ export default function ClientJourney() {
 
   if (!journey) return null;
 
+  const wrap = embedded ? 'w-full' : 'mx-auto max-w-5xl px-2';
+  const Title = embedded ? 'h2' : 'h1';
+
   if (journey.complete && !showAll) {
     return (
-      <div className="mx-auto max-w-5xl px-2 pb-6">
+      <div className={`${wrap} pb-6`}>
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 flex items-center gap-3 flex-wrap">
           <span><span className="font-semibold">You are fully set up.</span> All eight stops of your journey are in place.</span>
           <button className="text-emerald-800 underline" onClick={() => setShowAll(true)}>Show the journey</button>
@@ -53,9 +73,9 @@ export default function ClientJourney() {
   const detail = journey.stops.find((s) => s.key === open) || null;
 
   return (
-    <div className="mx-auto max-w-5xl px-2 pb-8">
+    <div className={`${wrap} pb-8`}>
       <div className="flex items-baseline gap-3 flex-wrap">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">{journey.title}</h1>
+        <Title className="text-2xl font-semibold tracking-tight text-gray-900">{journey.title}</Title>
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
           {journey.done} of {journey.total} in place
         </span>
@@ -100,6 +120,11 @@ export default function ClientJourney() {
             <div className="min-w-0"><div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Your part</div><p className="mt-1 text-sm text-gray-800">{detail.yourPart}</p></div>
             <div className="min-w-0"><div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">What you walk away with</div><p className="mt-1 text-sm text-gray-800">{detail.walkAway}</p></div>
           </div>
+          {GO[detail.key] && (
+            <a href={buildAuthUrl(GO[detail.key].href)} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline">
+              {GO[detail.key].label} <span aria-hidden="true">&rarr;</span>
+            </a>
+          )}
         </div>
       )}
 

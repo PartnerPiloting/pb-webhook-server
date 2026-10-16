@@ -324,6 +324,16 @@ export function setCurrentClientId(clientId) {
  * @param {string} path - The path to navigate to (e.g., '/quick-update')
  * @returns {string} URL with auth params appended
  */
+/**
+ * Where "the Wingguy hub" lives for this client (16 Oct 2026). On the three-tab layout the
+ * Setup and help tab IS the hub, so every back link and every "set up Wingguy" pointer goes to
+ * /setup; on the older tab bar the hub is behind the My Wingguy tab. One answer, used by every
+ * page that links back, so a client leaves a section the way they came in.
+ */
+export function wingguyHubPath() {
+  return clientProfile?.features?.todayLayout === true ? '/setup' : '/my-wingguy';
+}
+
 export function buildAuthUrl(path) {
   const params = new URLSearchParams();
   

@@ -224,7 +224,7 @@ function WingguySetupInner() {
       <PageNav current="setup" query={query} />
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
-          Give Wingguy your instructions
+          Your instructions
         </div>
         <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] text-slate-900">
           Now let&apos;s make it sound like you

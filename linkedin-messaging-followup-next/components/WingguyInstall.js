@@ -31,7 +31,7 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
-import { usePageAuth } from './WingguyReview';
+import { PageNav, usePageAuth } from './WingguyReview';
 import ClaudeKeySection from './ClaudeKeySection';
 
 const KEY_GUIDE_URL = 'https://knowaguy.com.au/your-claude-key';
@@ -199,7 +199,7 @@ function StatusBanner({ status }) {
 
 function WingguyInstallInner() {
   const searchParams = useSearchParams();
-  const { token, client, devKey, hasAuth, ready } = usePageAuth(searchParams);
+  const { token, client, devKey, hasAuth, ready, query } = usePageAuth(searchParams);
 
   const authHeaders = useCallback((extra = {}) => {
     const h = { ...extra };
@@ -269,6 +269,7 @@ function WingguyInstallInner() {
 
   return (
     <div className="max-w-[680px]">
+      <div className="mb-8"><PageNav current="install" query={query} /></div>
       <h1 className="font-serif text-4xl leading-tight text-slate-900">Install your Wingguy extension</h1>
       <p className="mb-6 mt-[10px] max-w-[56ch] text-[16.5px] leading-relaxed text-slate-600">
         This takes about two minutes, and you only do the full set-up once. A couple of the steps have

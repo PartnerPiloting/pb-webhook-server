@@ -9,7 +9,7 @@ import WingguySetup from "../../../components/WingguySetup";
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: "Your Wingguy instructions",
+  title: "Your instructions",
   description: "The handful of things only you can tell it, and every instruction it follows.",
 };
 

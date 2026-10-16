@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { getScoringPurpose, saveScoringPurpose, getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
 import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon, CreditCardIcon, ShieldCheckIcon, KeyIcon, ExclamationTriangleIcon, ClipboardDocumentIcon, CheckIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
 import { getBackendBase, getAuthenticatedHeaders } from '../services/api';
+import { getClientProfile, buildAuthUrl } from '../utils/clientUtils';
 import Link from 'next/link';
 import AIEditModal from './AIEditModal';
 import HelpButton from './HelpButton';
@@ -681,6 +682,11 @@ const SettingsWithParams = () => {
     return (
       <div className="space-y-6">
         <div>
+          {/* On the three-tab layout Settings sits under Setup and help, and that tab lands on the
+              hub - so the way back is a link, the same one the Wingguy pages carry (16 Oct 2026). */}
+          {getClientProfile()?.features?.todayLayout === true && (
+            <a className="text-sm text-gray-500 hover:text-gray-800" href={buildAuthUrl('/setup')}>&larr; Setup and help</a>
+          )}
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
           </div>

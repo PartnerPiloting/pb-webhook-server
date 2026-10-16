@@ -26,7 +26,7 @@ import ErrorBoundary from '../../components/ErrorBoundary';
 import EnvironmentValidator from '../../components/EnvironmentValidator';
 import Layout from '../../components/Layout';
 import ClientJourney from '../../components/ClientJourney';
-import { getClientProfile, buildAuthUrl } from '../../utils/clientUtils';
+import { getClientProfile, buildAuthUrl, wingguyHubPath } from '../../utils/clientUtils';
 
 export const dynamic = 'force-dynamic';
 
@@ -262,7 +262,7 @@ const WhatWingguyCanDo: React.FC = () => {
       <div className="mt-6 space-y-2 text-sm text-gray-500">
         <p>
           {wingguyOn ? (
-            <>New here? <a href={buildAuthUrl('/my-wingguy')} className="font-medium text-blue-700 hover:underline">Set up Wingguy &rarr;</a>{' '}&middot;{' '}</>
+            <>New here? <a href={buildAuthUrl(wingguyHubPath())} className="font-medium text-blue-700 hover:underline">Set up Wingguy &rarr;</a>{' '}&middot;{' '}</>
           ) : null}
           Curious how it thinks? Ask Claude <Say text={OPENER} live={wingguyOn} /> or{' '}
           <a href={LIBRARY_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-700 hover:underline">read the library &rarr;</a>
@@ -301,10 +301,10 @@ export default function StartHerePage() {
       <ErrorBoundary>
         <Layout>
           <div className="w-full pt-2">
-            {/* The eight-stop journey with this client's own progress (content/client-journey.json).
-                Above "What Wingguy can do": a client still being set up needs the map first; one who
-                is fully set up sees a single line and the rest of the page as before. */}
-            <ClientJourney />
+            {/* The eight-stop journey (content/client-journey.json) lives on the Wingguy hub now
+                (16 Oct 2026), where every stop can lead to its page. It is only drawn here for a
+                client who has no hub - Wingguy not switched on - so nobody loses the map. */}
+            {getClientProfile()?.features?.wingguy !== true && <ClientJourney />}
             <WhatWingguyCanDo />
           </div>
         </Layout>
