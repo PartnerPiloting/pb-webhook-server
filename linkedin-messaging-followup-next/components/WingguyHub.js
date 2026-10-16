@@ -215,13 +215,13 @@ function WingguyHubInner() {
           className="group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border border-slate-200 bg-white px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2"
         >
           <div className="flex flex-col gap-1">
-            <div className="font-serif text-[21px] leading-snug text-slate-900">Your Linked Helper machine</div>
+            <div className="font-serif text-[21px] leading-snug text-slate-900">Open your Linked Helper machine</div>
             <p className="text-[15px] leading-relaxed text-slate-600">
               Opens in a new tab. The first time, it asks for your email and sends you a code.
             </p>
           </div>
           <div className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600">
-            Open my Linked Helper machine{' '}
+            Open{' '}
             <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1">&rarr;</span>
           </div>
         </a>

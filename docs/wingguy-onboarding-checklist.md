@@ -57,7 +57,7 @@ their own progress - is `content/client-journey.json`. Change names or order THE
 | 5 Calendar and email | Session three | 2, 3, 4, 5 |
 | 6 Your calls, remembered | Session three | 7, 8 |
 | 7 Your daily rhythm | From session two on | 13 |
-| 8 New connections | Last, on purpose | 14 |
+| 8 Your Linked Helper machine | Last, on purpose | 14 |
 
 **What this changes on the day:**
 - **Session one ends with one click, not a hook-up.** Connector, the journey page, the LinkedIn

@@ -298,6 +298,20 @@ const Layout = ({ children }) => {
                 </>
               )}
 
+              {/* Settings, top right, on the three-tab layout: it sits under Setup and help, but
+                  someone whose key has died should not have to find it under a journey and six
+                  cards. The older tab bar has its own Settings tab. */}
+              {clientProfile?.features?.todayLayout === true && (
+                <Link
+                  href={buildAuthUrl('/settings')}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  title="Settings - scoring rules, access link, Claude key, meeting recorder"
+                >
+                  <CogIcon className="h-5 w-5" />
+                  <span className="hidden sm:inline">Settings</span>
+                </Link>
+              )}
+
               {/* My Clients - the coach board; Guy is the only coach */}
               {getCurrentClientId() === 'Guy-Wilson' && (
                 <Link

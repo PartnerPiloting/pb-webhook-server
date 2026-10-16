@@ -37,7 +37,6 @@ export default function ClientJourney({ embedded = false, onLoad } = {}) {
   const [journey, setJourney] = useState(null);
   const [open, setOpen] = useState(null);       // key of the stop whose detail is showing
   const [showAll, setShowAll] = useState(false); // a finished client can still unfold it
-  const [why, setWhy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,17 +124,12 @@ export default function ClientJourney({ embedded = false, onLoad } = {}) {
               {GO[detail.key].label} <span aria-hidden="true">&rarr;</span>
             </a>
           )}
-        </div>
-      )}
-
-      {journey.whyFirst && (
-        <div className="mt-4">
-          <button type="button" className="text-sm text-emerald-800 underline" aria-expanded={why} onClick={() => setWhy((w) => !w)}>
-            {journey.whyFirst.heading} {why ? '▴' : '▾'}
-          </button>
-          {why && (
-            <div className="mt-2 rounded-lg border-l-4 border-emerald-500 bg-emerald-50 px-4 py-3">
-              <p className="text-sm font-semibold text-gray-900">{journey.whyFirst.line}</p>
+          {/* The reasons Reconnect is stop two belong with stop two (Guy, 16 Oct 2026) - they used
+              to be a fold under the whole grid, read by nobody who had not already opened it. */}
+          {detail.key === 'reconnect' && journey.whyFirst && (
+            <div className="mt-4 rounded-lg border-l-4 border-emerald-500 bg-emerald-50 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">{journey.whyFirst.heading}</div>
+              <p className="mt-1 text-sm font-semibold text-gray-900">{journey.whyFirst.line}</p>
               <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {journey.whyFirst.reasons.map((r) => (
                   <div key={r.title} className="min-w-0">
