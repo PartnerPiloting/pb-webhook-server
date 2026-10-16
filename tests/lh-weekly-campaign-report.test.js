@@ -26,14 +26,19 @@ const frac = { id: 40, name: 'Fractional in profile', paused: false, waiting: 11
 const planners = { id: 39, name: 'Contact Financial Planners', paused: false, waiting: 2, invited_7d: 9, invited_28d: 48,
   accepted_7d: 4, cohort_invited: 32, cohort_accepted: 5 };
 
-check('a healthy campaign: sent + accepted, weeks left at the 28-day pace, acceptance so far', () => {
+check('a healthy campaign: sent + accepted, weeks left at the higher of last week and the 28-day pace, acceptance so far', () => {
   const c = w.campaignLines(frac);
   assert.deepStrictEqual(c.lines, [
     'Last week: 74 invitations sent, 23 accepted.',
-    '1,114 people left to invite - about 17 weeks at your current pace (about 67 a week).',
+    '1,114 people left to invite - about 15 weeks at your current pace (about 74 a week).',
     'Of the people invited 2 to 5 weeks ago, 47% have accepted so far.',
   ]);
   assert.strictEqual(c.topUp, false);
+});
+
+check('a young campaign: last week beats the diluted 28-day average (Sam Noble, Barclays, 16 Oct)', () => {
+  const c = w.campaignLines({ ...frac, name: 'Barclayss - Reach out', waiting: 431, invited_7d: 111, invited_28d: 121 });
+  assert.strictEqual(c.lines[1], '431 people left to invite - about 4 weeks at your current pace (about 111 a week).');
 });
 
 check('nearly empty = time to top up the search', () => {

@@ -21,8 +21,11 @@
  * no list and simply has no section.
  *
  * The wording rules:
- *   - Pace = invitations over the last 28 days / 4. One week swings (Guy's ran 49 to 74 a week
- *     in Sep-Oct 2026), so "how long will it last" uses the steadier figure.
+ *   - Pace = the HIGHER of last week and the 28-day average (28 days / 4). One week swings (Guy's
+ *     ran 49 to 74 a week in Sep-Oct 2026), so the average steadies it - but a campaign younger
+ *     than four weeks has empty weeks in its average (Sam Noble's Barclays, 16 Oct 2026: 111 last
+ *     week, 121 in 28 days -> "14 weeks left" when it was about 4). Taking the higher errs toward
+ *     topping up early, never toward running dry.
  *   - Acceptance is judged on people invited 14-35 days ago, "so far". Last week's invites are
  *     too fresh - people take days to accept - and would always look bad.
  *   - Under three weeks of people left = "time to top up the search".
@@ -147,7 +150,7 @@ function weeksWords(weeks) {
 /** One campaign's lines, as the client would read them, plus whether it needs topping up. */
 function campaignLines(c) {
   const lines = [];
-  const pace = Math.round(c.invited_28d / 4);
+  const pace = Math.round(Math.max(c.invited_7d, c.invited_28d / 4));
   let topUp = false;
 
   if (c.paused) {
