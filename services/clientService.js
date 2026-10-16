@@ -205,6 +205,9 @@ async function getAllClients() {
                 const invitesWaiting = Number(record.get('Invites Waiting')) || 0;
                 const trialWarningSent = record.get('Trial Warning Sent') || null;
                 const quietCampaignAlerted = record.get('Quiet Campaign Alerted') || null;
+                // Paused with people waiting (16 Oct 2026): when first seen, and when the coach was told.
+                const campaignPausedSince = record.get('Campaign Paused Since') || null;
+                const pausedCampaignAlerted = record.get('Paused Campaign Alerted') || null;
                 // Yes = shown the eight-stop journey on Start Here from day one (services/clientJourney.js).
                 const clientJourney = record.get('Client Journey') || null;
                 // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
@@ -359,6 +362,8 @@ async function getAllClients() {
                     invitesWaiting: invitesWaiting,
                     trialWarningSent: trialWarningSent,
                     quietCampaignAlerted: quietCampaignAlerted,
+                    campaignPausedSince: campaignPausedSince,
+                    pausedCampaignAlerted: pausedCampaignAlerted,
                     clientJourney: clientJourney,
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,

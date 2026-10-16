@@ -194,12 +194,16 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   });
 
   // The campaign itself (services/lhCampaignWatch.js, 8 Oct 2026): first action, last invitation,
-  // people waiting - and whether the trial is about to end or the campaign has gone quiet.
+  // people waiting - and whether the trial is about to end, the campaign has gone quiet, or (16 Oct)
+  // a campaign has sat paused for two hours with people waiting in it.
   // A machine still on the old watchdog sends no `campaign` block, and nothing happens.
   const campaignReport = (body.campaign && typeof body.campaign === 'object') ? body.campaign : null;
   const campaign = lhCampaignWatch.campaignStep({
     report: campaignReport,
-    client: { trialWarningSent: client.trialWarningSent, quietCampaignAlerted: client.quietCampaignAlerted },
+    client: {
+      trialWarningSent: client.trialWarningSent, quietCampaignAlerted: client.quietCampaignAlerted,
+      campaignPausedSince: client.campaignPausedSince, pausedCampaignAlerted: client.pausedCampaignAlerted,
+    },
   });
   const extra = { ...signout.fields, ...campaign.fields };
 
@@ -218,6 +222,8 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
       campaign.trialWarn = false;
       campaign.quietAlert = false;
       campaign.quietRecovered = false;
+      campaign.pausedAlert = false;
+      campaign.pausedRecovered = false;
     }
     clientService.clearCache();
   } catch (e) {
@@ -246,6 +252,13 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   } else if (campaign.quietRecovered) {
     lhCampaignWatch.sendSendingAgainNote({ client: fresh })
       .catch((e) => log.error(`LH-CAMPAIGN ${clientId} sending-again note failed: ${e.message}`));
+  }
+  if (campaign.pausedAlert) {
+    lhCampaignWatch.sendCampaignAlert({ client: fresh, alert: 'paused', paused: campaign.paused, report: campaignReport })
+      .catch((e) => log.error(`LH-CAMPAIGN ${clientId} paused alert failed: ${e.message}`));
+  } else if (campaign.pausedRecovered) {
+    lhCampaignWatch.sendPausedClearedNote({ client: fresh })
+      .catch((e) => log.error(`LH-CAMPAIGN ${clientId} paused-cleared note failed: ${e.message}`));
   }
   return res.json({ ok: true, wrote: Object.keys({ ...fields, ...extra }) });
 });

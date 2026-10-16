@@ -375,6 +375,18 @@ const MASTER_FIELDS = [
     options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
   },
   {
+    name: 'Campaign Paused Since',
+    type: 'dateTime',
+    description: 'When the machine first reported a PAUSED campaign that still had people queued to invite and had sent within 30 days. Two hours later, if still so, the coach and client are told (Paused Campaign Alerted). Cleared when no such campaign is left in the report. services/lhCampaignWatch.js. Added 2026-10-16 after Guy paused his own campaign by hand and an acceptance went unseen.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
+    name: 'Paused Campaign Alerted',
+    type: 'dateTime',
+    description: 'When the coach (and client) were told a campaign had been paused for two hours with people waiting - resume it or they accept unseen. Once per episode; cleared with Campaign Paused Since when the campaign is resumed, emptied or archived, which also sends the coach an all-clear. services/lhCampaignWatch.js. Added 2026-10-16.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
     name: 'Machine Icon Proven',
     type: 'date',
     description: 'The day the client double-clicked the Remote Desktop icon on their OWN laptop and saw their Linked Helper machine (Tailscale on their laptop under their own account, the machine shared to them, the .rdp from scripts/make-client-rdp.js). Set by hand at the machine session - checklist step 14. Blank with Machine Tailscale filled = the client has no way into their own machine; the onboarding preflight flags it. Added 2026-09-26 after Sam Noble was told "icon on your desktop" and there was none.',

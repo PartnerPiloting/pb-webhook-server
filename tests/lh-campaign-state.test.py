@@ -51,7 +51,8 @@ def build(root, acct):
         (1,101,1,'2020-09-29T06:59:40.165Z'),
         (2,100,1,'2020-10-06T02:00:00.000Z'),
         (3,100,-1,'2020-10-07T02:00:00.000Z'),
-        (4,101,1,'2020-10-07T05:00:00.000Z');
+        (4,101,1,'2020-10-07T05:00:00.000Z'),
+        (5,200,1,'2020-10-05T01:00:00.000Z');
     """)
     rows = [(10, 1)] * 5 + [(10, -1)] * 7 + [(10, 2)] * 2 + [(20, 1)] * 3 + [(30, 1)] * 9 + [(11, 1)] * 4
     con.executemany("INSERT INTO action_target_people (action_id, state) VALUES (?, ?)", rows)
@@ -70,11 +71,14 @@ with tempfile.TemporaryDirectory() as root:
     build(root, "585942")
     s = lhw.campaign_state("585942", data_dir=root)
     check("first action is the earliest result of any kind", s.get("first_action_at") == "2020-09-29T06:59:40.165Z")
-    check("last invite = newest SUCCESSFUL invitation (failed ones later are ignored)", s.get("last_invite_at") == "2020-10-06T02:00:00.000Z")
+    check("last invite = newest SUCCESSFUL invitation of any campaign (failed ones later are ignored)", s.get("last_invite_at") == "2020-10-06T02:00:00.000Z")
     check("waiting in running campaigns: invite queue, state 1 only", s.get("waiting_running") == 5)
     check("waiting in paused campaigns counted separately", s.get("waiting_paused") == 3)
     check("newest invitation attempt, failed or not", s.get("last_invite_attempt_at") == RECENT["attempt"])
     check("failed attempts in the last 3 days only", s.get("failed_invites_recent") == 2)
+    pc = s.get("paused_campaigns")
+    check("paused campaigns with people waiting are named, with their own queue and newest invitation",
+          pc == [{"id": 2, "name": "paused", "waiting": 3, "last_invite_at": "2020-10-05T01:00:00.000Z"}])
     check("placeholder accounts and unknown accounts give {}",
           lhw.campaign_state("1", data_dir=root) == {} and lhw.campaign_state("000000", data_dir=root) == {}
           and lhw.campaign_state("999", data_dir=root) == {} and lhw.campaign_state(None, data_dir=root) == {})

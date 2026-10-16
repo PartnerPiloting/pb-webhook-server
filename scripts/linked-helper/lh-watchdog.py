@@ -349,6 +349,10 @@ def campaign_state(account_id, data_dir=None):
       last_invite_attempt_at, failed_invites_recent
                         the newest invitation ATTEMPT and how many failed in 3 days - still
                         trying but always failing means the list is used up
+      paused_campaigns  each PAUSED campaign that still has people queued to invite, by name,
+                        with its own newest invitation (16 Oct 2026: Guy paused his live campaign
+                        by hand and an acceptance that night went unseen - the server now warns
+                        after two hours, long before the four-day quiet rule would)
     Read-only (mode=ro), a few cheap queries. Best-effort: anything odd returns {} and the
     watchdog carries on - losing this block must never cost the health line.
     """
@@ -385,11 +389,28 @@ def campaign_state(account_id, data_dir=None):
                     f"WHERE t.state = 1 AND c.is_archived = 0 AND t.action_id IN ({invite_actions}) "
                     "GROUP BY c.is_paused"):
                 waiting[1 if paused else 0] = int(n)
+            # The paused campaigns themselves, so the warning can name one. Only those with
+            # somebody still waiting - a paused campaign with nobody in it harms no one.
+            paused_campaigns = []
+            for cid, name, n in con.execute(
+                    "SELECT c.id, c.name, count(*) FROM action_target_people t "
+                    "JOIN actions a ON a.id = t.action_id "
+                    "JOIN campaigns c ON c.id = a.campaign_id "
+                    f"WHERE t.state = 1 AND c.is_archived = 0 AND c.is_paused = 1 AND t.action_id IN ({invite_actions}) "
+                    "GROUP BY c.id, c.name ORDER BY c.id"):
+                own_last = con.execute(
+                    "SELECT max(ar.created_at) FROM action_results ar "
+                    "JOIN action_versions av ON av.id = ar.action_version_id "
+                    "JOIN actions a ON a.id = av.action_id "
+                    f"WHERE a.campaign_id = ? AND ar.result = 1 AND av.action_id IN ({invite_actions})", (cid,)).fetchone()[0]
+                paused_campaigns.append({"id": int(cid), "name": str(name or "")[:80], "waiting": int(n),
+                                         "last_invite_at": own_last})
         finally:
             con.close()
         return {"first_action_at": first, "last_invite_at": last,
                 "waiting_running": waiting[0], "waiting_paused": waiting[1],
-                "last_invite_attempt_at": attempt, "failed_invites_recent": int(failed or 0)}
+                "last_invite_attempt_at": attempt, "failed_invites_recent": int(failed or 0),
+                "paused_campaigns": paused_campaigns}
     except Exception as e:
         print(f"campaign state unreadable (non-fatal): {e}")
         return {}
