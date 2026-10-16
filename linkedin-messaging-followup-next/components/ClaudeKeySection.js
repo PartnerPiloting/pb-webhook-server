@@ -193,9 +193,23 @@ export default function ClaudeKeySection({ authHeaders, variant = 'setup', onSav
       <div className="flex flex-col gap-3 pb-4 border-b border-slate-200">
         <h2 className="font-serif text-2xl text-slate-900">Your Claude key</h2>
         <p className="text-slate-600 max-w-2xl">
-          Wingguy writes with Claude, on your own Anthropic key, so your usage is billed to you
-          and only you. Paste a key from the Anthropic Console here - it gets tested with
-          Anthropic before anything is saved.
+          <strong>Why:</strong> two parts of Wingguy run away from your chat. Overnight it goes
+          through your follow-ups and gets your replies ready. And when you type /wg on LinkedIn,
+          the drafting happens on my servers. Both need a Claude account to run on, and it&apos;s
+          yours rather than mine, so the cost is billed to you and only you, under a spend limit
+          you choose. Usually a few dollars a month.
+        </p>
+        <p className="text-slate-600 max-w-2xl">
+          Paste a key from the Anthropic Console here - it gets tested with Anthropic before
+          anything is saved.
+        </p>
+        <p className="text-[15px] text-slate-600 max-w-2xl">
+          Not made one yet?{' '}
+          <a className="text-emerald-800 font-semibold underline underline-offset-2 hover:text-emerald-900"
+            href="https://knowaguy.com.au/your-claude-key" target="_blank" rel="noopener noreferrer">
+            Here&apos;s how, step by step
+          </a>{' '}
+          - about fifteen minutes, with a spend limit you choose.
         </p>
       </div>
       {body}

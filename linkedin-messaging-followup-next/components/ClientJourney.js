@@ -10,12 +10,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { getBackendBase, getAuthenticatedHeaders } from '../services/api';
-import { buildAuthUrl } from '../utils/clientUtils';
+import { buildAuthUrl, wingguyHubPath } from '../utils/clientUtils';
 
 // Where each stop happens in the portal, so the map is also the way there (16 Oct 2026). A stop
 // with no entry happens somewhere else (a Claude connection, a call with Guy) and shows no link.
 // Keys are the stop keys in content/client-journey.json; the words are the stop's own.
 const GO = {
+  claude: { href: 'hub', hash: '#connect-claude', label: 'Connect Wingguy to your Claude' },
   reconnect: { href: '/today', label: 'Open Today - your Reconnect list is there' },
   voice: { href: '/my-wingguy/setup', label: 'Give Wingguy your instructions' },
   linkedin: { href: '/my-wingguy/install', label: 'Install the browser extension' },
@@ -31,6 +32,9 @@ const GO = {
 const OPEN_KEY = 'wingguyJourneyOpen';
 const readOpen = () => { try { return window.localStorage.getItem(OPEN_KEY) === '1'; } catch (e) { return false; } };
 const writeOpen = (v) => { try { window.localStorage.setItem(OPEN_KEY, v ? '1' : '0'); } catch (e) { /* private window */ } };
+
+// 'hub' = wherever the hub is for this client; a hash goes AFTER the auth query, never before it.
+const goHref = (go) => buildAuthUrl(go.href === 'hub' ? wingguyHubPath() : go.href) + (go.hash || '');
 
 const MARK = {
   done: { label: 'In place', cls: 'bg-emerald-100 text-emerald-800' },
@@ -98,7 +102,7 @@ export default function ClientJourney({ embedded = false, onLoad } = {}) {
               {go && (
                 <>
                   {' '}&middot;{' '}
-                  <a href={buildAuthUrl(go.href)} className="font-semibold text-blue-700 hover:underline">{go.label} &rarr;</a>
+                  <a href={goHref(go)} className="font-semibold text-blue-700 hover:underline">{go.label} &rarr;</a>
                 </>
               )}
             </span>
@@ -162,7 +166,7 @@ export default function ClientJourney({ embedded = false, onLoad } = {}) {
             <div className="min-w-0"><div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">What you walk away with</div><p className="mt-1 text-sm text-gray-800">{detail.walkAway}</p></div>
           </div>
           {GO[detail.key] && (
-            <a href={buildAuthUrl(GO[detail.key].href)} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline">
+            <a href={goHref(GO[detail.key])} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline">
               {GO[detail.key].label} <span aria-hidden="true">&rarr;</span>
             </a>
           )}

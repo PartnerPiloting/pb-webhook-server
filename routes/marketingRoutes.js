@@ -185,6 +185,17 @@ const PAGES = {
       'The drafting inside LinkedIn and your overnight follow-ups run on a key that is yours, '
       + 'under a spend limit you choose. Six steps, about fifteen minutes.',
   },
+  // Adding the Wingguy connector to the client's own Claude (17 Oct 2026): what a connector is,
+  // where the link lives in the portal, the five clicks in claude.ai, and the two things that go
+  // wrong. Linked from the hub's "Connect Wingguy to your Claude" box for anyone doing it without
+  // Guy on the call. No screenshots, same reason as the key page: claude.ai moves its buttons.
+  connect: {
+    file: 'connect-wingguy.html',
+    title: 'Connecting Wingguy to your Claude - I Know A Guy',
+    description:
+      'One link, added once in your Claude settings, and Wingguy is there in every chat. '
+      + 'Five steps, about five minutes.',
+  },
   // A made-up introduction email in the real introduction-emails-html layout.
   // Linked as a "Picture:" from the playbook topic "The inner circle" - the
   // chat can only send text, so this is where a client sees what one looks like.
@@ -341,6 +352,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/your-campaign', servePage(PAGES.campaign));
   router.get('/your-licence', servePage(PAGES.licence));
   router.get('/your-claude-key', servePage(PAGES.claudeKey));
+  router.get('/connect-wingguy', servePage(PAGES.connect));
   router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/follow-ups-example', servePage(PAGES.followupsExample));
   router.get('/thanks-for-connecting-example', servePage(PAGES.thanksExample));

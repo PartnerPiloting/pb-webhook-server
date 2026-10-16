@@ -65,9 +65,22 @@ export default function ConnectorSection({ authHeaders }) {
       <div className="flex flex-col gap-3 pb-4 border-b border-slate-200">
         <h2 className="font-serif text-2xl text-slate-900">Connect Wingguy to your Claude</h2>
         <p className="text-slate-600 max-w-2xl">
-          Wingguy lives inside your own Claude chat. This is your personal link - it only ever
-          opens your account, so keep it to yourself and don&apos;t forward it or put it in a
-          shared doc.
+          <strong>Why:</strong> on its own, your Claude knows nothing about you. It can&apos;t see
+          your leads, your conversations or your calendar, so it can only guess. This link is what
+          lets it in. Once it&apos;s added, &ldquo;where are we up to?&rdquo; gets a real answer,
+          &ldquo;draft the follow-up from my last call&rdquo; knows which call, and every page in
+          this portal can be said out loud instead.
+        </p>
+        <p className="text-slate-600 max-w-2xl">
+          This is your personal link - it only ever opens your account, so keep it to yourself and
+          don&apos;t forward it or put it in a shared doc.
+        </p>
+        <p className="text-[15px] text-slate-600 max-w-2xl">
+          We normally do this together on your first call. Doing it on your own?{' '}
+          <a className="text-emerald-800 font-semibold underline underline-offset-2 hover:text-emerald-900"
+            href="https://knowaguy.com.au/connect-wingguy" target="_blank" rel="noopener noreferrer">
+            Here&apos;s how, step by step
+          </a>.
         </p>
       </div>
 

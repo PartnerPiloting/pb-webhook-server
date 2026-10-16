@@ -11,12 +11,14 @@
  * than a plain page ever could, and none of these counts have been verified per-client yet.
  */
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { usePageAuth } from './WingguyReview';
 import { getBackendBase } from '../services/api';
 import { getClientProfile, buildAuthUrl } from '../utils/clientUtils';
 import ClientJourney from './ClientJourney';
+import ConnectorSection from './ConnectorSection';
+import ClaudeKeySection from './ClaudeKeySection';
 
 const DOORS = [
   {
@@ -29,16 +31,16 @@ const DOORS = [
   },
   {
     href: '/my-wingguy/setup',
-    eyebrow: 'About ten minutes, once',
+    eyebrow: 'First, about ten minutes, once',
     title: 'Your instructions',
-    body: 'The handful of things only you can tell it - your name, your sign-off, how you describe what you do - and every instruction it already follows, in plain English, each one changeable.',
+    body: 'The handful of facts only you can tell it - your name, your sign-off, how you describe what you do - and every instruction it already follows, in plain English, each one changeable.',
     cta: 'Give it your instructions',
     tone: 'slate',
   },
   {
     href: '/my-wingguy/review',
-    eyebrow: 'Any time, in Claude',
-    title: 'Making it sound like you',
+    eyebrow: 'Then, every day, in Claude',
+    title: 'Make it sound even more like you',
     body: 'The goal is messages that sound more like you than you do. Setting up is once. After that, every time you fix a draft, it learns.',
     cta: 'How that works',
     tone: 'slate',
@@ -154,6 +156,15 @@ function WingguyHubInner() {
   const href = (path) => (q ? `${path}?${q}` : path);
   const machineLink = useMachineLink(auth);
   const extStatus = useExtensionStatus(auth);
+  // For the two Claude rows (moved here from the setup page, 17 Oct 2026 - they are kit, not
+  // "about you"). Stable on purpose: both sections use it as an effect dependency.
+  const authHeaders = useCallback((extra = {}) => {
+    const h = { ...extra };
+    if (auth.token) h['x-portal-token'] = auth.token;
+    if (auth.client) h['x-client-id'] = auth.client;
+    if (auth.devKey) h['x-dev-key'] = auth.devKey;
+    return h;
+  }, [auth.token, auth.client, auth.devKey]);
   // On the three-tab layout this page IS the Setup and help tab, so it carries that name and the
   // dials (Settings) and the signpost (Where Wingguy lives) live here too (16 Oct 2026).
   const todayLayout = getClientProfile()?.features?.todayLayout === true;
@@ -230,6 +241,19 @@ function WingguyHubInner() {
       )}
 
       <ExtensionCard status={extStatus} href={href} />
+
+      {/* Your Claude: the connector link and the key. Each section draws nothing for an assistant
+          or a managed-plan client, so the box hides itself when empty rather than framing nothing. */}
+      {auth.ready && auth.hasAuth && (
+        <>
+          <div className="rounded-[14px] border border-slate-200 bg-white px-7 py-6 empty:hidden">
+            <ConnectorSection authHeaders={authHeaders} />
+          </div>
+          <div className="rounded-[14px] border border-slate-200 bg-white px-7 py-6 empty:hidden">
+            <ClaudeKeySection authHeaders={authHeaders} variant="setup" />
+          </div>
+        </>
+      )}
 
       {todayLayout && (
         <div className="grid gap-5 lg:grid-cols-2">
