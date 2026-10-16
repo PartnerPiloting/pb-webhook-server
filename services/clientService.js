@@ -208,6 +208,8 @@ async function getAllClients() {
                 // Paused with people waiting (16 Oct 2026): when first seen, and when the coach was told.
                 const campaignPausedSince = record.get('Campaign Paused Since') || null;
                 const pausedCampaignAlerted = record.get('Paused Campaign Alerted') || null;
+                // Ticked = gets their own Monday campaign numbers email (services/lhWeeklyCampaignReport.js).
+                const mondayCampaignEmail = !!record.get('Monday Campaign Email');
                 // Yes = shown the eight-stop journey on Start Here from day one (services/clientJourney.js).
                 const clientJourney = record.get('Client Journey') || null;
                 // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
@@ -364,6 +366,7 @@ async function getAllClients() {
                     quietCampaignAlerted: quietCampaignAlerted,
                     campaignPausedSince: campaignPausedSince,
                     pausedCampaignAlerted: pausedCampaignAlerted,
+                    mondayCampaignEmail: mondayCampaignEmail,
                     clientJourney: clientJourney,
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,

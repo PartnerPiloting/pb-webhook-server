@@ -11,8 +11,14 @@ const assert = require('assert');
 const w = require('../services/lhWeeklyCampaignReport');
 
 let failures = 0;
+const pending = [];
 const check = (name, fn) => {
-  try { fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); }
+  const done = (e) => { if (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); } else console.log(`  ✓ ${name}`); };
+  try {
+    const r = fn();
+    if (r && typeof r.then === 'function') pending.push(r.then(() => done(), done));
+    else done();
+  } catch (e) { done(e); }
 };
 
 const frac = { id: 40, name: 'Fractional in profile', paused: false, waiting: 1114, invited_7d: 74, invited_28d: 269,
@@ -92,5 +98,61 @@ check("Guy's digest: top-ups listed first, clients in name order, stale machines
   assert.ok(!/[–—]/.test(d.text + d.html), 'no em or en dashes');
 });
 
-console.log(failures ? `\n${failures} failing` : '\nall passing');
-process.exit(failures ? 1 : 0);
+check("the client's own email: first name, their campaigns, a top-up nudge only when needed, Guy's sign-off", () => {
+  const e = w.clientEmail({ clientFirstName: 'Rick', clientName: 'Rick Wong', coachName: 'Guy Wilson', campaigns: [planners, frac] });
+  assert.strictEqual(e.subject, 'Your campaign numbers this week');
+  assert.ok(e.text.startsWith('Hi Rick,'));
+  assert.ok(e.text.includes('Contact Financial Planners\n- Last week: 9 invitations sent, 4 accepted.'));
+  assert.ok(e.text.includes('a fresh search keeps the invitations going'));
+  assert.ok(e.text.endsWith('Cheers,\n(I know a) Guy'));
+  assert.ok(!w.clientEmail({ clientFirstName: 'Rick', coachName: 'Guy Wilson', campaigns: [frac] }).text.includes('fresh search'));
+  assert.ok(!/[–—]/.test(e.text + e.html), 'no em or en dashes');
+});
+
+const NOW2 = Date.parse('2026-10-19T07:00:00+10:00');
+const fresh = '2026-10-19T06:55:00+10:00';
+const row = (name, client, over = {}) => ({ clientId: name, clientName: name, reportedAt: fresh, campaigns: [frac], client: { coach: 'Guy-Wilson', clientEmailAddress: `${name}@example.com`, clientFirstName: name, mondayCampaignEmail: true, ...client }, ...over });
+
+check('skip reasons: no coach (own row), no address, no campaigns, stale numbers', () => {
+  assert.strictEqual(w.skipReason(row('A', {}), NOW2), null);
+  assert.ok(w.skipReason(row('A', { coach: null }), NOW2).includes('no coach'));
+  assert.ok(w.skipReason(row('A', { clientEmailAddress: ' ' }), NOW2).includes('no email address'));
+  assert.ok(w.skipReason(row('A', {}, { campaigns: [] }), NOW2).includes('no live campaigns'));
+  assert.ok(w.skipReason(row('A', {}, { reportedAt: '2026-10-15T06:00:00+10:00' }), NOW2).includes('not reported'));
+});
+
+check('only TICKED clients are sent theirs; coach copied and replied to; skips reported', async () => {
+  const mails = [];
+  const logged = [];
+  const deps = {
+    getClientById: async () => ({ clientName: 'Guy Wilson', clientEmailAddress: 'guy@example.com' }),
+    sendClientEmail: async (m) => { mails.push(m); },
+    recordComm: async (c) => { logged.push(c); },
+  };
+  const r = await w.sendClientEmails([
+    row('Ticked', {}),
+    row('Unticked', { mondayCampaignEmail: false }),
+    row('NoAddress', { clientEmailAddress: '' }),
+  ], deps, NOW2);
+  assert.deepStrictEqual(r.sent, ['Ticked']);
+  assert.deepStrictEqual(r.skipped, ['NoAddress - no email address on their record']);
+  assert.strictEqual(mails.length, 1);
+  assert.strictEqual(mails[0].to, 'Ticked@example.com');
+  assert.strictEqual(mails[0].cc, 'guy@example.com');
+  assert.strictEqual(mails[0]['h:Reply-To'], 'guy@example.com');
+  assert.strictEqual(logged[0].channel, 'lh-weekly-numbers');
+});
+
+check("Guy's digest says who was sent theirs, who was skipped, and marks unticked clients", () => {
+  const d = w.buildDigest([row('Ticked', {}), row('Unticked', { mondayCampaignEmail: false })],
+    { now: NOW2, sent: ['Ticked'], skipped: ['Other - no email address on their record'] });
+  assert.ok(d.text.includes('Sent their own email: Ticked.'));
+  assert.ok(d.text.includes('Ticked but NOT sent:\n- Other - no email address on their record'));
+  assert.ok(d.text.includes('== Unticked (not ticked - only you see this) =='));
+  assert.ok(d.text.includes('== Ticked =='));
+});
+
+Promise.all(pending).then(() => {
+  console.log(failures ? `\n${failures} failing` : '\nall passing');
+  process.exit(failures ? 1 : 0);
+});

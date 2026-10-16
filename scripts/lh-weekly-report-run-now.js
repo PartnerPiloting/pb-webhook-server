@@ -1,6 +1,6 @@
 // Manual trigger for the Monday campaign numbers email (services/lhWeeklyCampaignReport.js) - builds
 // it from the machines' latest numbers now, ignoring the clock, and does NOT claim the week, so the
-// real Monday run still happens. Goes to Guy only (ALERT_EMAIL).
+// real Monday run still happens. Sends Guy his email AND every ticked client theirs - --dry-run first.
 // Usage (Render one-off job): node scripts/lh-weekly-report-run-now.js [--dry-run]
 //   --dry-run   print the email instead of sending it
 const report = require('../services/lhWeeklyCampaignReport');
