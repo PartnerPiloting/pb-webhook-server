@@ -19,7 +19,7 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
-import { wingguyHubPath } from '../utils/clientUtils';
+import { wingguyHubPath, getClientProfile } from '../utils/clientUtils';
 
 
 /**
@@ -90,9 +90,152 @@ function friendlyWhen(iso) {
     + ', ' + d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
 }
 
+
+/**
+ * "Making it sound like you" (Guy, 16 Oct 2026) - what a client without an assistant sees at
+ * /my-wingguy/review. The change history below was built for the owner-plus-VA case (who changed
+ * what, notes in the margin) and read as a system log to everyone else, so they never used it.
+ * This page is the thing Guy says to every client instead: the goal is messages that sound more
+ * like you than you do, setup is once, and after that it learns from every draft you fix - in
+ * chat. The history stays for accounts with an assistant (their key says so) and for anyone Guy
+ * hands the ?full=1 link.
+ */
+function VoicePage({ query }) {
+  const hub = wingguyHubPath();
+  return (
+    <Shell>
+      <PageNav current="review" query={query} />
+      <header className="flex flex-col gap-4">
+        <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
+          Any time, in Claude
+        </div>
+        <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] text-slate-900">
+          Making it sound like you
+        </h1>
+        <p className="font-serif text-lg leading-relaxed text-slate-600">
+          Every client I have worked with says the same thing when it clicks: &ldquo;that doesn&rsquo;t
+          sound like AI, that sounds like me.&rdquo; Not close to me. Me on a good day. That is the whole
+          point of the setup you have just done, and it is why it is worth ten minutes of effort rather
+          than skipping.
+        </p>
+        <p className="text-[15px] text-slate-600">
+          Here is the part most people miss. The setup page is the once. Everything after it happens
+          in the normal flow of the day.
+        </p>
+        <p className="text-[15px] text-slate-700 bg-white border border-slate-200 px-4 py-3">
+          <strong>Claude is where the talking happens.</strong> Wingguy is connected to it, so your
+          Claude already knows your setup, your leads and your conversations. Click any phrase below
+          to copy it, then paste it into Claude.
+        </p>
+      </header>
+
+      <section className="flex flex-col gap-8">
+        <Beat title="You fix a draft. That's the lesson.">
+          Type <span className="rounded bg-slate-900 px-1.5 py-0.5 font-mono text-[14px] text-white">/wg</span> on
+          a LinkedIn conversation and it writes the reply. Ask it in Claude to draft the follow-up
+          from your last call, and the email lands in your Drafts. Either way it is usually very
+          good, and almost never exactly what you would have said. So you make a few final edits
+          before you send. Change a word. Cut a line. Add something it could not have known.
+          <br /><br />
+          That is the whole habit. You were going to make those edits anyway. Wingguy quietly keeps
+          a note of every one, LinkedIn and email alike, and it does not interrupt you to ask about
+          them, because nobody wants a quiz mid-message.
+        </Beat>
+        <Beat title="Then it asks you the one question that matters.">
+          Some of those edits were one-offs for that person. Some are how you would always do it.
+          Only you know which. So, whenever you feel like it, open Claude and say{' '}
+          <Say>review my edits</Say>. It shows you each change you made, LinkedIn or email, one
+          message at a time, and asks: was that a one-off, or a pattern? Say &ldquo;pattern&rdquo;, and
+          it becomes a standing instruction on the spot. From then on every draft comes out that way
+          first time, and you never make that edit again.
+          <br /><br />
+          You do not have to wait for the review, either. If you already know it is a pattern, say
+          so right there in the Wingguy window on LinkedIn, in whatever words come out:{' '}
+          <Say>always do it like that</Say> <Say>never say reach out</Say>. It saves it the same way.
+          <br /><br />
+          Three or four of these and people stop being able to tell.
+        </Beat>
+        <Beat title="Or just tell it - in Claude, or in the Wingguy window on LinkedIn.">
+          <Say>Never say reach out</Say> <Say>Always mention I&rsquo;m Brisbane based</Say>{' '}
+          <Say>Don&rsquo;t promise timeframes</Say> - any instruction, in whatever words come out. It
+          writes it up properly, checks nothing already covers it, and shows you before anything
+          saves.
+        </Beat>
+        <Beat title="Nothing is ever lost.">
+          In Claude, <Say>What have I changed?</Say> shows everything you have told it, newest first,
+          in plain English. <Say>Undo that</Say> or <Say>Go back to the standard one</Say> puts any
+          instruction back how it was.
+        </Beat>
+      </section>
+
+      <div className="border-t-2 border-slate-900 pt-8 flex flex-col gap-4">
+        <p className="font-serif text-2xl text-slate-900">Not done the setup yet?</p>
+        <p className="text-slate-600">
+          Ten minutes, nothing you can break, nothing you cannot undo - and everything above works
+          better once it is in.
+        </p>
+        <a href={query ? `/my-wingguy/setup?${query}` : '/my-wingguy/setup'}
+          className="self-start px-5 py-3 bg-slate-900 text-white text-[15px] font-medium hover:bg-slate-800">
+          Give Wingguy your instructions <span aria-hidden="true">&rarr;</span>
+        </a>
+      </div>
+
+      <p className="text-sm text-slate-500">
+        The small &ldquo;open in Claude&rdquo; link next to each phrase opens the Claude app with it
+        typed in. Claude shows a caution box for any link like that - it is standard, just press send.
+      </p>
+      <p className="text-sm text-slate-500">
+        If someone else works your Wingguy with you, there is a page that shows who changed what,
+        with notes in the margin. Ask Guy for the link.
+      </p>
+    </Shell>
+  );
+}
+
+function Beat({ title, children }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="font-serif text-2xl text-slate-900">{title}</h2>
+      <p className="text-[15px] leading-relaxed text-slate-700">{children}</p>
+    </div>
+  );
+}
+
+/** A phrase to say to Claude. Clicking it COPIES it (Guy, 17 Oct 2026): the claude:// link that
+ *  opens the app with the words typed in makes Claude show a red "malicious content" caution box
+ *  first, which to a non-technical client reads as a stop sign. So copy-then-paste is the main
+ *  road, and "open in Claude" is a small secondary link for anyone who does not mind the box. */
+const claudeLink = (text) => `claude://claude.ai/new?q=${encodeURIComponent(text)}`;
+
+function Say({ children }) {
+  // The words, flattened: children may carry &rsquo; entities as plain text already.
+  const text = React.Children.toArray(children).map((c) => (typeof c === 'string' ? c : '')).join('');
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); } catch (err) { /* nothing more to do */ }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-1.5 align-baseline">
+      <button type="button" onClick={copy} title="Click to copy, then paste it into Claude"
+        className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13.5px] text-slate-900 hover:bg-slate-200">
+        &ldquo;{children}&rdquo;{copied ? <span className="ml-1.5 font-sans text-[11px] text-emerald-700">copied</span> : null}
+      </button>
+      <a href={claudeLink(text)} className="text-[11px] text-slate-400 hover:text-slate-700"
+        title="Opens the Claude app with this typed in. Claude shows a caution box for any link like this - it is standard, press send.">
+        open in Claude
+      </a>
+    </span>
+  );
+}
+
 function WingguyReviewInner() {
   const searchParams = useSearchParams();
   const { token, client, devKey, hasAuth, ready, query } = usePageAuth(searchParams);
+  // The history is for accounts worked by an assistant (their key says so) and for the ?full=1
+  // link Guy hands out; everyone else gets the page that explains the chat side.
+  const showHistory = searchParams.get('full') === '1' || !!getClientProfile()?.assistant;
 
   const authHeaders = useCallback((extra = {}) => {
     const h = { ...extra };
@@ -145,6 +288,7 @@ function WingguyReviewInner() {
       </Shell>
     );
   }
+  if (!showHistory) return <VoicePage query={query} />;
   if (state.status === 'loading') return <Shell><p className="text-slate-500">Opening the change history…</p></Shell>;
   if (state.status === 'error') {
     return (
@@ -215,7 +359,7 @@ function PageNav({ current, query }) {
       <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href(hub)}>&larr; {hub === '/setup' ? 'Setup and help' : 'My Wingguy'}</a>
       {tab('What Wingguy does', '/my-wingguy/about', 'about')}
       {tab('Your instructions', '/my-wingguy/setup', 'setup')}
-      {tab("What's changed lately", '/my-wingguy/review', 'review')}
+      {tab('Making it sound like you', '/my-wingguy/review', 'review')}
       {current === 'install' ? tab('Install the browser extension', '/my-wingguy/install', 'install') : null}
     </div>
   );

@@ -317,11 +317,10 @@ function WingguySetupInner() {
             notes in the margin. Linked rather than embedded so this page stays the working
             surface and a glance stays a glance. */}
         <p className="text-sm text-slate-500 -mt-4">
-          Curious what has been changed on this page over time?{' '}
+          Once this page is done, you will not be back here much - it learns from every draft you fix.{' '}
           <a className="underline hover:text-slate-700" href={`/my-wingguy/review?${searchParams.toString()}`}>
-            See what&apos;s changed lately
-          </a>
-          {' '}- every change, who made it, before and after.
+            How that works
+          </a>.
         </p>
 
         <div className="bg-white border border-slate-200 p-6 flex flex-col gap-4">
