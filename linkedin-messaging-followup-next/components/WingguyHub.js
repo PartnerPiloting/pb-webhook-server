@@ -23,7 +23,7 @@ const DOORS = [
     href: '/my-wingguy/about',
     eyebrow: 'Start here if it is new to you',
     title: 'What Wingguy does',
-    body: 'A day of it, moment by moment - what you say, and what it does. Ten minutes, and it explains the whole thing better than any list of features.',
+    body: 'It reads every conversation, writes what comes next in your words, books the meetings and remembers the follow-ups - and it never sends anything without you seeing it first.',
     cta: 'See what it does',
     tone: 'emerald',
   },
@@ -166,8 +166,7 @@ function WingguyHubInner() {
         <div className="flex flex-col gap-3">
           <h1 className="font-serif text-4xl md:text-[42px] leading-tight text-slate-900">{todayLayout ? 'Setup and help' : 'My Wingguy'}</h1>
           <p className="text-lg leading-relaxed text-slate-600 max-w-[620px]">
-            It reads every conversation, writes what comes next in your words, books the meetings
-            and remembers the follow-ups - and it never sends anything without you seeing it first.
+            Where you are up to in setting it up, your instructions, and what has changed.
           </p>
         </div>
         {showPill && (
@@ -181,28 +180,6 @@ function WingguyHubInner() {
       {/* The map first: a client still being set up needs to know where they are before anything
           else on this page makes sense. One who is fully set up sees a single line. */}
       <ClientJourney embedded onLoad={(j) => setJourneyDone(j.complete === true)} />
-
-      {machineLink && (
-        <a
-          href={machineLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border border-slate-200 bg-white px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2"
-        >
-          <div className="flex flex-col gap-1">
-            <div className="font-serif text-[21px] leading-snug text-slate-900">Your Linked Helper machine</div>
-            <p className="text-[15px] leading-relaxed text-slate-600">
-              Opens in a new tab. The first time, it asks for your email and sends you a code.
-            </p>
-          </div>
-          <div className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600">
-            Open my Linked Helper machine{' '}
-            <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1">&rarr;</span>
-          </div>
-        </a>
-      )}
-
-      <ExtensionCard status={extStatus} href={href} />
 
       <div className="grid gap-5 lg:grid-cols-3">
         {DOORS.map((d) => (
@@ -229,6 +206,28 @@ function WingguyHubInner() {
           </a>
         ))}
       </div>
+
+      {machineLink && (
+        <a
+          href={machineLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border border-slate-200 bg-white px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2"
+        >
+          <div className="flex flex-col gap-1">
+            <div className="font-serif text-[21px] leading-snug text-slate-900">Your Linked Helper machine</div>
+            <p className="text-[15px] leading-relaxed text-slate-600">
+              Opens in a new tab. The first time, it asks for your email and sends you a code.
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600">
+            Open my Linked Helper machine{' '}
+            <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1">&rarr;</span>
+          </div>
+        </a>
+      )}
+
+      <ExtensionCard status={extStatus} href={href} />
 
       {todayLayout && (
         <div className="grid gap-5 lg:grid-cols-2">
