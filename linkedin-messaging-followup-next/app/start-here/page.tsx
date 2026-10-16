@@ -66,11 +66,14 @@ const CHIPS: { say: string; when: string }[] = [
   { say: 'what can I do with Wingguy?', when: 'not sure what to ask? start here' },
 ];
 
-// Opens a NEW chat in the Claude desktop app with the text already typed in. There is no reliable
-// equivalent for Claude in a browser, so every phrase also has a Copy button.
+// Opens a NEW chat in the Claude desktop app with the text already typed in. Kept as the SMALL
+// secondary link (Guy, 17 Oct 2026): Claude shows a red "malicious content" caution box on any
+// such link, which to a non-technical client reads as a stop sign. Clicking a phrase copies it.
 const claudeLink = (text: string) => `claude://claude.ai/new?q=${encodeURIComponent(text)}`;
+const OPEN_TITLE = 'Opens the Claude app with this typed in. Claude shows a caution box for any link like this - it is standard, press send.';
 
-const CopyButton: React.FC<{ text: string }> = ({ text }) => {
+// A phrase to say to Claude: click to copy (then paste it into Claude), small "open in Claude" after it.
+const Phrase: React.FC<{ text: string; live: boolean; className: string }> = ({ text, live, className }) => {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -86,25 +89,20 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+  if (!live) return <span className={className}>&ldquo;{text}&rdquo;</span>;
   return (
-    <button type="button" onClick={copy} className="text-xs text-gray-500 hover:text-gray-800" title="Copy, then paste it into Claude">
-      {copied ? 'Copied' : 'Copy'}
-    </button>
+    <span className="inline-flex flex-wrap items-baseline gap-1.5">
+      <button type="button" onClick={copy} className={`${className} text-left`} title="Click to copy, then paste it into Claude">
+        &ldquo;{text}&rdquo;{copied ? <span className="ml-1.5 font-sans text-[11px] font-normal text-emerald-700">copied</span> : null}
+      </button>
+      <a href={claudeLink(text)} className="text-[11px] font-normal text-gray-400 hover:text-gray-700" title={OPEN_TITLE}>open in Claude</a>
+    </span>
   );
 };
 
-// A phrase said inline in a sentence: quoted, opens Claude when live.
+// A phrase said inline in a sentence.
 const Say: React.FC<{ text: string; live: boolean }> = ({ text, live }) => (
-  <span className="inline-flex flex-wrap items-center gap-2">
-    {live ? (
-      <a href={claudeLink(text)} className="rounded bg-gray-100 px-2 py-0.5 font-mono text-[13px] text-gray-900 hover:bg-gray-200" title="Opens a new chat in the Claude app with this already typed in">
-        &ldquo;{text}&rdquo;
-      </a>
-    ) : (
-      <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-[13px] text-gray-900">&ldquo;{text}&rdquo;</span>
-    )}
-    {live && <CopyButton text={text} />}
-  </span>
+  <Phrase text={text} live={live} className="rounded bg-gray-100 px-2 py-0.5 font-mono text-[13px] text-gray-900 hover:bg-gray-200" />
 );
 
 // One colour-blocked band: tinted header strip, white body. Tailwind needs the class strings whole,
@@ -183,22 +181,15 @@ const WhatWingguyCanDo: React.FC = () => {
         tone="orange"
         num="2"
         title="Ask Claude"
-        how={wingguyOn ? 'click a phrase to start the chat - or Copy and paste it in.' : 'these work once Wingguy is switched on.'}
+        how={wingguyOn ? 'click a phrase to copy it, then paste it into Claude.' : 'these work once Wingguy is switched on.'}
       >
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {CHIPS.map((c) => (
             <div key={c.say} className="flex items-start justify-between gap-2 rounded-lg border border-orange-100 bg-orange-50 px-3.5 py-2.5">
               <span className="min-w-0">
-                {wingguyOn ? (
-                  <a href={claudeLink(c.say)} className="font-mono text-[14px] font-semibold text-gray-900 hover:underline" title="Opens a new chat in the Claude app with this already typed in">
-                    &ldquo;{c.say}&rdquo;
-                  </a>
-                ) : (
-                  <span className="font-mono text-[14px] font-semibold text-gray-900">&ldquo;{c.say}&rdquo;</span>
-                )}
+                <Phrase text={c.say} live={wingguyOn} className="font-mono text-[14px] font-semibold text-gray-900 hover:underline" />
                 <span className="mt-0.5 block text-[12.5px] text-gray-500">{c.when}</span>
               </span>
-              {wingguyOn && <CopyButton text={c.say} />}
             </div>
           ))}
         </div>
@@ -286,11 +277,7 @@ const WhatWingguyCanDo: React.FC = () => {
           {METHOD_QUESTIONS.map((q, i) => (
             <span key={q}>
               {i > 0 && ' · '}
-              {wingguyOn ? (
-                <a href={claudeLink(q)} className="text-blue-700 hover:underline">&ldquo;{q}&rdquo;</a>
-              ) : (
-                <span>&ldquo;{q}&rdquo;</span>
-              )}
+              <Phrase text={q} live={wingguyOn} className="text-blue-700 hover:underline" />
             </span>
           ))}
           {' '}- or say <strong>&ldquo;{EVERYTHING}&rdquo;</strong> for the whole lot.
@@ -301,7 +288,7 @@ const WhatWingguyCanDo: React.FC = () => {
         </p>
         {wingguyOn && (
           <p className="text-xs text-gray-400">
-            Clicking a phrase opens it in the Claude app on your computer. Using Claude in a web browser? Click <strong>Copy</strong> and paste it into a new chat.
+            Click a phrase to copy it, then paste it into a Claude chat. The small <strong>open in Claude</strong> link opens the Claude app with it typed in - Claude shows a caution box for any link like that; it is standard, just press send.
           </p>
         )}
       </div>

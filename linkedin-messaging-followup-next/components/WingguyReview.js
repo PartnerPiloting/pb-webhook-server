@@ -124,24 +124,36 @@ function VoicePage({ query }) {
         </p>
         <p className="text-[15px] text-slate-700 bg-white border border-slate-200 px-4 py-3">
           <strong>Claude is where the talking happens.</strong> Wingguy is connected to it, so your
-          Claude already knows your setup, your leads and your conversations. Every phrase below is
-          a link - click it and a new Claude chat opens with the words already typed in.
+          Claude already knows your setup, your leads and your conversations. Click any phrase below
+          to copy it, then paste it into Claude.
         </p>
       </header>
 
       <section className="flex flex-col gap-8">
-        <Beat title="You fix a draft, it takes the hint.">
+        <Beat title="You fix a draft. That's the lesson.">
           Type <span className="rounded bg-slate-900 px-1.5 py-0.5 font-mono text-[14px] text-white">/wg</span> on
-          a LinkedIn conversation and it drafts the reply. You change a word, cut a sentence, add
-          something it could not have known. Send. Wingguy quietly keeps a note of the difference. It
-          does not interrupt you at the time - nobody wants a quiz while they are mid-message.
+          a LinkedIn conversation and it writes the reply. Ask it in Claude to draft the follow-up
+          from your last call, and the email lands in your Drafts. Either way it is usually very
+          good, and almost never exactly what you would have said. So you make a few final edits
+          before you send. Change a word. Cut a line. Add something it could not have known.
+          <br /><br />
+          That is the whole habit. You were going to make those edits anyway. Wingguy quietly keeps
+          a note of every one, LinkedIn and email alike, and it does not interrupt you to ask about
+          them, because nobody wants a quiz mid-message.
         </Beat>
-        <Beat title={<>Then, when you feel like it, open Claude and say <Say>review my edits</Say></>}>
-          In Claude, it walks you through what you changed, one message at a time, and asks the only
-          question that matters: was that a one-off for that person, or is that how you would always
-          do it? Say &ldquo;pattern&rdquo; and it becomes a standing instruction on the spot. Every draft
-          after that comes out your way first time. Three or four of these and people stop being able
-          to tell.
+        <Beat title="Then it asks you the one question that matters.">
+          Some of those edits were one-offs for that person. Some are how you would always do it.
+          Only you know which. So, whenever you feel like it, open Claude and say{' '}
+          <Say>review my edits</Say>. It shows you each change you made, LinkedIn or email, one
+          message at a time, and asks: was that a one-off, or a pattern? Say &ldquo;pattern&rdquo;, and
+          it becomes a standing instruction on the spot. From then on every draft comes out that way
+          first time, and you never make that edit again.
+          <br /><br />
+          You do not have to wait for the review, either. If you already know it is a pattern, say
+          so right there in the Wingguy window on LinkedIn, in whatever words come out:{' '}
+          <Say>always do it like that</Say> <Say>never say reach out</Say>. It saves it the same way.
+          <br /><br />
+          Three or four of these and people stop being able to tell.
         </Beat>
         <Beat title="Or just tell it - in Claude, or in the Wingguy window on LinkedIn.">
           <Say>Never say reach out</Say> <Say>Always mention I&rsquo;m Brisbane based</Say>{' '}
@@ -169,6 +181,10 @@ function VoicePage({ query }) {
       </div>
 
       <p className="text-sm text-slate-500">
+        The small &ldquo;open in Claude&rdquo; link next to each phrase opens the Claude app with it
+        typed in. Claude shows a caution box for any link like that - it is standard, just press send.
+      </p>
+      <p className="text-sm text-slate-500">
         If someone else works your Wingguy with you, there is a page that shows who changed what,
         with notes in the margin. Ask Guy for the link.
       </p>
@@ -185,30 +201,31 @@ function Beat({ title, children }) {
   );
 }
 
-/** A phrase to say to Claude. Clicking it opens a new chat in the Claude desktop app with the words
- *  already typed (same claude:// link the Where Wingguy lives page uses); the Copy button is for
- *  anyone on Claude in a browser, where no such link exists. */
+/** A phrase to say to Claude. Clicking it COPIES it (Guy, 17 Oct 2026): the claude:// link that
+ *  opens the app with the words typed in makes Claude show a red "malicious content" caution box
+ *  first, which to a non-technical client reads as a stop sign. So copy-then-paste is the main
+ *  road, and "open in Claude" is a small secondary link for anyone who does not mind the box. */
 const claudeLink = (text) => `claude://claude.ai/new?q=${encodeURIComponent(text)}`;
 
 function Say({ children }) {
   // The words, flattened: children may carry &rsquo; entities as plain text already.
   const text = React.Children.toArray(children).map((c) => (typeof c === 'string' ? c : '')).join('');
   const [copied, setCopied] = useState(false);
-  const copy = async (e) => {
-    e.preventDefault();
+  const copy = async () => {
     try { await navigator.clipboard.writeText(text); } catch (err) { /* nothing more to do */ }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
   return (
     <span className="inline-flex flex-wrap items-baseline gap-1.5 align-baseline">
-      <a href={claudeLink(text)} title="Opens a new chat in the Claude app with this already typed in"
+      <button type="button" onClick={copy} title="Click to copy, then paste it into Claude"
         className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13.5px] text-slate-900 hover:bg-slate-200">
-        &ldquo;{children}&rdquo;
-      </a>
-      <button type="button" onClick={copy} className="text-[11px] text-slate-400 hover:text-slate-700" title="Copy, then paste it into Claude">
-        {copied ? 'Copied' : 'Copy'}
+        &ldquo;{children}&rdquo;{copied ? <span className="ml-1.5 font-sans text-[11px] text-emerald-700">copied</span> : null}
       </button>
+      <a href={claudeLink(text)} className="text-[11px] text-slate-400 hover:text-slate-700"
+        title="Opens the Claude app with this typed in. Claude shows a caution box for any link like this - it is standard, press send.">
+        open in Claude
+      </a>
     </span>
   );
 }
