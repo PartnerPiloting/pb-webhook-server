@@ -24,6 +24,14 @@ const GO = {
   newpeople: { href: '/today', label: 'Open Today - new connections are there' },
 };
 
+// Whether the full map is unfolded. Folded by default (Guy, 16 Oct 2026): on a laptop the eight
+// cards filled the first screen and pushed the hub's doors below the fold, and after the first
+// few visits a client only needs two things from the map - how far along, and what is next.
+// A client who unfolds it keeps it unfolded on that browser; folding it again is one click.
+const OPEN_KEY = 'wingguyJourneyOpen';
+const readOpen = () => { try { return window.localStorage.getItem(OPEN_KEY) === '1'; } catch (e) { return false; } };
+const writeOpen = (v) => { try { window.localStorage.setItem(OPEN_KEY, v ? '1' : '0'); } catch (e) { /* private window */ } };
+
 const MARK = {
   done: { label: 'In place', cls: 'bg-emerald-100 text-emerald-800' },
   started: { label: 'Started', cls: 'bg-amber-100 text-amber-800' },
@@ -36,7 +44,10 @@ const MARK = {
 export default function ClientJourney({ embedded = false, onLoad } = {}) {
   const [journey, setJourney] = useState(null);
   const [open, setOpen] = useState(null);       // key of the stop whose detail is showing
-  const [showAll, setShowAll] = useState(false); // a finished client can still unfold it
+  const [expanded, setExpanded] = useState(false); // folded until the browser says otherwise
+  const toggle = (v) => { setExpanded(v); writeOpen(v); };
+
+  useEffect(() => { setExpanded(readOpen()); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,12 +69,43 @@ export default function ClientJourney({ embedded = false, onLoad } = {}) {
   const wrap = embedded ? 'w-full' : 'mx-auto max-w-5xl px-2';
   const Title = embedded ? 'h2' : 'h1';
 
-  if (journey.complete && !showAll) {
+  if (journey.complete && !expanded) {
     return (
       <div className={`${wrap} pb-6`}>
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 flex items-center gap-3 flex-wrap">
           <span><span className="font-semibold">You are fully set up.</span> All eight stops of your journey are in place.</span>
-          <button className="text-emerald-800 underline" onClick={() => setShowAll(true)}>Show the journey</button>
+          <button className="text-emerald-800 underline" onClick={() => toggle(true)}>Show the journey</button>
+        </div>
+      </div>
+    );
+  }
+
+  const here = journey.stops.find((s) => s.current) || null;
+
+  if (!expanded) {
+    const go = here && GO[here.key];
+    return (
+      <div className={`${wrap} pb-6`}>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
+          <Title className="text-base font-semibold text-gray-900">{journey.title}</Title>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+            {journey.done} of {journey.total} in place
+          </span>
+          {here && (
+            <span className="text-sm text-gray-800">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 mr-2">You are here</span>
+              {here.n}. {here.name}
+              {go && (
+                <>
+                  {' '}&middot;{' '}
+                  <a href={buildAuthUrl(go.href)} className="font-semibold text-blue-700 hover:underline">{go.label} &rarr;</a>
+                </>
+              )}
+            </span>
+          )}
+          <button type="button" className="ml-auto text-sm text-emerald-800 underline" onClick={() => toggle(true)}>
+            Show all eight stops
+          </button>
         </div>
       </div>
     );
@@ -143,9 +185,9 @@ export default function ClientJourney({ embedded = false, onLoad } = {}) {
         </div>
       )}
 
-      {journey.complete && (
-        <button className="mt-3 text-sm text-gray-500 underline" onClick={() => setShowAll(false)}>Hide the journey</button>
-      )}
+      <button type="button" className="mt-3 text-sm text-gray-500 underline" onClick={() => toggle(false)}>
+        Fold the journey away
+      </button>
     </div>
   );
 }
