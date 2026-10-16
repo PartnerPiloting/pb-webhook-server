@@ -41,6 +41,10 @@ check('a young campaign: last week beats the diluted 28-day average (Sam Noble, 
   assert.strictEqual(c.lines[1], '431 people left to invite - about 4 weeks at your current pace (about 111 a week).');
 });
 
+check('a campaign left unnamed in Linked Helper gets "Campaign <id>" (Roland Illyes, 16 Oct)', () => {
+  assert.strictEqual(w.campaignLines({ ...frac, id: 1, name: '  ', paused: true }).name, 'Campaign 1');
+});
+
 check('nearly empty = time to top up the search', () => {
   const c = w.campaignLines(planners);
   assert.strictEqual(c.lines[1], '2 people left to invite - less than a week at your current pace (about 12 a week). Time to top up the search.');

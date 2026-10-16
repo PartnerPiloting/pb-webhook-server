@@ -147,6 +147,9 @@ function weeksWords(weeks) {
   return `about ${w} week${w === 1 ? '' : 's'}`;
 }
 
+// A campaign left unnamed in Linked Helper (Roland Illyes's #1, 16 Oct 2026) still needs a heading.
+const nameOf = (c) => String(c.name || '').trim() || `Campaign ${c.id}`;
+
 /** One campaign's lines, as the client would read them, plus whether it needs topping up. */
 function campaignLines(c) {
   const lines = [];
@@ -155,7 +158,7 @@ function campaignLines(c) {
 
   if (c.paused) {
     lines.push(`Paused - nothing is going out, and acceptances aren't being picked up. ${plural(c.waiting, 'person', 'people')} waiting to be invited.`);
-    return { name: c.name, lines, topUp, paused: true };
+    return { name: nameOf(c), lines, topUp, paused: true };
   }
 
   lines.push(c.accepted_7d === null
@@ -178,7 +181,7 @@ function campaignLines(c) {
     const pct = Math.round((100 * c.cohort_accepted) / c.cohort_invited);
     lines.push(`Of the people invited 2 to 5 weeks ago, ${pct}% have accepted so far.`);
   }
-  return { name: c.name, lines, topUp, paused: false };
+  return { name: nameOf(c), lines, topUp, paused: false };
 }
 
 function esc(s) {
