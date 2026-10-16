@@ -83,6 +83,16 @@ async function claim(invoiceId, clientId, recipients) {
   return res.rows.length > 0;
 }
 
+/** After a forced resend: the ledger row now says who it went to last, and when. */
+async function restamp(invoiceId, clientId, recipients) {
+  await withDb((db) => db.query(
+    `INSERT INTO invoice_email_sends (send_key, invoice_id, client_id, recipients)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (send_key) DO UPDATE SET client_id = EXCLUDED.client_id, recipients = EXCLUDED.recipients, created_at = now()`,
+    [sendKey(invoiceId), invoiceId, clientId || null, recipients.join(', ')]
+  ));
+}
+
 async function release(invoiceId) {
   await withDb((db) => db.query('DELETE FROM invoice_email_sends WHERE send_key=$1', [sendKey(invoiceId)]));
 }
@@ -265,6 +275,7 @@ async function sendInvoices({ client, invoices, force = false, dryRun = false, d
       attachments,
     });
     result.sent = claimed.map((i) => i.id);
+    if (force) for (const inv of claimed) await (deps.restamp || restamp)(inv.id, result.clientId, recipients).catch(() => {});
     result.subject = subject;
     result.mailgunId = sent && sent.id;
     logger.info(`[invoice-email] ${result.clientId || 'unmatched'}: ${result.sent.join(', ')} -> ${to.join(', ')}`);
@@ -279,7 +290,8 @@ async function sendInvoices({ client, invoices, force = false, dryRun = false, d
       meta: { invoices: result.sent, staging: isStagingServer(), mailgunId: result.mailgunId },
     });
   } catch (e) {
-    for (const inv of claimed) await (deps.release || release)(inv.id).catch(() => {});
+    // A forced resend claimed nothing, so it has nothing to give back.
+    if (!force) for (const inv of claimed) await (deps.release || release)(inv.id).catch(() => {});
     result.sent = [];
     result.error = e.message;
     logger.error(`[invoice-email] ${result.clientId || 'unmatched'}: send failed - ${e.message}`);
