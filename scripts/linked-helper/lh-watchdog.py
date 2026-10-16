@@ -409,15 +409,78 @@ def campaign_state(account_id, data_dir=None):
                     f"WHERE a.campaign_id = ? AND ar.result = 1 AND av.action_id IN ({invite_actions})", (cid,)).fetchone()[0]
                 paused_campaigns.append({"id": int(cid), "name": str(name or "")[:80], "waiting": int(n),
                                          "last_invite_at": own_last})
+            campaigns = campaign_numbers(con, invite_actions)
         finally:
             con.close()
         return {"first_action_at": first, "last_invite_at": last,
                 "waiting_running": waiting[0], "waiting_paused": waiting[1],
                 "last_invite_attempt_at": attempt, "failed_invites_recent": int(failed or 0),
-                "paused_campaigns": paused_campaigns}
+                "paused_campaigns": paused_campaigns, "campaigns": campaigns}
     except Exception as e:
         print(f"campaign state unreadable (non-fatal): {e}")
         return {}
+
+
+def campaign_numbers(con, invite_actions):
+    """Each live campaign's week, for the Monday numbers email (services/lhWeeklyCampaignReport.js).
+
+    WHY (Guy, 16 Oct 2026): a weekly note to each client - how many people are left in each
+    campaign's queue, roughly how long that lasts at the current pace, and how many accepted.
+    All from person_in_campaigns_history: one row per person per step, result_status 1 = done,
+    -1 = failed / not accepted, result_created_at = when. The "accepted" step is the campaign's
+    FilterContactsOutOfMyNetwork ("check who's already accepted invitations") - status 1 there is
+    an acceptance; -1 is an invite withdrawn unaccepted after Linked Helper's 30 days.
+      waiting       Linked Helper's own "Profiles to process" on the invite step (same as above)
+      invited_7d, invited_28d   invitations sent - the 28 days give a steadier weekly pace
+      accepted_7d   acceptances picked up in the last 7 days (null when there is no accepted step)
+      cohort_invited, cohort_accepted
+                    people invited 14-35 days ago, and how many of them have accepted so far - last
+                    week's own invites are too fresh to judge (people take days to say yes)
+    Campaigns with nobody waiting and nothing sent in 28 days are left out. Best-effort: its own
+    failure costs only this list, never the rest of the campaign block.
+    """
+    try:
+        since = lambda days: f"strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-{int(days)} days')"
+        accept_actions = ("SELECT DISTINCT av.action_id FROM action_versions av "
+                          "JOIN action_configs ac ON ac.id = av.config_id "
+                          "WHERE ac.actionType = 'FilterContactsOutOfMyNetwork'")
+        out = []
+        for cid, name, paused in con.execute(
+                "SELECT c.id, c.name, c.is_paused FROM campaigns c WHERE c.is_archived = 0 "
+                f"AND EXISTS (SELECT 1 FROM actions a WHERE a.campaign_id = c.id AND a.id IN ({invite_actions})) "
+                "ORDER BY c.id"):
+            q = lambda sql: con.execute(sql, (cid,)).fetchone()[0]
+            inv = f"h.campaign_id = ? AND h.action_id IN ({invite_actions})"
+            waiting = q(f"SELECT count(*) FROM person_in_campaigns_history h WHERE {inv} AND h.result_id IS NULL")
+            invited_7d = q(f"SELECT count(*) FROM person_in_campaigns_history h WHERE {inv} "
+                           f"AND h.result_status = 1 AND h.result_created_at > {since(7)}")
+            invited_28d = q(f"SELECT count(*) FROM person_in_campaigns_history h WHERE {inv} "
+                            f"AND h.result_status = 1 AND h.result_created_at > {since(28)}")
+            if not waiting and not invited_28d:
+                continue
+            has_accept = q(f"SELECT count(*) FROM actions a WHERE a.campaign_id = ? AND a.id IN ({accept_actions})")
+            accepted_7d = cohort_accepted = None
+            cohort_invited = q(f"SELECT count(*) FROM person_in_campaigns_history h WHERE {inv} AND h.result_status = 1 "
+                               f"AND h.result_created_at BETWEEN {since(35)} AND {since(14)}")
+            if has_accept:
+                accepted_7d = q("SELECT count(*) FROM person_in_campaigns_history h WHERE h.campaign_id = ? "
+                                f"AND h.action_id IN ({accept_actions}) AND h.result_status = 1 "
+                                f"AND h.result_created_at > {since(7)}")
+                cohort_accepted = q(
+                    "SELECT count(DISTINCT h.person_id) FROM person_in_campaigns_history h "
+                    "JOIN person_in_campaigns_history f ON f.person_id = h.person_id AND f.campaign_id = h.campaign_id "
+                    f"AND f.action_id IN ({accept_actions}) AND f.result_status = 1 "
+                    f"WHERE {inv} AND h.result_status = 1 AND h.result_created_at BETWEEN {since(35)} AND {since(14)}")
+            out.append({"id": int(cid), "name": str(name or "")[:80], "paused": bool(paused),
+                        "waiting": int(waiting), "invited_7d": int(invited_7d), "invited_28d": int(invited_28d),
+                        "accepted_7d": accepted_7d, "cohort_invited": int(cohort_invited),
+                        "cohort_accepted": cohort_accepted})
+            if len(out) >= 20:
+                break
+        return out
+    except Exception as e:
+        print(f"campaign numbers unreadable (non-fatal): {e}")
+        return []
 
 
 def restart_wanted():

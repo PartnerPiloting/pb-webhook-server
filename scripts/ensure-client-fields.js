@@ -387,6 +387,12 @@ const MASTER_FIELDS = [
     options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
   },
   {
+    name: 'Monday Campaign Email',
+    type: 'checkbox',
+    description: 'Ticked = this client gets their own Monday campaign numbers email (sent, accepted, people left to invite, weeks left), coach copied. Unticked (the default) = they get nothing; the coach still sees their numbers in his own Monday email. services/lhWeeklyCampaignReport.js. Added 2026-10-16.',
+    options: { icon: 'check', color: 'greenBright' }
+  },
+  {
     name: 'Machine Icon Proven',
     type: 'date',
     description: 'The day the client double-clicked the Remote Desktop icon on their OWN laptop and saw their Linked Helper machine (Tailscale on their laptop under their own account, the machine shared to them, the .rdp from scripts/make-client-rdp.js). Set by hand at the machine session - checklist step 14. Blank with Machine Tailscale filled = the client has no way into their own machine; the onboarding preflight flags it. Added 2026-09-26 after Sam Noble was told "icon on your desktop" and there was none.',

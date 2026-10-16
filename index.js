@@ -1982,6 +1982,15 @@ try {
     moduleLogger.error('index.js: Error starting Wingguy monitor', e.message, e.stack);
 }
 
+// Monday campaign numbers: after 7am Brisbane on Mondays, one email to Guy with each client's
+// Linked Helper week (sent, accepted, left in the queue, weeks left). LH_WEEKLY_REPORT=off kills it.
+try {
+    const { startLhWeeklyReport } = require('./services/lhWeeklyCampaignReport.js');
+    startLhWeeklyReport();
+} catch (e) {
+    moduleLogger.error('index.js: Error starting LH weekly report', e.message, e.stack);
+}
+
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {

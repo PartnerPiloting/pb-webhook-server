@@ -92,9 +92,72 @@ with tempfile.TemporaryDirectory() as root:
     pc = s.get("paused_campaigns")
     check("paused campaigns with people waiting are named, with their own queue and newest invitation",
           pc == [{"id": 2, "name": "paused", "waiting": 3, "last_invite_at": "2020-10-05T01:00:00.000Z"}])
+    check("weekly numbers that cannot be read (this cut-down history has no result_status) cost only that list",
+          s.get("campaigns") == [] and s.get("waiting_running") == 5)
     check("placeholder accounts and unknown accounts give {}",
           lhw.campaign_state("1", data_dir=root) == {} and lhw.campaign_state("000000", data_dir=root) == {}
           and lhw.campaign_state("999", data_dir=root) == {} and lhw.campaign_state(None, data_dir=root) == {})
+
+def build_numbers(root, acct):
+    """The weekly numbers (campaign_numbers): one connect campaign with an accepted step, one paused
+    campaign with no accepted step, one with nothing waiting and nothing sent in 28 days (left out)."""
+    d = os.path.join(root, "Partitions", f"linked-helper-account-{acct}-main")
+    os.makedirs(d)
+    con = sqlite3.connect(os.path.join(d, "lh.db"))
+    con.executescript("""
+      CREATE TABLE campaigns (id INTEGER PRIMARY KEY, name TEXT, is_paused INT, is_archived INT);
+      CREATE TABLE actions (id INTEGER PRIMARY KEY, campaign_id INT);
+      CREATE TABLE action_configs (id INTEGER PRIMARY KEY, actionType TEXT);
+      CREATE TABLE action_versions (id INTEGER PRIMARY KEY, action_id INT, config_id INT);
+      CREATE TABLE action_results (id INTEGER PRIMARY KEY, action_version_id INT, result INT, created_at TEXT);
+      CREATE TABLE person_in_campaigns_history (id INTEGER PRIMARY KEY, person_id INT, campaign_id INT, action_id INT,
+        result_id INT, result_status INT, result_created_at TEXT);
+      INSERT INTO campaigns VALUES (1,'Connect',0,0),(2,'Old paused',1,0),(3,'Finished',0,0),(4,'Archived',0,1);
+      INSERT INTO action_configs VALUES (1,'InvitePerson'),(2,'FilterContactsOutOfMyNetwork'),(3,'InvitePerson'),
+        (4,'InvitePerson'),(5,'InvitePerson');
+      INSERT INTO actions VALUES (10,1),(11,1),(20,2),(30,3),(40,4);
+      INSERT INTO action_versions VALUES (100,10,1),(101,11,2),(200,20,3),(300,30,4),(400,40,5);
+    """)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    ago = lambda d: (now - datetime.timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    rows, pid = [], [0]
+
+    def person(c, steps):
+        pid[0] += 1
+        for action, status, days in steps:
+            rows.append((pid[0], c, action, None if status == -999 else 1, status, None if days is None else ago(days)))
+    for _ in range(6):
+        person(1, [(10, -999, None)])                          # waiting to be invited
+    for _ in range(3):
+        person(1, [(10, 1, 2), (11, -999, None)])              # invited this week, not yet accepted
+    person(1, [(10, 1, 20), (11, 1, 3)])                       # invited 20 days ago, accepted this week
+    person(1, [(10, 1, 21), (11, -1, 1)])                      # invited 21 days ago, withdrawn unaccepted
+    person(1, [(10, 1, 25), (11, 1, 15)])                      # invited 25 days ago, accepted earlier
+    person(1, [(10, 1, 60), (11, 1, 50)])                      # long ago - outside every window
+    for _ in range(4):
+        person(2, [(20, -999, None)])                          # paused campaign, 4 waiting, no accepted step
+    person(3, [(30, 1, 40)])                                   # finished: nobody waiting, nothing in 28 days
+    person(4, [(40, -999, None)])                              # archived
+    con.executemany("INSERT INTO person_in_campaigns_history (person_id, campaign_id, action_id, result_id, "
+                    "result_status, result_created_at) VALUES (?, ?, ?, ?, ?, ?)", rows)
+    con.commit()
+    con.close()
+
+
+with tempfile.TemporaryDirectory() as root:
+    build_numbers(root, "777")
+    nums = lhw.campaign_state("777", data_dir=root).get("campaigns")
+    by = {c["name"]: c for c in (nums or [])}
+    check("weekly numbers: finished and archived campaigns are left out", sorted(by) == ["Connect", "Old paused"])
+    c = by.get("Connect", {})
+    check("weekly numbers: waiting = invite step with no result", c.get("waiting") == 6)
+    check("weekly numbers: invitations in 7 and 28 days", c.get("invited_7d") == 3 and c.get("invited_28d") == 6)
+    check("weekly numbers: acceptances picked up in the last 7 days", c.get("accepted_7d") == 1)
+    check("weekly numbers: the 14-35 day cohort and how many of them accepted",
+          c.get("cohort_invited") == 3 and c.get("cohort_accepted") == 2)
+    p = by.get("Old paused", {})
+    check("weekly numbers: a campaign without an accepted step reports null acceptances, and says it is paused",
+          p.get("paused") is True and p.get("waiting") == 4 and p.get("accepted_7d") is None and p.get("cohort_accepted") is None)
 
 with tempfile.TemporaryDirectory() as root:
     d = os.path.join(root, "Partitions", "linked-helper-account-42-main")

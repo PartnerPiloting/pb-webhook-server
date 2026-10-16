@@ -206,6 +206,11 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
     },
   });
   const extra = { ...signout.fields, ...campaign.fields };
+  // Each campaign's week (16 Oct 2026), kept for the Monday numbers email
+  // (services/lhWeeklyCampaignReport.js). Not awaited, never throws; an older watchdog sends none.
+  if (campaignReport && Array.isArray(campaignReport.campaigns)) {
+    require('../services/lhWeeklyCampaignReport').saveSnapshot(client.clientId || clientId, campaignReport.campaigns);
+  }
 
   try {
     const base = clientService.initializeClientsBase();
