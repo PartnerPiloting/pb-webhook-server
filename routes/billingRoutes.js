@@ -254,13 +254,20 @@ router.get('/api/billing/invoices', authenticateUserWithTestMode, requireStripe,
         const invoiceChargeIds = new Set();
         const invoicePaymentIntents = new Set();
         const invoiceAmountDateKeys = new Set(); // "amount_timestamp" for same-day same-amount dedup
-        
+        // Newer Stripe API versions (stripe-node 20) no longer put charge / payment_intent on the
+        // invoice, so a payment that lands days after the invoice was raised (a card retry) used to
+        // slip past the same-day check and show twice - once as the invoice, once as a "one-time
+        // charge" with its own tax invoice. Match on when the invoice was actually PAID as well.
+        const invoicePaidAt = [];
+
         invoices.data.forEach(inv => {
             if (inv.charge) invoiceChargeIds.add(inv.charge);
             if (inv.payment_intent) invoicePaymentIntents.add(inv.payment_intent);
             // Create a key for amount + date (same day) to catch duplicates from checkout sessions
             const dateKey = new Date(inv.created * 1000).toISOString().split('T')[0];
             invoiceAmountDateKeys.add(`${inv.amount_paid}_${dateKey}`);
+            const paidAt = inv.status_transitions?.paid_at;
+            if (paidAt) invoicePaidAt.push({ amount: inv.amount_paid, paidAt });
         });
 
         const oneTimeCharges = charges.data.filter(charge => {
@@ -279,7 +286,14 @@ router.get('/api/billing/invoices', authenticateUserWithTestMode, requireStripe,
                 logger.info(`Filtering duplicate charge ${charge.id} - same amount/date as invoice`);
                 return false;
             }
-            
+
+            // Exclude if it is the payment of an invoice paid later than it was raised (same amount,
+            // paid within an hour of this charge)
+            if (invoicePaidAt.some(p => p.amount === charge.amount && Math.abs(p.paidAt - charge.created) <= 3600)) {
+                logger.info(`Filtering duplicate charge ${charge.id} - payment of a later-paid invoice`);
+                return false;
+            }
+
             return true;
         });
 
