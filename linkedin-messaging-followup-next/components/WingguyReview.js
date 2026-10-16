@@ -107,7 +107,7 @@ function VoicePage({ query }) {
       <PageNav current="review" query={query} />
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
-          Any time, in a chat
+          Any time, in Claude
         </div>
         <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] text-slate-900">
           Making it sound like you
@@ -122,6 +122,11 @@ function VoicePage({ query }) {
           Here is the part most people miss. The setup page is the once. Everything after it happens
           in the normal flow of the day.
         </p>
+        <p className="text-[15px] text-slate-700 bg-white border border-slate-200 px-4 py-3">
+          <strong>Claude is where the talking happens.</strong> Wingguy is connected to it, so your
+          Claude already knows your setup, your leads and your conversations. Every phrase below is
+          a link - click it and a new Claude chat opens with the words already typed in.
+        </p>
       </header>
 
       <section className="flex flex-col gap-8">
@@ -131,23 +136,23 @@ function VoicePage({ query }) {
           something it could not have known. Send. Wingguy quietly keeps a note of the difference. It
           does not interrupt you at the time - nobody wants a quiz while they are mid-message.
         </Beat>
-        <Beat title={<>Then, when you feel like it, say <Say>review my edits</Say>.</>}>
-          In a chat, it walks you through what you changed, one message at a time, and asks the only
+        <Beat title={<>Then, when you feel like it, open Claude and say <Say>review my edits</Say></>}>
+          In Claude, it walks you through what you changed, one message at a time, and asks the only
           question that matters: was that a one-off for that person, or is that how you would always
           do it? Say &ldquo;pattern&rdquo; and it becomes a standing instruction on the spot. Every draft
           after that comes out your way first time. Three or four of these and people stop being able
           to tell.
         </Beat>
-        <Beat title="Or just tell it.">
+        <Beat title="Or just tell it - in Claude, or in the Wingguy window on LinkedIn.">
           <Say>Never say reach out</Say> <Say>Always mention I&rsquo;m Brisbane based</Say>{' '}
-          <Say>Don&rsquo;t promise timeframes</Say> - any instruction, in whatever words come out, in a
-          chat or in the Wingguy window on LinkedIn. It writes it up properly, checks nothing already
-          covers it, and shows you before anything saves.
+          <Say>Don&rsquo;t promise timeframes</Say> - any instruction, in whatever words come out. It
+          writes it up properly, checks nothing already covers it, and shows you before anything
+          saves.
         </Beat>
         <Beat title="Nothing is ever lost.">
-          <Say>What have I changed?</Say> shows everything you have told it, newest first, in plain
-          English. <Say>Undo that</Say> or <Say>Go back to the standard one</Say> puts any instruction
-          back how it was.
+          In Claude, <Say>What have I changed?</Say> shows everything you have told it, newest first,
+          in plain English. <Say>Undo that</Say> or <Say>Go back to the standard one</Say> puts any
+          instruction back how it was.
         </Beat>
       </section>
 
@@ -180,9 +185,32 @@ function Beat({ title, children }) {
   );
 }
 
-/** A phrase to say out loud - drawn as the thing you type, not as a quote. */
+/** A phrase to say to Claude. Clicking it opens a new chat in the Claude desktop app with the words
+ *  already typed (same claude:// link the Where Wingguy lives page uses); the Copy button is for
+ *  anyone on Claude in a browser, where no such link exists. */
+const claudeLink = (text) => `claude://claude.ai/new?q=${encodeURIComponent(text)}`;
+
 function Say({ children }) {
-  return <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13.5px] text-slate-900">&ldquo;{children}&rdquo;</span>;
+  // The words, flattened: children may carry &rsquo; entities as plain text already.
+  const text = React.Children.toArray(children).map((c) => (typeof c === 'string' ? c : '')).join('');
+  const [copied, setCopied] = useState(false);
+  const copy = async (e) => {
+    e.preventDefault();
+    try { await navigator.clipboard.writeText(text); } catch (err) { /* nothing more to do */ }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-1.5 align-baseline">
+      <a href={claudeLink(text)} title="Opens a new chat in the Claude app with this already typed in"
+        className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13.5px] text-slate-900 hover:bg-slate-200">
+        &ldquo;{children}&rdquo;
+      </a>
+      <button type="button" onClick={copy} className="text-[11px] text-slate-400 hover:text-slate-700" title="Copy, then paste it into Claude">
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </span>
+  );
 }
 
 function WingguyReviewInner() {

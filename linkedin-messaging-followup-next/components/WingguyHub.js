@@ -37,7 +37,7 @@ const DOORS = [
   },
   {
     href: '/my-wingguy/review',
-    eyebrow: 'Any time, in a chat',
+    eyebrow: 'Any time, in Claude',
     title: 'Making it sound like you',
     body: 'The goal is messages that sound more like you than you do. Setting up is once. After that, every time you fix a draft, it learns.',
     cta: 'How that works',
