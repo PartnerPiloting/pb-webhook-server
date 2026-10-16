@@ -39,7 +39,7 @@ const DOORS = [
     href: '/my-wingguy/review',
     eyebrow: 'Any time',
     title: "What's changed lately",
-    body: 'Everything anyone has changed about your Wingguy - who, when, and what it means. Leave a note on anything, undo anything, or ask it to start doing something differently.',
+    body: 'Every change to your instructions - what it said before, what it says now, and when. Undo any of them, leave a note, or tell it to do something differently.',
     cta: 'Review recent changes',
     tone: 'slate',
   },
@@ -100,15 +100,15 @@ function ExtensionCard({ status, href }) {
   const tone = behind
     ? 'border-amber-300 bg-amber-50 hover:border-amber-400 focus-visible:ring-amber-600'
     : 'border-slate-200 bg-white hover:border-slate-300 focus-visible:ring-slate-700';
-  let title = 'Install the extension';
+  let title = 'Install the browser extension';
   let body = 'The Wingguy window on LinkedIn - get it into your browser in a couple of minutes.';
   let cta = 'Install it';
   if (behind) {
-    title = 'A new version of your extension is ready';
+    title = 'A new version of your browser extension is ready';
     body = `You're on ${status.installed} - the current one is ${status.current}. Updating takes about 30 seconds.`;
     cta = 'Update it';
   } else if (upToDate) {
-    title = 'Your extension is up to date';
+    title = 'Your browser extension is up to date';
     body = `Running version ${status.current}. Reinstall it, or set it up on another computer, from here.`;
     cta = 'Open';
   }
@@ -153,7 +153,7 @@ function WingguyHubInner() {
   const machineLink = useMachineLink(auth);
   const extStatus = useExtensionStatus(auth);
   // On the three-tab layout this page IS the Setup and help tab, so it carries that name and the
-  // dials (Settings) and the signpost (What Wingguy can do) live here too (16 Oct 2026).
+  // dials (Settings) and the signpost (Where Wingguy lives) live here too (16 Oct 2026).
   const todayLayout = getClientProfile()?.features?.todayLayout === true;
   // null = journey not loaded (or failed): the old "set up and running" pill stands. Once the map
   // has loaded, it says where the client is, and the pill only shows when every stop is in place.
@@ -233,7 +233,7 @@ function WingguyHubInner() {
       {todayLayout && (
         <div className="grid gap-5 lg:grid-cols-2">
           <SmallDoor href={buildAuthUrl('/settings')} title="Settings" body="Your scoring rules, your access link, your Claude key, your meeting recorder - the dials." cta="Open Settings" />
-          <SmallDoor href={buildAuthUrl('/start-here')} title="What Wingguy can do" body="The three places it lives - on LinkedIn, in Claude, and in these screens - and what to say in each." cta="See the three places" />
+          <SmallDoor href={buildAuthUrl('/start-here')} title="Where Wingguy lives" body="On LinkedIn, in Claude, and in these screens - and what to say in each." cta="See the three places" />
         </div>
       )}
 

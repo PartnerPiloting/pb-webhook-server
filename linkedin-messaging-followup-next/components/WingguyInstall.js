@@ -254,7 +254,7 @@ function WingguyInstallInner() {
   if (ready && !hasAuth) {
     return (
       <div className="max-w-[680px]">
-        <h1 className="font-serif text-4xl leading-tight text-slate-900">Install the extension</h1>
+        <h1 className="font-serif text-4xl leading-tight text-slate-900">Install the browser extension</h1>
         <p className="mt-4 text-[16px] text-slate-600">
           Open this page from your own Wingguy link so it knows who you are. If you don&rsquo;t have it
           handy, message me and I&rsquo;ll resend it.
@@ -270,7 +270,7 @@ function WingguyInstallInner() {
   return (
     <div className="max-w-[680px]">
       <div className="mb-8"><PageNav current="install" query={query} /></div>
-      <h1 className="font-serif text-4xl leading-tight text-slate-900">Install your Wingguy extension</h1>
+      <h1 className="font-serif text-4xl leading-tight text-slate-900">Install your Wingguy browser extension</h1>
       <p className="mb-6 mt-[10px] max-w-[56ch] text-[16.5px] leading-relaxed text-slate-600">
         This takes about two minutes, and you only do the full set-up once. A couple of the steps have
         slightly technical-sounding names - don&rsquo;t let that put you off. I&rsquo;ll tell you exactly what to click.

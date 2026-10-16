@@ -40,7 +40,7 @@ function SetupInner() {
         <p className="text-sm text-gray-600">How it all works, your own setup, and the dials.</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Door href={`/start-here?${qs}`} icon={BookOpenIcon} title="What Wingguy can do" blurb="The overview - everything it does, and where" />
+        <Door href={`/start-here?${qs}`} icon={BookOpenIcon} title="Where Wingguy lives" blurb="On LinkedIn, in Claude, and in these screens" />
         <Door href={`/settings?${qs}`} icon={CogIcon} title="Settings" blurb="Scoring attributes and your profile" />
       </div>
       <p className="text-sm text-gray-500">Stuck on a screen? The <span className="font-medium">?</span> help button on each page explains that page.</p>

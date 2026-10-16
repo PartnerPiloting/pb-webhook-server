@@ -1,5 +1,6 @@
 "use client";
-// "What Wingguy can do" - organised by PLACE, not by job: three colour-blocked bands (LinkedIn /wg,
+// "Where Wingguy lives" (was "What Wingguy can do" until 16 Oct 2026 - too close to the hub's "What
+// Wingguy does") - organised by PLACE, not by job: three colour-blocked bands (LinkedIn /wg,
 // Ask Claude, screens here) and three message bands: leads arriving (the campaign that feeds
 // Wingguy - Guy, 28 Sep: the page never said where leads COME FROM), call recordings (the raw material) and voice
 // (the drafts sound like you, and you can keep tuning it - Guy, 26 Sep: the #1 objection is "AI
@@ -139,7 +140,7 @@ const WhatWingguyCanDo: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-5xl px-2 pb-10">
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">What Wingguy can do</h1>
+      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Where Wingguy lives</h1>
       <p className="mt-2 text-base text-gray-600">
         Most of it doesn&apos;t live in these tabs. It happens in three places - here&apos;s each one.
       </p>

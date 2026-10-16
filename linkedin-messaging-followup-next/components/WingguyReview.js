@@ -216,7 +216,7 @@ function PageNav({ current, query }) {
       {tab('What Wingguy does', '/my-wingguy/about', 'about')}
       {tab('Your instructions', '/my-wingguy/setup', 'setup')}
       {tab("What's changed lately", '/my-wingguy/review', 'review')}
-      {current === 'install' ? tab('Install the extension', '/my-wingguy/install', 'install') : null}
+      {current === 'install' ? tab('Install the browser extension', '/my-wingguy/install', 'install') : null}
     </div>
   );
 }

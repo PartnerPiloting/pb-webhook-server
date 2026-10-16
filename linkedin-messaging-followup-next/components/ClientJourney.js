@@ -18,7 +18,7 @@ import { buildAuthUrl } from '../utils/clientUtils';
 const GO = {
   reconnect: { href: '/today', label: 'Open Today - your Reconnect list is there' },
   voice: { href: '/my-wingguy/setup', label: 'Give Wingguy your instructions' },
-  linkedin: { href: '/my-wingguy/install', label: 'Install the extension' },
+  linkedin: { href: '/my-wingguy/install', label: 'Install the browser extension' },
   calls: { href: '/settings?view=recorder', label: 'Connect your meeting recorder' },
   rhythm: { href: '/today', label: 'Open Today' },
   newpeople: { href: '/today', label: 'Open Today - new connections are there' },
