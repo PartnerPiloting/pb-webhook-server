@@ -1,13 +1,20 @@
 "use client";
 // The "Setup and help" tab of the three-tab portal (Owen's layout, 7 Oct 2026): the things a client
-// touches once, or when something is wrong. The overview comes first because it is the page Owen
-// said saves people from being "bamboozled" - the plan, then the detail.
+// touches once, or when something is wrong.
+//
+// For a Wingguy client this tab IS the My Wingguy hub (16 Oct 2026): the journey map with their own
+// progress at the top, then the doors. It used to be a menu in front of that hub - a client went
+// Setup and help, then My Wingguy, and only then reached anything they could act on, with three
+// different sets of names along the way. One hub, one set of names, one way back.
+//
+// A client without Wingguy keeps the plain two-door menu below.
 
 import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { BookOpenIcon, SparklesIcon, CogIcon } from '@heroicons/react/24/outline';
-import { getClientProfile, buildAuthUrl } from '../utils/clientUtils';
+import { BookOpenIcon, CogIcon } from '@heroicons/react/24/outline';
+import { getClientProfile } from '../utils/clientUtils';
+import WingguyHub from './WingguyHub';
 
 function Door({ href, icon: Icon, title, blurb }) {
   return (
@@ -25,20 +32,15 @@ function SetupInner() {
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
   const features = getClientProfile()?.features || {};
-  // My Wingguy is standalone (its auth is the query string), so its link is rebuilt from the
-  // stored auth the same way Layout.js does for its tab.
-  const wingguyHref = !searchParams.get('token') && !searchParams.get('devKey') ? buildAuthUrl('/my-wingguy') : `/my-wingguy?${qs}`;
+  if (features.wingguy === true) return <WingguyHub />;
   return (
     <div className="space-y-4">
       <div>
         <h2 className="font-semibold text-lg">Setup and help</h2>
         <p className="text-sm text-gray-600">How it all works, your own setup, and the dials.</p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Door href={`/start-here?${qs}`} icon={BookOpenIcon} title="What Wingguy can do" blurb="The overview - everything it does, and where" />
-        {features.wingguy === true && (
-          <Door href={wingguyHref} icon={SparklesIcon} title="My Wingguy" blurb="Your setup, and what has changed" />
-        )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Door href={`/start-here?${qs}`} icon={BookOpenIcon} title="Where Wingguy lives" blurb="On LinkedIn, in Claude, and in these screens" />
         <Door href={`/settings?${qs}`} icon={CogIcon} title="Settings" blurb="Scoring attributes and your profile" />
       </div>
       <p className="text-sm text-gray-500">Stuck on a screen? The <span className="font-medium">?</span> help button on each page explains that page.</p>

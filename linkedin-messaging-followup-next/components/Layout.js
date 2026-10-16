@@ -53,7 +53,7 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
   const nav = todayLayout ? todayNav : [
     // FIRST on purpose (Guy, 25 Sep 2026): the tab bar reads as the full list of what a client can do, and
     // most of Wingguy has no tab. Was "Start Here"; the URL stays /start-here so old links still land.
-    { name: 'What Wingguy can do', href: '/start-here', icon: BookOpenIcon, description: 'Everything it does, and where', minLevel: 1 },
+    { name: 'Where Wingguy lives', href: '/start-here', icon: BookOpenIcon, description: 'LinkedIn, Claude, these screens', minLevel: 1 },
     { name: 'Lead Search & Update', href: '/', icon: MagnifyingGlassIcon, description: 'Find and update existing leads', minLevel: 1, fn: 'Lead Search & Update' },
     // Guy's tab rule (2026-08-15): a client with the smart Follow-Ups screen does NOT also see the
     // simple manager — `hideGate` hides this tab when that gate is on. The /follow-up page itself
@@ -296,6 +296,20 @@ const Layout = ({ children }) => {
                     <span className="hidden sm:inline">Book Meeting</span>
                   </Link>
                 </>
+              )}
+
+              {/* Settings, top right, on the three-tab layout: it sits under Setup and help, but
+                  someone whose key has died should not have to find it under a journey and six
+                  cards. The older tab bar has its own Settings tab. */}
+              {clientProfile?.features?.todayLayout === true && (
+                <Link
+                  href={buildAuthUrl('/settings')}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  title="Settings - scoring rules, access link, Claude key, meeting recorder"
+                >
+                  <CogIcon className="h-5 w-5" />
+                  <span className="hidden sm:inline">Settings</span>
+                </Link>
               )}
 
               {/* My Clients - the coach board; Guy is the only coach */}

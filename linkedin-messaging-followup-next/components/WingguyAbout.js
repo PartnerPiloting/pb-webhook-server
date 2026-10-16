@@ -14,7 +14,7 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { usePageAuth } from './WingguyReview';
+import { PageNav, usePageAuth } from './WingguyReview';
 
 const DEMO_MOMENTS = [
   {
@@ -92,6 +92,7 @@ function WingguyAboutInner() {
 
   return (
     <div className="flex flex-col gap-16 max-w-3xl">
+      <PageNav current="about" query={q} />
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
           What Wingguy does

@@ -10,7 +10,7 @@ import WingguyInstall from "../../../components/WingguyInstall";
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: "Install the extension",
+  title: "Install the browser extension",
   description: "Get the Wingguy browser extension, and keep it up to date, in a couple of minutes.",
 };
 

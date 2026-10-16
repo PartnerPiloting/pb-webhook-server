@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'What Wingguy can do',
+  title: 'Where Wingguy lives',
 };
 
 export default function StartHereLayout({

@@ -15,20 +15,22 @@ import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { usePageAuth } from './WingguyReview';
 import { getBackendBase } from '../services/api';
+import { getClientProfile, buildAuthUrl } from '../utils/clientUtils';
+import ClientJourney from './ClientJourney';
 
 const DOORS = [
   {
     href: '/my-wingguy/about',
     eyebrow: 'Start here if it is new to you',
     title: 'What Wingguy does',
-    body: 'A day of it, moment by moment - what you say, and what it does. Ten minutes, and it explains the whole thing better than any list of features.',
+    body: 'It reads every conversation, writes what comes next in your words, books the meetings and remembers the follow-ups - and it never sends anything without you seeing it first.',
     cta: 'See what it does',
     tone: 'emerald',
   },
   {
     href: '/my-wingguy/setup',
     eyebrow: 'About ten minutes, once',
-    title: 'Give Wingguy your instructions',
+    title: 'Your instructions',
     body: 'The handful of things only you can tell it - your name, your sign-off, how you describe what you do - and every instruction it already follows, in plain English, each one changeable.',
     cta: 'Give it your instructions',
     tone: 'slate',
@@ -37,7 +39,7 @@ const DOORS = [
     href: '/my-wingguy/review',
     eyebrow: 'Any time',
     title: "What's changed lately",
-    body: 'Everything anyone has changed about your Wingguy - who, when, and what it means. Leave a note on anything, undo anything, or ask it to start doing something differently.',
+    body: 'Every change to your instructions - what it said before, what it says now, and when. Undo any of them, leave a note, or tell it to do something differently.',
     cta: 'Review recent changes',
     tone: 'slate',
   },
@@ -98,15 +100,17 @@ function ExtensionCard({ status, href }) {
   const tone = behind
     ? 'border-amber-300 bg-amber-50 hover:border-amber-400 focus-visible:ring-amber-600'
     : 'border-slate-200 bg-white hover:border-slate-300 focus-visible:ring-slate-700';
-  let title = 'Install the extension';
-  let body = 'The Wingguy window on LinkedIn - get it into your browser in a couple of minutes.';
+  let title = 'Install the browser extension';
+  let body = status && status.current
+    ? `The Wingguy window on LinkedIn - get version ${status.current} into your browser in a couple of minutes.`
+    : 'The Wingguy window on LinkedIn - get it into your browser in a couple of minutes.';
   let cta = 'Install it';
   if (behind) {
-    title = 'A new version of your extension is ready';
+    title = 'A new version of your browser extension is ready';
     body = `You're on ${status.installed} - the current one is ${status.current}. Updating takes about 30 seconds.`;
     cta = 'Update it';
   } else if (upToDate) {
-    title = 'Your extension is up to date';
+    title = 'Your browser extension is up to date';
     body = `Running version ${status.current}. Reinstall it, or set it up on another computer, from here.`;
     cta = 'Open';
   }
@@ -127,6 +131,22 @@ function ExtensionCard({ status, href }) {
   );
 }
 
+/** A small door: the things a client touches once, or when something is wrong. */
+function SmallDoor({ href, title, body, cta }) {
+  return (
+    <a href={href} className="group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border border-slate-200 bg-white px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2">
+      <div className="flex flex-col gap-1">
+        <div className="font-serif text-[21px] leading-snug text-slate-900">{title}</div>
+        <p className="text-[15px] leading-relaxed text-slate-600">{body}</p>
+      </div>
+      <div className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600">
+        {cta}{' '}
+        <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1">&rarr;</span>
+      </div>
+    </a>
+  );
+}
+
 function WingguyHubInner() {
   const searchParams = useSearchParams();
   const auth = usePageAuth(searchParams);
@@ -134,44 +154,34 @@ function WingguyHubInner() {
   const href = (path) => (q ? `${path}?${q}` : path);
   const machineLink = useMachineLink(auth);
   const extStatus = useExtensionStatus(auth);
+  // On the three-tab layout this page IS the Setup and help tab, so it carries that name and the
+  // dials (Settings) and the signpost (Where Wingguy lives) live here too (16 Oct 2026).
+  const todayLayout = getClientProfile()?.features?.todayLayout === true;
+  // null = journey not loaded (or failed): the old "set up and running" pill stands. Once the map
+  // has loaded, it says where the client is, and the pill only shows when every stop is in place.
+  const [journeyDone, setJourneyDone] = useState(null);
+  const showPill = journeyDone === null || journeyDone === true;
 
   return (
     <div className="flex flex-col gap-8 max-w-[1240px]">
       <header className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
         <div className="flex flex-col gap-3">
-          <h1 className="font-serif text-4xl md:text-[42px] leading-tight text-slate-900">My Wingguy</h1>
+          <h1 className="font-serif text-4xl md:text-[42px] leading-tight text-slate-900">{todayLayout ? 'Setup and help' : 'My Wingguy'}</h1>
           <p className="text-lg leading-relaxed text-slate-600 max-w-[620px]">
-            It reads every conversation, writes what comes next in your words, books the meetings
-            and remembers the follow-ups - and it never sends anything without you seeing it first.
+            Where you are up to in setting it up, your instructions, and what has changed.
           </p>
         </div>
-        <div className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-2 text-xs text-slate-500">
-          <span aria-hidden="true" className="mr-2 inline-block h-[7px] w-[7px] rounded-full bg-emerald-600 align-middle" />
-          Set up and running
-        </div>
+        {showPill && (
+          <div className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-2 text-xs text-slate-500">
+            <span aria-hidden="true" className="mr-2 inline-block h-[7px] w-[7px] rounded-full bg-emerald-600 align-middle" />
+            Set up and running
+          </div>
+        )}
       </header>
 
-      {machineLink && (
-        <a
-          href={machineLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border border-slate-200 bg-white px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2"
-        >
-          <div className="flex flex-col gap-1">
-            <div className="font-serif text-[21px] leading-snug text-slate-900">Your Linked Helper machine</div>
-            <p className="text-[15px] leading-relaxed text-slate-600">
-              Opens in a new tab. The first time, it asks for your email and sends you a code.
-            </p>
-          </div>
-          <div className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600">
-            Open my Linked Helper machine{' '}
-            <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1">&rarr;</span>
-          </div>
-        </a>
-      )}
-
-      <ExtensionCard status={extStatus} href={href} />
+      {/* The map first: a client still being set up needs to know where they are before anything
+          else on this page makes sense. One who is fully set up sees a single line. */}
+      <ClientJourney embedded onLoad={(j) => setJourneyDone(j.complete === true)} />
 
       <div className="grid gap-5 lg:grid-cols-3">
         {DOORS.map((d) => (
@@ -198,6 +208,35 @@ function WingguyHubInner() {
           </a>
         ))}
       </div>
+
+      {machineLink && (
+        <a
+          href={machineLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border border-slate-200 bg-white px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2"
+        >
+          <div className="flex flex-col gap-1">
+            <div className="font-serif text-[21px] leading-snug text-slate-900">Open your Linked Helper machine</div>
+            <p className="text-[15px] leading-relaxed text-slate-600">
+              Opens in a new tab. The first time, it asks for your email and sends you a code.
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600">
+            Open{' '}
+            <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1">&rarr;</span>
+          </div>
+        </a>
+      )}
+
+      <ExtensionCard status={extStatus} href={href} />
+
+      {todayLayout && (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <SmallDoor href={buildAuthUrl('/settings')} title="Settings" body="Your scoring rules, your access link, your Claude key, your meeting recorder - the dials." cta="Open Settings" />
+          <SmallDoor href={buildAuthUrl('/start-here')} title="Where Wingguy lives" body="On LinkedIn, in Claude, and in these screens - and what to say in each." cta="See the three places" />
+        </div>
+      )}
 
       <p className="text-sm text-slate-500 border-t border-slate-200 pt-6">
         You can also just talk to it - in the Wingguy window on LinkedIn, or in a chat. Anything on

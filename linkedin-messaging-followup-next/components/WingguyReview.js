@@ -19,6 +19,7 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
+import { wingguyHubPath } from '../utils/clientUtils';
 
 
 /**
@@ -195,21 +196,27 @@ function WingguyReviewInner() {
   );
 }
 
-/** The sub-nav across the three Wingguy pages, under the portal's own menu. Every link carries
+/** The sub-nav across the Wingguy pages, under the portal's own menu. Every link carries
  *  whatever auth the visitor arrived with, so a client following a plain link moves around the
- *  section exactly as someone signed in to the portal does. */
+ *  section exactly as someone signed in to the portal does.
+ *
+ *  The labels are the hub's card titles, word for word, and the back link goes to wherever the
+ *  hub is for this client (the Setup and help tab, or the My Wingguy tab) - so the way out is the
+ *  way in, and nothing is called two things (16 Oct 2026). */
 function PageNav({ current, query }) {
   const q = query || '';
   const href = (path) => (q ? `${path}?${q}` : path);
+  const hub = wingguyHubPath();
   const tab = (label, path, key) => (current === key
     ? <span key={key} className="text-sm font-semibold text-slate-900 border-b-2 border-emerald-600 pb-1">{label}</span>
     : <a key={key} className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href(path)}>{label}</a>);
   return (
     <div className="flex flex-wrap items-baseline gap-6 pb-2">
-      <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href('/my-wingguy')}>&larr; My Wingguy</a>
-      {tab('What it does', '/my-wingguy/about', 'about')}
+      <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href(hub)}>&larr; {hub === '/setup' ? 'Setup and help' : 'My Wingguy'}</a>
+      {tab('What Wingguy does', '/my-wingguy/about', 'about')}
       {tab('Your instructions', '/my-wingguy/setup', 'setup')}
-      {tab("What's changed", '/my-wingguy/review', 'review')}
+      {tab("What's changed lately", '/my-wingguy/review', 'review')}
+      {current === 'install' ? tab('Install the browser extension', '/my-wingguy/install', 'install') : null}
     </div>
   );
 }

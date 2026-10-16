@@ -91,8 +91,8 @@
     },
     {
       "key": "newpeople",
-      "name": "New connections",
-      "line": "Linked Helper brings new people in, steadily.",
+      "name": "Your Linked Helper machine",
+      "line": "Set it up, and new LinkedIn connections start flowing in.",
       "when": "Last, on purpose",
       "intro": "Reconnect works the people you already have. Linked Helper brings in new ones. It comes last because it is the fiddliest piece, and by then you know exactly who you want and how you will talk to them.",
       "happens": "Linked Helper runs on its own small machine, sending connection requests to the kind of people you chose. Everyone who accepts is scored and appears on your Thanks for Connecting screen.",

@@ -1,5 +1,6 @@
 "use client";
-// "What Wingguy can do" - organised by PLACE, not by job: three colour-blocked bands (LinkedIn /wg,
+// "Where Wingguy lives" (was "What Wingguy can do" until 16 Oct 2026 - too close to the hub's "What
+// Wingguy does") - organised by PLACE, not by job: three colour-blocked bands (LinkedIn /wg,
 // Ask Claude, screens here) and three message bands: leads arriving (the campaign that feeds
 // Wingguy - Guy, 28 Sep: the page never said where leads COME FROM), call recordings (the raw material) and voice
 // (the drafts sound like you, and you can keep tuning it - Guy, 26 Sep: the #1 objection is "AI
@@ -26,7 +27,15 @@ import ErrorBoundary from '../../components/ErrorBoundary';
 import EnvironmentValidator from '../../components/EnvironmentValidator';
 import Layout from '../../components/Layout';
 import ClientJourney from '../../components/ClientJourney';
-import { getClientProfile, buildAuthUrl } from '../../utils/clientUtils';
+import { getClientProfile, buildAuthUrl, wingguyHubPath } from '../../utils/clientUtils';
+
+// The journey is only drawn here for a client with no hub (Wingguy off). A component, not an
+// inline check: JSX children are built when StartHerePage renders, BEFORE Layout has loaded the
+// profile, so an inline getClientProfile() was always null and the map showed for everyone
+// (caught on staging, 16 Oct 2026). Rendered as a child, this runs after Layout's init.
+const JourneyUnlessWingguy: React.FC = () => (
+  getClientProfile()?.features?.wingguy === true ? null : <ClientJourney />
+);
 
 export const dynamic = 'force-dynamic';
 
@@ -136,10 +145,15 @@ const WhatWingguyCanDo: React.FC = () => {
   // The Claude and /wg parts only work once Wingguy is switched on. Without it the Claude links would
   // open plain Claude answering from general knowledge, so phrases render as plain text and a note says why.
   const wingguyOn = profile?.features?.wingguy === true;
+  const todayLayout = profile?.features?.todayLayout === true;
 
   return (
     <div className="mx-auto max-w-5xl px-2 pb-10">
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">What Wingguy can do</h1>
+      {/* The same way back Settings has: on the three-tab layout this page sits under Setup and help. */}
+      {todayLayout && (
+        <a className="mb-3 block text-sm text-gray-500 hover:text-gray-800" href={buildAuthUrl('/setup')}>&larr; Setup and help</a>
+      )}
+      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Where Wingguy lives</h1>
       <p className="mt-2 text-base text-gray-600">
         Most of it doesn&apos;t live in these tabs. It happens in three places - here&apos;s each one.
       </p>
@@ -262,7 +276,7 @@ const WhatWingguyCanDo: React.FC = () => {
       <div className="mt-6 space-y-2 text-sm text-gray-500">
         <p>
           {wingguyOn ? (
-            <>New here? <a href={buildAuthUrl('/my-wingguy')} className="font-medium text-blue-700 hover:underline">Set up Wingguy &rarr;</a>{' '}&middot;{' '}</>
+            <>New here? <a href={buildAuthUrl(wingguyHubPath())} className="font-medium text-blue-700 hover:underline">Set up Wingguy &rarr;</a>{' '}&middot;{' '}</>
           ) : null}
           Curious how it thinks? Ask Claude <Say text={OPENER} live={wingguyOn} /> or{' '}
           <a href={LIBRARY_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-700 hover:underline">read the library &rarr;</a>
@@ -301,10 +315,10 @@ export default function StartHerePage() {
       <ErrorBoundary>
         <Layout>
           <div className="w-full pt-2">
-            {/* The eight-stop journey with this client's own progress (content/client-journey.json).
-                Above "What Wingguy can do": a client still being set up needs the map first; one who
-                is fully set up sees a single line and the rest of the page as before. */}
-            <ClientJourney />
+            {/* The eight-stop journey (content/client-journey.json) lives on the Wingguy hub now
+                (16 Oct 2026), where every stop can lead to its page. It is only drawn here for a
+                client who has no hub - Wingguy not switched on - so nobody loses the map. */}
+            <JourneyUnlessWingguy />
             <WhatWingguyCanDo />
           </div>
         </Layout>
