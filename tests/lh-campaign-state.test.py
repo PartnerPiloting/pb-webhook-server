@@ -2,10 +2,12 @@
 """lh-watchdog.py campaign_state() against a tiny synthetic Linked Helper database (8 Oct 2026).
 
 The real schema's relevant corner, cut down: actions -> action_versions -> action_configs (the
-actionType lives here), action_results (what was done, result 1 = done), action_target_people
-(the queue; state 1 = waiting), campaigns (is_paused, is_archived). Checks: first action, last
-SUCCESSFUL invitation only, waiting split by running vs paused, archived and non-invite queues
-ignored, and {} for a placeholder account or a missing database.
+actionType lives here), action_results (what was done, result 1 = done), person_in_campaigns_history
+(one row per person per step, result_id set once done - Linked Helper's own "Profiles to process" is
+the rows with no result), action_target_people (kept here only to prove it is NOT counted: its state
+stays 1 after a person has been invited, 16 Oct 2026), campaigns (is_paused, is_archived). Checks:
+first action, last SUCCESSFUL invitation only, waiting split by running vs paused, archived and
+non-invite queues ignored, and {} for a placeholder account or a missing database.
 
 Run: python3 tests/lh-campaign-state.test.py
 """
@@ -43,6 +45,7 @@ def build(root, acct):
       CREATE TABLE action_versions (id INTEGER PRIMARY KEY, action_id INT, config_id INT);
       CREATE TABLE action_results (id INTEGER PRIMARY KEY, action_version_id INT, result INT, created_at TEXT);
       CREATE TABLE action_target_people (id INTEGER PRIMARY KEY, action_id INT, state INT);
+      CREATE TABLE person_in_campaigns_history (id INTEGER PRIMARY KEY, person_id INT, campaign_id INT, action_id INT, result_id INT);
       INSERT INTO campaigns VALUES (1,'running',0,0),(2,'paused',1,0),(3,'archived',0,1);
       INSERT INTO action_configs VALUES (1,'InvitePerson'),(2,'VisitAndExtract'),(3,'InvitePerson'),(4,'InvitePerson');
       INSERT INTO actions VALUES (10,1),(11,1),(20,2),(30,3);
@@ -54,8 +57,17 @@ def build(root, acct):
         (4,101,1,'2020-10-07T05:00:00.000Z'),
         (5,200,1,'2020-10-05T01:00:00.000Z');
     """)
-    rows = [(10, 1)] * 5 + [(10, -1)] * 7 + [(10, 2)] * 2 + [(20, 1)] * 3 + [(30, 1)] * 9 + [(11, 1)] * 4
+    # The raw queue over-counts on purpose: 9 people at state 1 on the running invite step, of whom
+    # 2 were invited already (history has a result) and 2 are stale rows with no history row at all
+    # - exactly the two things that made campaign #40 read 4735 when Linked Helper said 1114.
+    rows = [(10, 1)] * 9 + [(10, -1)] * 7 + [(10, 2)] * 2 + [(20, 1)] * 3 + [(30, 1)] * 9 + [(11, 1)] * 4
     con.executemany("INSERT INTO action_target_people (action_id, state) VALUES (?, ?)", rows)
+    hist = ([(1, 10, None)] * 5 + [(1, 10, 7)] * 2          # running: 5 waiting, 2 done
+            + [(1, 11, None)] * 4                          # running, but a visit step - not counted
+            + [(2, 20, None)] * 3 + [(2, 20, 9)]           # paused: 3 waiting, 1 done
+            + [(3, 30, None)] * 9)                         # archived - ignored
+    con.executemany("INSERT INTO person_in_campaigns_history (person_id, campaign_id, action_id, result_id) VALUES (?, ?, ?, ?)",
+                    [(i + 1, c, a, r) for i, (c, a, r) in enumerate(hist)])
     # Recent invitation ATTEMPTS, relative to now so the test never goes stale: two failed (one in
     # a paused campaign - an attempt is an attempt), one failed a week ago (outside the 3 days).
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -72,8 +84,9 @@ with tempfile.TemporaryDirectory() as root:
     s = lhw.campaign_state("585942", data_dir=root)
     check("first action is the earliest result of any kind", s.get("first_action_at") == "2020-09-29T06:59:40.165Z")
     check("last invite = newest SUCCESSFUL invitation of any campaign (failed ones later are ignored)", s.get("last_invite_at") == "2020-10-06T02:00:00.000Z")
-    check("waiting in running campaigns: invite queue, state 1 only", s.get("waiting_running") == 5)
-    check("waiting in paused campaigns counted separately", s.get("waiting_paused") == 3)
+    check("waiting in running campaigns = Linked Helper's own 'Profiles to process': history rows with no result, "
+          "not action_target_people state 1 (which would say 9)", s.get("waiting_running") == 5)
+    check("waiting in paused campaigns counted separately, the same way", s.get("waiting_paused") == 3)
     check("newest invitation attempt, failed or not", s.get("last_invite_attempt_at") == RECENT["attempt"])
     check("failed attempts in the last 3 days only", s.get("failed_invites_recent") == 2)
     pc = s.get("paused_campaigns")

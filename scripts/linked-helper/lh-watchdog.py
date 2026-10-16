@@ -344,8 +344,9 @@ def campaign_state(account_id, data_dir=None):
     trial runs out, and both need facts only the database has:
       first_action_at   the first campaign action ever recorded - the trial's 14 days start here
       last_invite_at    the newest invitation actually sent
-      waiting_running   people queued to be invited in campaigns that are switched on
-      waiting_paused    people queued in campaigns that are paused
+      waiting_running   people still waiting to be invited in campaigns that are switched on -
+                        Linked Helper's own "Profiles to process" figure for the invite step
+      waiting_paused    the same, in campaigns that are paused
       last_invite_attempt_at, failed_invites_recent
                         the newest invitation ATTEMPT and how many failed in 3 days - still
                         trying but always failing means the list is used up
@@ -381,22 +382,25 @@ def campaign_state(account_id, data_dir=None):
                 "FROM action_results ar JOIN action_versions av ON av.id = ar.action_version_id "
                 f"WHERE av.action_id IN ({invite_actions}) "
                 "AND ar.created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 days')").fetchone()
+            # PEOPLE WAITING = Linked Helper's own "Profiles to process" on the invite step, read from
+            # the table it keeps for exactly that: person_in_campaigns_history, one row per person per
+            # step, result_id filled in once the step has been done to them. NOT action_target_people
+            # (16 Oct 2026): its state stays 1 after the person has been invited, and it keeps rows
+            # Linked Helper itself no longer counts (a search re-collected months later leaves the old
+            # rows behind). On Guy's own campaign #40 that said 4735 waiting; Linked Helper said 1114,
+            # and this query says 1114. Rick Wong's: 1340 by state, 289 by this and by the screen.
+            waiting_q = ("FROM person_in_campaigns_history h "
+                         "JOIN campaigns c ON c.id = h.campaign_id "
+                         f"WHERE h.result_id IS NULL AND c.is_archived = 0 AND h.action_id IN ({invite_actions}) ")
             waiting = {0: 0, 1: 0}
             for paused, n in con.execute(
-                    "SELECT c.is_paused, count(*) FROM action_target_people t "
-                    "JOIN actions a ON a.id = t.action_id "
-                    "JOIN campaigns c ON c.id = a.campaign_id "
-                    f"WHERE t.state = 1 AND c.is_archived = 0 AND t.action_id IN ({invite_actions}) "
-                    "GROUP BY c.is_paused"):
+                    "SELECT c.is_paused, count(*) " + waiting_q + "GROUP BY c.is_paused"):
                 waiting[1 if paused else 0] = int(n)
             # The paused campaigns themselves, so the warning can name one. Only those with
             # somebody still waiting - a paused campaign with nobody in it harms no one.
             paused_campaigns = []
             for cid, name, n in con.execute(
-                    "SELECT c.id, c.name, count(*) FROM action_target_people t "
-                    "JOIN actions a ON a.id = t.action_id "
-                    "JOIN campaigns c ON c.id = a.campaign_id "
-                    f"WHERE t.state = 1 AND c.is_archived = 0 AND c.is_paused = 1 AND t.action_id IN ({invite_actions}) "
+                    "SELECT c.id, c.name, count(*) " + waiting_q + "AND c.is_paused = 1 "
                     "GROUP BY c.id, c.name ORDER BY c.id"):
                 own_last = con.execute(
                     "SELECT max(ar.created_at) FROM action_results ar "
