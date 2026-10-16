@@ -21,8 +21,7 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
 import { PageNav, usePageAuth } from './WingguyReview';
-import ClaudeKeySection from './ClaudeKeySection';
-import ConnectorSection from './ConnectorSection';
+import { wingguyHubPath } from '../utils/clientUtils';
 
 function WingguySetupInner() {
   const searchParams = useSearchParams();
@@ -38,6 +37,11 @@ function WingguySetupInner() {
     if (devKey) h['x-dev-key'] = devKey;
     return h;
   }, [token, client, devKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.hash !== '#claude-key') return;
+    window.location.replace(`${wingguyHubPath()}${window.location.search}#claude-key`);
+  }, []);
 
   const [state, setState] = useState({ status: 'loading', error: '', data: null });
   const [values, setValues] = useState({});
@@ -244,10 +248,10 @@ function WingguySetupInner() {
         </p>
       </header>
 
-      {/* account plumbing - shown only to BYO-key clients, urgent when the key is missing/dead */}
-      <ConnectorSection authHeaders={authHeaders} />
-
-      <ClaudeKeySection authHeaders={authHeaders} variant="setup" />
+      {/* The Claude connection and the key live on the hub with the rest of the kit (17 Oct 2026).
+          This page is "about you". One line here when the key is missing or dead, because the voice
+          boxes' live examples need it and nobody should fill in ten minutes of form and wonder. */}
+      <KeyWarning authHeaders={authHeaders} query={query} />
 
       {/* the blanks */}
       <section className="flex flex-col gap-6">
@@ -984,6 +988,34 @@ function SaveNote({ status }) {
   if (status === 'saving') return <span className="text-xs text-slate-400 whitespace-nowrap">Saving…</span>;
   if (status === 'saved') return <span className="text-xs text-emerald-700 font-semibold whitespace-nowrap">Saved</span>;
   return <span className="text-xs text-red-600 whitespace-nowrap">{status}</span>;
+}
+
+/** One line, only when it matters: no key, or a key that has stopped working. Managed-plan
+ *  clients and assistants never see it. The key itself is pasted on the hub. */
+function KeyWarning({ authHeaders, query }) {
+  const [st, setSt] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${getBackendBase()}/api/wingguy/setup/claude-key`, { headers: authHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && data.ok && !data.managed) setSt(data);
+      } catch (e) { /* no warning rather than a wrong one */ }
+    })();
+    return () => { cancelled = true; };
+  }, [authHeaders]);
+  if (!st || (st.hasKey && !st.failingSince)) return null;
+  const hub = `${wingguyHubPath()}${query ? `?${query}` : ''}#claude-key`;
+  return (
+    <p className="border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-[15px] text-amber-900">
+      <strong>{st.hasKey ? 'Your Claude key has stopped working.' : 'Wingguy can\u2019t write anything until your Claude key is in.'}</strong>{' '}
+      <a className="font-semibold underline underline-offset-2 hover:text-amber-950" href={hub}>
+        {st.hasKey ? 'Check it on Setup and help' : 'Add it on Setup and help'} &rarr;
+      </a>
+      {' '}- the examples on this page come alive once it is.
+    </p>
+  );
 }
 
 function Shell({ children, wide }) {
