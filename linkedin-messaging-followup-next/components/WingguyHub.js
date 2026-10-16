@@ -40,7 +40,7 @@ const DOORS = [
   {
     href: '/my-wingguy/review',
     eyebrow: 'Then, every day, in Claude',
-    title: 'Making it sound more like you',
+    title: 'Make it sound even more like you',
     body: 'The goal is messages that sound more like you than you do. Setting up is once. After that, every time you fix a draft, it learns.',
     cta: 'How that works',
     tone: 'slate',

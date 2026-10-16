@@ -110,7 +110,7 @@ function VoicePage({ query }) {
           Then, every day, in Claude
         </div>
         <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] text-slate-900">
-          Making it sound more like you
+          Make it sound even more like you
         </h1>
         <p className="font-serif text-lg leading-relaxed text-slate-600">
           Every client I have worked with says the same thing when it clicks: &ldquo;that doesn&rsquo;t
@@ -399,7 +399,7 @@ function PageNav({ current, query }) {
       <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href(hub)}>&larr; {hub === '/setup' ? 'Setup and help' : 'My Wingguy'}</a>
       {tab('What Wingguy does', '/my-wingguy/about', 'about')}
       {tab('Your instructions', '/my-wingguy/setup', 'setup')}
-      {tab('Making it sound more like you', '/my-wingguy/review', 'review')}
+      {tab('Make it sound even more like you', '/my-wingguy/review', 'review')}
       {current === 'install' ? tab('Install the browser extension', '/my-wingguy/install', 'install') : null}
     </div>
   );
