@@ -69,6 +69,13 @@ export default function ConnectorSection({ authHeaders }) {
           opens your account, so keep it to yourself and don&apos;t forward it or put it in a
           shared doc.
         </p>
+        <p className="text-[15px] text-slate-600 max-w-2xl">
+          We normally do this together on your first call. Doing it on your own?{' '}
+          <a className="text-emerald-800 font-semibold underline underline-offset-2 hover:text-emerald-900"
+            href="https://knowaguy.com.au/connect-wingguy" target="_blank" rel="noopener noreferrer">
+            Here&apos;s how, step by step
+          </a>.
+        </p>
       </div>
 
       {st.lastSeen ? (

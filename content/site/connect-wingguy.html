@@ -1,0 +1,179 @@
+<style>
+  /* Same editorial shell as /your-licence and the one-pagers (routes/onePagerRoutes.js):
+     a letter to somebody who has already had the conversation. Single-theme, like the
+     rest of the site: every colour is painted explicitly. No screenshots on purpose -
+     Anthropic's console moves its buttons around, and a stale picture of somebody
+     else's website is worse than none. The words carry it. */
+  :root {
+    color-scheme: light;
+    --ground:   #e9e2d3;
+    --card:     #fbf9f3;
+    --ink:      #2c2823;
+    --ink-deep: #221f1a;
+    --ink-soft: #6f6558;
+    --ink-mid:  #4a423a;
+    --rule:     #e2dccd;
+    --dark:     #211d18;
+    --gold:     #c49a5e;
+    --gold-ink: #9a6a2f;
+    --cream:    #f3ede1;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .op-page { padding: 28px 16px 52px; }
+
+  .op {
+    max-width: 640px;
+    margin: 0 auto 22px;
+    background: var(--card);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+  }
+
+  .op-mast { background: var(--dark); padding: 34px 40px 30px; }
+  .op-eb {
+    font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--gold); margin: 0 0 12px;
+  }
+  .op-wm { font-size: 30px; margin: 0; font-weight: 400; }
+  .op-wm a { color: var(--cream); text-decoration: none; }
+
+  .op-c { padding: 34px 40px 8px; }
+
+  .op-t {
+    font-size: 28px; line-height: 1.25; margin: 0 0 12px;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-dek {
+    font-style: italic; color: var(--ink-soft); font-size: 18px;
+    line-height: 1.5; margin: 0 0 20px; text-wrap: balance;
+  }
+  .op-r { border: 0; border-top: 1px solid var(--rule); margin: 0 0 22px; }
+
+  .op-body p { font-size: 17px; line-height: 1.66; margin: 0 0 1.15rem; }
+  .op-body h2 {
+    font-size: 21px; line-height: 1.3; margin: 1.9rem 0 .4rem;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-body strong, .op-body b { font-weight: 700; }
+  .op-body a { color: var(--gold-ink); }
+  .op-body a:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+  .op-body ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  .op-body li { font-size: 17px; line-height: 1.6; margin: 0 0 .8rem; }
+
+  .asof {
+    margin: 0 0 1.4rem;
+    padding: 12px 14px;
+    background: var(--cream);
+    border-left: 3px solid var(--gold);
+    border-radius: 3px;
+    font-size: 0.92rem;
+    color: var(--ink-mid);
+  }
+  .aside {
+    margin: 1.6rem 0 1.6rem; padding: 14px 18px 4px;
+    border: 1px solid var(--rule); border-left: 3px solid var(--gold);
+    border-radius: 3px; background: var(--cream);
+  }
+  .op-body .aside p { font-size: 16px; line-height: 1.6; margin: 0 0 .7rem; color: var(--ink-mid); }
+  /* The one step that makes it safe. Loud, like the promo-code warning on /your-licence. */
+  .op-body .warn {
+    margin: 1.4rem 0 1.4rem; padding: 16px 18px;
+    background: var(--dark); color: var(--cream);
+    border-left: 5px solid var(--gold); border-radius: 4px;
+    font-size: 20px; line-height: 1.4; font-weight: 700;
+  }
+
+  .op-foot {
+    padding: 18px 40px 6px; border-top: 1px solid var(--rule);
+    margin-top: 1.6rem; font-size: 14px; line-height: 1.6; color: var(--ink-soft);
+  }
+  .op-foot a { color: var(--gold-ink); }
+  .op-sign { margin: .9rem 0 0; }
+  .op-bar { background: var(--dark); height: 34px; }
+
+  @media (max-width: 520px) {
+    .op-mast, .op-c, .op-foot { padding-left: 22px; padding-right: 22px; }
+    .op-t { font-size: 24px; }
+    .op-wm { font-size: 26px; }
+    .op-body .warn { font-size: 18px; }
+  }
+</style>
+
+<div class="op-page">
+  <article class="op">
+
+    <header class="op-mast">
+      <p class="op-eb">Network building, rethought</p>
+      <p class="op-wm"><a href="/">(I know a) Guy</a></p>
+    </header>
+
+    <div class="op-c">
+      <h1 class="op-t">Connecting Wingguy to your Claude</h1>
+      <p class="op-dek">One link, added once in your Claude settings. After that Wingguy is simply there in every chat, and you talk to it in plain English. About five minutes.</p>
+      <hr class="op-r">
+
+      <div class="op-body">
+
+        <p class="asof">We normally do this together on your first call, so if that's coming up, you can leave it for then. This page is for doing it on your own - or doing it again on another computer.</p>
+
+        <h2 id="what">What you're doing, in plain terms</h2>
+
+        <p>Claude is the AI chat you already use - the one at <b>claude.ai</b>, or the Claude app on your computer. On its own it knows nothing about you. A <b>connector</b> is how you plug something into it. Add the Wingguy connector once, and your Claude can see your leads, your conversations, your calendar and your setup - and can answer "where are we up to?" instead of guessing.</p>
+
+        <p>Nothing is sent anywhere by this. Wingguy still never sends a message or an email without you pressing the button.</p>
+
+        <h2 id="link">Your link</h2>
+
+        <p>Your Wingguy portal shows the link, under <b>Setup and help</b>, in the box called <b>Connect Wingguy to your Claude</b>. Press <b>Copy link</b>. That's the whole thing you'll paste in a moment.</p>
+
+        <p class="warn">That link is yours alone - it opens your account and nobody else's. Don't forward it, and don't paste it into a shared document.</p>
+
+        <h2 id="steps">Step by step</h2>
+
+        <ol>
+          <li><b>Open Claude</b> - <a href="https://claude.ai">claude.ai</a> in your browser, or the Claude app - and sign in the way you normally do.</li>
+          <li><b>Find Settings.</b> Click your initials or name, bottom-left on a computer, and choose <b>Settings</b>.</li>
+          <li><b>Open Connectors.</b> It's one of the headings down the left of Settings. If you can't see it, tell me - a couple of Claude plans hide it.</li>
+          <li><b>Click Add custom connector.</b> It asks for a name and a URL. Name it <b>Wingguy</b>, paste the link you copied into the URL box, and click <b>Add</b>. Leave everything else as it is.</li>
+          <li><b>Start a new chat and type</b> <b>"what can I do with Wingguy?"</b> If it answers like it knows you, you're done. Back in your portal, the Connect box will say <b>Connected</b> and when your Claude last used it.</li>
+        </ol>
+
+        <div class="aside" id="nothing">
+          <p><b>If the chat answers like it has never heard of Wingguy</b></p>
+          <p>Usually the connector was added but not switched on for that chat. In the chat box, click the little <b>+</b> or tools button, find <b>Wingguy</b> in the list, and make sure it's ticked. Then ask again.</p>
+        </div>
+
+        <div class="aside" id="wrong">
+          <p><b>If the portal never says Connected</b></p>
+          <p>The link in Claude isn't yours. It happens when a link travels by email or gets copied from someone else. Delete the Wingguy connector in Claude, copy the link from your own portal again, and add it fresh.</p>
+        </div>
+
+        <div class="aside" id="where">
+          <p><b>On your phone, or another computer</b></p>
+          <p>Connectors belong to your Claude account, not the device, so once it's added it's there everywhere you sign in. Nothing to repeat.</p>
+        </div>
+
+        <h2 id="then">What to say first</h2>
+
+        <p>Two phrases do most of the work from here. <b>"Where are we up to?"</b> tells you where you are in getting set up. <b>"Continue"</b> takes the next step. Everything else is just asking, in your own words.</p>
+
+      </div>
+
+      <footer class="op-foot">
+        <p>Stuck on any step? Just reply to my email, or say so on our next call.</p>
+        <p class="op-sign">- (I know a) Guy</p>
+      </footer>
+    </div>
+
+    <div class="op-bar"></div>
+  </article>
+</div>

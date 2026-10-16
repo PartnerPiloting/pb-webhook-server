@@ -197,6 +197,14 @@ export default function ClaudeKeySection({ authHeaders, variant = 'setup', onSav
           and only you. Paste a key from the Anthropic Console here - it gets tested with
           Anthropic before anything is saved.
         </p>
+        <p className="text-[15px] text-slate-600 max-w-2xl">
+          Not made one yet?{' '}
+          <a className="text-emerald-800 font-semibold underline underline-offset-2 hover:text-emerald-900"
+            href="https://knowaguy.com.au/your-claude-key" target="_blank" rel="noopener noreferrer">
+            Here&apos;s how, step by step
+          </a>{' '}
+          - about fifteen minutes, with a spend limit you choose.
+        </p>
       </div>
       {body}
     </section>
