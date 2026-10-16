@@ -131,6 +131,10 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
 ------------------------------------------------------------------*/
 const app = express();
 
+// Retired Australian Side Hustles site: anything arriving on australiansidehustles.com.au is
+// sent to the matching knowaguy.com.au page before any other route sees it.
+app.use(require('./middleware/ashRedirect.js').ashRedirect);
+
 // Probe log (2026-07-03): claude.ai chat sessions fail to use the MCP connectors while the
 // settings page succeeds — and any knock on a path VARIANT (e.g. an /sse suffix) would 404
 // silently with no trace. Log every connector-shaped request path so we can see exactly
