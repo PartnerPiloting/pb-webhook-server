@@ -29,7 +29,7 @@ const { recordRoleLocation } = require('./leadRecordLocation');
 const wingguyLeads = require('./wingguyLeads');
 const { coachOwnEmails } = require('../utils/coachOwnEmails');
 const wingguyRules = require('./wingguyRulesMcp');
-const { noUpfrontThinking } = require('../config/wingguyThinking');
+const { noUpfrontThinking, stripThinkingBlocks } = require('../config/wingguyThinking');
 
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
 // No upfront thinking for this agentic booking chat: it's latency-sensitive (interactive panel) and the tool
@@ -959,7 +959,9 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, leadName: profile.name, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: clock.line, stallLine }) },
   ];
 
-  const convo = messages.map((m) => ({ role: m.role, content: m.content }));
+  // The panel resends the whole history each turn; previous turns' thinking blocks are bound to a
+  // system prompt that no longer exists (see stripThinkingBlocks) and would 400 the request.
+  const convo = stripThinkingBlocks(messages).map((m) => ({ role: m.role, content: m.content }));
   let currentDraft = null;
   let bookedEvent = null;
   let cvGuardFired = false; // the hook guard refuses at most ONCE per turn - a visible bad draft beats a stuck one

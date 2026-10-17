@@ -45,7 +45,7 @@ const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'f
 
 // Same lane as the panel chat (latency-sensitive, interactive). Override per deploy with
 // WINGGUY_ASK_MODEL_ID; falls back to the drafting model id so one env flip moves both.
-const { noUpfrontThinking } = require('../config/wingguyThinking');
+const { noUpfrontThinking, stripThinkingBlocks } = require('../config/wingguyThinking');
 const MODEL_ID = process.env.WINGGUY_ASK_MODEL_ID || process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
 // No upfront thinking, as in wingguyChat.js: with tools + a small answer budget, Sonnet 5's default
 // thinking produced empty turns there (2026-07-01). Answers here are short recall, not reasoning.
@@ -359,7 +359,9 @@ async function answerAboutPerson({ coach, person, messages, deps = {} }) {
 
   const tools = buildTools(p);
   const runTool = makeToolRunner({ clientId, person: p, mailTools, bookingTools });
-  const convo = history.map((m) => ({ role: m.role, content: m.content }));
+  // Resent history: drop earlier turns' thinking blocks, which are bound to a system prompt that has
+  // since changed (today's date line, a rebuilt story) - see stripThinkingBlocks.
+  const convo = stripThinkingBlocks(history).map((m) => ({ role: m.role, content: m.content }));
   const sources = new Set(['story']);
   let text = '';
 

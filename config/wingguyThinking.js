@@ -16,4 +16,23 @@ function noUpfrontThinking(modelId) {
   return /^claude-sonnet-5-5/.test(String(modelId || '')) ? { type: 'between_tools' } : { type: 'disabled' };
 }
 
-module.exports = { noUpfrontThinking };
+// Drop the model's thinking blocks from history a caller RESENDS on a later turn (2026-10-17, Alex
+// Solti on Ben Flintoff). Those blocks carry a signature bound to the exact system prompt they were
+// made under, and Wingguy rebuilds the system prompt from scratch every turn (rules, the lead's Portal
+// record, recent posts, today's date). Turn 1 scored and enriched Ben's record, so turn 2's prompt
+// differed and Anthropic refused the whole request: 400 "Invalid signature in thinking block ... The
+// system prompt differs from the one this block was created with". Previous turns' thinking is not
+// needed for the next answer, so it goes. The in-flight tool loop inside ONE turn still replays
+// response.content whole, which is what between_tools requires - only history from outside the turn
+// is cleaned. (The alternative is the thinking-binding-controls-2026-08-01 beta header with
+// prefix_mismatch_behavior=drop_block; stripping here needs no beta and keeps the cache prefix stable.)
+function stripThinkingBlocks(history) {
+  if (!Array.isArray(history)) return [];
+  return history.map((m) => {
+    if (!m || m.role !== 'assistant' || !Array.isArray(m.content)) return m;
+    const content = m.content.filter((b) => !(b && (b.type === 'thinking' || b.type === 'redacted_thinking')));
+    return { ...m, content };
+  });
+}
+
+module.exports = { noUpfrontThinking, stripThinkingBlocks };
