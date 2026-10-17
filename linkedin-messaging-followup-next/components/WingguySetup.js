@@ -462,6 +462,15 @@ function Field({ field, value, status, onChange, onCommit }) {
         ) : <span />}
         <SaveNote status={status} />
       </div>
+
+      {field.pointer ? (
+        <p className="mt-1 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-700 leading-relaxed">
+          {field.pointer.text}{' '}
+          <a href={field.pointer.href} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 hover:underline whitespace-nowrap">
+            {field.pointer.linkText} &rarr;
+          </a>
+        </p>
+      ) : null}
     </div>
   );
 }

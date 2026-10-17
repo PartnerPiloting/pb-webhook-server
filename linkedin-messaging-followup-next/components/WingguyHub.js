@@ -134,9 +134,9 @@ function ExtensionCard({ status, href }) {
 }
 
 /** A small door: the things a client touches once, or when something is wrong. */
-function SmallDoor({ href, title, body, cta }) {
+function SmallDoor({ href, title, body, cta, external = false }) {
   return (
-    <a href={href} className="group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border border-slate-200 bg-white px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2">
+    <a href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border border-slate-200 bg-white px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2">
       <div className="flex flex-col gap-1">
         <div className="font-serif text-[21px] leading-snug text-slate-900">{title}</div>
         <p className="text-[15px] leading-relaxed text-slate-600">{body}</p>
@@ -219,6 +219,17 @@ function WingguyHubInner() {
           </a>
         ))}
       </div>
+
+      {/* Links get their own row, straight under the doors (17 Oct 2026): the setup page's link
+          boxes sit in the skippable "worth a glance" tier, and a link that should go out at a
+          particular moment is added in Claude, which nothing on the setup page could show. */}
+      <SmallDoor
+        href="https://knowaguy.com.au/your-links"
+        external
+        title="Your links - what Wingguy sends, and when"
+        body="Your articles, decks and pages go out at the moment you choose, not all at once. You add them in Claude."
+        cta="See how"
+      />
 
       {machineLink && (
         <a

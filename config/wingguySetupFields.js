@@ -185,6 +185,13 @@ const VARIABLE_FIELDS = [
     label: 'Anything else you send people',
     hint: 'One per line, as "what it is - the link". Articles you wrote, a deck, a video. Wingguy only ever uses them where a link genuinely belongs, and never makes a URL up.',
     example: 'Why networking delivers so little - https://linkedin.com/pulse/...',
+    // This box has no "when", and the skippable tier hides that timing lives in Claude - so say it
+    // right where the links are being pasted.
+    pointer: {
+      text: 'Want one to go out at a particular moment - only after a first call, say? Tell Wingguy in Claude: "add this to my links", the link, and when it should go out.',
+      linkText: 'How your links work',
+      href: 'https://knowaguy.com.au/your-links',
+    },
     type: 'long',
     cap: 1200,
   },

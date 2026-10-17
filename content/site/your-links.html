@@ -1,0 +1,221 @@
+<style>
+  /* Same editorial shell as /your-licence and the one-pagers (routes/onePagerRoutes.js):
+     a letter to somebody who has already had the conversation. Single-theme, like the
+     rest of the site: every colour is painted explicitly. Mirrors the playbook topic
+     YOUR LINKS - WHAT WINGGUY SENDS AND WHEN; the examples are the thing a client copies
+     into Claude, so each one has a Copy button. */
+  :root {
+    color-scheme: light;
+    --ground:   #e9e2d3;
+    --card:     #fbf9f3;
+    --ink:      #2c2823;
+    --ink-deep: #221f1a;
+    --ink-soft: #6f6558;
+    --ink-mid:  #4a423a;
+    --rule:     #e2dccd;
+    --dark:     #211d18;
+    --gold:     #c49a5e;
+    --gold-ink: #9a6a2f;
+    --cream:    #f3ede1;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .op-page { padding: 28px 16px 52px; }
+
+  .op {
+    max-width: 640px;
+    margin: 0 auto 22px;
+    background: var(--card);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+  }
+
+  .op-mast { background: var(--dark); padding: 34px 40px 30px; }
+  .op-eb {
+    font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--gold); margin: 0 0 12px;
+  }
+  .op-wm { font-size: 30px; margin: 0; font-weight: 400; }
+  .op-wm a { color: var(--cream); text-decoration: none; }
+
+  .op-c { padding: 34px 40px 8px; }
+
+  .op-t {
+    font-size: 28px; line-height: 1.25; margin: 0 0 12px;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-dek {
+    font-style: italic; color: var(--ink-soft); font-size: 18px;
+    line-height: 1.5; margin: 0 0 20px; text-wrap: balance;
+  }
+  .op-r { border: 0; border-top: 1px solid var(--rule); margin: 0 0 22px; }
+
+  .op-body p { font-size: 17px; line-height: 1.66; margin: 0 0 1.15rem; }
+  .op-body h2 {
+    font-size: 21px; line-height: 1.3; margin: 1.9rem 0 .4rem;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-body strong, .op-body b { font-weight: 700; }
+  .op-body a { color: var(--gold-ink); }
+  .op-body a:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+  .op-body ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  .op-body li { font-size: 17px; line-height: 1.6; margin: 0 0 .8rem; }
+
+  .asof {
+    margin: 0 0 1.4rem;
+    padding: 12px 14px;
+    background: var(--cream);
+    border-left: 3px solid var(--gold);
+    border-radius: 3px;
+    font-size: 0.92rem;
+    color: var(--ink-mid);
+  }
+  .aside {
+    margin: 1.6rem 0 1.6rem; padding: 14px 18px 4px;
+    border: 1px solid var(--rule); border-left: 3px solid var(--gold);
+    border-radius: 3px; background: var(--cream);
+  }
+  .op-body .aside p { font-size: 16px; line-height: 1.6; margin: 0 0 .7rem; color: var(--ink-mid); }
+  /* The one step that makes it safe. Loud, like the promo-code warning on /your-licence. */
+  .op-body .warn {
+    margin: 1.4rem 0 1.4rem; padding: 16px 18px;
+    background: var(--dark); color: var(--cream);
+    border-left: 5px solid var(--gold); border-radius: 4px;
+    font-size: 20px; line-height: 1.4; font-weight: 700;
+  }
+
+  .op-foot {
+    padding: 18px 40px 6px; border-top: 1px solid var(--rule);
+    margin-top: 1.6rem; font-size: 14px; line-height: 1.6; color: var(--ink-soft);
+  }
+  .op-foot a { color: var(--gold-ink); }
+  .op-sign { margin: .9rem 0 0; }
+  .op-bar { background: var(--dark); height: 34px; }
+
+  @media (max-width: 520px) {
+    .op-mast, .op-c, .op-foot { padding-left: 22px; padding-right: 22px; }
+    .op-t { font-size: 24px; }
+    .op-wm { font-size: 26px; }
+    .op-body .warn { font-size: 18px; }
+  }
+
+  /* What to type in Claude. Each block copies on click - the wording is the point. */
+  .say {
+    margin: 0 0 1rem; padding: 14px 18px 12px;
+    background: var(--cream); border-left: 3px solid var(--gold); border-radius: 3px;
+  }
+  .op-body .say p { font-size: 16px; line-height: 1.6; margin: 0 0 .6rem; color: var(--ink-mid); font-style: italic; }
+  .say button {
+    font: inherit; font-size: 13px; font-style: normal; cursor: pointer;
+    padding: 4px 12px; border: 1px solid var(--gold); border-radius: 3px;
+    background: var(--card); color: var(--gold-ink);
+  }
+  .say button:hover { background: #fff; }
+  .say button:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+  .op-body ul { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  .op-body ul li { font-size: 17px; line-height: 1.6; margin: 0 0 .8rem; }
+</style>
+
+<div class="op-page">
+  <article class="op">
+
+    <header class="op-mast">
+      <p class="op-eb">Network building, rethought</p>
+      <p class="op-wm"><a href="/">(I know a) Guy</a></p>
+    </header>
+
+    <div class="op-c">
+      <h1 class="op-t">Your links - what Wingguy sends, and when</h1>
+      <p class="op-dek">Your articles, decks and pages go out at the moment you choose, not all at once. You add them in Claude, in your own words.</p>
+      <hr class="op-r">
+
+      <div class="op-body">
+
+        <p>When Wingguy drafts an email for you, it'll often include a link - your meeting room, an article you wrote, a short video, a page about what you do. Those links all come from one place: your <b>link library</b>. Wingguy never makes up a web address or rebuilds one from memory. If a link isn't in your library, it doesn't go out - Wingguy tells you it's missing and asks you for it.</p>
+
+        <h2 id="where">Where you set it up</h2>
+
+        <p>Two places, and the first one is all you need to get going.</p>
+
+        <ul>
+          <li><b>Your setup page</b> - in the portal, <b>Setup and help</b>, then <b>Your instructions</b>. It has a box for your meeting room, one for the link you'd send someone who asked what you do, one for your LinkedIn profile, and one called <b>Anything else you send people</b> for a plain list of the rest. Wingguy uses those wherever a message genuinely wants a link.</li>
+          <li><b>In Claude, for any link that should go out at a particular moment</b> - the same chat where you ask Wingguy for drafts. There's no form for this part. You paste the link and say, in your own words, when it should go out and who it's for.</li>
+        </ul>
+
+        <h2 id="say">What to type in Claude</h2>
+
+        <p>Something like one of these. Copy it, then swap in your own link and your own reasons.</p>
+
+        <div class="say">
+          <p>Add this to my links: https://... It's my article on why networking feels productive but delivers little. Send it after a first call, always before my landing page. Not for anyone in financial services.</p>
+          <button type="button">Copy</button>
+        </div>
+
+        <div class="say">
+          <p>Add my two-part deck. Part one is https://... and part two is https://... Part one can go after a first call. Part two only once I've walked them through the system out loud - never both in the same email.</p>
+          <button type="button">Copy</button>
+        </div>
+
+        <div class="say">
+          <p>Here's my pricing page: https://... Only on a second or third call, or when someone asks what it costs. Any earlier and it closes their thinking instead of opening it.</p>
+          <button type="button">Copy</button>
+        </div>
+
+        <p>Wingguy saves the address, then shows you the instruction it plans to write - when the link goes out, who it's for, who never gets it - and waits for your yes. If you've left something out, it asks. That back-and-forth is the useful part: it's where you work out when a piece actually earns its place.</p>
+
+        <p>To see what's in there, just ask: <b>"show me my links"</b>.</p>
+
+        <h2 id="what">What to put in it</h2>
+
+        <ul>
+          <li><b>Anything you've written or made</b> that explains your thinking - articles, newsletter editions, a short deck, a video of you explaining how you work.</li>
+          <li><b>Other people's material you rate</b> - a talk or an article that makes your point better than you could.</li>
+        </ul>
+
+        <p>Don't wait for a full library. One good "what I do" link is plenty to start with. Add the rest as you notice yourself pasting the same link into emails.</p>
+
+        <h2 id="when">Why a link needs a "when"</h2>
+
+        <p>The right piece at the right moment builds interest, and everything at once is homework nobody does. So for any link that matters, cover three things: <b>when it earns its place</b>, <b>who it's for</b>, and <b>who must never get it</b>. These are judgements, not keyword triggers - Wingguy reads the conversation and works out which one fits, which is why the right piece turns up at the right moment rather than the same link every time.</p>
+
+        <div class="aside" id="moved">
+          <p><b>When a link moves</b></p>
+          <p>Tell Wingguy in Claude - "my article moved, the new address is https://...". Everything that uses that link is right in one go, and the old address is blocked so a dead link can never go out by accident.</p>
+        </div>
+
+        <div class="aside" id="tuning">
+          <p><b>When a draft gets it wrong</b></p>
+          <p>If a draft sends the wrong piece, or sends one too early, say so - "that deck's too early for someone at this stage". The instruction for that link gets sharper, and every draft after follows it.</p>
+        </div>
+
+      </div>
+
+      <footer class="op-foot">
+        <p>Not sure when one of yours should go out? Ask Wingguy - or bring it to our next call.</p>
+        <p class="op-sign">- (I know a) Guy</p>
+      </footer>
+    </div>
+
+    <div class="op-bar"></div>
+  </article>
+</div>
+
+<script>
+  document.querySelectorAll('.say button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = b.parentNode.querySelector('p').textContent;
+      var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1800); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { b.textContent = 'Select and copy'; });
+      } else { b.textContent = 'Select and copy'; }
+    });
+  });
+</script>

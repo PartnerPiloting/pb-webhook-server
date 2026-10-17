@@ -1071,65 +1071,65 @@ shoulder at what they tweaked.
 ## YOUR LINKS - WHAT WINGGUY SENDS AND WHEN
 
 When Wingguy drafts an email for you, it'll often include a link - your meeting room, an article
-you wrote, a short video, a page about what you do. Those links come from one place: your **link
+you wrote, a short video, a page about what you do. Those links all come from one place: your **link
 library**. Wingguy never makes up a web address or rebuilds one from memory. If a link isn't in
-your library, it doesn't go out - it tells you it's missing and asks you for it.
+your library, it doesn't go out - Wingguy tells you it's missing and asks you for it.
 
-**What to put in it.** Start with what you already send people. Most people have more than they
-think:
+**Where you set it up.** Two places, and the first one is all you need to get going.
 
-- **Your meeting room** - it goes on every invite. You set this one on your setup page.
-- **The one link you'd send someone who asked what you do** - a landing page, a one-pager, a short
-  video. This is the most useful link you'll have, because Wingguy reaches for it whenever a message
-  wants a link and nothing more specific fits. Also on your setup page.
-- **Your LinkedIn profile** - for first emails and calendar invites.
+- **Your setup page** - in the portal, Setup and help, then "Your instructions". It has a box for
+  your meeting room, one for the link you'd send someone who asked what you do, one for your
+  LinkedIn profile, and one called "Anything else you send people" for a plain list of the rest.
+  Wingguy uses those wherever a message genuinely wants a link.
+- **In Claude, for any link that should go out at a particular moment** - the same chat where you
+  ask Wingguy for drafts. There's no form for this part. You paste the link and say, in your own
+  words, when it should go out and who it's for.
+
+**What that looks like.** Type something like:
+
+> Add this to my links: https://... It's my article on why networking feels productive but
+> delivers little. Send it after a first call, always before my landing page. Not for anyone in
+> financial services.
+
+> Add my two-part deck. Part one is https://... and part two is https://... Part one can go after
+> a first call. Part two only once I've walked them through the system out loud - never both in the
+> same email.
+
+> Here's my pricing page: https://... Only on a second or third call, or when someone asks what it
+> costs. Any earlier and it closes their thinking instead of opening it.
+
+Wingguy saves the address, then shows you the instruction it plans to write - when the link goes
+out, who it's for, who never gets it - and waits for your yes. If you've left something out, it
+asks. That back-and-forth is the useful part: it's where you work out when a piece actually earns
+its place.
+
+To see what's in there, just ask: "show me my links".
+
+**What to put in it.** Start with what you already send people:
+
 - **Anything you've written or made** that explains your thinking - articles, newsletter editions,
   a short deck, a video of you explaining how you work.
 - **Other people's material you rate** - a talk or an article that makes your point better than you
   could.
 
-Don't wait until you have a full library. One good "what I do" link is plenty to start with. Add
-the rest as you notice yourself pasting the same link into emails.
+Don't wait for a full library. One good "what I do" link is plenty to start with. Add the rest as
+you notice yourself pasting the same link into emails.
 
-**The part that matters: when each link goes out.** A link sitting in your library does nothing.
-Wingguy only sends it when one of your instructions says when to. That's deliberate - the right
-piece at the right moment builds interest, and everything at once is homework nobody does.
+**Why a link needs a "when".** The right piece at the right moment builds interest, and everything
+at once is homework nobody does. So for any link that matters, cover three things: when it earns
+its place, who it's for, and who must never get it. These are judgements, not keyword triggers -
+Wingguy reads the conversation and works out which one fits, which is why the right piece turns up
+at the right moment rather than the same link every time.
 
-So for every link, give Wingguy a line or two answering three questions:
-
-- **When does it earn its place?** "After a first call" / "the morning of a meeting" / "only once
-  I've explained the system out loud".
-- **Who is it for?** "People frustrated that LinkedIn isn't working for them" / "anyone on a
-  consulting path".
-- **Who must never get it?** "Not for financial services - the regulator angle makes it land
-  wrong" / "never for founders who've already made the leap".
-
-Here's how some of mine read:
-
-- After a first call, two links. My article on why networking feels productive but delivers little
-  always goes first. My landing page always goes second. A third only if the call clearly called
-  for it - two that land beat four that get skimmed.
-- My two-part deck goes out in order: the problem first, then the answer only after I've walked
-  them through the system out loud. Never both in the same email.
-- The pricing page is for the second or third call, or when someone asks about cost. Any earlier
-  and it closes their thinking instead of opening it.
-
-Notice these are judgements, not keyword triggers. Wingguy reads the conversation and works out
-which one fits - which is why the right piece turns up at the right moment, rather than the same
-link every time.
-
-**How to add one.** Just tell Wingguy in a chat - "add this to my links" and the address - and in
-the same breath, when it should go out and who it's for. It'll show you the instruction it plans to
-write before saving anything. And if you're not sure yet, it'll ask - that conversation is the
-useful part.
-
-**When a link moves.** An article gets republished, a page changes address - tell Wingguy the new
-one. Everything that uses that link is right in one go, and the old address is blocked so a dead
-link can never go out by accident.
+**When a link moves.** Tell Wingguy in Claude - "my article moved, the new address is https://...".
+Everything that uses that link is right in one go, and the old address is blocked so a dead link
+can never go out by accident.
 
 **Tuning it.** If a draft sends the wrong piece, or sends one too early, say so - "that deck's too
-early for someone at this stage". The note on that link gets sharper, and it sticks for every draft
-after.
+early for someone at this stage". The instruction for that link gets sharper, and every draft
+after follows it.
+
+The whole thing on one page, with the examples ready to copy: https://knowaguy.com.au/your-links
 
 ---
 

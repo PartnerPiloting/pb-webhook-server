@@ -196,6 +196,17 @@ const PAGES = {
       'One link, added once in your Claude settings, and Wingguy is there in every chat. '
       + 'Five steps, about five minutes.',
   },
+  // The client's link library (17 Oct 2026): where links are set up (the setup page for the
+  // plain ones, Claude for any with a "when"), copy-ready examples of what to type, and why a
+  // link needs a when. Mirrors the playbook topic YOUR LINKS; linked from the hub's "Your links"
+  // row and from under the setup page's "Anything else you send people" box.
+  links: {
+    file: 'your-links.html',
+    title: 'Your links - what Wingguy sends, and when - I Know A Guy',
+    description:
+      'Your articles, decks and pages go out at the moment you choose, not all at once. '
+      + 'You add them in Claude, in your own words.',
+  },
   // A made-up introduction email in the real introduction-emails-html layout.
   // Linked as a "Picture:" from the playbook topic "The inner circle" - the
   // chat can only send text, so this is where a client sees what one looks like.
@@ -353,6 +364,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/your-licence', servePage(PAGES.licence));
   router.get('/your-claude-key', servePage(PAGES.claudeKey));
   router.get('/connect-wingguy', servePage(PAGES.connect));
+  router.get('/your-links', servePage(PAGES.links));
   router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/follow-ups-example', servePage(PAGES.followupsExample));
   router.get('/thanks-for-connecting-example', servePage(PAGES.thanksExample));
