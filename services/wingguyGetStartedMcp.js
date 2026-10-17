@@ -245,11 +245,15 @@ const SETUP_BEATS = [
   }),
   {
     id: 'assets',
-    title: 'your asset library',
+    title: 'your links',
     isDone: (ctx) => !ctx.activeKeys.has('asset-library-scaffold') || ctx.activeAssets.length > 0,
+    // Client-facing name is "your links" / "link library" (the setup page and the Wingguy Learning
+    // topic both use it); "asset" is the internal word and never reaches the client.
     script: (ctx) => [
-      '**Your asset library** — the actual links I send out: your booking/Zoom room and public LinkedIn profile (structural, needed), plus any articles, videos or decks you want going into follow-ups (optional — bring your own or skip).',
-      `Add each with wingguy_assets (set_key / set_url; URLs go out exactly as stored). A link only goes out once a rule references it, so for any content piece, also tell me where it should appear and we'll add that to the relevant rule. Ask ${ctx.name || 'them'} what they'd like on file.`,
+      '**Your links** - the web addresses I put in your emails: your meeting room and LinkedIn profile (needed), plus anything you already send people - a page about what you do, an article, a short video, a deck (optional). I never make up or rebuild an address; if it is not in your link library it does not go out.',
+      `Lead with WHY it is worth two minutes: the right piece turns up at the right moment in a follow-up without ${ctx.name || 'them'} being asked, and a dead or mangled link can never go out. Then ask what they already find themselves pasting into emails - start with the one link they would send someone who asked what they do.`,
+      'For each link, get the address AND a line on when it goes out (after a first call / the morning of a meeting / only once they have explained the system), who it is for, and who must never get it. Store the address with wingguy_assets (set_key / set_url; URLs go out exactly as stored), then propose the matching instruction with wingguy_rule_propose so it actually gets sent - a stored link with no instruction referencing it does nothing. Say "instruction" to the client, never "rule".',
+      'If they want the full thinking, or examples of how Guy times his own links, serve wingguy_learn topic="your links" - do not paraphrase it.',
     ].join('\n'),
   },
   scaffoldBeat({
