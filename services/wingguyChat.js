@@ -88,6 +88,19 @@ const AGENT_TOOLS = [
     },
   },
   {
+    name: 'list_events',
+    description: 'Read what is actually ON Guy\'s calendar in a window - PAST or future - read-only. Use it for "have I already met X?", "did we have a call?", "is anything booked with X?", "when did I last see her?", "what\'s on Thursday?". Pass a range ("today", "tomorrow", "this_week", "next_week") or explicit dates (date = start YYYY-MM-DD, end_date = last day, inclusive; past dates are fine - work them out from TODAY IS in the context, e.g. the last 60 days for "have I met her"). Every event in the window is matched against THIS lead (their name and the invite email on file) and against "person" when you pass one; the result\'s "matches" lists the events with that person as an attendee or in the title. No matches means nothing in that window - say which window you looked at, and widen it if Guy\'s question needs more. Never tell Guy you cannot see past diary entries: this tool reads them.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        range: { type: 'string', enum: ['today', 'tomorrow', 'this_week', 'next_week'], description: 'A named window in Guy\'s timezone. Ignored when date is set.' },
+        date: { type: 'string', description: 'Start date YYYY-MM-DD (past or future).' },
+        end_date: { type: 'string', description: 'Last date YYYY-MM-DD, inclusive. Defaults to date.' },
+        person: { type: 'string', description: 'Optional name or email to look for besides this lead (e.g. someone else Guy names).' },
+      },
+    },
+  },
+  {
     name: 'propose_times',
     description: 'Use THIS (not propose_message) whenever you are offering the lead one or more meeting times. Pass intro + outro text in Guy\'s voice, plus slotTimes = the chosen slots\' "time" ISO values from check_availability (choose each slot by its "label", then pass that slot\'s "time"). The system SORTS them earliest-first, DROPS any outside Guy\'s booking hours or in his lunch hold, formats them in the lead\'s timezone, and assembles the final message — so you don\'t format or order the list yourself. It returns "offeredTimes": the exact date+time lines it wrote into the draft — when you tell Guy what you offered, QUOTE those, never restate the dates from memory (that is how the summary and the real draft drift apart). If it reports it dropped slots and too few remain, pick replacement slots and call again. It writes the "(all times are … time)" line and the closing invite line itself - add neither. It refuses when nobody in the thread has raised a call yet (a warm reply to a network note is a yes to the network, not a meeting - ask first with propose_message), unless Guy asks you for times. It also RE-READS GUY\'S CALENDAR and refuses the WHOLE list if he is not actually free at any of those times — so every slotTime must come from a check_availability result you can see, never a time you worked out yourself and never one just because the lead asked for that day. If it refuses, do NOT retry the same times or hand-pick around them: call check_availability again and offer what it actually returns, and if the lead\'s preferred day has nothing on it, say so plainly in your intro and offer the days Guy does have.',
     input_schema: {
@@ -506,10 +519,11 @@ function replyStyleOpener(draft, leadName) {
   }
   return null;
 }
-function replyOpenerRefusal(line, leadName, offer) {
+function replyOpenerRefusal(line, leadName, offer, withdrawn = null) {
   const first = String(leadName || 'the lead').trim().split(/\s+/)[0];
   return `REJECTED - draft NOT set. It opens "${line}", which reads as a reply - but the newest message in this thread is the coach's own and ${first} has not answered it, so there is nothing new to react to.`
-    + (offer ? ` The coach already offered times${offer.day ? ` (${offer.day})` : ''} and they went unanswered. This is a light RE-OFFER: "Hi ${first} -", one warm line that makes it easy to come back (things get buried, no stress), then fresh times. Do not pretend they just agreed, and do not say the old times "came and went".`
+    + (withdrawn ? ` And the ball is with the coach: ${first} ACCEPTED a time ("${withdrawn.accepted}") and the coach pulled it. Open "Hi ${first} -", own the bump with a short sorry for moving a time they had already said yes to, then fresh times. Nothing that implies ${first} went quiet.`
+    : offer ? ` The coach already offered times${offer.day ? ` (${offer.day})` : ''} and they went unanswered. This is a light RE-OFFER: "Hi ${first} -", one warm line that makes it easy to come back (things get buried, no stress), then fresh times. Do not pretend they just agreed, and do not say the old times "came and went".`
       : ` This is a light nudge: "Hi ${first} -" and an easy reason to reply.`)
     + ' Then call the tool again.';
 }
@@ -881,6 +895,106 @@ function leadClockLine(profile) {
     + ` In your CHAT REPLY to Guy (never in the draft) say you took the city from the current role in their LinkedIn job history because the record ${rec ? `only says "${rec}"` : 'has nothing on it'}, and ask him to put it on their record in the Portal so it sticks — do NOT write it there yourself.`;
 }
 
+// THE PANEL'S DIARY READ (list_events). Compact, model-facing: each event's day and time on the
+// coach's clock, its title and guests, past or not - and "matches": the events with this lead (name
+// or invite email) or the named person in them. Name match = every word of the name appears in a
+// guest's name/email or the title, so "Meagan Smith" finds "Meagan Smith <meagan@x.com>" and a
+// "Guy / Meagan" title, but never a bare "Meagan" someone else.
+const MAX_PANEL_EVENTS = 60;
+function personMatcher(nameOrEmail) {
+  const raw = String(nameOrEmail || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw.includes('@')) return (hay) => hay.includes(raw);
+  const words = normName(raw).split(' ').filter((w) => w.length > 1);
+  if (!words.length) return null;
+  return (hay) => words.every((w) => new RegExp(`\\b${w}\\b`).test(hay));
+}
+function summariseEventsForPanel(r, { leadName = '', leadEmail = '', person = '', now = Date.now() } = {}) {
+  if (!r || !r.ok) return { ok: false, error: `Couldn't read the calendar${r && r.provider ? ` (${r.provider})` : ''}: ${(r && r.error) || 'unknown error'}` };
+  const tz = r.timezone || 'Australia/Brisbane';
+  const matchers = [leadName, leadEmail, person].map(personMatcher).filter(Boolean);
+  const events = (r.events || []).map((ev) => {
+    const guests = (ev.attendees || []).filter((a) => a && !a.self && (a.email || a.displayName))
+      .map((a) => (a.displayName && a.email ? `${a.displayName} <${a.email}>` : (a.displayName || a.email)));
+    const hay = `${ev.summary || ''} ${guests.join(' ')}`.toLowerCase();
+    return {
+      date: dateStrInTz(ev.start, tz),
+      when: ev.allDay ? 'all day' : `${fmtSlot(ev.start, tz)} ${tzCity(tz)}`,
+      title: ev.summary || '(No title)',
+      with: guests,
+      past: new Date(ev.end || ev.start).getTime() < now,
+      match: matchers.some((m) => m(hay)),
+    };
+  });
+  const matches = events.filter((e) => e.match).map(({ match, ...e }) => e);
+  const window = r.startDate === r.endDate ? r.startDate : `${r.startDate} to ${r.endDate}`;
+  const who = [leadName, leadEmail, person].filter(Boolean).join(' / ') || 'nobody named';
+  return {
+    ok: true,
+    window,
+    timezone: tz,
+    lookedFor: who,
+    matches,
+    note: matches.length
+      ? `${matches.length} event(s) in ${window} with ${who}. Quote their dates and titles to Guy.`
+      : `Nothing in ${window} with ${who}. Tell Guy which window you checked; widen it if his question needs more.`,
+    eventCount: events.length,
+    events: events.slice(0, MAX_PANEL_EVENTS).map(({ match, ...e }) => e),
+    ...(events.length > MAX_PANEL_EVENTS ? { truncated: `showing the first ${MAX_PANEL_EVENTS} of ${events.length} - "matches" covers them all` } : {}),
+  };
+}
+
+// A TIME THE LEAD ACCEPTED AND THE COACH PULLED (Meagan Smith, 2026-10-19). Guy offered Wed 7, Thu 8
+// and Fri 9 Oct; she took Wed 7 Oct 12pm; Guy withdrew it. The panel read the thread as "offered
+// three times, no reply" and drafted "these things slip down the inbox, no stress" - telling her she
+// had dropped a ball that was Guy's. Stage 6b's nudge assumes the lead went quiet; here the lead did
+// everything right. Read from DATA: the lead's newest message accepts a time, and a coach message
+// after it moves or cancels it, with nothing from the lead since. Fails open like the stall guard.
+const ACCEPTS_TIME = /\b(works?( (well|great|perfect|fine|for me))?|suits?( me)?|sounds (good|great|perfect)|perfect|great|that'?s? (fine|good)|happy with|good for me|see you (then|on)|lock (it|that) in|book (it|me|that)|i'?ll take|let'?s (do|go with|lock)|count me in|yes)\b/i;
+const NAMES_TIME = /\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b\d{1,2}(st|nd|rd|th)\b|\b(first|second|third|last|1st|2nd|3rd) (one|option|time)\b|\bthat (time|one|slot)\b|\b(midday|noon|morning|afternoon)\b/i;
+const WITHDRAWS_TIME = /\b(something('s| has| have)? (come|cropped) up|can(no|')?t (make|do) (it|that|then|the|our|wed|thu|fri|mon|tue|\d)|cannot (make|do)|won'?t be able to make|unable to make|need to (move|shift|change|push|reschedule|cancel|pull|bump)|have to (move|shift|change|push|reschedule|cancel|pull|bump)|(re-?schedul|postpon)\w*|withdraw\w*|cancel\w*|pull(ed|ing)? (out|that|it|our|the)|double[- ]?booked|clash\w*|rain ?check|move (our|the|that|it)|push (it|that|our|the) (back|out)|bump (it|that|our|the))\b/i;
+// A confirmation often offers the lead the door ("if you need to move it, just say") - that is not
+// the coach pulling the time, so a sentence that hands the move to the lead does not count.
+const LEAD_MAY_MOVE = /\b(if (you|that|it|anything|need be)|should you|feel free|happy to|let me know if|no problem if|any time you)\b/i;
+function coachPullsTime(text) {
+  const sentences = String(text || '').split(/(?<=[.!?])\s+|\n+/);
+  return sentences.some((s) => WITHDRAWS_TIME.test(s) && !LEAD_MAY_MOVE.test(s));
+}
+function withdrawnAcceptance({ conversation, coachName, group }) {
+  if (!coachSpokeLast({ conversation, coachName, group })) return null;
+  const list = Array.isArray(conversation) ? conversation : [];
+  let withdrawal = null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (!m || !String(m.text || '').trim()) continue;
+    if (isCoachSender(m.sender, coachName)) {
+      if (coachPullsTime(m.text)) withdrawal = m; // keep walking: the earliest pull-back wins
+      continue;
+    }
+    // The lead's newest message: did it accept a time, and did the coach then pull it?
+    const s = normName(m.sender);
+    if (!s || s === 'unknown' || !withdrawal) return null;
+    const text = String(m.text);
+    if (!ACCEPTS_TIME.test(text) || !NAMES_TIME.test(text)) return null;
+    return {
+      accepted: text.replace(/\s+/g, ' ').trim().slice(0, 160),
+      acceptedDay: String(m.day || '').trim(),
+      withdrawnDay: String(withdrawal.day || '').trim(),
+    };
+  }
+  return null;
+}
+/** Wording that tells the lead THEY let it slide - wrong when the coach pulled the time. */
+const LEAD_DROPPED_IT = /\b(slip(s|ped|ping)? (down|through)|got buried|gets? buried|no stress|no pressure|no worries if|in case (it|this|my|one|any)|haven'?t heard|didn'?t hear|not heard back|circling back|bumping this|floating this|just checking (in|you)|things get busy|(inbox|inboxes) (get|gets|can get)|busy (time|week|period)|fell through the cracks|dropped off)\b/i;
+function leadBlamingLine(draft) {
+  const m = String(draft || '').match(LEAD_DROPPED_IT);
+  return m ? m[0] : null;
+}
+function withdrawnRefusal(phrase, leadName, w) {
+  const first = String(leadName || 'the lead').trim().split(/\s+/)[0];
+  return `REJECTED - draft NOT set. It says "${phrase}", which tells ${first} they let this slide. They did not: ${first} ACCEPTED a time ("${w.accepted}") and the coach then pulled it. The ball is with the coach. Redraft owning the bump: "Hi ${first} -", a short sorry for moving the time they had already said yes to, then fresh times (propose_times) or the next step. No "slip down the inbox", no "no stress", no "in case", nothing that implies ${first} went quiet. Then call the tool again.`;
+}
+
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
 async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, systemPrefixBlocks = null, profileThin = false, deps = {} }) {
@@ -893,6 +1007,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const updateLeadEmails = deps.updateLeadEmails || wingguyLeads.updateLeadEmails;
   const createLead = deps.createLead || wingguyLeads.createLead;
   const deleteOfferHolds = deps.deleteOfferHolds || wingguyCalendar.deleteOfferHolds;
+  const listEvents = deps.listEventsForCoach || wingguyCalendar.listEventsForCoach;
   // Mutable so update_lead_email can re-point the invite at a new primary within this turn.
   let currentLeadEmail = leadEmail;
   // Mutable so create_lead can make a record mid-turn and the SAME turn's update_lead_email / book_meeting
@@ -944,12 +1059,18 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const timesStall = unansweredTimesOffer(stallArgs);
   const ballWithLead = coachSpokeLast(stallArgs);
   const leadFirst = String(profile.name || 'the lead').trim().split(/\s+/)[0];
-  const stallLine = timesStall
+  // Accepted-then-pulled outranks "times offered, no answer": the coach's newest message may carry
+  // fresh times, but the lead is not the one who went quiet (see withdrawnAcceptance).
+  const withdrawn = withdrawnAcceptance(stallArgs);
+  const stallLine = withdrawn
+    ? `⚠ ${leadFirst} ACCEPTED A TIME AND THE COACH PULLED IT: ${leadFirst}'s newest message took a time ("${withdrawn.accepted}"${withdrawn.acceptedDay ? `, ${withdrawn.acceptedDay}` : ''}) and the coach then moved or cancelled it${withdrawn.withdrawnDay ? ` (${withdrawn.withdrawnDay})` : ''}. ${leadFirst} did nothing wrong and has NOT gone quiet - the ball is with the coach. When you sum up the thread for Guy, say exactly that (${leadFirst} accepted, the coach withdrew it), never "offered times, no reply". Any nudge OWNS the bump: "Hi ${leadFirst} -", a short sorry for moving a time they had already said yes to, then fresh times via propose_times. Never "slip down the inbox", "no stress", "in case", "haven't heard back" - those tell ${leadFirst} they dropped it. Never open "Great/Perfect/Thanks, ${leadFirst}".`
+    : timesStall
     ? `⚠ TIMES ALREADY OFFERED, NO ANSWER: the newest message in the thread is the coach's own time offer${timesStall.day ? ` (${timesStall.day})` : ''}, and ${leadFirst} has not replied to it. Any yes from ${leadFirst} further up is OLD and was already answered by that offer - you are NOT replying to anything. Draft a RE-OFFER NUDGE (stage 6b): "Hi ${leadFirst} -", one warm line that makes coming back easy, then fresh times via propose_times. Never open "Great/Perfect/Thanks, ${leadFirst}".`
     : ballWithLead
       ? `NOTE: the newest message in the thread is the coach's own and ${leadFirst} has not answered it - there is nothing new to react to, so never open as a reply ("Great/Perfect/Thanks, ${leadFirst}").`
       : '';
   let replyOpenerGuardFired = false; // refuses at most ONCE per turn, like the hook guard
+  let withdrawnGuardFired = false; // same: once per turn
 
   const system = [
     ...(systemPrefixBlocks || [
@@ -1085,7 +1206,13 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         if (replyLine) {
           replyOpenerGuardFired = true;
           console.warn(`WINGGUY-STALL-GUARD refused "${replyLine}" (times intro) for ${coach.clientId} → ${profile.name || 'lead'}`);
-          return { ok: false, error: replyOpenerRefusal(replyLine, profile.name, timesStall) };
+          return { ok: false, error: replyOpenerRefusal(replyLine, profile.name, timesStall, withdrawn) };
+        }
+        const blame = withdrawn && !withdrawnGuardFired ? leadBlamingLine(unescapeModelNewlines(input && input.intro)) : null;
+        if (blame) {
+          withdrawnGuardFired = true;
+          console.warn(`WINGGUY-WITHDRAWN-GUARD refused "${blame}" (times intro) for ${coach.clientId} → ${profile.name || 'lead'}`);
+          return { ok: false, error: withdrawnRefusal(blame, profile.name, withdrawn) };
         }
       }
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
@@ -1322,6 +1449,14 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         hitsLunch,
       };
     }
+    if (name === 'list_events') {
+      // Read-only diary (Meagan Smith, 2026-10-19: "have I already met her?" got "I can't search past
+      // diary entries" - the panel simply had no tool for it). Same provider seam as the connector's
+      // wingguy_list_events; the person match is done here, in code, so the model never eyeballs a
+      // long list for a name.
+      const r = await listEvents(coach.clientId, { range: input.range, date: input.date, endDate: input.end_date || input.date });
+      return summariseEventsForPanel(r, { leadName: profile.name, leadEmail: currentLeadEmail, person: input.person });
+    }
     if (name === 'create_lead') {
       // GROUP threads (2026-09-02): creating a DIFFERENT participant must not inherit the person-in-
       // view's URL or location — that would stamp Dimitri's link onto Ann's record. The page values
@@ -1497,7 +1632,15 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         if (replyLine) {
           replyOpenerGuardFired = true;
           console.warn(`WINGGUY-STALL-GUARD refused "${replyLine}" for ${coach.clientId} → ${profile.name || 'lead'}`);
-          return { ok: false, error: replyOpenerRefusal(replyLine, profile.name, timesStall) };
+          return { ok: false, error: replyOpenerRefusal(replyLine, profile.name, timesStall, withdrawn) };
+        }
+      }
+      if (withdrawn && !withdrawnGuardFired) {
+        const blame = leadBlamingLine(draft);
+        if (blame) {
+          withdrawnGuardFired = true;
+          console.warn(`WINGGUY-WITHDRAWN-GUARD refused "${blame}" for ${coach.clientId} → ${profile.name || 'lead'}`);
+          return { ok: false, error: withdrawnRefusal(blame, profile.name, withdrawn) };
         }
       }
       // Stage-1 opener guard (see STAGE1_BANNED_OPENER above): refuse, explain, let the model redraft.
@@ -1596,4 +1739,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: clocked.reply, draft: draftOut, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, restoreSignoffLayout,meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, restoreSignoffLayout,meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, withdrawnAcceptance, leadBlamingLine, summariseEventsForPanel, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
