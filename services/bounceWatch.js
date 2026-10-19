@@ -115,17 +115,45 @@ function extractBouncedAddresses(text, exclude = new Set()) {
   return out;
 }
 
-function alertHtml({ coachFirst, address, leadName, subject, when }) {
+/**
+ * Which lead is this bounced address about? Exact match on the record first (primary or Alt
+ * Emails). When that misses, try the address with 1-10 leading letters cut off: a glued-front
+ * address ("iscraig.carolan@") that has ALREADY been corrected on the record no longer matches as
+ * typed, but its clean form does - and the coach wants the lead named, not "someone not in your
+ * Portal" (Guy, 19 Oct 2026). Returns { lead, matchedAs } or { lead: null }.
+ */
+async function matchLead(inbound, coach, address) {
+  const tryOne = async (addr) => { try { return await inbound.findLeadByEmail(coach, addr); } catch (e) { log.warn(`${coach.clientId}: lead lookup for ${addr} failed - ${e.message}`); return null; } };
+  const exact = await tryOne(address);
+  if (exact) return { lead: exact, matchedAs: address };
+  const at = address.indexOf('@');
+  if (at < 3) return { lead: null };
+  const local = address.slice(0, at);
+  const domain = address.slice(at);
+  const letters = (local.match(/^[a-z]+/) || [''])[0].length;
+  for (let i = 1; i <= Math.min(letters, 10, local.length - 2); i++) {
+    const candidate = local.slice(i) + domain;
+    const lead = await tryOne(candidate);
+    if (lead) return { lead, matchedAs: candidate };
+  }
+  return { lead: null };
+}
+
+function alertHtml({ coachFirst, address, leadName, leadEmail, subject, when }) {
   const who = leadName ? `<strong>${leadName}</strong>` : 'someone not in your Portal';
+  const recordFixed = !!(leadName && leadEmail && leadEmail.toLowerCase() !== address.toLowerCase());
   return [
     `<p>Hi ${coachFirst || 'there'},</p>`,
     `<p>An email you sent to <strong>${address}</strong> bounced - that mailbox does not exist, so nothing reached ${leadName || 'them'}.</p>`,
     `<p>The address belongs to ${who}${subject ? ` (the bounce was "${subject}"${when ? `, ${when}` : ''})` : ''}.</p>`,
+    recordFixed ? `<p>Their record already has a different address, <strong>${leadEmail}</strong>, so the record looks right - this bounce is from something sent to the old address (a calendar invite or its update, most likely).</p>` : '',
     '<p>What to do:</p>',
     '<ol>',
-    '<li>Check the address with them - the usual cause is a word stuck to the front of it (like "iscraig.carolan@") or a typo.</li>',
-    leadName ? `<li>Fix it on ${leadName}'s record in your Portal (or tell Wingguy "update ${leadName}'s email to ...").</li>` : '<li>If they are a lead, add them to your Portal with the right address.</li>',
-    '<li>If it was a calendar invite, move the invite to the right address (or ask Wingguy to re-send it) - they are still waiting for it.</li>',
+    recordFixed ? '' : '<li>Check the address with them - the usual cause is a word stuck to the front of it (like "iscraig.carolan@") or a typo.</li>',
+    recordFixed ? '' : (leadName ? `<li>Fix it on ${leadName}'s record in your Portal (or tell Wingguy "update ${leadName}'s email to ...").</li>` : '<li>If they are a lead, add them to your Portal with the right address.</li>'),
+    recordFixed
+      ? `<li>Check the calendar invite's guest is <strong>${leadEmail}</strong>, not the old address - if the old one is still on it, move it.</li>`
+      : '<li>If it was a calendar invite, move the invite to the right address (or ask Wingguy to re-send it) - they are still waiting for it.</li>',
     '</ol>',
     '<p>- Wingguy</p>',
   ].join('');
@@ -156,13 +184,20 @@ async function sweepTenant(coach, { since, mailProvider, inbound, pool, send, no
           [coach.clientId, String(m.id), address],
         );
         if (!claim.rowCount) continue;
+        // ONE alert per address per day. A bad address bounces more than once (the invite, then the
+        // update when it is moved) - the coach got two identical emails two seconds apart (19 Oct 2026).
+        const recent = await pool.query(
+          `SELECT 1 FROM wingguy_bounce_alerts WHERE coach_client_id = $1 AND address = $2 AND message_id <> $3 AND alerted_at > now() - interval '24 hours' LIMIT 1`,
+          [coach.clientId, address, String(m.id)],
+        );
+        if (recent.rowCount) { log.info(`${coach.clientId}: bounce to ${address} already reported in the last day - noted, not re-sent`); continue; }
 
-        let lead = null;
-        try { lead = await inbound.findLeadByEmail(coach, address); } catch (e) { log.warn(`${coach.clientId}: lead lookup for ${address} failed - ${e.message}`); }
+        const { lead } = await matchLead(inbound, coach, address);
         const leadName = lead ? `${lead.firstName || ''} ${lead.lastName || ''}`.trim() : '';
+        const leadEmail = lead ? String(lead.email || '').trim() : '';
         const when = m.date ? new Date(m.date).toLocaleString('en-AU', { timeZone: coach.timezone || 'Australia/Brisbane', dateStyle: 'medium', timeStyle: 'short' }) : '';
         const subject = `Wingguy: your email to ${address} bounced${leadName ? ` (${leadName})` : ''} - check the address`;
-        const html = alertHtml({ coachFirst: String(coach.clientName || '').split(' ')[0], address, leadName, subject: m.subject, when });
+        const html = alertHtml({ coachFirst: String(coach.clientName || '').split(' ')[0], address, leadName, leadEmail, subject: m.subject, when });
         const textBody = bodyToText(html);
         const to = String(coach.clientEmailAddress || '').trim() || null;
         await send(subject, html, to, { text: textBody });
@@ -225,4 +260,4 @@ function getBounceWatchStatus() {
   return { running: !!intervalHandle, intervalMs: SWEEP_INTERVAL_MS, lastPass };
 }
 
-module.exports = { startBounceWatch, sweepBounces, getBounceWatchStatus, isBounceMessage, bodyToText, extractBouncedAddresses, alertHtml };
+module.exports = { startBounceWatch, sweepBounces, getBounceWatchStatus, isBounceMessage, bodyToText, extractBouncedAddresses, alertHtml, matchLead };

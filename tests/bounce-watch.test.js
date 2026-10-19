@@ -48,6 +48,16 @@ check('3. generic DSN -> address found, coach\'s own address never reported', ()
   const got = bw.extractBouncedAddresses(GENERIC_DSN, new Set(['guy@coach.com']));
   assert.deepStrictEqual(got, ['bob.smith@example.org']);
 });
+(async () => {
+  await acheck('4b. matchLead finds the lead by the corrected form when the bounced form no longer matches', async () => {
+    const inbound = { findLeadByEmail: async (c, e) => (e === 'sam.trattles@acme.com' ? { id: 'recSam', firstName: 'Sam', lastName: 'Trattles', email: 'sam.trattles@acme.com' } : null) };
+    const hit = await bw.matchLead(inbound, { clientId: 't' }, 'emailissam.trattles@acme.com');
+    assert.strictEqual(hit.lead && hit.lead.id, 'recSam');
+    assert.strictEqual(hit.matchedAs, 'sam.trattles@acme.com');
+    const miss = await bw.matchLead(inbound, { clientId: 't' }, 'nobody@acme.com');
+    assert.strictEqual(miss.lead, null);
+  });
+})();
 check('4. an ordinary email is not a bounce', () => {
   assert.ok(!bw.isBounceMessage({ fromEmail: 'craig.carolan@infocus.com.au', subject: 'Re: catching up' }));
   assert.ok(!bw.isBounceMessage({ fromEmail: 'noreply@calendar.google.com', subject: 'Accepted: Craig Carolan & Guy Wilson' }));
@@ -65,6 +75,12 @@ function fakeWorld() {
         rows.add(key);
         return { rowCount: 1, rows: [{ message_id: params[1] }] };
       }
+      if (/SELECT 1 FROM wingguy_bounce_alerts/.test(sql)) {
+        // another row for the same tenant + address, other message id = reported in the last day
+        const [tenant, address, msgId] = params;
+        const hit = [...rows].some((k) => { const [t, m, a] = k.split('|'); return t === tenant && a === address && m !== msgId; });
+        return { rowCount: hit ? 1 : 0, rows: hit ? [{}] : [] };
+      }
       return { rowCount: 1, rows: [] };
     },
   };
@@ -81,11 +97,14 @@ function fakeWorld() {
       return { ok: true, messages: [
         { id: 'm1', fromEmail: 'mailer-daemon@googlemail.com', subject: 'Delivery Status Notification (Failure)', date: '2026-10-18T23:53:20Z' },
         { id: 'm2', fromEmail: 'craig.carolan@infocus.com.au', subject: 'Re: catching up' },
+        // The same bad address bouncing again five hours later (the invite was moved; the update to the old address bounced)
+        { id: 'm3', fromEmail: 'mailer-daemon@googlemail.com', subject: 'Delivery Status Notification (Failure)', date: '2026-10-19T05:02:20Z' },
       ] };
     },
-    getMessage: async (c, id) => ({ ok: true, message: { body: id === 'm1' ? GMAIL_DSN : '<p>hi</p>' } }),
+    getMessage: async (c, id) => ({ ok: true, message: { body: id === 'm2' ? '<p>hi</p>' : GMAIL_DSN } }),
   };
-  const inbound = { findLeadByEmail: async (c, email) => (email === 'iscraig.carolan@infocus.com.au' ? { id: 'recCraig', firstName: 'Craig', lastName: 'Carolan' } : null) };
+  // Craig's record has already been CORRECTED: only the clean address matches, not the bounced one.
+  const inbound = { findLeadByEmail: async (c, email) => (email === 'craig.carolan@infocus.com.au' ? { id: 'recCraig', firstName: 'Craig', lastName: 'Carolan', email: 'craig.carolan@infocus.com.au' } : null) };
   const sent = [];
   const sendEmail = async (subject, html, to, opts) => { sent.push({ subject, html, to, text: opts && opts.text }); return { success: true }; };
   return { pool, clientService, mailProvider, inbound, sendEmail, sent };
@@ -95,16 +114,18 @@ function fakeWorld() {
   console.log('the sweep:');
   const w = fakeWorld();
   const deps = { pool: w.pool, clientService: w.clientService, mailProvider: w.mailProvider, inbound: w.inbound, sendEmail: w.sendEmail, now: () => Date.parse('2026-10-19T00:10:00Z') };
-  await acheck('5. one alert to the coach per bounce, lead named, Guy copied; second pass is silent', async () => {
+  await acheck('5. ONE alert per address per day, lead named even though the record was already fixed, Guy copied; second pass is silent', async () => {
     const r1 = await bw.sweepBounces(deps);
     assert.strictEqual(r1.ok, true);
-    assert.strictEqual(r1.bounces, 1, 'only the DSN counts as a bounce');
-    assert.strictEqual(r1.alerted, 1);
-    const coachMail = w.sent.find((s) => s.to === 'guy@coach.com');
-    assert.ok(coachMail, 'coach is emailed');
+    assert.strictEqual(r1.bounces, 2, 'both DSNs count as bounces');
+    assert.strictEqual(r1.alerted, 1, 'but the same address is reported once');
+    const coachMails = w.sent.filter((s) => s.to === 'guy@coach.com');
+    assert.strictEqual(coachMails.length, 1, 'exactly one email to the coach');
+    const coachMail = coachMails[0];
     assert.ok(/iscraig\.carolan@infocus\.com\.au/.test(coachMail.subject), 'subject names the address');
-    assert.ok(/Craig Carolan/.test(coachMail.subject), 'subject names the lead');
-    assert.ok(/Fix it on Craig Carolan's record/.test(coachMail.html), 'body says what to do');
+    assert.ok(/Craig Carolan/.test(coachMail.subject), 'subject names the lead (matched via the corrected address)');
+    assert.ok(/record already has a different address/.test(coachMail.html) && /craig\.carolan@infocus\.com\.au<\/strong>/.test(coachMail.html), 'body says the record is already right and points at the invite');
+    assert.ok(!/Fix it on Craig Carolan's record/.test(coachMail.html), 'no "fix the record" step when the record is already right');
     const adminCopy = w.sent.find((s) => s.to === null);
     assert.ok(adminCopy && /^\[guy\]/.test(adminCopy.subject), 'Guy gets a copy tagged with the tenant');
     const before = w.sent.length;
