@@ -520,6 +520,37 @@
   function cleanText(t) {
     return (t || '').replace(/\s+/g, ' ').trim();
   }
+  // ---- blockText (pure; tested by tests/wingguy-extension-message-linebreaks.test.js) ----
+  // The text of a message bubble WITH a break wherever the lead pressed Enter. LinkedIn renders each
+  // line of a message as its own <p> (or a <br>), and textContent glues adjacent elements together
+  // with nothing in between - so "My email is" + "Craig.carolan@infocus.com.au" on two lines came out
+  // as "My email isCraig.carolan@infocus.com.au", the address finder took "iscraig.carolan@..." and
+  // the invite bounced (Craig Carolan, 2026-10-19). A line break is a word boundary; this walk puts
+  // one back at every <br> and around every block element, so no two lines can ever fuse into one
+  // word. cleanText then folds the breaks to single spaces (the record keeps one message per line).
+  // A plain DOM walk, not innerText: innerText needs layout, which a bubble inside a closed or
+  // collapsed container may not have, and it would silently drop to nothing.
+  const WG_BLOCK_TAGS = new Set(['P', 'DIV', 'LI', 'UL', 'OL', 'BR', 'TR', 'TD', 'TH', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'HR']);
+  function blockText(el) {
+    if (!el) return '';
+    const parts = [];
+    const walk = (node) => {
+      if (!node) return;
+      if (node.nodeType === 3) { parts.push(node.nodeValue || ''); return; }
+      if (node.nodeType !== 1 && node.nodeType !== 11) return; // element or shadow/document fragment
+      const tag = node.tagName ? String(node.tagName).toUpperCase() : '';
+      if (tag === 'SCRIPT' || tag === 'STYLE') return;
+      if (tag === 'BR' || tag === 'HR') { parts.push('\n'); return; }
+      const block = WG_BLOCK_TAGS.has(tag);
+      if (block) parts.push('\n');
+      const kids = node.childNodes ? Array.from(node.childNodes) : [];
+      for (const k of kids) walk(k);
+      if (block) parts.push('\n');
+    };
+    walk(el);
+    return parts.join('');
+  }
+  // ---- end blockText ----
   // Cut a string to a length WITHOUT splitting an emoji in half. An emoji is two code units that
   // only mean anything as a pair, so counting characters and chopping can land between them — and a
   // lone half is not valid text. Anthropic rejects the whole request with a 400 before Claude reads
@@ -1621,7 +1652,8 @@
       const name = senderForItem(node); if (name) lastSender = name;
       const time = timeForItem(node); if (time) lastTime = time;
       const bodyEl = node.querySelector(selStr('message_body'));
-      const text = cleanText(bodyEl && bodyEl.textContent);
+      // blockText, not textContent: a line break must stay a word boundary (Craig Carolan, 2026-10-19).
+      const text = cleanText(blockText(bodyEl));
       if (text) out.push({ sender: lastSender || 'Unknown', text, day: curDay, time: lastTime });
     });
     console.log('[Wingguy] thread scrape:', {
@@ -2017,6 +2049,7 @@
   // into {Alt Emails}, so nothing is lost; a mistyped mobile is the lead's to correct). Only the
   // LEAD's messages are scanned — the coach's own signature must never become the lead's contact
   // info. Thread runs oldest→newest, so a later self-correction overrides an earlier mention.
+  // ---- profferedContact (pure; tested by tests/wingguy-extension-message-linebreaks.test.js) ----
   function trimRunOnEmail(addr) {
     const s = String(addr || '').trim();
     const at = s.lastIndexOf('@');
@@ -2050,6 +2083,7 @@
     }
     return { email, phone };
   }
+  // ---- end profferedContact ----
   // Which proffered details actually differ from what's stored (skip no-op churn on every capture).
   function profferedExtras(thread, leadFirst, leadLast, storedEmail, storedPhone) {
     const digitsOf = (s) => String(s || '').replace(/\D/g, '');
@@ -2250,7 +2284,11 @@
       // An auto-cease is never silent: the server just decided this send was the warm-then-quiet
       // reconnect goodbye, so the human is told in the same breath as the save.
       const ceaseNote = qres && qres.autoCeased ? ' — follow-ups ceased (door open: their reply resurfaces them)' : '';
-      showCaptureToast(`✓ Saved ${thread.length} messages to ${who}${extrasNote(extras)}${ceaseNote}`);
+      // The server refused an address with text glued to its front ("iscraig.carolan@", Craig Carolan
+      // 2026-10-19): say so in the same breath, with the likely fix, so the human checks it now.
+      const ef = qres && qres.emailFlag;
+      const flagNote = ef ? ` — ⚠ email NOT saved: "${ef.given}" looks like "${ef.prefix}" is stuck to the front (probably ${ef.suggested}) - check it with them` : '';
+      showCaptureToast(`✓ Saved ${thread.length} messages to ${who}${ef ? '' : extrasNote(extras)}${ceaseNote}${flagNote}`);
 
       // GROUP thread: the conversation belongs to EVERY participant on file, not just the one we're
       // replying to (an introduction is Ann's story as much as Dimitri's, 2026-09-02). Save it onto

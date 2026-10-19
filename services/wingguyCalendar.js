@@ -741,11 +741,32 @@ function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = 
  * booking allowed), treat the lead's OWN "HOLD:" events as their reservation (not a clash), and
  * clear all the lead's holds once the booking lands. `deps` = test/caller injection.
  */
-async function bookMeetingGuarded(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, confirmDoubleBook, meetingLink }, deps = {}) {
+async function bookMeetingGuarded(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, confirmDoubleBook, confirmEmail, meetingLink }, deps = {}) {
   const clashesFor = deps.getClashesForISO || getClashesForISO;
   const book = deps.createBookingEvent || createBookingEvent;
   const clearHolds = deps.deleteOfferHolds || deleteOfferHolds;
   if (!leadEmail) return { ok: false, error: 'No lead email on file — add the lead\'s email before booking.' };
+  // The ADDRESS guard (Craig Carolan, 2026-10-19). His invite went to "iscraig.carolan@infocus.com.au"
+  // - a line break lost in capture glued "is" onto his address - and bounced four hours later with
+  // nobody told. Two checks before any invite leaves, both the kind a human can act on at once:
+  //   1. text glued to the FRONT of the address (the part before @ reads as the lead's name only once
+  //      a short run of letters is cut off) - the human is shown both forms and asked;
+  //   2. the receiving mail server says that exact mailbox does not exist (verification service;
+  //      'unknown' lets the send through - only a definite no blocks).
+  // Every door (claude.ai connector, the panel chat) books through here, so there is ONE place that
+  // decides. confirmEmail:true is the human's explicit "yes, that address, as typed".
+  if (!confirmEmail) {
+    const { gluedPrefix, describeGluedPrefix } = require('../utils/emailGluedPrefix');
+    const g = gluedPrefix(leadEmail, leadName);
+    if (g.suspect) {
+      return { ok: false, emailSuspect: true, suggestedEmail: g.suggested, error: `NOT booked. ${describeGluedPrefix(leadEmail, g)} If the human confirms "${leadEmail}" exactly as it is, call again with confirmEmail:true.` };
+    }
+    const { verifyMailbox, describeInvalidMailbox } = require('../utils/mailboxVerify');
+    const v = await (deps.verifyMailbox || verifyMailbox)(leadEmail);
+    if (v.state === 'invalid') {
+      return { ok: false, emailSuspect: true, error: `NOT booked. ${describeInvalidMailbox(leadEmail, v)} If the human insists it is right, call again with confirmEmail:true.` };
+    }
+  }
   if (!confirmDoubleBook) {
     const clashes = (await clashesFor(coach.clientId, startISO, durationMins))
       .filter((c) => !isHoldForLead(c.summary, leadName));

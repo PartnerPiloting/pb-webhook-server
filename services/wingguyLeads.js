@@ -67,7 +67,9 @@ function buildAltEmails(sources, primaryEmail) {
 //   ownEmails   — the coach's own addresses (utils/coachOwnEmails). None of them is ever written onto a
 //                 lead: a primary that is the coach's own is refused, and own addresses are dropped from
 //                 addOthers (Matthew Bulat, 2026-09-28 — his own address landed on Guy's record).
-async function updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary = '', addOthers = [], ownEmails = null } = {}) {
+//   confirmOddShape — the human's explicit "yes, that address exactly as typed": skips the glued-front
+//                 check (utils/emailGluedPrefix - "iscraig.carolan@", Craig Carolan 2026-10-19).
+async function updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary = '', addOthers = [], ownEmails = null, confirmOddShape = false } = {}) {
   if (!airtableBaseId) return { ok: false, error: 'no CRM base for this client' };
   if (!leadRecordId) return { ok: false, error: "couldn't find this lead's CRM record — ask Guy to update it in the Portal" };
 
@@ -86,6 +88,12 @@ async function updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary = '',
   const rec = await base('Leads').find(leadRecordId);
   const currentPrimary = String(rec.fields['Email'] || '').trim();
   const currentAlts = String(rec.fields['Alt Emails'] || '');
+
+  if (newPrimary && !confirmOddShape) {
+    const { gluedPrefix, describeGluedPrefix } = require('../utils/emailGluedPrefix');
+    const g = gluedPrefix(newPrimary, `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`);
+    if (g.suspect) return { ok: false, emailSuspect: true, suggestedEmail: g.suggested, error: `${describeGluedPrefix(setPrimary, g)} If the human confirms it exactly as given, call again with confirmOddShape:true.` };
+  }
 
   const changingPrimary = !!newPrimary && newPrimary !== currentPrimary.toLowerCase();
   const finalPrimary = changingPrimary ? newPrimary : currentPrimary;
@@ -224,7 +232,7 @@ async function updateLeadContact(airtableBaseId, leadRecordId, { email = '', pho
 // a value the lead or coach actually stated beats what's on the record. Empty/omitted params leave
 // fields untouched; there is deliberately NO way to blank a field from here.
 // Returns { ok, changed, changes: [{field, from, to}], notes: [] } or { ok:false, error }.
-async function updateLeadFacts(airtableBaseId, leadRecordId, { location = '', email = '', phone = '' } = {}) {
+async function updateLeadFacts(airtableBaseId, leadRecordId, { location = '', email = '', phone = '', confirmOddShape = false } = {}) {
   if (!airtableBaseId) return { ok: false, error: 'no CRM base for this client' };
   if (!leadRecordId) return { ok: false, error: 'no lead record to update' };
 
@@ -254,6 +262,12 @@ async function updateLeadFacts(airtableBaseId, leadRecordId, { location = '', em
     changes.push({ field: 'Phone', from: currentPhone, to: tel });
   }
   const currentPrimary = String(f['Email'] || '').trim();
+  if (mail && mail !== currentPrimary.toLowerCase() && !confirmOddShape) {
+    // Text glued to the FRONT of the address is flagged, never written (Craig Carolan, 2026-10-19).
+    const { gluedPrefix, describeGluedPrefix } = require('../utils/emailGluedPrefix');
+    const g = gluedPrefix(mail, `${f['First Name'] || ''} ${f['Last Name'] || ''}`);
+    if (g.suspect) return { ok: false, emailSuspect: true, suggestedEmail: g.suggested, error: `${describeGluedPrefix(email, g)} If the human confirms it exactly as given, call again with confirm_odd_shape:true.` };
+  }
   if (mail && mail !== currentPrimary.toLowerCase()) {
     fields['Email'] = mail;
     // The old primary moves into the alternates so nothing is lost — updateLeadEmails' rule.

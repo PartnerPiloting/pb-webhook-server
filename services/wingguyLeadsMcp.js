@@ -172,7 +172,7 @@ async function runUpdateLead(args = {}, tenant = TENANT) {
   if (found.reply) return found.reply;
   const rec = found.rec;
 
-  const r = await wingguyLeads.updateLeadFacts(airtableBaseId, rec.id, { location: loc, email: mail, phone: tel });
+  const r = await wingguyLeads.updateLeadFacts(airtableBaseId, rec.id, { location: loc, email: mail, phone: tel, confirmOddShape: !!args.confirm_odd_shape });
   if (!r || !r.ok) return { text: `Error: ${(r && r.error) || 'the lead could not be updated.'}`, isError: true };
 
   const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
@@ -323,6 +323,7 @@ const TOOL_DEFS = [
       location: z.string().optional().describe('Their corrected location, as specific as known (e.g. "Sydney, New South Wales" — city + state beats city alone for timezone maths).'),
       email: z.string().optional().describe('Their corrected email — becomes the primary; the old primary is kept under Alt Emails automatically.'),
       phone: z.string().optional().describe('Their corrected phone number.'),
+      confirm_odd_shape: z.boolean().optional().describe('Set true ONLY after the tool refused the email because text looked glued to its front (e.g. "iscraig.carolan@") AND the coach has explicitly confirmed that exact address. Normally omit.'),
     },
     jsonSchema: {
       type: 'object',
@@ -333,6 +334,7 @@ const TOOL_DEFS = [
         location: { type: 'string', description: 'Their corrected location, as specific as known (e.g. "Sydney, New South Wales" — city + state beats city alone for timezone maths).' },
         email: { type: 'string', description: 'Their corrected email — becomes the primary; the old primary is kept under Alt Emails automatically.' },
         phone: { type: 'string', description: 'Their corrected phone number.' },
+        confirm_odd_shape: { type: 'boolean', description: 'Set true ONLY after the tool refused the email because text looked glued to its front (e.g. "iscraig.carolan@") AND the coach has explicitly confirmed that exact address. Normally omit.' },
       },
       required: [],
     },
