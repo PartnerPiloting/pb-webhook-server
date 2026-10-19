@@ -28,9 +28,12 @@ const SENDING_DOMAIN = () => (process.env.SERIES_MAILGUN_DOMAIN || 'mg.knowaguy.
 const FROM_NAME = () => (process.env.SERIES_FROM_NAME || 'Guy · I Know a Guy').trim();
 const FROM_EMAIL = () => (process.env.SERIES_FROM_EMAIL || 'guy@knowaguy.com.au').trim();
 const REPLY_TO = () => (process.env.SERIES_REPLY_TO || FROM_EMAIL()).trim();
+// Mailgun keys can be scoped to one domain. The shared MAILGUN_API_KEY only sends for the old
+// ASH domain (401 on mg.knowaguy.com.au), so the series carries its own knowaguy sending key.
+const API_KEY = () => (process.env.SERIES_MAILGUN_API_KEY || process.env.MAILGUN_API_KEY || '').trim();
 
 function isConfigured() {
-  return Boolean((process.env.MAILGUN_API_KEY || '').trim());
+  return Boolean(API_KEY());
 }
 
 // A preheader is the grey line an inbox shows after the subject. Left alone it
@@ -47,7 +50,7 @@ function withPreheader(html, text) {
  * recipient must not abort the rest of the run.
  */
 async function sendSeriesEmail({ to, subject, html, unsubscribeUrl, preheader, tag }) {
-  if (!isConfigured()) return { ok: false, error: 'MAILGUN_API_KEY not set' };
+  if (!isConfigured()) return { ok: false, error: 'SERIES_MAILGUN_API_KEY / MAILGUN_API_KEY not set' };
   if (!to || !subject || !html) return { ok: false, error: 'to, subject and html are required' };
 
   const body = preheader ? withPreheader(html, preheader) : html;
@@ -71,7 +74,7 @@ async function sendSeriesEmail({ to, subject, html, unsubscribeUrl, preheader, t
   };
 
   const data = querystring.stringify(fields);
-  const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
+  const auth = Buffer.from(`api:${API_KEY()}`).toString('base64');
 
   return new Promise((resolve) => {
     const req = https.request({
