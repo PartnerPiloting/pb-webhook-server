@@ -19,7 +19,10 @@
  *    clears it and the coach gets an all-clear. Worded by WHY it is quiet, from the queue:
  *      stopped   - people waiting in a running campaign, yet nothing sent (licence expired,
  *                  LinkedIn signed out, Linked Helper stuck - the machine status line rides along)
- *      paused    - the only people waiting are in paused campaigns
+ *      paused    - the only people waiting are in paused campaigns that sent within DORMANT_DAYS
+ *                  (19 Oct 2026: Julian Davis's two live campaigns ran out of people, and 35 left
+ *                  in an old parked one made the email say "paused" - he was right, they were
+ *                  only sleeping. A long-parked campaign is a choice; the news is "empty".)
  *      empty     - nobody left to invite: the search needs topping up
  *    It catches what the trial warning cannot: a PAID licence running out a year from now
  *    (the machine cannot see a paid licence's end date).
@@ -113,6 +116,22 @@ function quietKind({ waitingRunning, waitingPaused, lastAttemptAt, failedRecent,
 }
 
 /**
+ * People waiting in paused campaigns that sent an invitation of their own within DORMANT_DAYS -
+ * the ones a "paused" quiet alert can honestly blame. A watchdog without `paused_campaigns` can't
+ * tell them apart, so it falls back to its plain `waiting_paused` total.
+ */
+function livePausedWaiting(report, now = Date.now()) {
+  if (!Array.isArray(report && report.paused_campaigns)) return num(report && report.waiting_paused);
+  let total = 0;
+  for (const c of report.paused_campaigns) {
+    if (!c || typeof c !== 'object') continue;
+    const last = ms(c.last_invite_at);
+    if (last !== null && now - last < DORMANT_DAYS * DAY) total += num(c.waiting);
+  }
+  return total;
+}
+
+/**
  * The paused campaign worth shouting about, from the machine's `paused_campaigns` list: paused,
  * people still queued, and an invitation of its own within DORMANT_DAYS. Several -> the one that
  * sent most recently (the live one). Null when none qualifies.
@@ -177,7 +196,7 @@ function campaignStep({ report, client = {}, now = Date.now() } = {}) {
     const idle = now - last;
     if (idle >= QUIET_DAYS * DAY && idle < DORMANT_DAYS * DAY) {
       out.quietAlert = true;
-      out.kind = quietKind({ waitingRunning, waitingPaused, lastAttemptAt: report.last_invite_attempt_at, failedRecent: report.failed_invites_recent, now });
+      out.kind = quietKind({ waitingRunning, waitingPaused: livePausedWaiting(report, now), lastAttemptAt: report.last_invite_attempt_at, failedRecent: report.failed_invites_recent, now });
       out.fields[FIELDS.quietAlerted] = iso(now);
     }
   }
@@ -504,6 +523,6 @@ async function quietCampaignsForCoach(coachClientId) {
 module.exports = {
   campaignStep, sendCampaignAlert, sendSendingAgainNote, sendPausedClearedNote, quietCampaignAlerts, quietCampaignsForCoach,
   trialClientEmail, quietClientEmail, pausedClientEmail, trialCoachLine, quietCoachLine, pausedCoachLine,
-  trialEndsAt, quietKind, pausedCampaignOf, dayWords,
+  trialEndsAt, quietKind, livePausedWaiting, pausedCampaignOf, dayWords,
   FIELDS, EMAIL_CLIENT, TRIAL_DAYS, WARN_DAYS_BEFORE, QUIET_DAYS, DORMANT_DAYS, PAUSED_HOURS, LICENCE_PAGE,
 };
