@@ -68,6 +68,22 @@ Hard rules across all of it: a full piece goes to a client at most once; the ori
 ("What you've actually joined") is always first; one email a week, except two a week for the
 first four weeks after the start date (the old twice-weekly opening, kept).
 
+## One-off emails - a client's open meeting, an event
+
+Sometimes the right email for a week is not a one-pager at all - say a client is running an open
+meeting and every other client is invited. That email **replaces** the week's pick; it is not an
+extra. One email a week is the promise, and an invite is worth more that week than a one-pager -
+the one-pager simply moves to the next week.
+
+- **Pin for everyone.** On the approval screen Guy can pin a one-off email for all clients (or a
+  chosen few) for a given week. It wins as rule 2 for each of them.
+- **It goes in the ledger.** One-off sends are recorded in `series_sends` with a slug like
+  `event:<name>`, so the 6-day rule sees them and the next week carries on as normal. They never
+  count as a one-pager sent.
+- **The one exception to one-a-week:** a meeting more than a week away may get a short reminder a
+  day or two before, sent only to those who have not said yes. That reminder is the only extra
+  email the planner allows.
+
 ## The short form
 
 A reinforcement re-send is about 150-200 words: the dek, three bullets, and "read the full
@@ -93,8 +109,8 @@ first is how we find out whether the picks are any good before they reach client
 
 ## What has to exist first
 
-- **A send ledger** - a Postgres table `series_sends` (tenant, slug, form full/short, sent_at,
-  reason). This replaces `Series Sent Count` as the truth for clients; the count stays updated
+- **A send ledger** - a Postgres table `series_sends` (tenant, slug, form full/short/one-off,
+  sent_at, reason). This replaces `Series Sent Count` as the truth for clients; the count stays updated
   for the prospect drip and the board.
 - **An unsubscribe token per client.** The Clients base has none, so every client email would
   ship a dead unsubscribe link. Add the field and fill it for current clients before the first
