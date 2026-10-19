@@ -125,8 +125,8 @@ single action on this whole list.
 
 - Drip send: built, not scheduled - waiting on Guy to say go.
 - Trigger hook (pulse event → one-pager send) - not built.
-- Per-client series variation / stage-aware sequencing - not built (state fields planned in
-  the email series system).
+- Per-client series variation / stage-aware sequencing - not built. Designed 2026-10-19 as
+  the weekly client touch planner: `docs/CLIENT-TOUCH-PLANNER.md`.
 - Client pulse setup - depends on whether clients are already lead records (see gate above).
 - Graduation definition - to be agreed, then the pulse can detect relapse against it.
 - Asset-drop campaigns for clients (ledger-based "who hasn't had X yet", a chat door for
@@ -163,3 +163,6 @@ Notes conversation → exclude; the asset already sent → exclude; Cease FUP = 
   follow-up sweep. Fixed that (services/lhMessageNotes.js), multi-tenant, because it is a
   defect for every client. Everything else client-facing deferred - prove the campaign on
   Guy's own list first.
+- **2026-10-19** - For clients the series becomes a tagged pool, not a sequence. Designed the
+  weekly client touch planner (`docs/CLIENT-TOUCH-PLANNER.md`): one pick per client per week
+  from journey stop, call problems and what they have had, approved by Guy on the client board.
