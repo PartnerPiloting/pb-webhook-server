@@ -8,7 +8,7 @@
  */
 const assert = require('assert');
 const { normaliseContact, rankMatches, cleanEmail, mergeContacts } = require('../services/contactsStore');
-const { leadToContacts, messageToContacts, nameFromEmail, withTimeout, sweepMailbox, mailTimeoutFor } = require('../services/contactsSweep');
+const { leadToContacts, messageToContacts, nameFromEmail, withTimeout, sweepMailbox, mailTimeoutFor, isWeeklyRetryNight } = require('../services/contactsSweep');
 const { mailParties } = require('../services/mailProvider');
 const { shapeContact, firstPhone } = require('../routes/contactsIngestRoutes');
 const { runFindPerson, runContactsStatus, TOOL_DEFS, groupByPerson } = require('../services/wingguyContactsMcp');
@@ -252,6 +252,18 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
   });
   check('JULIAN: already failed and never worked = fail fast, not ten minutes every night', () => {
     assert.strictEqual(mailTimeoutFor({ backfill: true, triedAndFailed: true }), 120000);
+  });
+  check('ALEX: once a week a never-worked backfill gets the long fuse back, or it can never succeed', () => {
+    assert.strictEqual(mailTimeoutFor({ backfill: true, triedAndFailed: true, weeklyRetry: true }), 600000);
+    // the weekly night changes nothing for a healthy nightly read
+    assert.strictEqual(mailTimeoutFor({ weeklyRetry: true }), 120000);
+  });
+  check('the weekly retry night is Sunday in Brisbane, not UTC', () => {
+    // 2026-10-25 is a Sunday. 14:00 UTC Saturday is already Sunday 00:00 in Brisbane (UTC+10).
+    assert.strictEqual(isWeeklyRetryNight(new Date('2026-10-24T14:00:00Z')), true);
+    assert.strictEqual(isWeeklyRetryNight(new Date('2026-10-25T13:59:00Z')), true);
+    assert.strictEqual(isWeeklyRetryNight(new Date('2026-10-25T14:00:00Z')), false); // Monday in Brisbane
+    assert.strictEqual(isWeeklyRetryNight(new Date('2026-10-21T12:00:00Z')), false);
   });
   check('a nightly incremental keeps the tight bound', () => {
     assert.strictEqual(mailTimeoutFor({}), 120000);

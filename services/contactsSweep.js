@@ -173,12 +173,28 @@ const MAIL_MAX_MESSAGES = 3000;
  * How long to let a mailbox read run. Pulled out so the decision can be tested in milliseconds
  * instead of by waiting for the real fuse to burn.
  *   first read of a year of mail  -> ten minutes, or it gets killed and thrown away
- *   already failed, never worked  -> the nightly bound, so it fails fast forever after
+ *   already failed, never worked  -> the nightly bound, so it fails fast - EXCEPT once a week,
+ *                                    when it gets the long fuse again (see weeklyRetry)
  *   nightly incremental           -> the nightly bound, which is all a day of mail needs
  */
-function mailTimeoutFor({ backfill = false, full = false, triedAndFailed = false, override } = {}) {
+function mailTimeoutFor({ backfill = false, full = false, triedAndFailed = false, weeklyRetry = false, override } = {}) {
   if (override) return override;
-  return (backfill || full) && !triedAndFailed ? MAIL_BACKFILL_TIMEOUT_MS : MAIL_TIMEOUT_MS;
+  return (backfill || full) && (!triedAndFailed || weeklyRetry) ? MAIL_BACKFILL_TIMEOUT_MS : MAIL_TIMEOUT_MS;
+}
+
+/**
+ * Is tonight the night a never-worked mailbox gets its long fuse back? Sunday in Brisbane.
+ *
+ * Fail-fast after one failure (above) was written for Julian, whose IMAP cannot read a year at
+ * all. But it trapped Alex Solti (2026-10): his first backfill failed once, and from then on
+ * every night tried to read a YEAR of mail inside the two-minute nightly bound, timed out, and
+ * re-stamped the failure - "has never worked" forever, with nothing actually wrong. A weekly
+ * long attempt costs Julian ten minutes a week instead of a night, and lets a merely-unlucky
+ * first run get through.
+ */
+function isWeeklyRetryNight(now = new Date()) {
+  const day = new Intl.DateTimeFormat('en-AU', { weekday: 'short', timeZone: 'Australia/Brisbane' }).format(now);
+  return day === 'Sun';
 }
 
 /** Reject after ms rather than letting a stuck provider hold the whole sweep. */
@@ -267,8 +283,11 @@ async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN
   // seconds-long sweep into a ten-minute one forever. Once a failure is on the record with no
   // success behind it, later attempts fail fast on the nightly bound - still tried, still
   // recorded, still reported by the staleness alert, just not at the cost of everyone's sweep.
+  //
+  // Except once a week: a backfill that failed once for a passing reason can never succeed
+  // on the nightly bound, so Sunday gives it the long fuse again (isWeeklyRetryNight).
   const triedAndFailed = !!state.lastErrorAt && !state.lastRunAt;
-  const limitMs = mailTimeoutFor({ backfill, full, triedAndFailed, override: timeoutMs });
+  const limitMs = mailTimeoutFor({ backfill, full, triedAndFailed, weeklyRetry: isWeeklyRetryNight(), override: timeoutMs });
 
   let r;
   try {
@@ -363,5 +382,5 @@ async function sweepAll({ full = false, onlyClientIds = null, clientService, ski
 
 module.exports = {
   sweepLeads, sweepCommsLog, sweepMailbox, sweepTenant, sweepAll,
-  leadToContacts, messageToContacts, nameFromEmail, splitAltEmails, fmtDay, withTimeout, mailTimeoutFor,
+  leadToContacts, messageToContacts, nameFromEmail, splitAltEmails, fmtDay, withTimeout, mailTimeoutFor, isWeeklyRetryNight,
 };
