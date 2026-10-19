@@ -276,7 +276,7 @@ async function runCheckTime({ date, time, side, lead_location, duration_mins } =
   };
 }
 
-async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email, lead_linkedin, lead_location, confirm_double_book, meeting_link } = {}, tenant = TENANT) {
+async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email, lead_linkedin, lead_location, confirm_double_book, confirm_email, meeting_link } = {}, tenant = TENANT) {
   const name = String(lead_name || '').trim();
   if (!name) return { text: 'Error: lead_name is required (it titles the invite and matches any HOLD events).', isError: true };
   const linkOverride = String(meeting_link || '').trim();
@@ -289,25 +289,39 @@ async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email,
   const coach = await clientService.getClientById(tenant);
   if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
 
-  // Resolve the invite email: an explicit lead_email wins; otherwise the CRM by name.
-  let email = String(lead_email || '').trim();
-  let emailSource = 'given';
+  // The invite goes to the address on the lead's RECORD, never one the assistant typed (Craig Carolan,
+  // 2026-10-19: the chat passed a re-typed scraped address, "iscraig.carolan@...", so the invite
+  // bounced while the LinkedIn message to Craig showed the right one). lead_email is now only a
+  // CHECK against the record. If it differs, nothing is booked: the address is filed first (after the
+  // human confirms it), then booked - so the record, the message and the invite always agree. Only a
+  // lead with NO email on record is booked on a given address, and the reply says to file it.
+  const given = String(lead_email || '').trim();
   let linkedin = String(lead_linkedin || '').trim();
-  let leadLocationFromCrm = '';
-  if (!email) {
-    const found = await lookupLeadContactByName(name, { clientId: tenant });
-    if (!found.lead || !found.lead.email) {
-      const alts = (found.matches || []).map((m) => m.leadName).filter(Boolean).slice(0, 5);
+  const found = await lookupLeadContactByName(name, { clientId: tenant });
+  const onRecord = found.lead && found.lead.email ? String(found.lead.email).trim() : '';
+  let email;
+  let emailSource;
+  if (onRecord) {
+    if (given && given.toLowerCase() !== onRecord.toLowerCase()) {
       return {
-        text: `No CRM email found for "${name}"${alts.length ? ` (close matches: ${alts.join(', ')})` : ''}. Ask the coach for the lead's email (or fix the name) — the invite needs a guest address.`,
+        text: `NOT booked. The CRM record for ${found.lead.leadName} has "${onRecord}" as their email; you passed "${given}". The invite only ever goes to the address on the record, so that the record, the message to the lead and the invite always agree. If the lead gave "${given}" in the thread and the human confirms it, file it FIRST with wingguy_update_lead (email "${given}"), then call wingguy_book_meeting again WITHOUT lead_email.`,
         isError: true,
       };
     }
-    email = found.lead.email;
+    email = onRecord;
     emailSource = `CRM (${found.lead.leadName})`;
-    if (!linkedin) linkedin = found.lead.linkedinProfileUrl || '';
-    leadLocationFromCrm = found.lead.location || '';
+  } else if (given) {
+    email = given;
+    emailSource = 'given - the CRM record has no email; file it with wingguy_update_lead so their replies match';
+  } else {
+    const alts = (found.matches || []).map((m) => m.leadName).filter(Boolean).slice(0, 5);
+    return {
+      text: `No CRM email found for "${name}"${alts.length ? ` (close matches: ${alts.join(', ')})` : ''}. Ask the coach for the lead's email (or fix the name) — the invite needs a guest address.`,
+      isError: true,
+    };
   }
+  if (found.lead && !linkedin) linkedin = found.lead.linkedinProfileUrl || '';
+  const leadLocationFromCrm = (found.lead && found.lead.location) || '';
 
   const result = await wingguyCalendar.bookMeetingGuarded(coach, {
     startISO: start_iso,
@@ -316,23 +330,19 @@ async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email,
     leadName: name,
     leadLinkedIn: linkedin,
     confirmDoubleBook: !!confirm_double_book,
+    confirmEmail: !!confirm_email,
     meetingLink: linkOverride || undefined,
   });
-  if (!result.ok) return { text: `NOT booked. ${result.error}`, isError: true };
+  if (!result.ok) return { text: /^NOT booked\./.test(result.error || '') ? result.error : `NOT booked. ${result.error}`, isError: true };
 
   // Both clocks worked out HERE, for the meeting's own date (2026-10-05): the old closing line asked
   // the chat to do the lead-side conversion itself — the one step code exists to keep away from it.
-  let leadLocation = String(lead_location || '').trim() || leadLocationFromCrm;
-  if (!leadLocation && emailSource === 'given') {
-    try {
-      const found = await lookupLeadContactByName(name, { clientId: tenant });
-      leadLocation = (found.lead && found.lead.location) || '';
-    } catch (_) { /* no location is reported as unknown below, never guessed */ }
-  }
+  const leadLocation = String(lead_location || '').trim() || leadLocationFromCrm;
   const coachTz = coach.timezone || 'Australia/Brisbane';
   return {
     text:
       `Booked: "${result.title}" — ${result.durationMins} mins, invite emailed to ${email} [email source: ${emailSource}].\n` +
+      `When you tell the human or the lead where the invite went, quote that address EXACTLY as written here - never re-type it from memory.\n` +
       `WHEN: ${clocksLine(result.start, coachTz, leadTzFor(leadLocation))}\n` +
       (linkOverride ? `Invite carries the one-off ${wingguyCalendar.meetingPlatformLabel(linkOverride)} link (${linkOverride}) instead of the coach's standing link — confirm that's the link the human meant.\n` : '') +
       `Restate the WHEN line to the human exactly as written (it was worked out in code for this date) — never convert a time yourself — so a wrong-hour booking is caught immediately.`,
@@ -602,14 +612,15 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_book_meeting',
-    description: 'Create the real calendar invite through the coach\'s proven booking machinery (standing Zoom room, his invite layout, reminders, guest emailed automatically). ALWAYS use this — never raw calendar event creation — to book a lead. ONLY call after the human explicitly confirmed the exact date+time in chat. Pass a startISO from wingguy_check_availability (a slot\'s "time") or wingguy_check_time — never hand-built. Refuses clashing times (including slots HELD for another lead) unless confirm_double_book is true after the human\'s explicit OK. Looks up the invite email in the CRM by lead_name unless lead_email is given. If the lead asked to meet on a different platform (Teams, Meet, etc), pass the link the human pasted as meeting_link — see that parameter\'s rules.',
+    description: 'Create the real calendar invite through the coach\'s proven booking machinery (standing Zoom room, his invite layout, reminders, guest emailed automatically). ALWAYS use this — never raw calendar event creation — to book a lead. ONLY call after the human explicitly confirmed the exact date+time in chat. Pass a startISO from wingguy_check_availability (a slot\'s "time") or wingguy_check_time — never hand-built. Refuses clashing times (including slots HELD for another lead) unless confirm_double_book is true after the human\'s explicit OK. The invite ALWAYS goes to the email on the lead\'s CRM record (looked up by lead_name) - never to an address you type. If the lead gave a different address in the thread, file it with wingguy_update_lead FIRST (after the human confirms it), then book. The address is also checked before sending: text glued to its front ("iscraig.carolan@") or a mailbox the receiving server says does not exist stops the booking so you can ask the human - only confirm_email:true after their explicit "yes, that exact address" sends anyway. If the lead asked to meet on a different platform (Teams, Meet, etc), pass the link the human pasted as meeting_link — see that parameter\'s rules.',
     zodSchema: {
       start_iso: z.string().describe('Meeting start ISO — from wingguy_check_availability (slot "time") or wingguy_check_time (startISO). Never build this yourself.'),
       lead_name: z.string().describe('The lead\'s full name as in the CRM — titles the invite and drives the CRM email lookup'),
-      lead_email: z.string().optional().describe('Invite email. Omit to look it up in the CRM by lead_name; pass explicitly when the lead gave a different address in the thread.'),
+      lead_email: z.string().optional().describe('Normally OMIT - the invite goes to the email on the lead\'s CRM record. If you pass one it is only CHECKED against the record: a different address stops the booking and tells you to file it with wingguy_update_lead first. It is used as the invite address only when the record has no email at all.'),
       lead_linkedin: z.string().optional().describe('The lead\'s PUBLIC LinkedIn URL for the invite description (looked up from CRM if omitted)'),
       duration_mins: z.number().optional().describe('Meeting length in minutes; omit for the coach\'s default'),
       confirm_double_book: z.boolean().optional().describe('Set true ONLY after the human has explicitly OK\'d booking over a reported clash. Normally omit — the tool refuses clashes and tells you what they are.'),
+      confirm_email: z.boolean().optional().describe('Set true ONLY after the tool refused the address (glued text, or a mailbox the mail server says does not exist) AND the human has explicitly confirmed that exact address. Normally omit.'),
       meeting_link: z.string().optional().describe(MEETING_LINK_DESC),
       lead_location: z.string().optional().describe(BOOK_LOCATION_DESC),
     },
@@ -618,10 +629,11 @@ const TOOL_DEFS = [
       properties: {
         start_iso: { type: 'string', description: 'Meeting start ISO — from wingguy_check_availability (slot "time") or wingguy_check_time (startISO). Never build this yourself.' },
         lead_name: { type: 'string', description: 'The lead\'s full name as in the CRM — titles the invite and drives the CRM email lookup' },
-        lead_email: { type: 'string', description: 'Invite email. Omit to look it up in the CRM by lead_name; pass explicitly when the lead gave a different address in the thread.' },
+        lead_email: { type: 'string', description: 'Normally OMIT - the invite goes to the email on the lead\'s CRM record. If you pass one it is only CHECKED against the record: a different address stops the booking and tells you to file it with wingguy_update_lead first. It is used as the invite address only when the record has no email at all.' },
         lead_linkedin: { type: 'string', description: 'The lead\'s PUBLIC LinkedIn URL for the invite description (looked up from CRM if omitted)' },
         duration_mins: { type: 'number', description: 'Meeting length in minutes; omit for the coach\'s default' },
         confirm_double_book: { type: 'boolean', description: 'Set true ONLY after the human has explicitly OK\'d booking over a reported clash. Normally omit — the tool refuses clashes and tells you what they are.' },
+        confirm_email: { type: 'boolean', description: 'Set true ONLY after the tool refused the address (glued text, or a mailbox the mail server says does not exist) AND the human has explicitly confirmed that exact address. Normally omit.' },
         meeting_link: { type: 'string', description: MEETING_LINK_DESC },
         lead_location: { type: 'string', description: BOOK_LOCATION_DESC },
       },

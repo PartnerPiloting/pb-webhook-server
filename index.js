@@ -1972,6 +1972,16 @@ try {
     moduleLogger.error('index.js: Error starting capture release sweep', e.message, e.stack);
 }
 
+// Bounce watch: a bounced email (invite to a mailbox that does not exist) reaches the coach within
+// minutes, lead named, instead of sitting unread in their inbox (Craig Carolan, 2026-10-19).
+try {
+    const { startBounceWatch } = require('./services/bounceWatch.js');
+    startBounceWatch();
+    moduleLogger.info('index.js: Bounce watch init');
+} catch (e) {
+    moduleLogger.error('index.js: Error starting bounce watch', e.message, e.stack);
+}
+
 // Wingguy monitor: daily 7am-Brisbane self-check (landmark misses + profile-blind draft rate) that
 // emails Guy ONLY when something breaches, plus a Monday all-green heartbeat. WINGGUY_MONITOR=off kills it.
 try {

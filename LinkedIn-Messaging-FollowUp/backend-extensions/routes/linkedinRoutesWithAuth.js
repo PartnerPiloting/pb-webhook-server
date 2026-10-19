@@ -6,6 +6,7 @@ const { stripCredentialSuffixes } = require('../../../utils/nameNormalizer');
 const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../../../utils/linkedinCanonical');
 const { isCoachOwnEmail } = require('../../../utils/coachOwnEmails');
 const { trimRunOnEmail } = require('../../../utils/runOnEmail');
+const { gluedPrefix } = require('../../../utils/emailGluedPrefix');
 const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
@@ -2446,7 +2447,9 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     let parsedResult = null;
     let noteUpdateResult = null;
     let autoCease = null;
-    
+    let emailFlag = null;   // an address refused because text was glued to its front (reported, not saved)
+    let gluedFlag = null;
+
     // Process notes content if provided
     // Full replacement mode - replaceNotes takes precedence
     if (replaceNotes !== undefined) {
@@ -2546,6 +2549,12 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     // address - so it landed on Guy's record and Wingguy treated Guy as Matthew. Left untouched instead.
     if (email !== undefined && isCoachOwnEmail(req.client, email)) {
       logger.warn(`LinkedIn Routes: quick-update refused ${req.client.clientId}'s own email for lead ${leadId}`);
+    } else if (email !== undefined && (gluedFlag = gluedPrefix(trimRunOnEmail(email), `${currentLead.fields['First Name'] || ''} ${currentLead.fields['Last Name'] || ''}`)).suspect) {
+      // Text glued onto the FRONT of the address (Craig Carolan, 2026-10-19: "iscraig.carolan@..."
+      // from a lost line break was saved as his primary and the invite bounced). Not written - the
+      // panel shows the coach both forms and asks. Done here so every installed extension is covered.
+      emailFlag = { given: trimRunOnEmail(email), prefix: gluedFlag.prefix, suggested: gluedFlag.suggested };
+      logger.warn(`LinkedIn Routes: quick-update refused glued email "${emailFlag.given}" for lead ${leadId} (probably ${emailFlag.suggested})`);
     } else if (email !== undefined) {
       // The extension reads this from flattened LinkedIn text - cut any sentence glued onto the end
       // ("gmail.comLooking"). Done here too so every installed extension version is covered.
@@ -2586,6 +2595,8 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     
     // Only update if there are changes
     if (Object.keys(updates).length === 0) {
+      // An email-only save that was refused for glued text is not "nothing": the caller needs the flag.
+      if (emailFlag) return res.json({ success: false, emailFlag, lead: { id: currentLead.id, email: currentLead.fields['Email'] || '' } });
       return res.status(400).json({ error: 'No updates provided' });
     }
     
@@ -2631,6 +2642,7 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
         previousLineCount: noteUpdateResult.lineCount?.old || 0,
         newLineCount: noteUpdateResult.lineCount?.new || 0
       } : null,
+      emailFlag,
       lead: {
         id: updatedLead.id,
         firstName: updatedLead.fields['First Name'] || '',

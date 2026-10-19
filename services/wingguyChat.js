@@ -68,6 +68,7 @@ const AGENT_TOOLS = [
         startISO: { type: 'string', description: 'The meeting start as an ISO timestamp — a slot\'s "time" from check_availability or "startISO" from check_time.' },
         durationMins: { type: 'number', description: 'Optional meeting length in minutes; omit to use Guy\'s default.' },
         confirmDoubleBook: { type: 'boolean', description: 'Set true ONLY after Guy has explicitly OK\'d booking over an existing meeting. Leave false/omitted normally — the tool will refuse a clashing time and tell you what it clashes with so you can ask Guy first.' },
+        confirmEmail: { type: 'boolean', description: 'Set true ONLY after the tool refused the lead\'s email address (text glued to its front, or a mailbox the mail server says does not exist) AND Guy has explicitly confirmed that exact address. Normally omit.' },
         meetingLink: { type: 'string', description: 'ONE-OFF meeting link for THIS invite only ("book it on this link" / the lead asked for Teams instead of Zoom). Must be a full http(s) link GUY pasted in this conversation OR one of Guy\'s own standing links from his asset library (e.g. teams_room) that he has said yes to using — NEVER invent one, never use another lead\'s link. If Guy names a platform and no stored link for it exists, ask him for the link. Omit for Guy\'s standing meeting room (the normal case).' },
       },
       required: ['startISO'],
@@ -157,6 +158,7 @@ const AGENT_TOOLS = [
       properties: {
         primaryEmail: { type: 'string', description: 'The address to make this lead\'s PRIMARY email (the invite address). The current primary is moved into their other emails.' },
         otherEmails: { type: 'array', items: { type: 'string' }, description: 'Extra addresses to file under this lead\'s other/alternate emails (without changing the primary).' },
+        confirmOddShape: { type: 'boolean', description: 'Set true ONLY after the tool refused primaryEmail because text looked glued to its front (e.g. "iscraig.carolan@") AND Guy has explicitly confirmed that exact address. Normally omit.' },
       },
     },
   },
@@ -1542,7 +1544,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       if (!primaryEmail && !otherEmails.length) {
         return { ok: false, error: 'Nothing to update — pass primaryEmail and/or otherEmails.' };
       }
-      const r = await updateLeadEmails(airtableBaseId, currentLeadRecordId, { setPrimary: primaryEmail, addOthers: otherEmails, ownEmails: coachOwnEmails(coach) });
+      const r = await updateLeadEmails(airtableBaseId, currentLeadRecordId, { setPrimary: primaryEmail, addOthers: otherEmails, ownEmails: coachOwnEmails(coach), confirmOddShape: !!(input && input.confirmOddShape) });
       // If the primary changed, the calendar invite should now go to the new address (this turn onward).
       if (r && r.ok && r.changed && r.primaryEmail) currentLeadEmail = r.primaryEmail;
       return r;
@@ -1559,6 +1561,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         leadName: profile.name || '',
         leadLinkedIn: profile.profileUrl || '',
         confirmDoubleBook: input.confirmDoubleBook,
+        confirmEmail: !!input.confirmEmail,
         meetingLink: (input.meetingLink && String(input.meetingLink).trim()) || undefined,
       }, { getClashesForISO, createBookingEvent: bookMeeting, deleteOfferHolds });
       if (!result.ok) return result;
