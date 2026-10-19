@@ -107,6 +107,18 @@ check('four days, only paused campaigns have people - kind "paused"', () => {
   assert.equal(step(report({ last_invite_at: daysAgo(5), waiting_running: 0, waiting_paused: 449 })).kind, 'paused');
 });
 
+check('Julian 19 Oct: live campaigns empty, 35 left in a long-parked paused one - kind "empty", not "paused"', () => {
+  const r = report({ last_invite_at: daysAgo(4), waiting_running: 0, waiting_paused: 35,
+    paused_campaigns: [{ id: 3, name: 'Old search', waiting: 35, last_invite_at: daysAgo(60) }] });
+  assert.equal(step(r).kind, 'empty');
+});
+
+check('a paused campaign that sent recently still makes it "paused"', () => {
+  const r = report({ last_invite_at: daysAgo(4), waiting_running: 0, waiting_paused: 35,
+    paused_campaigns: [{ id: 40, name: 'Live', waiting: 35, last_invite_at: daysAgo(4) }] });
+  assert.equal(step(r).kind, 'paused');
+});
+
 check('four days, nobody left anywhere - kind "empty"', () => {
   assert.equal(step(report({ last_invite_at: daysAgo(5), waiting_running: 0, waiting_paused: 0 })).kind, 'empty');
 });
