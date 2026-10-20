@@ -26,6 +26,7 @@ const NON_PIECE_FILES = new Set([
   'SERIES-ARC.md',
   'PROSPECT-SERIES-PLAN.md',
   'SERIES-WEBSITE-PASS.md',
+  'IMPROVEMENTS.md',
 ]);
 
 // ---- markdown -> HTML processor (lazy, cached) ----

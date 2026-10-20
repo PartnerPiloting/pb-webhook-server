@@ -1,137 +1,235 @@
 # The Weekly Client Touch Planner
 
-A design, not yet built. Internal only. Written 19 October 2026 from Guy's direction the same
-day: for clients, the one-pager series stops being a fixed sequence and becomes a **tagged
-pool** that a weekly planner picks from, per client. Prospects keep the fixed 18-piece drip -
-nothing here changes them.
-
-Parent strategy: `docs/CLIENT-ENGAGEMENT-STRATEGY.md` (mechanism 3, "sequence one-pagers to
-where the client is").
+A design, not yet built. Internal only. First written 19 October 2026; rewritten 20 October 2026
+after a long working session with Guy (walk-throughs on Steve Nelson, Rick Wong and Mehnaaz
+Ahmed). Parent strategy: `docs/CLIENT-ENGAGEMENT-STRATEGY.md`.
 
 ## What it does
 
-Every Monday morning it looks at each running client and picks **one thing to send them this
-week - or nothing**. Guy sees the whole week on one screen, each pick with a one-line reason
-("stuck on the calendar stop for three weeks"), and can approve, swap or skip any row. On
-approve, the emails go out from Guy at knowaguy.
+**Every client gets one email from Guy every week - or, deliberately, nothing that week.** One
+system decides, for every client, every Monday. It replaces the separate ways Guy touches clients
+today:
 
-The point: the right piece lands the week it is useful, not when a counter says it is due. A
-client who is stuck connecting their calendar gets the piece that makes calendar matter; a
-client who just had a call where a misconception came up gets the piece that answers it.
+- the one-pager drip as a fixed sequence (for clients - it was never switched on anyway)
+- habit emails written and scheduled by hand in Gmail
+- setup to-do emails between onboarding sessions (built by hand per client, e.g. a scheduled
+  task for Mehnaaz)
+- one-off emails sent ad hoc (a client's open meeting, an event)
+- the weekly call as the default touch - "time for a call" becomes one of the planner's picks
 
-## What it reads (all of it already exists)
+Not touched: the prospect drip (18 pieces, people who are not clients), the Mindset Mastery
+newsletter (GMass), and Wingguy's follow-up queue (that is clients touching their own contacts).
 
-Everything is derived live at planning time, the same rule as the client board and the
-journey - no stored stage that can drift.
+## Each email = a personal opening + an approved body
 
-| Signal | Where it comes from today |
-| --- | --- |
-| Who is in | Clients base: `Status` = Active, `Email Series Start Date` set and not in the future, `Series Unsubscribed` not ticked, not in the board's paused group |
-| Where they are on the journey | `services/clientJourney.js` - the eight stops and which one is `current` |
-| What they have not used | the same journey statuses (todo / started), plus last use from `wingguy_learning_events` |
-| When they last had a call | the board's last session (recorder filing or past calendar match, `services/clientBoardService.js`) |
-| What they have already had | **new** - a send ledger (below). `Series Sent Count` cannot say *which* pieces |
+- **The opening** - one to three sentences written fresh for that client, from their calls,
+  emails, journey stage and special circumstances. "You've seen this from the receiving end - I
+  introduced you to Roland, and to Brad today."
+- **The body** - something Guy has already approved: a one-pager, a habit email, a setup step,
+  a one-off. The planner chooses it; it is never written from scratch each week.
 
-## What the pieces need - tags
+Why: it goes out in Guy's name, so he must recognise what was sent; a system writing whole
+emails gets facts wrong more often (Steve's habit email claimed invitations were going out when
+they were not - and Guy wrote that one); and "AI sounds like AI" is the objection Guy sells
+against. Whole fresh emails can come later, for specific situations, once trusted.
 
-Each piece in `content/one-pagers/*.md` gets four new frontmatter fields. Guy reviews the tags
-once, as one table, before anything is built on them.
+## The kinds of email it chooses from
 
-| Tag | Values | What the planner does with it |
+| Kind | What it is | When it is eligible |
 | --- | --- | --- |
-| `kind` | `why` / `mindset` / `how` | Keeps the mix varied; WHY = the current one-pagers, MINDSET = Beth Berghan FORM in Guy's words (none written yet), HOW = feature pieces |
-| `stage` | one or more journey stop keys (`claude`, `reconnect`, `voice`, `linkedin`, `calendar`, `calls`, `rhythm`, `newpeople`) or `any` | Matches a piece to the stop a client is stuck on |
-| `problem` | a short fixed list, e.g. `expects-fast-results`, `chasing-strangers`, `skips-follow-up`, `ai-sounds-like-ai`, `not-recording-calls` | Matches a piece to a misconception Guy flagged on a call |
-| `reinforce` | `yes` / `no` | Whether a short re-send is allowed later |
+| **why** | the current one-pagers | any time after onboarding |
+| **mindset** | Guy's own mindset pieces (the first is the energy piece) | any time after onboarding |
+| **how** | feature and craft pieces | when they match where the client is stuck |
+| **habit** | the one-prompt habit emails ("A few minutes a morning") | only once the client's Today tab has records, and only claiming what is proven for that client |
+| **setup step** | the next small to-do during onboarding | when the previous step is done; during onboarding only |
+| **one-off** | an event, a client's open meeting | the week Guy pins it |
+| **personal note** | Guy writes it himself ("ask how the call with John went") | Guy's choice |
+| **time for a call** | a flag to Guy, not an email | client stuck, drifting, or long since the last call |
+| **nothing** | a deliberate quiet week | always allowed |
 
-The current client run order in `config/onePagerSeriesManifest.js` stays, as the **default
-order** - the planner falls back to it when no signal says otherwise.
+## Who gets what, when
 
-## How it picks - in this order, first match wins
+**During onboarding** (the client board's onboarding group - until Guy marks them Graduated):
+no scheduled emails. Only setup steps and emails set off by an event (below), at most one a week.
+The session is the touch. Note: "a week without a session" is the wrong test - Mehnaaz's
+sessions are three weeks apart.
 
-1. **Not this week.** Skip the client if they were sent anything in the last 6 days, or Guy
-   has marked them skip-this-week.
-2. **Guy pinned something.** A piece Guy pinned for this client (from a call, or on the
-   approval screen) goes first.
-3. **A call problem.** A call in the last 10 days tagged with a `problem` → the unsent piece
-   with that problem tag. (Version 2 - needs a way to tag a call; until then Guy pins.)
-4. **Stuck on a stop.** The current journey stop has been current for 14+ days → the unsent
-   piece whose `stage` matches it, HOW pieces first.
-5. **Mindset rhythm.** Every fourth send is a MINDSET piece, when one exists. An empty shelf
-   is simply skipped.
-6. **Next in the default order.** The first piece in the client run they have not had.
-7. **Reinforce.** All full pieces sent → a short re-send of a `reinforce: yes` piece not sent
-   in the last 8 weeks, preferring one that matches the current stop.
-8. **Nothing.** If nothing qualifies, nothing is sent. A quiet week is fine.
+**The opening run starts the week the client's first invitations actually go out** - the
+record's "Last Invite Sent" fills in. That is when the plumbing turns into real conversations.
+Not "the machine says IDLE" - a paused campaign also says IDLE (Steve, 19 Oct). Guy can start it
+earlier (Email Series Start Date, or pin it) or hold it.
 
-Hard rules across all of it: a full piece goes to a client at most once; the orientation
-("What you've actually joined") is always first; one email a week, except two a week for the
-first four weeks after the start date (the old twice-weekly opening, kept).
+**The opening run** (discovery calls first - "that's where everything starts"):
 
-## One-off emails - a client's open meeting, an event
+1. **Begin with the end in mind** - what the calls are for, how many a week, work backwards.
+2. **The energy piece** - what you bring to the table.
+3. **What can you discover?**
+4. **What to say in the discovery call.**
 
-Sometimes the right email for a week is not a one-pager at all - say a client is running an open
-meeting and every other client is invited. That email **replaces** the week's pick; it is not an
-extra. One email a week is the promise, and an invite is worth more that week than a one-pager -
-the one-pager simply moves to the next week.
+Plus the busy-weeks piece whenever a client goes quiet or Guy notes they are flat out.
 
-- **Pin for everyone.** On the approval screen Guy can pin a one-off email for all clients (or a
-  chosen few) for a given week. It wins as rule 2 for each of them.
-- **It goes in the ledger.** One-off sends are recorded in `series_sends` with a slug like
-  `event:<name>`, so the 6-day rule sees them and the next week carries on as normal. They never
-  count as a one-pager sent.
-- **The one exception to one-a-week:** a meeting more than a week away may get a short reminder a
-  day or two before, sent only to those who have not said yes. That reminder is the only extra
-  email the planner allows.
+**After the opening run**, each Monday, first match wins:
 
-## The short form
+1. **Not this week** - Guy personally wrote to them in the last 6 days about something
+   substantial (advice, an introduction, a follow-up after a call), or had a session with them,
+   or marked them skip. Admin-only emails (billing, rescheduling, a quick link) do not count.
+2. **Guy pinned something** - for this client, or for everyone this week (a one-off).
+3. **An event fired** - see below.
+4. **A call problem** - a recent call showed a misconception a piece answers.
+5. **Stuck on a journey stop** for 14+ days - a piece that helps with that stop, how-pieces first.
+6. **Mindset rhythm** - every fourth email is a mindset piece, when one exists.
+7. **Next in the default order** - the client run in `config/onePagerSeriesManifest.js`.
+8. **Reinforce** - everything sent: a short re-send of an earlier piece (not within 8 weeks).
+9. **Nothing.**
 
-A reinforcement re-send is about 150-200 words: the dek, three bullets, and "read the full
-piece" linking to the library page. This is also Rick Wong's ask (brief bulleted emails with a
-link to the long version). Each piece gets a `short:` frontmatter block with the bullets,
-written once by hand - not generated on the fly.
+**Limits:** at most two emails a week from Guy to a client, a habit email taking the first slot
+(Guy's rule, 8 Oct). A full piece goes to a client once. Never stack two on the same day.
 
-## The craft rule
+## Emails set off by something that happened
 
-Every email must read as the next instalment of the series. Never "we noticed you haven't
-connected your calendar". The reason line is for Guy's screen only and never appears in the
-email.
+The best time for an email is just before the client needs it - not week three. Examples:
 
-## Guy's screen
+- **First discovery call booked** -> "What can you discover?" or "What to say in the discovery
+  call" the day before. (Check first that the system reliably matches a calendar meeting to a
+  lead; if not, start with "Wingguy booked a meeting", which it definitely knows.)
+- **First lead says yes** -> the "book it" email.
+- **First introduction made** -> introductions-that-land.
+- **Previous setup step done** -> the next setup step.
 
-A "This week's touches" section on the client board. One row per client: name, the pick, the
-reason, a swap dropdown (every eligible piece), skip, and pin-for-next-week. One "Send
-approved" button.
+These may go during onboarding (at most one a week). If a client has not booked a call within a
+few weeks of the opening run, the discovery-call pieces come up in normal order anyway.
 
-**Recommendation: Guy approves every week for the first month,** then it switches to send
-automatically with a Monday preview email he can veto until Tuesday 9am. Approving by hand
-first is how we find out whether the picks are any good before they reach clients unseen.
+## How to write to each person - the client note
+
+Each client has a short note on their record that Guy keeps. It says three things:
+
+1. **The frame - set per topic, not per person.** *Teach* or *recognise*. Steve is a recognise
+   on selling (25 years in sales) and a teach on being a connector (a self-rated LinkedIn
+   "beginner"). Rick is a recognise on everything relationship ("We work on referrals").
+   Recognise = "You'll know better than most..."; teach = "here's how".
+2. **The length** - full piece, or short (dek + three bullets + "read the full piece"). Rick
+   asked for short in so many words.
+3. **What to include or avoid** - optional extras (a how-to link, the button-level mechanics),
+   and what lands badly (Rick: calendar links are "lazy", no self-promotion; Steve: no generic
+   networking lines - his test is "would I send that to the CEO of Bunnings?").
+
+**The note holds lasting things only.** Background, format and what to avoid hold for months.
+Where the client is right now (campaign running, calls booked) goes stale in a week, so the
+planner reads that live every Monday, never from the note.
+
+**Drafted from the evidence, approved by Guy.** The system drafts each note from the client's
+call transcripts and emails, with evidence and a confidence for every line; Guy approves or
+corrects it once (about a minute a client). Tested blind on 20 Oct for Rick and Steve - both
+came out close to what Guy knows. Limits: most recordings are Guy's setup sessions, which show
+little of how someone is with a new person; speaker labels in older transcripts are sometimes
+wrong. Updates are proposed when something changes, never applied silently.
+
+**Per-client extras, same body.** The idea is in every client's email ("connect before you ask
+anything"); only the optional link or the how-to varies. Rule: at most one "more on this" link
+per email, and only to a short how-to piece. A piece big enough to be an email in its own right
+is sent, never linked.
+
+## Where Guy's input goes - nothing is lost
+
+Guy thinks out loud and the improvements keep coming. Each kind of input has one home, and
+Claude files it the moment he says it - he never has to say "save this".
+
+| What Guy says | Where it goes | Who reads it |
+| --- | --- | --- |
+| An improvement to an email ("book the first call with another straight after it") | `content/one-pagers/IMPROVEMENTS.md`, under that piece | whoever next revises the piece - read first, worked in, Guy approves, closed |
+| An idea for a new email ("what energy do you bring?") | the same file, under **New pieces** | the same |
+| Something about one client ("Steve's away until the 3rd", "invite everyone to Rick's meeting") | that client's note, or a pin on the Monday screen | the planner, every Monday |
+| A rule about how the weekly emails work ("one link max", "skip if I've written to them") | this document | whoever builds or changes the planner |
+| A business idea unrelated to the series | Guy's `ideas.md` | Guy |
+
+**What makes it hold:**
+
+- **Folded in, not just filed.** The Monday screen shows "3 improvements waiting on What to say
+  in the discovery call", so the list does not depend on someone remembering to look.
+- **Calls feed it too.** A weekly sweep of Guy's call transcripts proposes items ("on your call
+  with Mehnaaz you said X - add it?"). Proposals only; Guy says yes. (Not built.)
+- **Client replies feed it.** "I didn't get this bit" is a gap in that piece.
+- **Earlier recipients are not left behind.** An important improvement can reach clients who
+  got the older version as a short "one more thing on discovery calls" (the reinforce kind).
+- **Don't let it hold up sending.** A client who got last month's version has lost nothing.
+  Send the good version now; send the better one to the next person.
+
+**⚠ The gap still open: capture away from the laptop.** Filing works when Guy says it in Claude
+Code on his laptop, where the project lives. Ideas said in Claude.ai on his phone do not reach
+these files. Fix: a small Wingguy tool ("note for the series: ...") that writes the idea into
+the system from any chat, which a session on the laptop then files into the right home. Until
+that exists, say it on the laptop.
+
+## When a call was not recorded
+
+Some calls have no transcript (Steve, 20 Oct: Fathom stopped at the previous guest's goodbye and
+never recorded him). The planner must not then think the client has not had a call:
+
+- **Count the call from the calendar** - an accepted event in the slot is a session that happened.
+- **Let Guy add a line or two after any unrecorded call** ("pressed Start, wants the Brad
+  intro"), into the same record the planner reads. The import tool covers a recording that
+  turns up later.
+
+## The craft rules
+
+- Every email reads as a next instalment, never "we noticed you haven't...". The reason line on
+  Guy's screen never appears in the email.
+- Helpful, never watched: "following up from our call" yes; quoting a client's own leads' emails
+  back to them, never.
+- Facts are checked when the email is sent, not when it was written. "Your invitations are going
+  out" appears only if they are.
+- The series says what to do and the words to use; button-level mechanics only for clients
+  whose note says they need them. When in doubt, leave it out - a stuck client asks; a client
+  who feels babysat stops reading.
+
+## Guy's Monday screen
+
+A section on the client board. One row per client: the pick (or "nothing this week"), the
+one-line reason, the email with its personal opening, and buttons to approve, edit, swap, skip
+or pin for next week. "Pin for everyone this week" for one-offs. One "Send approved" button.
+Also on the screen: onboarding clients with no next session booked, or an invite not accepted
+within a week, and the waiting improvements count per piece.
+
+**First month: Guy approves every email.** After that it sends on its own with a Monday preview
+he can veto until Tuesday 9am. **When Guy is away** (Thailand, soon): approve the next two weeks
+before leaving, or switch to send-with-veto from his phone for that stretch.
 
 ## What has to exist first
 
-- **A send ledger** - a Postgres table `series_sends` (tenant, slug, form full/short/one-off,
-  sent_at, reason). This replaces `Series Sent Count` as the truth for clients; the count stays updated
-  for the prospect drip and the board.
-- **An unsubscribe token per client.** The Clients base has none, so every client email would
-  ship a dead unsubscribe link. Add the field and fill it for current clients before the first
-  send.
-- **The drip engine learning the client audience.** `services/seriesDrip.js` is hardcoded to
-  prospects and reads website signups. The planner takes over the "what to send" half for
-  clients; the existing build → send → mark half is reused.
+- **A record of every email each client has had** - one-pagers, habit, setup, one-offs and Guy's
+  own substantial emails - so nothing repeats and the skip rule works. A Postgres table
+  (tenant, what, form full/short/one-off, sent_at, reason). `Series Sent Count` cannot say which.
+- **A working unsubscribe link per client.** The Clients base has no token, so every client
+  email would ship a dead link.
+- **The right address for each client.** Rick's mail all comes from rwong@salesxceleration.com,
+  not the address on file; that inbox's filter rewrites links.
+- **The real "invitations going out" signal** - fix the journey, which counts a paused machine
+  (IDLE) as leads arriving.
+- **Labels on every piece** - kind, journey stop(s), problem, can-be-re-sent - reviewed by Guy
+  in one table. The labelling also shows empty shelves (nothing yet on the voice stop or on
+  recording calls).
+- **The drip engine learning clients.** `services/seriesDrip.js` is hardcoded to prospects; the
+  planner takes over "what to send", and the existing build -> send -> mark is reused.
 
 ## Build order
 
-1. Tag the 23 client pieces; Guy reviews the tag table.
-2. Send ledger table + client unsubscribe tokens.
-3. The picker as a pure function - facts + pieces + ledger in, `{ slug, form, reason }` out -
-   with tests for each step of the order above.
-4. The approval section on the client board, sending through the existing series mailer.
-5. A Monday schedule that builds the week's plan (never sends on its own while approval is on).
-6. Later: tagging a call with a problem; short forms; the first MINDSET pieces.
+1. **Today:** this document and `content/one-pagers/IMPROVEMENTS.md`. (Done 20 Oct.)
+2. **Guy decides:** how many discovery calls a week a new client starts with; approves (or
+   changes) "Connection isn't charm"; how the planner covers his time away.
+3. **Write the opening run:** Begin with the end in mind, the energy piece, the discovery-call
+   craft update, busy weeks; then the two gap pieces. Guy reviews each.
+4. **Label the pieces; draft a note per client.** Guy checks one table and approves each note.
+5. **Plumbing:** the send record, unsubscribe links, addresses, the invitations signal.
+6. **The picker** - facts + pieces + send record + note in, `{ what, form, reason, opening }`
+   out - with a test for each rule above.
+7. **The Monday screen,** sending through the existing series mailer.
+8. **Switch on:** Guy approves every email for a month, then send-with-veto.
+9. **Later:** the phone capture tool; the weekly call sweep that proposes improvements; tagging
+   a call with a problem; whole fresh emails for specific situations.
 
 ## Still open
 
-- The `problem` list - Guy to confirm the starting five, drawn from real call misconceptions.
-- Whether a client's own reply to a series email should pause the next week's send.
-- Whether clients who started before the pool existed (none have had drip sends - the client
-  drip was never wired) start at the orientation or further in.
+- The number of discovery calls a week to start with (Guy).
+- The starting list of problems a piece can answer, drawn from real call misconceptions.
+- Whether a client's own reply to a weekly email pauses the next week's.
+- Whether clients who started before the planner exists begin at the opening run or further in.
