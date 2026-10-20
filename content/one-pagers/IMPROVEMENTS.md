@@ -68,8 +68,14 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   do? Expect to do the numbers, not one thank-you = one call). And for those who chose Reconnect:
   people from past conversations turn up too - "enormous gold" - so 20 a day of those is often
   worth it, unless you've changed direction so the past messaging no longer fits. **Waiting**
-  - Use REAL acceptance rates, not 50%: clients' weeks to 18 Oct ran ~20-40% (Rick 38/100, Sam
-    36/97, Roland 16/78). Say "a third or so" or use the client's own figure.
+  - Acceptance rate - do NOT quote "this week's accepted / this week's sent" (Rick 38/100, Sam
+    36/97, Roland 16/78 to 18 Oct): Guy, 20 Oct - "the rate creeps up because it takes time for
+    people to respond", so a week's figure understates, most of all for a new campaign. The
+    honest number is a MATURED group: of people invited 2-5 weeks ago, how many have accepted -
+    the Linked Helper watchdog already records this (cohort_invited / cohort_accepted, see the
+    Monday campaign numbers). In the body: no fixed percentage; say acceptances build over the
+    first couple of weeks. The planner drops in the client's own matured rate once their
+    campaign is old enough to have one. Guy's 100-a-week arithmetic stays as the example.
   - Reconnect paragraph = per-client extra (only clients who chose it - Mehnaaz declined).
   - Overlaps: twenty-second-thank-you (the thank-you itself), four-hours-not-forty (why it is now
     feasible), habit email #1 "A few minutes a morning" (the daily nudge). This piece is the
