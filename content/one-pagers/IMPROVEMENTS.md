@@ -30,7 +30,10 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   people to - the essence of being a connector) -> how many a week to start with -> picture the
   call (questions first; your turn comes in call two) -> is my messaging, outreach and profile
   getting me in front of enough of the right people? **Waiting** - draft written for Steve
-  Nelson in chat on 20 Oct; needs the number of calls a week from Guy.
+  Nelson in chat on 20 Oct.
+- *20 Oct 2026, Guy:* The number of discovery calls a week is the CLIENT'S to pick - how many
+  they can fit in every week without it swinging wildly, i.e. a number they can be consistent
+  with. The email asks them to choose it (and tell Guy); it never gives them one. **Waiting**
 - *20 Oct 2026, Guy:* Connect before you ask anything - one line in the body for everyone; the
   "Connection isn't charm" link is optional per client, and only once Guy has approved that
   piece. **Waiting**

@@ -113,6 +113,10 @@ Each client has a short note on their record that Guy keeps. It says three thing
    and what lands badly (Rick: calendar links are "lazy", no self-promotion; Steve: no generic
    networking lines - his test is "would I send that to the CEO of Bunnings?").
 
+**The client's own number.** Each client picks how many discovery calls a week they can keep
+up consistently (Guy, 20 Oct - never given to them). Once they tell Guy, it goes on their note,
+and later emails can use it ("you said three a week - how's it going?").
+
 **The note holds lasting things only.** Background, format and what to avoid hold for months.
 Where the client is right now (campaign running, calls booked) goes stale in a week, so the
 planner reads that live every Monday, never from the note.
@@ -214,8 +218,7 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 ## Build order
 
 1. **Today:** this document and `content/one-pagers/IMPROVEMENTS.md`. (Done 20 Oct.)
-2. **Guy decides:** how many discovery calls a week a new client starts with; approves (or
-   changes) "Connection isn't charm"; how the planner covers his time away.
+2. **Guy decides:** approves (or changes) "Connection isn't charm"; how the planner covers his time away.
 3. **Write the opening run:** Begin with the end in mind, the energy piece, the discovery-call
    craft update, busy weeks; then the two gap pieces. Guy reviews each.
 4. **Label the pieces; draft a note per client.** Guy checks one table and approves each note.
@@ -229,7 +232,6 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 
 ## Still open
 
-- The number of discovery calls a week to start with (Guy).
 - The starting list of problems a piece can answer, drawn from real call misconceptions.
 - Whether a client's own reply to a weekly email pauses the next week's.
 - Whether clients who started before the planner exists begin at the opening run or further in.
