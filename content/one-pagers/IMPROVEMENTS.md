@@ -56,7 +56,7 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   minimum; early on, forming the habit matters more than volume. No fixed slot - the planner
   sends it when a client goes quiet or Guy notes they are slammed. **Waiting**
 
-### staying-on-top-of-today - a big piece on keeping the Today tab clear
+### staying-on-top-of-today - DONE as make-the-important-urgent ("Make the important urgent")
 
 - *20 Oct 2026, Guy:* 100 connection requests a week (LinkedIn's ceiling) at a good acceptance
   rate = dozens of new people a week to thank in the Today tab. By hand - look at their posts and
@@ -67,7 +67,7 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   campaign runs out of people on the Linked Helper machine (how many thank-yous do you want to
   do? Expect to do the numbers, not one thank-you = one call). And for those who chose Reconnect:
   people from past conversations turn up too - "enormous gold" - so 20 a day of those is often
-  worth it, unless you've changed direction so the past messaging no longer fits. **Waiting**
+  worth it, unless you've changed direction so the past messaging no longer fits. **Done** (20 Oct, approved - make-the-important-urgent.md)
   - Acceptance rate - do NOT quote "this week's accepted / this week's sent" (Rick 38/100, Sam
     36/97, Roland 16/78 to 18 Oct): Guy, 20 Oct - "the rate creeps up because it takes time for
     people to respond", so a week's figure understates, most of all for a new campaign. The
@@ -90,7 +90,7 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   holding up, because each one takes so little time and /wg is a pleasure to use - "the people
   using it love it, so the time flies", and most say it produces a better result than they would
   themselves. But if you don't get on top of it right at the very beginning, it becomes a chore.
-  **Waiting**
+  **Done** (20 Oct, approved - make-the-important-urgent.md)
   - Wording: claims about how good the drafts are stay attributed ("most people using it say...")
     and within the settled kicker rule - drafts beat what you'd dash off on a busy Tuesday, never
     "better than you at your best".
@@ -98,7 +98,7 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
     client's Today tab first fills - an event, even in the middle of the opening run - not wait
     its turn after the discovery-call pieces.
   - Overlap: habit email #1 "A few minutes a morning" says "leave it a week and it turns into a
-    chore". Decide whether that email becomes this piece's short form, or this piece replaces it.
+    chore". DECIDED 20 Oct: this piece replaces habit email #1 for new clients.
 
 ## Pool-model caveat - endings that say "that's next"
 

@@ -43,6 +43,7 @@ const client = [
   'connection-isnt-charm',       // opening run - DRAFT, Guy must approve before it is ever sent
   'discovery-call-craft',        // opening run - What to say (ends 'what you do in the gap after... next')
   'reason-to-follow-up',         // opening run - the gap after the call
+  'make-the-important-urgent',   // the Today tab - really an EVENT (Today first fills); here as the fallback slot
   // [the energy piece slots in after begin-with-the-end once written]. These five keep their
   // original relative order on purpose: their client endings say 'that's next' to each other.
   // The map (the-process) follows them; its email opener now says 'You've got the calls going'.

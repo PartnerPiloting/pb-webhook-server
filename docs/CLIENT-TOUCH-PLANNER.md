@@ -89,6 +89,10 @@ Plus the busy-weeks piece whenever a client goes quiet or Guy notes they are fla
 
 The best time for an email is just before the client needs it - not week three. Examples:
 
+- **The client's Today tab first has records** -> "Make the important urgent", that week, even in
+  the middle of the opening run ("get on top of it right at the very beginning, or it becomes a
+  chore"). It replaces habit email #1 "A few minutes a morning" for new clients. Again when
+  their campaign runs low on people, with a flag to Guy to top up the search.
 - **First discovery call booked** -> "What can you discover?" or "What to say in the discovery
   call" the day before. (Check first that the system reliably matches a calendar meeting to a
   lead; if not, start with "Wingguy booked a meeting", which it definitely knows.)
