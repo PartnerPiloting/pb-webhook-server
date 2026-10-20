@@ -83,6 +83,23 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   - Eligible only once the client's Today tab has records. Planner event: "campaign running low
     on people" -> this piece (or its section) + a flag to Guy.
 
+- *20 Oct 2026, Guy - the heart of the piece:* "This is where most people fall down." Guy's
+  long-held principle: **make the proactive reactive.** Networking is important but never urgent,
+  so it loses to everything urgent. Putting it in their inbox - the Today tab - makes the
+  important urgent: something waiting for you that you deal with. And "I don't have time" stops
+  holding up, because each one takes so little time and /wg is a pleasure to use - "the people
+  using it love it, so the time flies", and most say it produces a better result than they would
+  themselves. But if you don't get on top of it right at the very beginning, it becomes a chore.
+  **Waiting**
+  - Wording: claims about how good the drafts are stay attributed ("most people using it say...")
+    and within the settled kicker rule - drafts beat what you'd dash off on a busy Tuesday, never
+    "better than you at your best".
+  - TIMING follows from "right at the very beginning": this piece should land the week the
+    client's Today tab first fills - an event, even in the middle of the opening run - not wait
+    its turn after the discovery-call pieces.
+  - Overlap: habit email #1 "A few minutes a morning" says "leave it a week and it turns into a
+    chore". Decide whether that email becomes this piece's short form, or this piece replaces it.
+
 ## Pool-model caveat - endings that say "that's next"
 
 - *20 Oct 2026:* Several client endings tease the following piece ("that's next"). In a fixed
