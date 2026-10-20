@@ -33,9 +33,11 @@ const prospect = [
 
 // Clients also get a standalone email #1 first - the orientation, "What you've
 // actually joined" (onePagerEmail.js, 2026-09-28) - so this list is emails
-// #2..#23 (numbers below are list positions), and the map goes out in short
+// #2..#24 (numbers below are list positions; begin-with-the-end-in-mind added
+// at the front 2026-10-20, so positions below are one higher than their labels), and the map goes out in short
 // form: one line per step, each linked to its piece.
 const client = [
+  'begin-with-the-end-in-mind',  // 0  discovery calls first (Guy, 2026-10-20) - opens the weekly client run
   'the-process',                 // 1  the map (short form in email)
   'revisit-your-big-picture',    // 2  why you're here
   'feast-or-famine',             // 3  core paradigm

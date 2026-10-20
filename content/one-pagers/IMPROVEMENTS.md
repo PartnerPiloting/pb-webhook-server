@@ -29,16 +29,16 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   about them and who you could refer them to; every new person is someone else you can refer
   people to - the essence of being a connector) -> how many a week to start with -> picture the
   call (questions first; your turn comes in call two) -> is my messaging, outreach and profile
-  getting me in front of enough of the right people? **Waiting** - draft written for Steve
+  getting me in front of enough of the right people? **Done** (20 Oct, approved by Guy - in the piece) - draft written for Steve
   Nelson in chat on 20 Oct.
 - *20 Oct 2026, Guy:* The number of discovery calls a week is the CLIENT'S to pick - how many
   they can fit in every week without it swinging wildly, i.e. a number they can be consistent
-  with. The email asks them to choose it (and tell Guy); it never gives them one. **Waiting**
+  with. The email asks them to choose it (and tell Guy); it never gives them one. **Done** (20 Oct, approved by Guy - in the piece)
 - *20 Oct 2026, Guy:* Connect before you ask anything - one line in the body for everyone; the
   "Connection isn't charm" link is optional per client, and only once Guy has approved that
-  piece. **Waiting**
+  piece. **Done** (20 Oct, approved by Guy - in the piece)
 - *20 Oct 2026, Guy:* The back-to-back technique (see discovery-call-craft below) goes in the
-  "your turn comes in call two" section. **Waiting** - in the Steve draft.
+  "your turn comes in call two" section. **Done** (20 Oct, approved by Guy - in the piece) - in the Steve draft.
 
 ### energy - "What energy do you bring to the table?" (opening run #2, first MINDSET piece)
 
