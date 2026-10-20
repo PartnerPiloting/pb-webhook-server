@@ -99,6 +99,11 @@ const cj = require('../services/clientJourney');
     assert.strictEqual(cj.onNewJourney({ clientId: 'Old', followupBrief: 'Yes', unipileAccountId: 'mail-1' }, 'Guy-Wilson'), false);
     assert.strictEqual(cj.onNewJourney(null, 'Guy-Wilson'), false);
   });
+  await check('Client Journey = No hides it even with LinkedIn connected or Reconnect on - but never for the owner', () => {
+    assert.strictEqual(cj.onNewJourney({ clientId: 'Declined', clientJourney: 'No', unipileLinkedinAccountId: 'li-1' }, 'Guy-Wilson'), false);
+    assert.strictEqual(cj.onNewJourney({ clientId: 'Declined', clientJourney: 'No', reconnect: 'Yes' }, 'Guy-Wilson'), false);
+    assert.strictEqual(cj.onNewJourney({ clientId: 'Guy-Wilson', clientJourney: 'No' }, 'Guy-Wilson'), true);
+  });
   await check('journeyFor returns the page-ready journey, or null for an unknown client', async () => {
     const db = { query: async () => ({ rows: [] }) };
     const deps = { db, store: { getActiveRules: async () => [], getVariables: async () => [], getAssets: async () => [] }, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } };

@@ -131,10 +131,14 @@ async function gatherFacts(client, deps = {}) {
  * on the new road: their LinkedIn is connected, or their Reconnect list is on. The owner always
  * sees it. A NEW client sees it from day one (Guy, 6 Oct 2026): the join chain sets Client Journey
  * = Yes on their record. Setting that field on an existing client is how Guy widens it, one at a time.
+ * Client Journey = No hides it whatever else is true - for a client who has declined stops on the
+ * map (Paul Faix, 20 Oct 2026: SOC 2, no calendar/email/recorder), so it never nags them about them.
  */
 function onNewJourney(client, ownerId) {
   if (!client) return false;
-  return client.clientId === ownerId || yes(client.clientJourney) || present(client.unipileLinkedinAccountId) || yes(client.reconnect);
+  if (client.clientId === ownerId) return true;
+  if (String(client.clientJourney || '').trim() === 'No') return false;
+  return yes(client.clientJourney) || present(client.unipileLinkedinAccountId) || yes(client.reconnect);
 }
 
 /** The journey for one client, ready for the page. */
