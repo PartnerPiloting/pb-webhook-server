@@ -33,11 +33,19 @@ const prospect = [
 
 // Clients also get a standalone email #1 first - the orientation, "What you've
 // actually joined" (onePagerEmail.js, 2026-09-28) - so this list is emails
-// #2..#24 (numbers below are list positions; begin-with-the-end-in-mind added
-// at the front 2026-10-20, so positions below are one higher than their labels), and the map goes out in short
+// #2..#24. The numbered labels below are the ORIGINAL positions (pre 2026-10-20);
+// the opening run was moved to the front that day, so labels no longer match the
+// list position. The order of the array is the truth., and the map goes out in short
 // form: one line per step, each linked to its piece.
 const client = [
-  'begin-with-the-end-in-mind',  // 0  discovery calls first (Guy, 2026-10-20) - opens the weekly client run
+  'begin-with-the-end-in-mind',  // OPENING RUN (Guy 2026-10-20): discovery calls first
+  'first-discovery-call',        // opening run - What can you discover? (client ending hands on to charm)
+  'connection-isnt-charm',       // opening run - DRAFT, Guy must approve before it is ever sent
+  'discovery-call-craft',        // opening run - What to say (ends 'what you do in the gap after... next')
+  'reason-to-follow-up',         // opening run - the gap after the call
+  // [the energy piece slots in after begin-with-the-end once written]. These five keep their
+  // original relative order on purpose: their client endings say 'that's next' to each other.
+  // The map (the-process) follows them; its email opener now says 'You've got the calls going'.
   'the-process',                 // 1  the map (short form in email)
   'revisit-your-big-picture',    // 2  why you're here
   'feast-or-famine',             // 3  core paradigm
@@ -48,10 +56,6 @@ const client = [
   'twenty-second-thank-you',     // 8  step 4
   'patience-curve',              // 9  expectations
   'never-send-calendly',         // 10 step 5
-  'first-discovery-call',        // 11 step 6
-  'connection-isnt-charm',       // 12 how to open the call (craft)
-  'discovery-call-craft',        // 13 step 6 (craft)
-  'reason-to-follow-up',         // 14 step 7
   'every-link-is-homework',      // 15 step 7 (craft) - the right link at the right moment
   'four-hours-not-forty',        // 16 feasibility (client ending: a this-week action, no build-it tease)
   'builders-not-blobs',          // 17 vision setup

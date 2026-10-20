@@ -95,7 +95,7 @@ function clientOrientationBody() {
     <p>This works differently. You're now one of a circle of people who all build their networks the same way - chosen for attitude, not job title, and every one of them in the habit of giving introductions away freely. When you meet one of them, the point isn't to sell anything. It's to find out what they do, well enough to think of someone you already know who they should meet - someone from your wider network, the clients, colleagues and old friends who already trust you. And when the right person crosses your path later, you'll think of them then too. They do the same for you.</p>
     <p>That sits on top of everything you'd normally do. You'll still be reaching out to good people on LinkedIn and building your own network the way we set it up. The circle is the extra layer - people listening out for you, each with a wider network of their own that trusts their judgement.</p>
     <p>So on every call from here, the question underneath is simple: what does this person do, and who could I introduce them to?</p>
-    <p>Next email, the whole process on one page.</p>`;
+    <p>Next email: what that looks like on an actual call.</p>`;
 }
 
 // The client map (email #2) in short form: one line per step, each linked to
@@ -121,7 +121,7 @@ function clientMapShortBody({ portalToken } = {}) {
     ? `<a href="${PORTAL_BASE_URL}/start-here?token=${encodeURIComponent(portalToken)}">"What Wingguy can do" tab</a>`
     : '"What Wingguy can do" tab';
   return `
-    <p>The last email was the why. This is the how - the whole journey on one page. Don't try to master it; it's just so you always know where you are. Each step links to its own short piece if you want to go deeper now. If not, they'll arrive one at a time.</p>
+    <p>You've got the calls going. Here's the whole journey on one page. Don't try to master it; it's just so you always know where you are. Each step links to its own short piece if you want to go deeper now. If not, they'll arrive one at a time.</p>
     <ol>
       ${steps}
     </ol>

@@ -56,6 +56,36 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   minimum; early on, forming the habit matters more than volume. No fixed slot - the planner
   sends it when a client goes quiet or Guy notes they are slammed. **Waiting**
 
+### staying-on-top-of-today - a big piece on keeping the Today tab clear
+
+- *20 Oct 2026, Guy:* 100 connection requests a week (LinkedIn's ceiling) at a good acceptance
+  rate = dozens of new people a week to thank in the Today tab. By hand - look at their posts and
+  profile, craft a reply - that is 10+ minutes each and untenable. With Wingguy it is about 30
+  seconds, so it becomes feasible: Wingguy is your best friend and you keep improving it. Not
+  overwhelming - get to it every day and keep it clear, then clear the follow-ups the same way,
+  and you're on top of it, feeling great, and getting discovery calls. What breaks it: the
+  campaign runs out of people on the Linked Helper machine (how many thank-yous do you want to
+  do? Expect to do the numbers, not one thank-you = one call). And for those who chose Reconnect:
+  people from past conversations turn up too - "enormous gold" - so 20 a day of those is often
+  worth it, unless you've changed direction so the past messaging no longer fits. **Waiting**
+  - Use REAL acceptance rates, not 50%: clients' weeks to 18 Oct ran ~20-40% (Rick 38/100, Sam
+    36/97, Roland 16/78). Say "a third or so" or use the client's own figure.
+  - Reconnect paragraph = per-client extra (only clients who chose it - Mehnaaz declined).
+  - Overlaps: twenty-second-thank-you (the thank-you itself), four-hours-not-forty (why it is now
+    feasible), habit email #1 "A few minutes a morning" (the daily nudge). This piece is the
+    numbers + the routine + what breaks it; link, don't repeat.
+  - Eligible only once the client's Today tab has records. Planner event: "campaign running low
+    on people" -> this piece (or its section) + a flag to Guy.
+
+## Pool-model caveat - endings that say "that's next"
+
+- *20 Oct 2026:* Several client endings tease the following piece ("that's next"). In a fixed
+  sequence that is fine; in the weekly planner's pool, a piece can be picked out of order and the
+  tease becomes false. The opening run keeps first-discovery-call -> connection-isnt-charm ->
+  discovery-call-craft -> reason-to-follow-up together for this reason. Before the planner picks
+  freely, every client ending needs checking: rewrite teases as hand-ons that stay true whatever
+  comes next, or the planner must keep tease pairs together. **Waiting**
+
 ## Existing pieces
 
 ### discovery-call-craft - "What to say in the discovery call"
