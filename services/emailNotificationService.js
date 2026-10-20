@@ -13,7 +13,7 @@ const logger = createLogger({
 });
 const emailTemplateService = require('./emailTemplateService');
 const https = require('https');
-const querystring = require('querystring');
+const { mailgunCreds, isConfigured: mailgunConfigured, fromEmail: mailgunFromEmail, sendMailgunMessage } = require('./mailgunCreds');
 
 const logCriticalError = async () => {};
 
@@ -23,55 +23,8 @@ const logCriticalError = async () => {};
  * @returns {Promise<Object>} Response from Mailgun
  */
 async function sendMailgunEmail(emailData) {
-    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
-        throw new Error("Mailgun not configured - missing API key or domain");
-    }
-
-    return new Promise((resolve, reject) => {
-        const data = querystring.stringify(emailData);
-        const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
-        
-        const options = {
-            hostname: 'api.mailgun.net',
-            port: 443,
-            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-            method: 'POST',
-            headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': data.length
-            }
-        };
-
-        const req = https.request(options, (res) => {
-            let responseData = '';
-            
-            res.on('data', (chunk) => {
-                responseData += chunk;
-            });
-            
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    try {
-                        const parsedData = JSON.parse(responseData);
-                        resolve(parsedData);
-                    } catch (error) {
-                        resolve({ id: 'unknown', message: responseData });
-    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
-                    }
-                } else {
-                    reject(new Error(`Mailgun API error: ${res.statusCode} - ${responseData}`));
-                }
-            });
-        });
-
-        req.on('error', (error) => {
-            reject(error);
-        });
-
-        req.write(data);
-        req.end();
-    });
+    // Key, domain and the HTTP call all live in mailgunCreds - one place to move every sender.
+    return sendMailgunMessage(emailData);
 }
 
 /**
@@ -102,7 +55,7 @@ async function sendTemplatedEmail(clientData, templateId, options = {}) {
         const processedTemplate = await emailTemplateService.processTemplate(templateId, clientData);
         
         // Prepare email data for Mailgun
-        const fromEmail = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+        const fromEmail = mailgunFromEmail();
         const adminEmail = process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
         
         const emailData = {
@@ -219,7 +172,7 @@ async function sendBulkTemplatedEmails(clientDataList, templateId, options = {})
 async function sendAlertEmail(subject, htmlBody, recipient = null, options = {}) {
     try {
         const adminEmail = process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
-        const fromEmail = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+        const fromEmail = mailgunFromEmail();
 
         const emailData = {
             from: fromEmail,
@@ -248,9 +201,10 @@ async function sendAlertEmail(subject, htmlBody, recipient = null, options = {})
  * Every other field is passed through as-is (from, to, cc, subject, text, html, h:Reply-To...).
  */
 async function sendMailgunEmailWithAttachments({ attachments = [], ...fields }) {
-    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+    if (!mailgunConfigured()) {
         throw new Error("Mailgun not configured - missing API key or domain");
     }
+    const { apiKey, domain } = mailgunCreds();
     const FormData = require('form-data');
     const form = new FormData();
     for (const [key, value] of Object.entries(fields)) {
@@ -261,12 +215,12 @@ async function sendMailgunEmailWithAttachments({ attachments = [], ...fields }) 
         form.append('attachment', a.content, { filename: a.filename, contentType: a.contentType || 'application/octet-stream' });
     }
     const body = form.getBuffer();
-    const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
+    const auth = Buffer.from(`api:${apiKey}`).toString('base64');
     return new Promise((resolve, reject) => {
         const req = https.request({
             hostname: 'api.mailgun.net',
             port: 443,
-            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
+            path: `/v3/${domain}/messages`,
             method: 'POST',
             headers: { ...form.getHeaders(), 'Authorization': `Basic ${auth}`, 'Content-Length': body.length }
         }, (res) => {

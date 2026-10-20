@@ -61,7 +61,7 @@ async function maybeEmailMeetingSummary(meetingId) {
       log.info(`RECALL-WEBHOOK summary already existed meeting=${meetingId} — not re-emailing`);
       return;
     }
-    const from = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+    const from = require('../services/mailgunCreds').fromEmail();
     await sendMailgunEmail({
       from,
       to: SUMMARY_EMAIL_TO,

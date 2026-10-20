@@ -25,9 +25,8 @@
  * short confirmation email back to the coach.
  */
 
-const https = require('https');
-const querystring = require('querystring');
 const { createSafeLogger } = require('../utils/loggerHelper');
+const mailgun = require('./mailgunCreds');
 
 const log = createSafeLogger('SYSTEM', null, 'pending_reply');
 
@@ -35,27 +34,9 @@ const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const LINKEDIN_RE = /(?:https?:\/\/)?(?:[a-z]{2,3}\.)?linkedin\.com\/in\/([A-Za-z0-9\-_%.]+)/i;
 const DECLINE_RE = /\b(no thanks|don'?t add|do not add|not interested|please ignore|skip (her|him|them|this one)|leave (her|him|them) out)\b/i;
 
-/** Plain Mailgun send (same shape as pendingLeadNotifier). */
+/** One Mailgun send - key, domain and From all come from services/mailgunCreds. */
 function sendMailgun(emailData) {
-  if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
-    return Promise.reject(new Error('Mailgun not configured'));
-  }
-  return new Promise((resolve, reject) => {
-    const data = querystring.stringify(emailData);
-    const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
-    const req = https.request({
-      hostname: 'api.mailgun.net', port: 443,
-      path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`, method: 'POST',
-      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': data.length },
-    }, (res) => {
-      let body = '';
-      res.on('data', (c) => { body += c; });
-      res.on('end', () => (res.statusCode >= 200 && res.statusCode < 300 ? resolve(body) : reject(new Error(`Mailgun ${res.statusCode}: ${String(body).slice(0, 200)}`))));
-    });
-    req.on('error', reject);
-    req.write(data);
-    req.end();
-  });
+  return mailgun.sendMailgunMessage(emailData);
 }
 
 /** Auto-generated mail (out-of-office, bounces) must never trigger a reply from us — loop guard. */
@@ -139,7 +120,7 @@ async function handlePendingReply(mailgunData) {
 
   const coach = await clientService.getClientById(hit.coachClientId);
   const coachTo = coach && String(coach.clientEmailAddress || '').trim();
-  const from = `Wingguy <wingguy@${process.env.MAILGUN_DOMAIN}>`;
+  const from = mailgun.fromAddress('Wingguy');
   const person = hit.person;
   const shortWho = person.name || person.email;
   const { linkedinUrl, declined, betterEmail, phone } = parseReply(mailgunData, person, senderEmail);

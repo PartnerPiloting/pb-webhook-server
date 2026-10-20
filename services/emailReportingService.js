@@ -5,16 +5,15 @@
  * Supports both success summaries and failure alerts
  */
 
-const https = require('https');
 const { createLogger } = require('../utils/contextLogger');
+const mailgun = require('./mailgunCreds');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'system' });
-const querystring = require('querystring');
 
 class EmailReportingService {
     constructor() {
         this.alertEmail = process.env.ALERT_EMAIL;
-        this.fromEmail = process.env.FROM_EMAIL || 'alerts@australiansidehustles.com.au';
+        this.fromEmail = mailgun.fromEmail();
         this.configured = false;
         
         this.initialize();
@@ -22,7 +21,7 @@ class EmailReportingService {
     
     initialize() {
         // Check for Mailgun configuration
-        if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN || !this.alertEmail) {
+        if (!mailgun.isConfigured() || !this.alertEmail) {
             logger.info('⚠️  Email service not configured (missing Mailgun credentials)');
             return;
         }
@@ -42,53 +41,7 @@ class EmailReportingService {
         if (!this.configured) {
             throw new Error("Email service not configured");
         }
-
-        return new Promise((resolve, reject) => {
-            const data = querystring.stringify(emailData);
-            const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
-            
-            const options = {
-                hostname: 'api.mailgun.net',
-                port: 443,
-                path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-                method: 'POST',
-                headers: {
-                    'Authorization': `Basic ${auth}`,
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Content-Length': data.length
-                }
-            };
-
-            const req = https.request(options, (res) => {
-                let responseData = '';
-                
-                res.on('data', (chunk) => {
-                    responseData += chunk;
-                });
-                
-                res.on('end', () => {
-                    if (res.statusCode >= 200 && res.statusCode < 300) {
-                        try {
-                            const parsedData = JSON.parse(responseData);
-                            resolve(parsedData);
-                        } catch (error) {
-                            // JSON parse error - log but continue with raw response
-                            logCriticalError(error, { operation: 'mailgun_response_parse', isSearch: true }).catch(() => {});
-                            resolve({ id: 'unknown', message: responseData });
-                        }
-                    } else {
-                        reject(new Error(`Mailgun API error: ${res.statusCode} - ${responseData}`));
-                    }
-                });
-            });
-
-            req.on('error', (error) => {
-                reject(error);
-            });
-
-            req.write(data);
-            req.end();
-        });
+        return mailgun.sendMailgunMessage(emailData);
     }
     
     formatDuration(ms) {

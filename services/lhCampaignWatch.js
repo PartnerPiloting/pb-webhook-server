@@ -400,7 +400,7 @@ async function sendCampaignAlert({ client, alert, kind = null, paused = null, re
       tail = `\n\nThey have NOT been emailed: ${blocker}.\n\nThe message, ready to forward:\n\nSubject: ${cm.subject}\n\n${cm.text}`;
     } else {
       const coachEmail = String((coach && coach.clientEmailAddress) || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim();
-      const addr = String(process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`).trim();
+      const addr = require('./mailgunCreds').fromEmail();
       try {
         const sendClient = deps.sendClientEmail || require('./emailNotificationService').sendMailgunEmail;
         await sendClient({

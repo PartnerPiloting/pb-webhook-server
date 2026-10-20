@@ -307,7 +307,7 @@ async function collectOne(client, { nowMs = Date.now(), dryRun = false, force = 
       } else {
         const coachEmail = String(coach.email || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim();
         const cm = buildClientReadyEmail({ clientFirstName: client.clientFirstName, clientName: client.clientName, coachName: coach.name });
-        const addr = String(process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`).trim();
+        const addr = require('./mailgunCreds').fromEmail();
         try {
           const sendClient = deps.sendClientEmail || require('./emailNotificationService').sendMailgunEmail;
           await sendClient({

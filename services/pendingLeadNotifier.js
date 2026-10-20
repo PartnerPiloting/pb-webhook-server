@@ -15,15 +15,14 @@
  *   - No more per-person reply tokens. Old tokens from V1 emails still resolve through
  *     pendingReplyHandler; replies to the digest itself just land in the inbound pipe.
  *
- * DELIVERY unchanged: Mailgun alerts domain, From "Wingguy". The BCC to Guy on every client's
+ * DELIVERY: Mailgun via services/mailgunCreds (knowaguy since 19 Oct 2026), From "Wingguy". The BCC to Guy on every client's
  * digest is OFF by default since 2026-10-14 (Guy: "just noise"); set PENDING_NOTIFY_BCC to an
  * address to switch it back on. Guy's own digest still goes to him as the recipient.
  * SAFETY unchanged: PENDING_NOTIFY_ENABLED gates the whole pass; { force, onlyClientId } lets a one-off job test a single tenant.
  */
 
-const https = require('https');
-const querystring = require('querystring');
 const clientService = require('./clientService');
+const mailgun = require('./mailgunCreds');
 const { findPendingLeadMeetings, getMeetingsTranscriptHeads } = require('./recallWebhookDb');
 const { nameFromTranscript, isSelfOrOperatorEmail } = require('./pendingLeadFilter');
 const { recordComm, lastCommAt } = require('./commsLog');
@@ -39,36 +38,9 @@ function notifyEnabled() {
   return String(process.env.PENDING_NOTIFY_ENABLED || '').trim().toLowerCase() === 'true';
 }
 
-/** Bare-bones Mailgun send (same REST shape as emailNotificationService). */
+/** One Mailgun send - key, domain and From all come from services/mailgunCreds. */
 function sendMailgun(emailData) {
-  if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
-    return Promise.reject(new Error('Mailgun not configured - missing MAILGUN_API_KEY / MAILGUN_DOMAIN'));
-  }
-  return new Promise((resolve, reject) => {
-    const data = querystring.stringify(emailData);
-    const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
-    const req = https.request({
-      hostname: 'api.mailgun.net',
-      port: 443,
-      path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': data.length,
-      },
-    }, (res) => {
-      let body = '';
-      res.on('data', (c) => { body += c; });
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) resolve(body);
-        else reject(new Error(`Mailgun ${res.statusCode}: ${String(body).slice(0, 200)}`));
-      });
-    });
-    req.on('error', reject);
-    req.write(data);
-    req.end();
-  });
+  return mailgun.sendMailgunMessage(emailData);
 }
 
 function fmtDate(d, tz) {
@@ -210,7 +182,7 @@ async function notifyPendingLeads(opts = {}) {
         ? `${PORTAL_BASE}/new-leads?token=${encodeURIComponent(coach.portalToken)}`
         : `${PORTAL_BASE}/new-leads`;
       const { subject, text } = buildDigestEmail({ coachFirstName, people: allWaiting, portalUrl, tz: coach.timezone });
-      const payload = { from: `Wingguy <wingguy@${process.env.MAILGUN_DOMAIN}>`, to, subject, text };
+      const payload = { from: mailgun.fromAddress('Wingguy'), to, subject, text };
       if (BCC && BCC.toLowerCase() !== to.toLowerCase()) payload.bcc = BCC;
       await sendMailgun(payload);
       await recordComm({

@@ -319,7 +319,7 @@ async function sendClientEmails(rows, deps = {}, now = Date.now()) {
       const coach = await Promise.resolve(getById(r.client.coach)).catch(() => null);
       const coachName = (coach && coach.clientName) || 'Guy Wilson';
       const coachEmail = String((coach && coach.clientEmailAddress) || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim();
-      const addr = String(process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`).trim();
+      const addr = require('./mailgunCreds').fromEmail();
       const to = String(r.client.clientEmailAddress).trim();
       const cm = clientEmail({ clientFirstName: r.client.clientFirstName, clientName: r.clientName, coachName, campaigns: r.campaigns, machineLink: r.client.machineLink });
       const sendClient = deps.sendClientEmail || require('./emailNotificationService').sendMailgunEmail;

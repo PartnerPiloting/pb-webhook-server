@@ -2,10 +2,10 @@
 //
 // Sends one series email through Mailgun, from the I Know A Guy domain.
 //
-// Separate from emailNotificationService (which also speaks Mailgun) because
-// that one sends operational alerts from whatever MAILGUN_DOMAIN is set to.
-// The series has its own identity and its own sending subdomain, and mixing the
-// two would mean a reputation problem with one silently affecting the other.
+// Separate from services/mailgunCreds (which every operational sender uses) because
+// the series has its own identity, tags and unsubscribe handling. Since 19 Oct 2026 both
+// send through mg.knowaguy.com.au; the series keeps its own SERIES_* overrides so it can
+// be moved on its own if its reputation ever needs separating again.
 //
 // Inbox identity (settled 2026-07-19, PROSPECT-SERIES-PLAN.md):
 //   From:    Guy · I Know a Guy <guy@knowaguy.com.au>

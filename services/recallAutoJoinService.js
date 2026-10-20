@@ -23,7 +23,7 @@ async function sendCreditBalanceAlert(meetingTitle) {
   if (now - lastCreditAlertAt < ALERT_COOLDOWN_MS) return;
   lastCreditAlertAt = now;
   try {
-    const from = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+    const from = require('./mailgunCreds').fromEmail();
     await sendMailgunEmail({
       from,
       to: ALERT_EMAIL,

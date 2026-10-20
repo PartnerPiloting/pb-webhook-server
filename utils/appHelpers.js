@@ -1,7 +1,5 @@
 // utils/appHelpers.js
 
-// We need fetch for the alertAdmin function
-const fetch = require('node-fetch');
 const { createLogger } = require('./contextLogger');
 
 // Create module-level logger for app helpers
@@ -16,25 +14,16 @@ const logger = createLogger({
 ------------------------------------------------------------------*/
 async function alertAdmin(subject, text) {
     try {
-        if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN || !process.env.ALERT_EMAIL || !process.env.FROM_EMAIL) {
+        const mailgun = require('../services/mailgunCreds');
+        if (!mailgun.isConfigured() || !process.env.ALERT_EMAIL) {
             logger.warn("Mailgun not fully configured, admin alert skipped for:", { subject });
             return;
         }
-        const mgUrl = `https://api.mailgun.net/v3/${process.env.MAILGUN_DOMAIN}/messages`;
-        const body = new URLSearchParams({
-            from: process.env.FROM_EMAIL,
+        await mailgun.sendMailgunMessage({
+            from: mailgun.fromEmail(),
             to: process.env.ALERT_EMAIL,
             subject: `[LeadScorer-GeminiApp] ${subject}`,
             text
-        });
-        const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString("base64");
-        await fetch(mgUrl, {
-            method: "POST",
-            headers: {
-                Authorization: `Basic ${auth}`,
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
-            body
         });
         logger.info("Admin alert sent from appHelpers:", { subject });
     } catch (err) {

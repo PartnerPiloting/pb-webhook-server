@@ -21,6 +21,7 @@ const { stripe, isStripeAvailable } = require('../config/stripeClient');
 const { generateInvoicePdf, getBusinessConfig, invoicePdfData } = require('../services/invoicePdfService');
 const { createLogger } = require('../utils/contextLogger');
 const { sendMailgunEmail } = require('../services/emailNotificationService');
+const mailgun = require('../services/mailgunCreds');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 
 /**
@@ -32,7 +33,7 @@ async function sendOnboardingNotification(data, logger) {
         const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
         
         // Check if Mailgun is configured
-        if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+        if (!mailgun.isConfigured()) {
             logger.warn('Mailgun not configured - logging notification instead');
             logger.info(`📧 ONBOARDING NOTIFICATION: ${data.customerName || data.customerEmail} paid $${data.amount} for ${data.description || data.planName}`);
             return;
@@ -53,7 +54,7 @@ A sign-up through the website sets up its own account - you'll get a separate em
 Stripe Customer ID: ${data.customerId}
         `.trim();
 
-        const fromEmail = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+        const fromEmail = mailgun.fromEmail();
         
         await sendMailgunEmail({
             from: fromEmail,
@@ -83,11 +84,11 @@ async function sendAdminAlert({ subject, text }, logger) {
             text = `THIS IS A TEST from the staging server - no real payment event occurred.\n\n${text}`;
         }
         const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
-        if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+        if (!mailgun.isConfigured()) {
             logger.warn(`Mailgun not configured - alert logged only: ${subject}`);
             return;
         }
-        const fromEmail = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+        const fromEmail = mailgun.fromEmail();
         await sendMailgunEmail({ from: fromEmail, to: adminEmail, subject, text });
         logger.info(`📧 Admin alert sent: ${subject}`);
     } catch (error) {

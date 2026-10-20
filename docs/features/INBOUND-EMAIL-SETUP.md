@@ -89,11 +89,19 @@ Add to Render environment:
 
 ```bash
 MAILGUN_API_KEY=key-xxxxxxxxxxxxxxxx
-MAILGUN_DOMAIN=mail.australiansidehustles.com.au
+MAILGUN_DOMAIN=mg.knowaguy.com.au
+FROM_EMAIL=guy@knowaguy.com.au
 MAILGUN_WEBHOOK_SIGNING_KEY=xxxxxxxxxxxxxxxx
 ```
 
 The signing key is found in Mailgun → Settings → Webhooks → Webhook signing key
+
+**Sending and receiving are two different Mailgun domains.** `MAILGUN_DOMAIN` is the SENDING
+domain, the one the error replies and every other system email go out through
+(`services/mailgunCreds.js` is the one place that reads it - since 19 Oct 2026 that is
+`mg.knowaguy.com.au`, the I Know A Guy domain). RECEIVING - the `track@` BCC address and the
+inbound route above - is `mail.australiansidehustles.com.au`, configured in Mailgun's Receiving
+section, not in an env var. Moving the sending domain does not touch it.
 
 ### 6. Create Airtable Field
 

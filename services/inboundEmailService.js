@@ -11,6 +11,7 @@ const { updateSection, getSection } = require('../utils/notesSectionManager');
 const { logNotesChange } = require('../utils/notesAuditLogger');
 const clientService = require('./clientService');
 const { createBaseInstance } = require('../config/airtableClient');
+const mailgun = require('./mailgunCreds');
 
 // Create module-level logger
 const logger = createLogger({ 
@@ -745,17 +746,14 @@ async function sendErrorNotification(toEmail, errorType, context = {}) {
         return sendLeadNotFoundEmail(toEmail, context.leadsNotFound || [], context.clientName || '');
     }
 
-    const https = require('https');
-    const querystring = require('querystring');
-
-    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+    if (!mailgun.isConfigured()) {
         logger.error('Cannot send error notification - Mailgun not configured');
         return { sent: false, error: 'Mailgun not configured' };
     }
 
     const subjects = {
-        client_not_found: '❌ Email Not Recognized - ASH Portal',
-        lead_not_found: '❌ Lead Not Found - ASH Portal',
+        client_not_found: '❌ Email Not Recognized - Wingguy',
+        lead_not_found: '❌ Lead Not Found - Wingguy',
         leads_not_found: '📧 Email not logged – lead not found' // unused - delegated above
     };
 
@@ -767,7 +765,7 @@ We received your email but couldn't match your email address (${toEmail}) to an 
 If you believe this is an error, please contact your coach or reply to this email.
 
 Best,
-ASH Portal Team`,
+Wingguy`,
 
         lead_not_found: `Hi,
 
@@ -781,7 +779,7 @@ Please check:
 If you need help, contact your coach.
 
 Best,
-ASH Portal Team`,
+Wingguy`,
 
         leads_not_found: (() => {
             const leads = context.leadsNotFound || [];
@@ -804,55 +802,25 @@ This can happen when:
 **What to do:** Add the lead to your dashboard, or update their email address to match what you're using.
 
 Best,
-ASH Portal Team`;
+Wingguy`;
         })()
     };
 
     const emailData = {
-        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        from: mailgun.fromAddress('Wingguy'),
         to: toEmail,
         subject: subjects[errorType] || 'Email Processing Error',
         text: bodies[errorType] || 'An error occurred processing your email.'
     };
 
-    return new Promise((resolve) => {
-        const data = querystring.stringify(emailData);
-        const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
-        
-        const options = {
-            hostname: 'api.mailgun.net',
-            port: 443,
-            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-            method: 'POST',
-            headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': data.length
-            }
-        };
-
-        const req = https.request(options, (res) => {
-            let responseData = '';
-            res.on('data', chunk => responseData += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    logger.info(`Error notification sent to ${toEmail} (${errorType})`);
-                    resolve({ sent: true, mailgunId: responseData });
-                } else {
-                    logger.error(`Failed to send notification: ${res.statusCode} ${responseData}`);
-                    resolve({ sent: false, error: responseData });
-                }
-            });
-        });
-
-        req.on('error', (error) => {
-            logger.error(`Error sending notification: ${error.message}`);
-            resolve({ sent: false, error: error.message });
-        });
-
-        req.write(data);
-        req.end();
-    });
+    try {
+        const sent = await mailgun.sendMailgunMessage(emailData);
+        logger.info(`Error notification sent to ${toEmail} (${errorType})`);
+        return { sent: true, mailgunId: sent && sent.id };
+    } catch (error) {
+        logger.error(`Failed to send notification: ${error.message}`);
+        return { sent: false, error: error.message };
+    }
 }
 
 /**
@@ -864,10 +832,7 @@ ASH Portal Team`;
  * @returns {Promise<{sent: boolean, ref?: string}>}
  */
 async function sendLeadNotFoundEmail(toEmail, leadsNotFound = [], clientName = '') {
-    const https = require('https');
-    const querystring = require('querystring');
-
-    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+    if (!mailgun.isConfigured()) {
         logger.error('Cannot send lead-not-found email - Mailgun not configured');
         return { sent: false };
     }
@@ -894,57 +859,27 @@ This can happen when:
 **What to do:** Add the lead to your dashboard, or update their email address to match what you're using.
 
 Best,
-ASH Portal Team
+Wingguy
 
 Ref: ${ref}`;
 
     logger.info(`LEAD_NOT_FOUND: Sending to ${toEmail}, ref=${ref}, recipients=${(leadsNotFound || []).map(l => l.email).join(', ')}`);
 
     const emailData = {
-        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        from: mailgun.fromAddress('Wingguy'),
         to: toEmail,
         subject,
         text: body
     };
 
-    const data = querystring.stringify(emailData);
-    const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
-
-    const options = {
-        hostname: 'api.mailgun.net',
-        port: 443,
-        path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-        method: 'POST',
-        headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': data.length
-        }
-    };
-
-    return new Promise((resolve) => {
-        const req = https.request(options, (res) => {
-            let responseData = '';
-            res.on('data', chunk => responseData += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    logger.info(`Lead-not-found email sent to ${toEmail} (Ref: ${ref})`);
-                    resolve({ sent: true, ref });
-                } else {
-                    logger.error(`Failed to send lead-not-found email: ${res.statusCode} ${responseData}`);
-                    resolve({ sent: false });
-                }
-            });
-        });
-
-        req.on('error', (error) => {
-            logger.error(`Error sending lead-not-found email: ${error.message}`);
-            resolve({ sent: false });
-        });
-
-        req.write(data);
-        req.end();
-    });
+    try {
+        await mailgun.sendMailgunMessage(emailData);
+        logger.info(`Lead-not-found email sent to ${toEmail} (Ref: ${ref})`);
+        return { sent: true, ref };
+    } catch (error) {
+        logger.error(`Failed to send lead-not-found email: ${error.message}`);
+        return { sent: false };
+    }
 }
 
 /**
@@ -2712,10 +2647,7 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
  * @param {string} provider - Provider name
  */
 async function sendMeetingLeadNotFoundNotification(toEmail, meetingData, provider) {
-    const https = require('https');
-    const querystring = require('querystring');
-    
-    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+    if (!mailgun.isConfigured()) {
         logger.warn('Mailgun not configured - skipping notification');
         return;
     }
@@ -2742,7 +2674,7 @@ async function sendMeetingLeadNotFoundNotification(toEmail, meetingData, provide
     }
     
     const emailData = {
-        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        from: mailgun.fromAddress('Wingguy'),
         to: toEmail,
         subject: `📹 Meeting Note Not Saved - Lead Not Found`,
         text: `Hi,
@@ -2761,37 +2693,17 @@ To save these notes, please:
 You can manually add the meeting link to the lead's notes.
 
 Best,
-ASH Portal`
+Wingguy`
     };
     
-    const postData = querystring.stringify(emailData);
-    
-    return new Promise((resolve) => {
-        const req = https.request({
-            hostname: 'api.mailgun.net',
-            port: 443,
-            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-            method: 'POST',
-            auth: `api:${process.env.MAILGUN_API_KEY}`,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': Buffer.byteLength(postData)
-            }
-        }, (res) => {
-            let responseData = '';
-            res.on('data', chunk => responseData += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    logger.info(`Meeting lead not found notification sent to ${toEmail}`);
-                }
-                resolve({ sent: res.statusCode < 300 });
-            });
-        });
-        
-        req.on('error', () => resolve({ sent: false }));
-        req.write(postData);
-        req.end();
-    });
+    try {
+        await mailgun.sendMailgunMessage(emailData);
+        logger.info(`Meeting lead not found notification sent to ${toEmail}`);
+        return { sent: true };
+    } catch (error) {
+        logger.warn(`Meeting notification to ${toEmail} failed: ${error.message}`);
+        return { sent: false };
+    }
 }
 
 /**
@@ -2802,10 +2714,7 @@ ASH Portal`
  * @param {Array} matchingLeads - Array of matching lead objects
  */
 async function sendMeetingMultipleLeadsNotification(toEmail, meetingData, provider, matchingLeads) {
-    const https = require('https');
-    const querystring = require('querystring');
-    
-    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+    if (!mailgun.isConfigured()) {
         logger.warn('Mailgun not configured - skipping notification');
         return;
     }
@@ -2821,7 +2730,7 @@ async function sendMeetingMultipleLeadsNotification(toEmail, meetingData, provid
     
     const displayName = meetingData.contactName || meetingData.firstNameOnly || meetingData.company || 'Unknown';
     const emailData = {
-        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        from: mailgun.fromAddress('Wingguy'),
         to: toEmail,
         subject: `📹 Meeting Note Not Saved - Multiple Leads Named "${displayName}"`,
         text: `Hi,
@@ -2838,37 +2747,17 @@ Please manually add the meeting notes to the correct lead in your dashboard.
 Tip: If the leads have different company names or email domains, we can usually match automatically. The meeting email subject included "${meetingData.company || 'no company info'}".
 
 Best,
-ASH Portal`
+Wingguy`
     };
     
-    const postData = querystring.stringify(emailData);
-    
-    return new Promise((resolve) => {
-        const req = https.request({
-            hostname: 'api.mailgun.net',
-            port: 443,
-            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-            method: 'POST',
-            auth: `api:${process.env.MAILGUN_API_KEY}`,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': Buffer.byteLength(postData)
-            }
-        }, (res) => {
-            let responseData = '';
-            res.on('data', chunk => responseData += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    logger.info(`Multiple leads notification sent to ${toEmail} for ${matchingLeads.length} matches`);
-                }
-                resolve({ sent: res.statusCode < 300 });
-            });
-        });
-        
-        req.on('error', () => resolve({ sent: false }));
-        req.write(postData);
-        req.end();
-    });
+    try {
+        await mailgun.sendMailgunMessage(emailData);
+        logger.info(`Multiple leads notification sent to ${toEmail} for ${matchingLeads.length} matches`);
+        return { sent: true };
+    } catch (error) {
+        logger.warn(`Meeting notification to ${toEmail} failed: ${error.message}`);
+        return { sent: false };
+    }
 }
 
 /**
@@ -2885,16 +2774,13 @@ ASH Portal`
  * @param {string} errorMessage - Error description
  */
 async function sendMeetingErrorNotification(toEmail, meetingData, provider, errorMessage) {
-    const https = require('https');
-    const querystring = require('querystring');
-    
-    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+    if (!mailgun.isConfigured()) {
         logger.warn('Mailgun not configured - skipping notification');
         return;
     }
     
     const emailData = {
-        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        from: mailgun.fromAddress('Wingguy'),
         to: toEmail,
         subject: `❌ Meeting Note Error - ${provider}`,
         text: `Hi,
@@ -2909,37 +2795,17 @@ ${meetingData?.meetingLink ? `Meeting Link: ${meetingData.meetingLink}` : ''}
 Please try forwarding the email again, or manually add the meeting link to the lead's notes.
 
 Best,
-ASH Portal`
+Wingguy`
     };
     
-    const postData = querystring.stringify(emailData);
-    
-    return new Promise((resolve) => {
-        const req = https.request({
-            hostname: 'api.mailgun.net',
-            port: 443,
-            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-            method: 'POST',
-            auth: `api:${process.env.MAILGUN_API_KEY}`,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': Buffer.byteLength(postData)
-            }
-        }, (res) => {
-            let responseData = '';
-            res.on('data', chunk => responseData += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    logger.info(`Meeting error notification sent to ${toEmail}`);
-                }
-                resolve({ sent: res.statusCode < 300 });
-            });
-        });
-        
-        req.on('error', () => resolve({ sent: false }));
-        req.write(postData);
-        req.end();
-    });
+    try {
+        await mailgun.sendMailgunMessage(emailData);
+        logger.info(`Meeting error notification sent to ${toEmail}`);
+        return { sent: true };
+    } catch (error) {
+        logger.warn(`Meeting notification to ${toEmail} failed: ${error.message}`);
+        return { sent: false };
+    }
 }
 
 /**

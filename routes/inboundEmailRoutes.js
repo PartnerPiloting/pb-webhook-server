@@ -7,6 +7,7 @@ const router = express.Router();
 const multer = require('multer');
 const { createLogger } = require('../utils/contextLogger');
 const inboundEmailService = require('../services/inboundEmailService');
+const mailgun = require('../services/mailgunCreds');
 
 // Create logger for this module
 const logger = createLogger({ 
@@ -168,7 +169,8 @@ router.post('/api/webhooks/inbound-email', upload.any(), async (req, res) => {
  */
 router.get('/api/webhooks/inbound-email/health', (req, res) => {
     const config = {
-        mailgunConfigured: !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN),
+        mailgunConfigured: mailgun.isConfigured(),
+        mailgunDomain: mailgun.mailgunCreds().domain,
         signingKeyConfigured: !!process.env.MAILGUN_WEBHOOK_SIGNING_KEY,
         masterClientsConfigured: !!process.env.MASTER_CLIENTS_BASE_ID
     };
@@ -294,7 +296,7 @@ router.post('/api/webhooks/inbound-email/test-ref-code', async (req, res) => {
         return res.status(401).json({ error: 'Unauthorized - debug key required' });
     }
 
-    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+    if (!mailgun.isConfigured()) {
         return res.status(503).json({ error: 'Mailgun not configured' });
     }
 
@@ -317,71 +319,31 @@ This can happen when:
 **What to do:** Add the lead to your dashboard, or update their email address to match what you're using.
 
 Best,
-ASH Portal Team
+Wingguy
 
 Ref: ${ref}`;
 
     logger.info(`TEST-REF-CODE: Sending to ${toEmail}, ref=${ref}, bodyLength=${body.length}, bodyEndsWithRef=${body.endsWith(`Ref: ${ref}`)}`);
 
-    const https = require('https');
-    const querystring = require('querystring');
-
-    const emailData = {
-        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
-        to: toEmail,
-        subject,
-        text: body
-    };
-
-    const data = querystring.stringify(emailData);
-    const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
-
-    const options = {
-        hostname: 'api.mailgun.net',
-        port: 443,
-        path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-        method: 'POST',
-        headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': data.length
-        }
-    };
-
-    return new Promise((resolve) => {
-        const req2 = https.request(options, (mailgunRes) => {
-            let responseData = '';
-            mailgunRes.on('data', chunk => responseData += chunk);
-            mailgunRes.on('end', () => {
-                if (mailgunRes.statusCode >= 200 && mailgunRes.statusCode < 300) {
-                    logger.info(`TEST-REF-CODE: Sent successfully to ${toEmail}`);
-                    res.status(200).json({
-                        sent: true,
-                        ref,
-                        toEmail,
-                        message: 'Check your inbox. Ref should appear in subject and at end of body.'
-                    });
-                } else {
-                    logger.error(`TEST-REF-CODE: Mailgun error ${mailgunRes.statusCode} ${responseData}`);
-                    res.status(500).json({
-                        sent: false,
-                        error: 'Mailgun rejected',
-                        details: responseData
-                    });
-                }
-                resolve();
-            });
+    try {
+        const sent = await mailgun.sendMailgunMessage({
+            from: mailgun.fromAddress('Wingguy'),
+            to: toEmail,
+            subject,
+            text: body
         });
-
-        req2.on('error', (err) => {
-            logger.error(`TEST-REF-CODE: Request error ${err.message}`);
-            res.status(500).json({ sent: false, error: err.message });
-            resolve();
+        logger.info(`TEST-REF-CODE: Sent successfully to ${toEmail}`);
+        return res.status(200).json({
+            sent: true,
+            ref,
+            toEmail,
+            mailgunId: sent && sent.id,
+            message: 'Check your inbox. Ref should appear in subject and at end of body.'
         });
-
-        req2.write(data);
-        req2.end();
-    });
+    } catch (err) {
+        logger.error(`TEST-REF-CODE: ${err.message}`);
+        return res.status(500).json({ sent: false, error: 'Mailgun rejected', details: err.message });
+    }
 });
 
 /**

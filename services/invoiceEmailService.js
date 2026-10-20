@@ -265,7 +265,7 @@ async function sendInvoices({ client, invoices, force = false, dryRun = false, d
       text = `THIS IS A TEST from the staging server - no client was emailed.\n\n${text}`;
       html = `<p><b>THIS IS A TEST from the staging server - no client was emailed.</b></p>${html}`;
     }
-    const addr = String(process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`).trim();
+    const addr = require('./mailgunCreds').fromEmail();
     const send = deps.send || require('./emailNotificationService').sendMailgunEmailWithAttachments;
     const sent = await send({
       from: addr.includes('<') ? addr : `Guy Wilson <${addr}>`,
