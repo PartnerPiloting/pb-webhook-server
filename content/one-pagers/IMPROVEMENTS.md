@@ -190,6 +190,22 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   - Per-client gold again: their answer goes on their note, and into their profile and the
     introductions Wingguy writes about them.
 
+### questioning-forward - small questions that lead to an inevitable conclusion
+
+- *21 Oct 2026, Guy:* "You've got a very good feeling about what a lead wants, but they haven't
+  connected the dots in terms of how you could help them get there. Questioning forwards is asking
+  small questions that lead to an inevitable conclusion." **Waiting**
+  - Keep Guy's name for it. Outside, it's known as Socratic questioning / "Socratic Selling"
+    (Kevin Daley, 1996); SPIN Selling's implication and need-payoff questions are the same move.
+    Mention lightly, if at all.
+  - Guy already does this: the August "Big Picture" question sequence (referral doctrine memory) -
+    five small questions where the client says the answers themselves ("where did your last job
+    come from - an ad, or did somebody recommend you?"). Use it as the worked example.
+  - Timing: call two - "your turn". Instead of telling them how you can help, ask until they say
+    it. Placed after discovery-call-craft / reason-to-follow-up.
+  - Guardrail: only toward a conclusion you genuinely believe is good for THEM; if their answers
+    lead somewhere else, follow them. It's a way of helping someone see, not a trap.
+
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
 (Kind 2 in docs/CLIENT-TOUCH-PLANNER.md. Each: the problem, the fix, one thing this week.)
