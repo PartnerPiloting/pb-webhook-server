@@ -23,6 +23,12 @@ initLogger.info(`- BATCH_PROCESSING_STREAM: ${process.env.BATCH_PROCESSING_STREA
 
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 const { geminiCandidateText, geminiJsonText, isRetryableRateLimitError } = require('./config/geminiClient');
+// Scoring-model seam: SCORING_PROVIDER=claude routes the SAME prompts to Claude (Haiku 5.5 by
+// default) and rescales its attribute points onto the Gemini scale. Default stays Gemini.
+const {
+    isClaudeScoring, scoringProviderLabel, describeScoringProvider,
+    isRetryableClaudeError, callClaudeForScoring, scaleClaudePositiveScores,
+} = require('./config/scoringProvider');
 
 // --- Multi-Tenant Dependencies ---
 const clientService = require('./services/clientService');
@@ -383,111 +389,133 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         log.info(`No scorable leads in this chunk after pre-flight checks`);
         return { processed: records.length, successful: 0, failed: 0, tokensUsed: 0 };
     }
-    log.info(`Attempting to score ${scorable.length} leads with Gemini`);
+    const providerLabel = scoringProviderLabel();
+    log.info(`Attempting to score ${scorable.length} leads with ${providerLabel}`);
 
     // MULTI-TENANT: Pass clientId to buildPrompt to load client-specific attributes
-    const systemPromptInstructions = await buildPrompt(log, clientId); 
+    const systemPromptInstructions = await buildPrompt(log, clientId);
     const slimmedLeadsForChunk = scorable.map(({ profile }) => slimLead(profile));
     const leadsDataForUserPrompt = JSON.stringify({ leads: slimmedLeadsForChunk });
     const generationPromptForGemini = `Score the following ${scorable.length} leads based on the criteria and JSON schema defined in the system instructions. The leads are: ${leadsDataForUserPrompt}`;
-    
+
     // ***** THIS IS THE NEW LINE TO LOG THE CHARACTER LENGTH *****
     log.debug(`Length of generationPromptForGemini (characters): ${generationPromptForGemini.length}`);
     // ***** END OF NEW LINE *****
-    
-    const maxOutputForRequest = 60000; // DEBUG: High limit
 
-    log.info(`DEBUG MODE - Calling Gemini. Using Model ID: ${BATCH_SCORER_GEMINI_MODEL_ID}. Max output tokens for API: ${maxOutputForRequest}`);
+    const maxOutputForRequest = 60000; // DEBUG: High limit
+    const scoringSetup = describeScoringProvider(BATCH_SCORER_GEMINI_MODEL_ID);
+
+    log.info(`DEBUG MODE - Calling ${providerLabel}. Using Model ID: ${scoringSetup.modelId}. Max output tokens for API: ${isClaudeScoring() ? scoringSetup.maxTokens : maxOutputForRequest}${isClaudeScoring() ? ` (scale ${scoringSetup.scale}, offset ${scoringSetup.offset}, effort ${scoringSetup.effort})` : ''}`);
 
     let rawResponseText = "";
-    let usageMetadataForBatch = {}; 
+    let usageMetadataForBatch = {};
     let modelFinishReasonForBatch = null;
     let requestStartTime = Date.now(); // Initialize here so it's available after try/catch
 
-    let lastError = null;
-    for (let attempt = 1; attempt <= GEMINI_429_RETRY_ATTEMPTS; attempt++) {
-        try {
-            const modelInstanceForRequest = BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
-                model: BATCH_SCORER_GEMINI_MODEL_ID, 
-                systemInstruction: { parts: [{ text: systemPromptInstructions }] },
-                safetySettings: [
-                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                ],
-                generationConfig: {
-                    temperature: 0,
-                    responseMimeType: "application/json",
-                    maxOutputTokens: maxOutputForRequest
+    // One model call for the prompts above (whichever provider is in force). Returns the response
+    // text, usage and finish reason in the Gemini shape so the parsing below is provider-agnostic.
+    async function callScoringModelOnce() {
+        if (isClaudeScoring()) {
+            return callClaudeForScoring({ systemPrompt: systemPromptInstructions, userPrompt: generationPromptForGemini, timeoutMs: GEMINI_TIMEOUT_MS });
+        }
+        const modelInstanceForRequest = BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
+            model: BATCH_SCORER_GEMINI_MODEL_ID,
+            systemInstruction: { parts: [{ text: systemPromptInstructions }] },
+            safetySettings: [
+                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            ],
+            generationConfig: {
+                temperature: 0,
+                responseMimeType: "application/json",
+                maxOutputTokens: maxOutputForRequest
+            }
+        });
+
+        const requestPayload = {
+            contents: [{ role: "user", parts: [{ text: generationPromptForGemini }] }],
+        };
+
+        const callPromise = modelInstanceForRequest.generateContent(requestPayload);
+        const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for batchScorer chunk")), GEMINI_TIMEOUT_MS));
+
+        const result = await Promise.race([callPromise, timer]);
+
+        if (!result || !result.response) throw new Error("Gemini API call (batchScorer chunk) returned no response object.");
+
+        const usageMetadata = result.response.usageMetadata || {};
+        const candidate = result.response.candidates?.[0];
+        if (!candidate) {
+            const blockReason = result.response.promptFeedback?.blockReason;
+            let sf = result.response.promptFeedback?.safetyRatings ? ` SafetyRatings: ${JSON.stringify(result.response.promptFeedback.safetyRatings)}`:"";
+            if (blockReason) throw new Error(`Gemini API call (batchScorer chunk) blocked. Reason: ${blockReason}.${sf}`);
+            throw new Error(`Gemini API call (batchScorer chunk) returned no candidates.${sf}`);
+        }
+        return { rawResponseText: geminiCandidateText(candidate), usageMetadata, finishReason: candidate.finishReason, safetyRatings: candidate.safetyRatings };
+    }
+
+    const isTransientModelError = (error) => (isClaudeScoring() ? isRetryableClaudeError(error) : isRetryableRateLimitError(error));
+
+    // The call with the transient-error retry loop around it (5s, 10s backoff - same for both
+    // providers). Sets rawResponseText / usageMetadataForBatch / modelFinishReasonForBatch on
+    // success and returns null; returns the final error otherwise.
+    async function requestBatch(label) {
+        let lastError = null;
+        for (let attempt = 1; attempt <= GEMINI_429_RETRY_ATTEMPTS; attempt++) {
+            try {
+                requestStartTime = Date.now(); // Update timing right before API call
+                const call = await callScoringModelOnce();
+
+                usageMetadataForBatch = call.usageMetadata || {};
+                log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+                log.info(`TOKENS FOR BATCH CALL (${providerLabel}${label ? `, ${label}` : ''}):`);
+                log.info("  Prompt Tokens      :", usageMetadataForBatch.promptTokenCount || "?");
+                log.info("  Candidates Tokens  :", usageMetadataForBatch.candidatesTokenCount || "?");
+                log.info("  Total Tokens       :", usageMetadataForBatch.totalTokenCount || "?");
+                log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+
+                modelFinishReasonForBatch = call.finishReason;
+
+                rawResponseText = call.rawResponseText || "";
+                if (!rawResponseText) {
+                    log.warn(`Candidate had no text content. Finish Reason: ${modelFinishReasonForBatch || 'Unknown'}`);
                 }
-            });
 
-            const requestPayload = {
-                contents: [{ role: "user", parts: [{ text: generationPromptForGemini }] }],
-            };
-            
-            requestStartTime = Date.now(); // Update timing right before API call
-            const callPromise = modelInstanceForRequest.generateContent(requestPayload);
-            const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for batchScorer chunk")), GEMINI_TIMEOUT_MS));
-            
-            const result = await Promise.race([callPromise, timer]);
+                if (modelFinishReasonForBatch === 'MAX_TOKENS') {
+                    log.warn(`${providerLabel} API call finished due to MAX_TOKENS (limit was ${isClaudeScoring() ? scoringSetup.maxTokens : maxOutputForRequest}). Output may be truncated. SafetyRatings: ${JSON.stringify(call.safetyRatings || null)}`);
+                } else if (modelFinishReasonForBatch && modelFinishReasonForBatch !== 'STOP') {
+                    log.warn(`${providerLabel} API call finished with non-STOP reason: ${modelFinishReasonForBatch}. SafetyRatings: ${JSON.stringify(call.safetyRatings || null)}`);
+                }
 
-            if (!result || !result.response) throw new Error("Gemini API call (batchScorer chunk) returned no response object.");
-            
-            usageMetadataForBatch = result.response.usageMetadata || {};
-            log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
-            log.info(`TOKENS FOR BATCH CALL (Gemini):`);
-            log.info("  Prompt Tokens      :", usageMetadataForBatch.promptTokenCount || "?");
-            log.info("  Candidates Tokens  :", usageMetadataForBatch.candidatesTokenCount || "?");
-            log.info("  Total Tokens       :", usageMetadataForBatch.totalTokenCount || "?");
-            log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
-
-            const candidate = result.response.candidates?.[0];
-            if (!candidate) { 
-                const blockReason = result.response.promptFeedback?.blockReason;
-                let sf = result.response.promptFeedback?.safetyRatings ? ` SafetyRatings: ${JSON.stringify(result.response.promptFeedback.safetyRatings)}`:"";
-                if (blockReason) throw new Error(`Gemini API call (batchScorer chunk) blocked. Reason: ${blockReason}.${sf}`);
-                throw new Error(`Gemini API call (batchScorer chunk) returned no candidates.${sf}`);
-            }
-
-            modelFinishReasonForBatch = candidate.finishReason;
-
-            rawResponseText = geminiCandidateText(candidate);
-            if (!rawResponseText) { 
-                log.warn(`Candidate had no text content. Finish Reason: ${modelFinishReasonForBatch || 'Unknown'}`);
-            }
-
-            if (modelFinishReasonForBatch === 'MAX_TOKENS') {
-                log.warn(`Gemini API call finished due to MAX_TOKENS (limit was ${maxOutputForRequest}). Output may be truncated. SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`);
-            } else if (modelFinishReasonForBatch && modelFinishReasonForBatch !== 'STOP') {
-                log.warn(`Gemini API call finished with non-STOP reason: ${modelFinishReasonForBatch}. SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`);
-            }
-
-            lastError = null;
-            break; // Success - exit retry loop
-        } catch (error) {
-            lastError = error;
-            if (attempt < GEMINI_429_RETRY_ATTEMPTS && isRetryableRateLimitError(error)) {
-                const backoffMs = GEMINI_429_INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
-                log.warn(`Transient Vertex/Gemini error on attempt ${attempt}/${GEMINI_429_RETRY_ATTEMPTS} (${error?.message || error}). Waiting ${backoffMs}ms before retry...`);
-                await new Promise(resolve => setTimeout(resolve, backoffMs));
-            } else {
-                break; // Non-retryable or last attempt - exit loop
+                return null; // Success - exit retry loop
+            } catch (error) {
+                lastError = error;
+                if (attempt < GEMINI_429_RETRY_ATTEMPTS && isTransientModelError(error)) {
+                    const backoffMs = GEMINI_429_INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
+                    log.warn(`Transient ${providerLabel} error on attempt ${attempt}/${GEMINI_429_RETRY_ATTEMPTS} (${error?.message || error}). Waiting ${backoffMs}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                } else {
+                    break; // Non-retryable or last attempt - exit loop
+                }
             }
         }
+        return lastError;
     }
+
+    const lastError = await requestBatch();
 
     if (lastError) {
         await logErrorWithStackTrace(lastError, {
             runId: runId || 'UNKNOWN',
             clientId: clientId,
-            context: `Gemini API call failed for chunk of ${scorable.length} leads`,
+            context: `${providerLabel} API call failed for chunk of ${scorable.length} leads`,
             loggerName: 'BATCH-SCORER',
             operation: 'geminiAPICall',
         });
-        
-        await alertAdmin("Gemini API Call Failed (batchScorer Chunk)", `Client: ${clientId || 'unknown'}\nError: ${lastError.message}\\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
+
+        await alertAdmin(`${providerLabel} API Call Failed (batchScorer Chunk)`, `Client: ${clientId || 'unknown'}\nError: ${lastError.message}\\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – API Error", "Date Scored": new Date().toISOString() } }));
         if (persist && failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for API failed leads: ${e.message}`));
         return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 }; 
@@ -541,9 +569,9 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
     }
 
     if (rawResponseText.trim() === "") {
-        const errorMessage = `batchScorer.scoreChunk: [${clientId || 'unknown'}] Gemini response text is empty for batch. Finish Reason: ${modelFinishReasonForBatch || 'Unknown'}. Cannot parse scores.`;
+        const errorMessage = `batchScorer.scoreChunk: [${clientId || 'unknown'}] ${providerLabel} response text is empty for batch. Finish Reason: ${modelFinishReasonForBatch || 'Unknown'}. Cannot parse scores.`;
         log.error(errorMessage);
-        await alertAdmin("Gemini Empty Response (batchScorer)", errorMessage + `\\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
+        await alertAdmin(`${providerLabel} Empty Response (batchScorer)`, errorMessage + `\\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Empty AI Response", "Date Scored": new Date().toISOString() } })); 
         if (persist && failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for empty AI response leads: ${e.message}`));
         return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 };
@@ -554,7 +582,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         const cleanedJsonString = geminiJsonText(rawResponseText);
         outputArray = JSON.parse(cleanedJsonString);
         if (!Array.isArray(outputArray)) {
-            log.warn("Gemini batch response was not an array, attempting to wrap it.");
+            log.warn(`${providerLabel} batch response was not an array, attempting to wrap it.`);
             outputArray = [outputArray]; 
         }
     } catch (parseErr) {
@@ -578,15 +606,41 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         });
         
         log.error(`🚨 JSON_PARSE_FAILED: ${JSON.stringify(jsonParseFailInfo)}`);
-        await alertAdmin("Gemini JSON Parse Failed (batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${parseErr.message}\nRaw: ${rawResponseText.substring(0, 500)}...\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
+        await alertAdmin(`${providerLabel} JSON Parse Failed (batchScorer)`, `Client: ${clientId || 'unknown'}\nError: ${parseErr.message}\nRaw: ${rawResponseText.substring(0, 500)}...\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Parse Error", "Date Scored": new Date().toISOString() } }));
         if (persist && failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for parse-failed leads: ${e.message}`));
         return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 }; 
     }
     
-    log.info(`Parsed ${outputArray.length} results from Gemini for chunk of ${scorable.length}`);
-    if (outputArray.length !== scorable.length) { 
-        await alertAdmin("Gemini Result Count Mismatch (batchScorer)", `Client: ${clientId || 'unknown'}\nExpected ${scorable.length}, got ${outputArray.length}.`);
+    log.info(`Parsed ${outputArray.length} results from ${providerLabel} for chunk of ${scorable.length}`);
+    if (outputArray.length !== scorable.length) {
+        // The model dropped or doubled a lead (Haiku returned 9 objects for 10 leads once in 360 on
+        // the 21 Oct 2026 drift test). One fresh call usually fixes it, so retry the chunk once
+        // before marking the orphaned leads failed. Tokens from both calls are counted.
+        log.warn(`Result count mismatch: expected ${scorable.length}, got ${outputArray.length}. Retrying the chunk once.`);
+        const firstUsage = usageMetadataForBatch;
+        const retryError = await requestBatch('count-mismatch retry');
+        let retryArray = null;
+        if (!retryError && rawResponseText.trim() !== "") {
+            try {
+                retryArray = JSON.parse(geminiJsonText(rawResponseText));
+                if (!Array.isArray(retryArray)) retryArray = [retryArray];
+            } catch (retryParseErr) {
+                log.warn(`Count-mismatch retry response did not parse (${retryParseErr.message}); keeping the first response.`);
+                retryArray = null;
+            }
+        } else if (retryError) {
+            log.warn(`Count-mismatch retry call failed (${retryError.message}); keeping the first response.`);
+        }
+        const sumTok = (k) => (Number(firstUsage[k]) || 0) + (Number(usageMetadataForBatch[k]) || 0);
+        usageMetadataForBatch = { ...usageMetadataForBatch, promptTokenCount: sumTok('promptTokenCount'), candidatesTokenCount: sumTok('candidatesTokenCount'), totalTokenCount: sumTok('totalTokenCount') };
+        if (retryArray && retryArray.length === scorable.length) {
+            log.info(`Count-mismatch retry returned ${retryArray.length} results - using the retry.`);
+            outputArray = retryArray;
+        } else {
+            if (retryArray) log.warn(`Count-mismatch retry also returned ${retryArray.length} results.`);
+            await alertAdmin(`${providerLabel} Result Count Mismatch (batchScorer)`, `Client: ${clientId || 'unknown'}\nExpected ${scorable.length}, got ${outputArray.length}${retryArray ? ` (retry: ${retryArray.length})` : ' (retry failed)'}.`);
+        }
     }
 
     let positives, negatives;
@@ -625,7 +679,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         const geminiOutputItem = outputArray[i];
 
         if (!geminiOutputItem) { 
-            log.warn(`No corresponding output from Gemini for lead ${leadItem.id} (index ${i}) in batch due to count mismatch. Marking failed.`);
+            log.warn(`No corresponding output from ${providerLabel} for lead ${leadItem.id} (index ${i}) in batch due to count mismatch. Marking failed.`);
             airtableResultUpdates.push({ id: leadItem.rec.id, fields: { "Scoring Status": "Failed – API Error", "Date Scored": new Date().toISOString() } });
             failedUpdates++;
             continue; 
@@ -640,7 +694,10 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
             const contact_readiness = geminiOutputItem.contact_readiness === true;
             const unscored_attributes = Array.isArray(geminiOutputItem.unscored_attributes) ? geminiOutputItem.unscored_attributes : [];
             
-            let temp_positive_scores = {...positive_scores};
+            // Claude path only: lift each positive attribute's points onto the Gemini scale (x1.45,
+            // capped at maxPoints) BEFORE the final score, so the breakdown and the score agree.
+            // Gemini's points pass through untouched.
+            let temp_positive_scores = isClaudeScoring() ? scaleClaudePositiveScores(positive_scores, positives) : {...positive_scores};
             if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null) ) {
                 temp_positive_scores.I = positives.I.maxPoints || 0; 
                 if(!attribute_reasoning_obj.I && temp_positive_scores.I > 0) { 
@@ -677,11 +734,22 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
             failedUpdates++;
         }
         airtableResultUpdates.push({ id: leadItem.rec.id, fields: updateFields });
-        perLead.push({
+        const perLeadEntry = {
             recordId: leadItem.rec.id,
             newScore: (typeof updateFields[LEAD_FIELDS.AI_SCORE] === 'number') ? updateFields[LEAD_FIELDS.AI_SCORE] : null,
             status: updateFields["Scoring Status"] || null
-        });
+        };
+        // Preview mode only: the attribute points behind the score, as the model returned them,
+        // so a drift test or a Rescore preview can fit a scale without a second run.
+        if (!persist) {
+            perLeadEntry.detail = {
+                positive_scores: geminiOutputItem.positive_scores || {},
+                negative_scores: geminiOutputItem.negative_scores || {},
+                unscored_attributes: Array.isArray(geminiOutputItem.unscored_attributes) ? geminiOutputItem.unscored_attributes : [],
+                contact_readiness: geminiOutputItem.contact_readiness === true,
+            };
+        }
+        perLead.push(perLeadEntry);
     }
 
     if (persist && airtableResultUpdates.length > 0 && clientBase) {
@@ -1258,7 +1326,7 @@ if (require.main === module) {
 // Score a specific set of already-fetched Airtable lead records on demand (Rescore feature).
 //   persist:false => non-destructive PREVIEW — returns new scores, writes NOTHING.
 //   persist:true  => commit — writes new scores back (same as the cron path).
-// Uses the same Gemini scorer + the client's current attributes (scoreChunk reloads them).
+// Uses the same scorer (Gemini, or Claude when SCORING_PROVIDER=claude) + the client's current attributes (scoreChunk reloads them).
 // Caller supplies dependencies from config/geminiClient.js ({ vertexAIClient, geminiModelId }).
 async function scoreRecordsNow({ records, clientId, clientBase, dependencies, persist = false, runId = 'RESCORE', onProgress = null }) {
     if (!dependencies || !dependencies.vertexAIClient || !dependencies.geminiModelId) {
