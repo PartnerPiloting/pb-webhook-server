@@ -244,6 +244,17 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
     parked person comes due). Don't re-teach reason-to-follow-up; this is the practice of it.
   - Wording: claims about the system are Guy's view ("Guy reckons this is the single most valuable
     thing..."), never the tool praising itself.
+  - *21 Oct, Guy:* explain in plain English how the system does it - what it does every night, how
+    it finds the people, how it suggests the messages. YES, as a short "what happens overnight"
+    section in this email (not its own email). Passes the test "does knowing it change what they
+    do?": they trust the list, keep their email/LinkedIn/call recordings connected (better input =
+    better list), park honestly, and tweak drafts (which teaches it their voice). Facts (check
+    before writing): runs early every morning (~5:30am Brisbane); reads email, LinkedIn messages and
+    call recordings; surfaces people who replied and are owed an answer, people who went quiet
+    after a real conversation (they must have spoken - a silent accept never surfaces), and parked
+    people whose date has come; reads the actual messages; writes a suggested message with the why;
+    sometimes recommends dropping someone; nothing is sent without them. Only for clients with the
+    follow-up brief switched on. No engine-room names (no Render, Postgres, crons, "LLM").
 
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
