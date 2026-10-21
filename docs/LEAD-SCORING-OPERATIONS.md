@@ -93,6 +93,71 @@ For each selected lead:
    - Try scoring the single lead via `/score-lead` to isolate errors
    - Check Render logs for JSON parse or timeout messages
 
+## Which model scores - Gemini or Claude (the SCORING_PROVIDER switch)
+
+Since 21 Oct 2026 the scorer has two model paths behind one environment variable. Both paths build
+the same prompt (promptBuilder), parse the same JSON, and run the same computeFinalScore. Only the
+model call differs, plus one rescale step on the Claude path.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `SCORING_PROVIDER` | `gemini` | `gemini` = Gemini via Vertex (config/geminiClient.js, GEMINI_MODEL_ID). `claude` = Claude via api.anthropic.com (config/anthropicClient.js, ANTHROPIC_API_KEY). Anything else means gemini. |
+| `SCORING_CLAUDE_MODEL_ID` | `claude-haiku-5-5` | Model used on the Claude path. Must be a model served by api.anthropic.com - the Max-plan API credit does not cover Vertex or Bedrock. |
+| `SCORING_CLAUDE_SCALE` | `1.5` | Multiplier applied to every positive attribute's points on the Claude path (see below). |
+| `SCORING_CLAUDE_OFFSET` | `0` | Points added after the multiplier. Normally stays 0. |
+| `SCORING_CLAUDE_MAX_TOKENS` | `32000` | Output cap per call. A chunk of 10 leads uses about 9,000. Only raise it if BATCH_CHUNK_SIZE goes up. |
+| `SCORING_CLAUDE_EFFORT` | `low` | Haiku 5.5 effort. Medium was measured worse and dearer, leave it. |
+
+All of these are read on every call, so there is nothing to change in code. The seam lives in
+`config/scoringProvider.js`; batchScorer.js and singleScorer.js both go through it. Reconnect
+triage, summaries and the Start Here help keep their own Gemini/OpenAI clients - this switch is
+scoring only.
+
+### What the scale means
+
+Haiku 5.5 ranks leads as well as Gemini 3.5 Flash, but it awards roughly two-thirds of Gemini's
+points on every positive attribute - it reads each attribute's score band from the bottom where
+Gemini reads from the top. Prompt wording does not move it (two rounds tried, 21 Oct 2026). So the
+prompt is left alone and each positive attribute's points are multiplied by SCORING_CLAUDE_SCALE,
+rounded to a whole number and capped at that attribute's maxPoints, before the final score is
+computed. Doing it per attribute keeps the AI Attribute Breakdown adding up to the AI Score that
+is shown. Negative scores (penalties) are not scaled. On the Gemini path nothing is scaled.
+
+The scale is a fit, not a law: 1.5 put Haiku within the day-to-day noise of Gemini on 120 leads
+across three clients (see the PR that introduced it for the numbers). If a client's floor starts
+firing noticeably more or less often than before, this is the first knob - Rescore preview on a
+sample, compare, adjust by 0.05 steps, redeploy.
+
+### How to flip production to Claude
+
+1. In Render, env group **AI Service Configuration** (`evg-d3o7ur9r0fns73bvo4kg`, shared by prod,
+   staging and the cron jobs): add `SCORING_PROVIDER=claude`. ANTHROPIC_API_KEY is already there.
+2. Redeploy the prod web service `srv-cvqgq53e5dus73fa45ag` (POST a deploy, or the Render dashboard's
+   Manual Deploy). Changing an env group does **not** redeploy on its own. The nightly scoring runs
+   through this web service (the fire-and-forget cron just calls it), so no cron needs a redeploy.
+3. Check the first log lines of the next scoring run: `Attempting to score N leads with Claude` and
+   `Calling Claude. Using Model ID: claude-haiku-5-5 ... (scale 1.5, offset 0, effort low)`.
+4. Make sure auto-reload is on in the Anthropic Console with a small purchased balance. When the
+   monthly credit runs out the API refuses calls, and scoring would fail every chunk until the next
+   credit. Failures land as `Scoring Status = Failed - API Error` and an admin alert, same as a
+   Gemini outage.
+
+### How to roll back to Gemini
+
+Set `SCORING_PROVIDER=gemini` (or delete the variable) in the same env group and redeploy the same
+service. Nothing else changes: the Gemini client, model and credentials are untouched by the flip,
+and leads already scored keep their scores either way.
+
+### Failure handling on the Claude path
+
+- Transient errors (429 rate limit, 529 overloaded, 5xx, network blips, the call timeout) retry with
+  the same 5s / 10s backoff as Gemini, after the SDK's own four retries.
+- If the model returns a different number of results than leads in the chunk, the chunk is retried
+  once before the orphaned leads are marked failed (seen once in 360 on Haiku).
+- Token counts appear in the usual `TOKENS FOR BATCH CALL (Claude)` block.
+- A key or billing failure (401, "credit balance is too low") is not retried; it fails the chunk and
+  alerts, so check the Console balance first.
+
 ## Notes & assumptions
 - The multi-tenant route processes clients sequentially for isolation and logs execution results per client.
 - The batch scorer currently filters by `Scoring Status = "To Be Scored"`; adjust the Airtable view/workflow so leads enter this state before the daily run.
