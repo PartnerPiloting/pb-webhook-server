@@ -163,6 +163,33 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
     matured acceptance rates. Never quote a lift figure we haven't measured.
   - Natural trigger: the client's matured acceptance rate is low -> this email.
 
+### referring-to-i-know-a-guy - the referral piece (already OWED - this is its angle)
+
+- *21 Oct 2026, Guy:* "If you are loving the system - it's making things so much easier, reducing
+  your cognitive load, increasing your effectiveness - you won't be able to stop yourself talking
+  to other people about it." How many of the people you speak with would like to build their
+  network harder and faster too? Think about referring them to I Know A Guy: if they join the
+  inner circle and do exactly what you're doing - finding great people, reaching out - and they
+  understand clearly what you do, they're likely to raise YOU in their conversations. **Waiting**
+  - This is the owed "referral piece" (email-series memory: after i-know-a-guy-principle; carries
+    the New Leads pointer). Reconcile with the referral doctrine memory and the inner-circle
+    pieces before writing - point into them, don't duplicate.
+  - TRIGGER, not a slot: only when the client is visibly getting value (using /wg most days for a
+    few weeks, a retellable moment, or Guy marks it). Never to a client who is struggling.
+  - The referral rate ($30 a month once three people they referred are paying) - Guy to decide
+    whether it is mentioned here.
+
+### your-unique-thing - make it clear and exciting what is unique about you
+
+- *21 Oct 2026, Guy:* Make sure people understand your unique selling point, so it is exciting and
+  clear to them. Not "he's a great guy, a great relationship builder, a great coach" - that just
+  doesn't cut it. If there's something unique, so much the better. Follows from the referral idea:
+  people can only raise you in their conversations if they can say what you do. **Waiting**
+  - Way-of-thinking piece (its own email). Natural timing: before call two (when it's "your turn")
+    and before the client starts being introduced.
+  - Per-client gold again: their answer goes on their note, and into their profile and the
+    introductions Wingguy writes about them.
+
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
 (Kind 2 in docs/CLIENT-TOUCH-PLANNER.md. Each: the problem, the fix, one thing this week.)
