@@ -122,6 +122,15 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   - Each client's answer is per-client gold: it goes on their note (Rick: referral partners who
     deal with CEOs and founders; Steve: fill the 24HBP advisors' calendars, companies of 50-1,000
     people) and should flow into their LinkedIn search and their scoring instructions.
+- *21 Oct 2026, Guy:* Add the practical side of choosing better. (1) In Sales Navigator, filter for
+  people who have POSTED IN THE LAST 30 DAYS - you reach people who are currently active, so you
+  don't waste your ~100 connection requests a week on dormant profiles. (2) Tune your scoring by
+  sitting with Claude and thinking it through and through, so the people who score highly are the
+  ones you'll have better conversations with. "Better conversations" = NOT necessarily a better
+  client - people more willing to recommend you, people who are meeting the clients you want to
+  meet. **Waiting** - folded into the 21 Oct draft "What's your network for?".
+  - Use the registered phrase "rebuild my scoring" (content/client-phrases.json) - never an
+    unregistered prompt. Client-facing: "scoring instructions", never "rules".
 
 ## Existing pieces
 
