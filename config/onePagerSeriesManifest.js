@@ -39,12 +39,13 @@ const prospect = [
 // form: one line per step, each linked to its piece.
 const client = [
   'begin-with-the-end-in-mind',  // OPENING RUN (Guy 2026-10-20): discovery calls first
+  'what-energy-do-you-bring',    // opening run - the first MINDSET piece (approved 2026-10-21)
   'first-discovery-call',        // opening run - What can you discover? (client ending hands on to charm)
   'connection-isnt-charm',       // opening run - approved by Guy 2026-10-21
   'discovery-call-craft',        // opening run - What to say (ends 'what you do in the gap after... next')
   'reason-to-follow-up',         // opening run - the gap after the call
   'make-the-important-urgent',   // the Today tab - really an EVENT (Today first fills); here as the fallback slot
-  // [the energy piece slots in after begin-with-the-end once written]. These five keep their
+  // These keep their
   // original relative order on purpose: their client endings say 'that's next' to each other.
   // The map (the-process) follows them; its email opener now says 'You've got the calls going'.
   'the-process',                 // 1  the map (short form in email)

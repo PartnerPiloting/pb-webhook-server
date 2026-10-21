@@ -47,7 +47,7 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   yours); energy is not volume or being an extrovert - it is what people feel after talking to
   you; the answer to "a certain personality?" is no, but you choose the energy you bring, every
   call. Hands on to connection-isnt-charm for the how. Ground it in Guy's real calls, the way
-  connection-isnt-charm was. Sent as its own email, never linked. **Waiting**
+  connection-isnt-charm was. Sent as its own email, never linked. **Done** (21 Oct, approved - what-energy-do-you-bring.md)
 
 ### busy-weeks - short piece on keeping going when you are flat out
 

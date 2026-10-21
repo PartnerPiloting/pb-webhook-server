@@ -62,7 +62,7 @@ earlier (Email Series Start Date, or pin it) or hold it.
 **The opening run** (discovery calls first - "that's where everything starts"):
 
 1. **Begin with the end in mind** - what the calls are for, how many a week, work backwards.
-2. **The energy piece** - what you bring to the table.
+2. **What energy do you bring?** - the first mindset piece.
 3. **What can you discover?**
 4. **What to say in the discovery call.**
 
