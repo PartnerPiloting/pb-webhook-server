@@ -220,7 +220,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
         throw error;
     }
 
-    // Claude path only: lift the positive attribute points onto the Gemini scale (x1.5, capped at
+    // Claude path only: lift the positive attribute points onto the Gemini scale (x1.45, capped at
     // each attribute's maxPoints) so the caller's computeFinalScore + breakdown see Gemini-scale
     // numbers. Done here, not in the caller, so every single-lead consumer gets it.
     if (isClaudeScoring() && parsedResult && parsedResult.positive_scores && typeof parsedResult.positive_scores === 'object') {

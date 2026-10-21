@@ -103,7 +103,7 @@ model call differs, plus one rescale step on the Claude path.
 |---|---|---|
 | `SCORING_PROVIDER` | `gemini` | `gemini` = Gemini via Vertex (config/geminiClient.js, GEMINI_MODEL_ID). `claude` = Claude via api.anthropic.com (config/anthropicClient.js, ANTHROPIC_API_KEY). Anything else means gemini. |
 | `SCORING_CLAUDE_MODEL_ID` | `claude-haiku-5-5` | Model used on the Claude path. Must be a model served by api.anthropic.com - the Max-plan API credit does not cover Vertex or Bedrock. |
-| `SCORING_CLAUDE_SCALE` | `1.5` | Multiplier applied to every positive attribute's points on the Claude path (see below). |
+| `SCORING_CLAUDE_SCALE` | `1.45` | Multiplier applied to every positive attribute's points on the Claude path (see below). |
 | `SCORING_CLAUDE_OFFSET` | `0` | Points added after the multiplier. Normally stays 0. |
 | `SCORING_CLAUDE_MAX_TOKENS` | `32000` | Output cap per call. A chunk of 10 leads uses about 9,000. Only raise it if BATCH_CHUNK_SIZE goes up. |
 | `SCORING_CLAUDE_EFFORT` | `low` | Haiku 5.5 effort. Medium was measured worse and dearer, leave it. |
@@ -123,7 +123,7 @@ rounded to a whole number and capped at that attribute's maxPoints, before the f
 computed. Doing it per attribute keeps the AI Attribute Breakdown adding up to the AI Score that
 is shown. Negative scores (penalties) are not scaled. On the Gemini path nothing is scaled.
 
-The scale is a fit, not a law: 1.5 put Haiku within the day-to-day noise of Gemini on 120 leads
+The scale is a fit, not a law: 1.45 put Haiku within the day-to-day noise of Gemini on 120 leads
 across three clients (see the PR that introduced it for the numbers). If a client's floor starts
 firing noticeably more or less often than before, this is the first knob - Rescore preview on a
 sample, compare, adjust by 0.05 steps, redeploy.

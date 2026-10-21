@@ -6,7 +6,7 @@
 //   SCORING_CLAUDE_MODEL_ID   default claude-haiku-5-5. Must be served by api.anthropic.com - the
 //                             Max-plan API credit does NOT cover Vertex/Bedrock, so this never
 //                             routes through Google.
-//   SCORING_CLAUDE_SCALE      default 1.5. Multiplier applied to every positive attribute's points
+//   SCORING_CLAUDE_SCALE      default 1.45. Multiplier applied to every positive attribute's points
 //                             on the Claude path only (see scaleClaudePositiveScores).
 //   SCORING_CLAUDE_OFFSET     default 0. Additive term applied after the multiplier, in points.
 //   SCORING_CLAUDE_MAX_TOKENS default 32000. Output cap per chunk call (10 leads ~ 9k tokens).
@@ -30,7 +30,7 @@ const { getAnthropicClient } = require('./anthropicClient');
 const { isRetryableRateLimitError } = require('./geminiClient');
 
 const DEFAULT_CLAUDE_MODEL_ID = 'claude-haiku-5-5';
-const DEFAULT_CLAUDE_SCALE = 1.5;
+const DEFAULT_CLAUDE_SCALE = 1.45;
 const DEFAULT_CLAUDE_MAX_TOKENS = 32000;
 const JSON_ONLY_SUFFIX = '\n\nRespond with only the JSON array - no prose, no code fence.';
 

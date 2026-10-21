@@ -33,16 +33,16 @@ function test(name, fn) {
         process.env.SCORING_PROVIDER = 'gemini';
     });
 
-    await test('defaults: model claude-haiku-5-5, scale 1.5, offset 0, 32000 tokens, effort low', () => {
+    await test('defaults: model claude-haiku-5-5, scale 1.45, offset 0, 32000 tokens, effort low', () => {
         assert.strictEqual(sp.claudeScoringModelId(), 'claude-haiku-5-5');
-        assert.strictEqual(sp.claudeScale(), 1.5);
+        assert.strictEqual(sp.claudeScale(), 1.45);
         assert.strictEqual(sp.claudeOffset(), 0);
         assert.strictEqual(sp.claudeMaxTokens(), 32000);
         assert.strictEqual(sp.claudeEffort(), 'low');
         process.env.SCORING_CLAUDE_SCALE = 'abc';
-        assert.strictEqual(sp.claudeScale(), 1.5, 'garbage scale falls back');
+        assert.strictEqual(sp.claudeScale(), 1.45, 'garbage scale falls back');
         process.env.SCORING_CLAUDE_SCALE = '-2';
-        assert.strictEqual(sp.claudeScale(), 1.5, 'non-positive scale falls back');
+        assert.strictEqual(sp.claudeScale(), 1.45, 'non-positive scale falls back');
         process.env.SCORING_CLAUDE_SCALE = '1.6';
         assert.strictEqual(sp.claudeScale(), 1.6);
         delete process.env.SCORING_CLAUDE_SCALE;
@@ -55,16 +55,16 @@ function test(name, fn) {
         const d = sp.describeScoringProvider('gemini-3.5-flash');
         assert.strictEqual(d.provider, 'claude');
         assert.strictEqual(d.modelId, 'claude-haiku-5-5');
-        assert.strictEqual(d.scale, 1.5);
+        assert.strictEqual(d.scale, 1.45);
         process.env.SCORING_PROVIDER = 'gemini';
     });
 
-    await test('scaleClaudePositiveScores: x1.5, rounded, capped at maxPoints, floored at 0, non-numeric untouched', () => {
+    await test('scaleClaudePositiveScores: x1.45, rounded, capped at maxPoints, floored at 0, non-numeric untouched', () => {
         const positives = { A: { maxPoints: 20 }, B: { maxPoints: 8 }, C: { max_points: 15 }, D: { max: '10' }, E: {} };
         const out = sp.scaleClaudePositiveScores({ A: 10, B: 6, C: 9, D: 7, E: 4, F: 3, G: null, H: 'n/a' }, positives);
-        assert.deepStrictEqual(out, { A: 15, B: 8, C: 14, D: 10, E: 6, F: 5, G: null, H: 'n/a' });
-        // 6 * 1.5 = 9 > 8 -> capped. 9 * 1.5 = 13.5 -> 14 (round). 7 * 1.5 = 10.5 -> 11 -> capped 10.
-        // E has no max -> uncapped 6. F unknown attribute -> 4.5 -> 5 (rounded, not capped).
+        assert.deepStrictEqual(out, { A: 15, B: 8, C: 13, D: 10, E: 6, F: 4, G: null, H: 'n/a' });
+        // 10 * 1.45 = 14.5 -> 15. 6 * 1.45 = 8.7 -> 9 > 8 -> capped. 9 * 1.45 = 13.05 -> 13. 7 * 1.45 = 10.15 -> 10.
+        // E has no max -> 5.8 -> 6. F unknown attribute -> 4.35 -> 4 (rounded, not capped).
     });
 
     await test('scaleClaudePositiveScores honours explicit scale/offset and never goes negative', () => {

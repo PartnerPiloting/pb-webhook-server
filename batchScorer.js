@@ -694,7 +694,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
             const contact_readiness = geminiOutputItem.contact_readiness === true;
             const unscored_attributes = Array.isArray(geminiOutputItem.unscored_attributes) ? geminiOutputItem.unscored_attributes : [];
             
-            // Claude path only: lift each positive attribute's points onto the Gemini scale (x1.5,
+            // Claude path only: lift each positive attribute's points onto the Gemini scale (x1.45,
             // capped at maxPoints) BEFORE the final score, so the breakdown and the score agree.
             // Gemini's points pass through untouched.
             let temp_positive_scores = isClaudeScoring() ? scaleClaudePositiveScores(positive_scores, positives) : {...positive_scores};
