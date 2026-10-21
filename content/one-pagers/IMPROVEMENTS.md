@@ -150,6 +150,18 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   you can help them individually achieve that, they may well help you into the organisation?"
   **Waiting** - one paragraph in the "better conversations" section of the 21 Oct draft.
 
+### connection-request-message - does your connection request need revising?
+
+- *21 Oct 2026, Guy:* Do you know where to see your campaign's acceptance rate? Does your
+  connection request message need revising? If it said something that piqued their curiosity -
+  such as "I know a guy" - how much more effective would that be? **Waiting**
+  - Clients shouldn't have to dig in Linked Helper for the rate: the Monday campaign numbers email
+    already reports it (opt-in per client, nobody ticked yet) and the watchdog records the matured
+    figure (invited 2-5 weeks ago -> accepted). Use that, not a single week.
+  - "How much more effective" is unknown - TEST it: two versions of the request, compare their
+    matured acceptance rates. Never quote a lift figure we haven't measured.
+  - Natural trigger: the client's matured acceptance rate is low -> this email.
+
 ## Existing pieces
 
 ### discovery-call-craft - "What to say in the discovery call"
