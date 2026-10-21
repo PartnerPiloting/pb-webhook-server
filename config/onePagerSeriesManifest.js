@@ -51,6 +51,7 @@ const client = [
   'the-process',                 // 1  the map (short form in email)
   'revisit-your-big-picture',    // 2  why you're here
   'feast-or-famine',             // 3  core paradigm
+  'whats-your-network-for',      // outcome first, then who (approved 2026-10-21) - fits feast-or-famine's 'next: choosing who'
   'choose-the-room',             // 4  step 1
   'who-do-i-reach-out-to',       // 5  step 2 (craft)
   'introduction-before-we-spoke',// 6  proof - breather

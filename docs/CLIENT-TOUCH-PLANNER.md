@@ -85,6 +85,34 @@ Plus the busy-weeks piece whenever a client goes quiet or Guy notes they are fla
 **Limits:** at most two emails a week from Guy to a client, a habit email taking the first slot
 (Guy's rule, 8 Oct). A full piece goes to a client once. Never stack two on the same day.
 
+## Three kinds of idea - how a hundred good ideas fit into one email a week
+
+Guy's ideas keep coming (21 Oct: active posters, scoring, the profile, the connection request,
+the person inside the organisation - all in one conversation). The answer is not to fit them all
+into one email. A client gets 52 emails a year; a big pile of good ideas is a full shelf, and the
+planner takes ONE off it each week - the one that fits where that client is now. Every idea is
+sorted into one of three kinds:
+
+1. **A way of thinking -> its own email.** Ideas that change how someone sees things (what your
+   network is for, the energy you bring, make the important urgent). Each needs room to land.
+2. **A practical tune-up -> a short email, set off by the client's own numbers.** The problem,
+   the fix, one thing to do this week. Because it arrives when their campaign shows the need, it
+   reads as useful, not as homework:
+
+   | Tune-up | Sent when |
+   | --- | --- |
+   | Your connection request (some curiosity - "I know a guy") | their matured acceptance rate is low |
+   | Your search (people who posted in the last 30 days) | their campaign is running out, or acceptances are slow |
+   | Your scoring ("rebuild my scoring", think it through) | the top of their list isn't leading to good conversations |
+   | Your profile ("connector" above the fold) | before their campaign starts, or their profile doesn't lead with it |
+
+3. **Button-pressing -> never an email.** "Where in Linked Helper do I see my acceptance rate?" -
+   they shouldn't have to look; the Monday campaign numbers email reports it. Mechanics belong in
+   the system, the portal Help or the playbook.
+
+**One idea per email.** A link only when the depth already exists (the playbook, another piece),
+at most one per email, and never as a way to squeeze in a second idea.
+
 ## Emails set off by something that happened
 
 The best time for an email is just before the client needs it - not week three. Examples:

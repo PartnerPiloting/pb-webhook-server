@@ -109,14 +109,14 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   freely, every client ending needs checking: rewrite teases as hand-ons that stay true whatever
   comes next, or the planner must keep tease pairs together. **Waiting**
 
-### connecting-selectively - who do you select, and what outcome are you after?
+### connecting-selectively - DONE as whats-your-network-for ("What's your network for?")
 
 - *21 Oct 2026, Guy:* "Connecting more selectively to get a better result - but who would you
   select, and what outcomes are you after? What are you envisaging?" Selection itself is already
   covered (choose-the-room, who-do-i-reach-out-to, score-on-attitude). The GAP is the step before
   it: picture the outcome first - what you want this network to do for you in a year (clients
   direct? referral partners who sit next to your buyers? introductions into a sector?) - and let
-  that decide who you select. Begin with the end in mind, applied to choosing people. **Waiting**
+  that decide who you select. Begin with the end in mind, applied to choosing people. **Done** (21 Oct)
   - Probably a short new piece placed just before choose-the-room, or a new opening for it -
     decide when written.
   - Each client's answer is per-client gold: it goes on their note (Rick: referral partners who
@@ -128,7 +128,8 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   sitting with Claude and thinking it through and through, so the people who score highly are the
   ones you'll have better conversations with. "Better conversations" = NOT necessarily a better
   client - people more willing to recommend you, people who are meeting the clients you want to
-  meet. **Waiting** - folded into the 21 Oct draft "What's your network for?".
+  meet. Definition of "better conversations" -> **Done** (in whats-your-network-for). The two
+  practical tips -> **Moved** to their own tune-up emails (see Tune-ups below), Guy agreed 21 Oct.
   - Use the registered phrase "rebuild my scoring" (content/client-phrases.json) - never an
     unregistered prompt. Client-facing: "scoring instructions", never "rules".
 
@@ -148,7 +149,7 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
 - *21 Oct 2026, Guy:* "Are you reaching out to people who are doing a job and may want what you've
   got? Or are you realising that those very same people have things they want to achieve - and if
   you can help them individually achieve that, they may well help you into the organisation?"
-  **Waiting** - one paragraph in the "better conversations" section of the 21 Oct draft.
+  **Done** (21 Oct - "Look past the job title" in whats-your-network-for)
 
 ### connection-request-message - does your connection request need revising?
 
@@ -161,6 +162,20 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   - "How much more effective" is unknown - TEST it: two versions of the request, compare their
     matured acceptance rates. Never quote a lift figure we haven't measured.
   - Natural trigger: the client's matured acceptance rate is low -> this email.
+
+### Tune-ups - short practical emails, each set off by the client's numbers
+
+(Kind 2 in docs/CLIENT-TOUCH-PLANNER.md. Each: the problem, the fix, one thing this week.)
+
+- **tune-up-search** - *21 Oct, Guy:* Sales Navigator, filter for people who posted in the last 30
+  days, so your ~100 requests a week reach people active now. "If you use Sales Navigator" -
+  dropped for clients who don't. Trigger: campaign running out / acceptances slow. **Waiting**
+- **tune-up-scoring** - *21 Oct, Guy:* sit with Claude and think it through and through - say
+  "rebuild my scoring" (registered phrase) - so the people who score highly are the ones you'll
+  have better conversations with (willing to recommend you; meeting the clients you want).
+  Trigger: top of the list not leading to good conversations. **Waiting**
+- **tune-up-connection-request** - see "connection-request-message" above. **Waiting**
+- **tune-up-profile** - see "your-profile" above. **Waiting**
 
 ## Existing pieces
 
