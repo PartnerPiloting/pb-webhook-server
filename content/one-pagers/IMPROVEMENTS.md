@@ -132,6 +132,24 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   - Use the registered phrase "rebuild my scoring" (content/client-phrases.json) - never an
     unregistered prompt. Client-facing: "scoring instructions", never "rules".
 
+### your-profile - a short push email: does your profile say "connector" above the fold?
+
+- *21 Oct 2026, Guy:* "The moment someone reaches out to me, the first thing I do is look at their
+  profile and their About section." Have you tuned yours? Does the top part, above the fold, say
+  you're a connector - that you can probably connect them with who they'd like to meet? **Waiting**
+  - The PULL version already exists: playbook topic "YOUR LINKEDIN PROFILE - WHAT IT HAS TO DO"
+    (connector first, then what you do; "what have I got to lose?"). The email is the PUSH - same
+    message, same words where possible, so the two never disagree. Point to the playbook for depth.
+  - Place: straight after "What's your network for?" (they look at you the way you look at them).
+    Better still before a client's campaign starts - an onboarding-time email / setup step.
+
+### whats-your-network-for - add: the people inside the organisation
+
+- *21 Oct 2026, Guy:* "Are you reaching out to people who are doing a job and may want what you've
+  got? Or are you realising that those very same people have things they want to achieve - and if
+  you can help them individually achieve that, they may well help you into the organisation?"
+  **Waiting** - one paragraph in the "better conversations" section of the 21 Oct draft.
+
 ## Existing pieces
 
 ### discovery-call-craft - "What to say in the discovery call"
