@@ -109,6 +109,20 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   freely, every client ending needs checking: rewrite teases as hand-ons that stay true whatever
   comes next, or the planner must keep tease pairs together. **Waiting**
 
+### connecting-selectively - who do you select, and what outcome are you after?
+
+- *21 Oct 2026, Guy:* "Connecting more selectively to get a better result - but who would you
+  select, and what outcomes are you after? What are you envisaging?" Selection itself is already
+  covered (choose-the-room, who-do-i-reach-out-to, score-on-attitude). The GAP is the step before
+  it: picture the outcome first - what you want this network to do for you in a year (clients
+  direct? referral partners who sit next to your buyers? introductions into a sector?) - and let
+  that decide who you select. Begin with the end in mind, applied to choosing people. **Waiting**
+  - Probably a short new piece placed just before choose-the-room, or a new opening for it -
+    decide when written.
+  - Each client's answer is per-client gold: it goes on their note (Rick: referral partners who
+    deal with CEOs and founders; Steve: fill the 24HBP advisors' calendars, companies of 50-1,000
+    people) and should flow into their LinkedIn search and their scoring instructions.
+
 ## Existing pieces
 
 ### discovery-call-craft - "What to say in the discovery call"
