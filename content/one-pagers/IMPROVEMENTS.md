@@ -206,6 +206,21 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   - Guardrail: only toward a conclusion you genuinely believe is good for THEM; if their answers
     lead somewhere else, follow them. It's a way of helping someone see, not a trap.
 
+### interested-not-interesting - why being interested gets you what you want
+
+- *21 Oct 2026, Guy:* the value of being interested rather than interesting, and HOW that helps
+  you achieve what you want. **Waiting**
+  - Already said in passing, three times, never as its own idea: discovery-call-craft ("You don't
+    have to be interesting. You have to be interested."), first-discovery-call ("nobody has ever
+    been rejected for taking a genuine interest"), what-energy-do-you-bring ("listened to,
+    interested in"). The missing part is Guy's - what it GETS you: the chain interest -> you know
+    what they want -> you can introduce them well (and question forward) -> they like and trust
+    you -> they turn the curiosity back on you -> they recommend you. It takes the pressure off
+    you too: you never have to be impressive.
+  - Way-of-thinking piece, short. Pairs with questioning-forward (you can only question forward
+    if you were interested first). Timing: after the client's first few discovery calls, when they
+    can test it against real conversations. Don't repeat the call craft - point back to it.
+
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
 (Kind 2 in docs/CLIENT-TOUCH-PLANNER.md. Each: the problem, the fix, one thing this week.)
