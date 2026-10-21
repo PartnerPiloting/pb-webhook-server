@@ -219,6 +219,23 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   a week, practise before the first call) go in only for clients whose note says they need the
   how-to - not for experienced salespeople. **Waiting**
 
+### patience-curve - "The patience curve" (still status: draft, never reviewed by Guy)
+
+- *21 Oct 2026, Guy:* "You need patience." Asked whether we already have a good piece. We do -
+  this one (most quit at month three, in the flat part just before the curve bends; builds, doesn't
+  spike; consistency + patience, not intensity; client ending: the consistency is now the easy
+  part). **Waiting** (Guy's review)
+  - Fold in the WHY it takes time, which this piece lacks: trust. From the queued Alistair article
+    (engagement strategy doc, "Trusted relationships take time"): even interested people check
+    with their trusted circle before acting on a stranger; you can't hurry someone into trusting
+    you enough to recommend you. One section, not a second piece.
+  - Ground it: real numbers instead of only analogies where we have them (Guy's own timeline; a
+    client's first months), anonymised.
+  - TIMING: event-set-off, not a slot - around week 8-12 of the client's campaign, or when a
+    transcript/reply shows "it's not working" / acceptances but no calls yet. Before that it is
+    theory; after the quit, it's too late.
+  - Reshape to the newer format (subheads, short paragraphs) if Guy wants, keeping every beat.
+
 ### connection-isnt-charm - "Connection isn't charm"
 
 - *20 Oct 2026:* Still `status: draft` and never reviewed whole by Guy. Must be approved before
