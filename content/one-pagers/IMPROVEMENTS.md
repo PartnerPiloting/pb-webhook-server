@@ -210,6 +210,11 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
 
 - *21 Oct 2026, Guy:* the value of being interested rather than interesting, and HOW that helps
   you achieve what you want. **Waiting**
+  - *21 Oct, Guy - what "interested" MEANS (lead with this):* not just being curious - it's that
+    THEY CAN SEE you are very curious to know about them AND how you might help them. Two parts:
+    visible (it shows in the questions and the follow-ups, not a polite face), and pointed at
+    helping (curiosity with a purpose - "how could I be useful to this person?"). The chain below
+    starts from that, not from curiosity alone.
   - Already said in passing, three times, never as its own idea: discovery-call-craft ("You don't
     have to be interesting. You have to be interested."), first-discovery-call ("nobody has ever
     been rejected for taking a genuine interest"), what-energy-do-you-bring ("listened to,
