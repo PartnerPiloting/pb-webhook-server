@@ -8247,20 +8247,30 @@ router.get("/api/test-airtable-warm", async (req, res) => {
     
     console.log(`[warm] Active clients: ${clients.length}, unique base IDs: ${baseIds.length}`);
     
+    // Cap each ping so one stalled base can't hold the response past the cron's 60s curl limit
+    const PING_TIMEOUT_MS = 15000;
+
     // Ping all bases in parallel for faster execution
     const pingPromises = baseIds.map(async (baseId) => {
       const start = Date.now();
+      let timer;
       try {
         const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
         const table = base(AIRTABLE_TABLE_NAME);
-        
-        const records = await new Promise((resolve, reject) => {
-          const sel = table.select({ maxRecords: 1, pageSize: 1, fields: [] });
-          sel.firstPage((err, recs) => {
-            if (err) return reject(err);
-            resolve(recs);
-          });
-        });
+
+        const records = await Promise.race([
+          new Promise((resolve, reject) => {
+            const sel = table.select({ maxRecords: 1, pageSize: 1, fields: [] });
+            sel.firstPage((err, recs) => {
+              if (err) return reject(err);
+              resolve(recs);
+            });
+          }),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`timed out after ${PING_TIMEOUT_MS}ms`)), PING_TIMEOUT_MS);
+          })
+        ]);
+        clearTimeout(timer);
         
         const ms = Date.now() - start;
         const count = records?.length || 0;
@@ -8274,11 +8284,13 @@ router.get("/api/test-airtable-warm", async (req, res) => {
         };
         
       } catch (e) {
+        clearTimeout(timer);
         console.error(`[warm] Ping failed base=${baseId} table=${AIRTABLE_TABLE_NAME} error=${e.message}`);
         return {
           baseId,
           success: false,
-          error: e.message
+          error: e.message,
+          timeMs: Date.now() - start
         };
       }
     });
