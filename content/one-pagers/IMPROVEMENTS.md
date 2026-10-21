@@ -226,6 +226,25 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
     if you were interested first). Timing: after the client's first few discovery calls, when they
     can test it against real conversations. Don't repeat the call craft - point back to it.
 
+### follow-up-when-you-said - following up at the time you said you would
+
+- *21 Oct 2026, Guy:* the importance of follow-up - why it works when you actually follow up at
+  the specified time, how very difficult that is without a system like ours, how ours makes it so
+  much easier, and basically how it works. **Waiting**
+  - What exists: reason-to-follow-up (the WHY - motion, not goodwill; give, don't ask; its client
+    ending already points to the Follow-Ups screen example) and the playbook topic "YOUR DAILY
+    FOLLOW-UP LIST - THE BIT EVERYBODY ELSE DROPS" (the difficulty is arithmetic, "show me my
+    follow-ups", the message already written, park "not until March"). That topic is the PULL; this
+    email is the PUSH - use its words so the two never disagree.
+  - The NEW angle is Guy's "at the specified time": following up exactly when you said you would is
+    itself a trust signal - it shows you're reliable before they've seen any of your work. Most
+    people say "I'll get back to you next week" and don't; you do, on the day. That's rare enough
+    to be remembered.
+  - Timing: an event - the week the client's follow-up list first has people on it (or their first
+    parked person comes due). Don't re-teach reason-to-follow-up; this is the practice of it.
+  - Wording: claims about the system are Guy's view ("Guy reckons this is the single most valuable
+    thing..."), never the tool praising itself.
+
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
 (Kind 2 in docs/CLIENT-TOUCH-PLANNER.md. Each: the problem, the fix, one thing this week.)
