@@ -128,7 +128,7 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
 
 - *20 Oct 2026:* Still `status: draft` and never reviewed whole by Guy. Must be approved before
   any email links to it. Guy liked "connection before communication" as a line - possible
-  retitle. **Waiting** (Guy's review)
+  retitle. **Done** (21 Oct - Guy approved it as written, title kept)
 
 ### Gaps found - pieces the planner needs and the shelf does not have
 

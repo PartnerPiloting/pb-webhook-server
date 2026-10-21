@@ -40,7 +40,7 @@ const prospect = [
 const client = [
   'begin-with-the-end-in-mind',  // OPENING RUN (Guy 2026-10-20): discovery calls first
   'first-discovery-call',        // opening run - What can you discover? (client ending hands on to charm)
-  'connection-isnt-charm',       // opening run - DRAFT, Guy must approve before it is ever sent
+  'connection-isnt-charm',       // opening run - approved by Guy 2026-10-21
   'discovery-call-craft',        // opening run - What to say (ends 'what you do in the gap after... next')
   'reason-to-follow-up',         // opening run - the gap after the call
   'make-the-important-urgent',   // the Today tab - really an EVENT (Today first fills); here as the fallback slot

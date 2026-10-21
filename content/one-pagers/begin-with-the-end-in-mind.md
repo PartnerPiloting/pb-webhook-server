@@ -51,7 +51,7 @@ The weekly planner (docs/CLIENT-TOUCH-PLANNER.md) wraps this body; none of the f
   Roland and Brad introductions he received, then "After 25 years in sales, the instinct on a first call
   is to work out how to present yourself. This works the other way round.").
 - OPTIONAL EXTRA 1, per client note (teach-frame clients, small-talk dreaders), after the connect bullet:
-  "More on that: Connection isn't charm" - ONLY once Guy has approved connection-isnt-charm.
+  "More on that: Connection isn't charm" (approved 2026-10-21, so the link may now be used).
 - OPTIONAL EXTRA 2, per client note (clients who need the how-to; not experienced salespeople), after
   "usually all it takes": "Have your calendar open during the call. When they say yes, duplicate today's
   invite and move it a week. Practise it once before your first call."
