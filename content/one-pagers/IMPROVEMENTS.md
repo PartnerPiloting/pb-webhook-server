@@ -275,6 +275,22 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   - Only true for clients with a notetaker on their calls - for the rest (e.g. Steve on Meet) this
     email IS the case for switching one on. The planner sends it with that in mind.
 
+### talk-dont-type - dictate, especially to Claude (Wispr Flow)
+
+- *22 Oct 2026, Guy:* "Wispr Flow has changed my life." Habitually we type; once you get out of
+  that habit and dictate, productivity goes through the roof. Worth including productivity tips
+  like this for people building their networks - dictate, particularly to Claude. **Waiting**
+  - Earns its place because it serves the network work directly: talking, people give Claude far
+    more context than they'd ever type, so drafts, instructions and corrections all get better and
+    faster (ties to four-hours-not-forty and "your corrections compound"). Rule for any future
+    productivity tip: only if it changes the network-building work itself, not general life hacks.
+  - A practical tune-up (kind 2), short. Trigger: the client is using Claude/Wingguy regularly -
+    or a transcript/reply shows they find drafting slow.
+  - Link: Guy's referral link https://wisprflow.ai/r?GUY717 ({{asset:wispr_flow_referral}}) - say
+    plainly it's his referral link. Already sent by hand to Dean, Sam, Julian, Matthew; owed to Rick
+    since 24 Sep - the planner should skip the link for anyone who has it.
+  - Don't state prices, platforms or a productivity figure we haven't checked.
+
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
 (Kind 2 in docs/CLIENT-TOUCH-PLANNER.md. Each: the problem, the fix, one thing this week.)
