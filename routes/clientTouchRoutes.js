@@ -121,6 +121,24 @@ router.post('/:clientId/keep', parseJson, wrap('touch_plan_keep', async (req, re
   res.json({ success: true, ...out });
 }));
 
+// Guy picks a different thought for the week (or none). Stays approved if it was - same email, new thought.
+router.post('/:clientId/thought', parseJson, wrap('touch_plan_thought', async (req, res) => {
+  if (!(await ownClient(req, res))) return;
+  const week = weekFrom(req);
+  const slug = String((req.body && req.body.slug) || '').trim();
+  let thought = null;
+  if (slug) {
+    const thoughts = require('../services/clientTouchThought');
+    const nuggets = thoughts.loadNuggets();
+    const piece = require('../services/onePagerContent').listPieces().find((p) => p.slug === slug && p.status === 'final');
+    if (!piece || !nuggets[slug]) return res.status(400).json({ success: false, error: 'Not one of the thoughts' });
+    const why = String((req.body && req.body.why) || '').replace(/[–—]/g, '-').trim();
+    thought = { slug, title: piece.title, text: nuggets[slug], why: why || 'your choice', source: 'guy' };
+  }
+  const row = await planStore.setPlanThought(week, req.params.clientId, thought);
+  res.json({ success: true, row });
+}));
+
 router.get('/:clientId/preview', wrap('touch_plan_preview', async (req, res) => {
   if (!(await ownClient(req, res))) return;
   const html = await planner.previewFor(weekFrom(req), req.params.clientId);

@@ -167,6 +167,10 @@ export default function TouchPlannerPanel() {
     const r = await post('/pin-everyone', { kind: 'one-off', key, title: pinAll.title.trim(), bodyHtml: html }, 'pin-all');
     if (r) { setPinAll({ title: '', bodyHtml: '', show: false }); setNotice({ kind: 'ok', text: `Pinned for everyone on ${mondayLabel(r.weekOf)}. Rebuild the plan to see it on every row.` }); }
   };
+  const changeThought = async (row, slug) => {
+    const r = await post(`/${row.clientId}/thought`, { slug }, row.clientId);
+    if (r) setNotice({ kind: 'ok', text: slug ? `${row.clientName}'s thought for the week changed.` : `No thought for the week for ${row.clientName}.` });
+  };
   const openPreview = async (row) => {
     try {
       const { base, headers } = api();
@@ -181,7 +185,7 @@ export default function TouchPlannerPanel() {
   }
   if (!screen) return <section className="bg-white border border-gray-200 rounded-lg p-4 text-sm text-gray-500">Reading the Monday emails&hellip;</section>;
 
-  const { rows, counts, leftOut, onboardingNotBooked, approvalRates, weekOf, autosend, mondaySend, sendHour, shelf, planningWeek } = screen;
+  const { rows, counts, leftOut, onboardingNotBooked, approvalRates, weekOf, autosend, mondaySend, sendHour, shelf, planningWeek, thoughts } = screen;
   const picks = rows.filter((r) => r.pick && r.pick.what);
   const quiet = rows.filter((r) => r.status === 'nothing');
   const callsDue = rows.filter((r) => r.callDue);
@@ -304,6 +308,24 @@ export default function TouchPlannerPanel() {
                         {openingProblem && <p className="text-xs text-red-700">The draft breaks the craft ({openingProblem}) - say it your way.</p>}
                         {bodyProblem && <p className="text-xs text-red-700">Body: {bodyProblem}</p>}
                         {/* Always there - Guy reads the whole email before approving (22 Oct: hidden behind "Edit" he never found it) */}
+                        {/* The thought for the week, why it was chosen for them, and Guy's way to change it */}
+                        {pick.what.kind !== 'one-pager' && (
+                          <div className="mt-1 text-xs text-gray-700 border-l-2 border-amber-200 pl-2">
+                            {pick.thought ? (
+                              <>
+                                <p><span className="font-medium">A thought for the week:</span> {pick.thought.text} <span className="text-gray-400">({pick.thought.title})</span></p>
+                                {pick.thought.why && <p className="text-gray-500 italic">why this one: {pick.thought.why}</p>}
+                              </>
+                            ) : <p className="text-gray-500">No thought for the week.</p>}
+                            {!settled && (
+                              <select value="" onChange={(ev) => ev.target.value && changeThought(row, ev.target.value === '-' ? '' : ev.target.value)} disabled={busy === row.clientId} className="mt-1 text-xs border border-gray-300 rounded px-1 py-0.5">
+                                <option value="">Change the thought…</option>
+                                {(thoughts || []).filter((t) => t.slug !== (pick.thought && pick.thought.slug)).map((t) => <option key={t.slug} value={t.slug}>{t.title}: {t.text.slice(0, 70)}…</option>)}
+                                <option value="-">No thought this week</option>
+                              </select>
+                            )}
+                          </div>
+                        )}
                         <p className="mt-1 text-xs"><button onClick={() => openPreview(row)} className="text-blue-700 underline font-medium">Preview the whole email</button></p>
                         {isOpen && (
                           <p className="mt-1 text-xs text-gray-500 border-l-2 border-gray-200 pl-2">{row.bodyPreview}&hellip;</p>

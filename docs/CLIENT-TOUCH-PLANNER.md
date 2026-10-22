@@ -325,10 +325,13 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 - **A thought for the week** in every weekly email whose body is not a one-pager (a call offer, a
   setup step, a one-off, a habit email): two or three sentences lifted word for word from an
   approved piece, introduced "A thought for the week:". One per piece, kept in
-  `config/clientTouchNuggets.json` (Guy can change any); chosen to fit the client (journey stop,
-  then call problems), never from a piece they had in full or as a thought in the last 8 weeks,
-  never the piece going this week or in their likely-next for the next two weeks; otherwise a
-  stable per-client shuffle so clients don't all get the same one. Times for a call are picked from
+  `config/clientTouchNuggets.json` (Guy can change any). **Chosen from the client's own world**
+  (Guy, 22 Oct: "look at his profile and work it out"): Claude reads the same material as the
+  opening - recent calls, recent emails, the Touch Note - picks the thought that speaks to what is
+  going on for them now, and writes a one-line "why this one" that Guy sees on the panel. Guy can
+  change it on the row. **Repeats are fine**; only never the same thought two weeks running, and
+  never the piece that is this week's body. Without Claude it falls back to the labels (journey
+  stop, call problems, a stable per-client shuffle). Times for a call are picked from
   the Tuesday after the sending Monday and re-checked on the sending morning.
 
 ## What has to exist first

@@ -394,24 +394,46 @@ const routes = require('../routes/clientTouchRoutes');
       assert.ok(!/[–—]/.test(text), `${slug}: long dash`);
     }
   });
-  await check('the thought fits the client (journey stop first), and skips what they had in full or as a thought in 8 weeks, and what is coming', () => {
-    const now = Date.parse('2026-10-26T00:00:00Z');
-    const shelf = [
-      { slug: 'a', title: 'A', status: 'final', labels: { stops: ['calls'], problems: [] } },
-      { slug: 'b', title: 'B', status: 'final', labels: { stops: [], problems: ['pitch'] } },
-      { slug: 'c', title: 'C', status: 'final', labels: { stops: [], problems: [] } },
-      { slug: 'd', title: 'D', status: 'draft', labels: { stops: ['calls'], problems: [] } },
-    ];
-    const nuggets = { a: 'Aa.', b: 'Bb.', c: 'Cc.', d: 'Dd.' };
-    assert.strictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, shelf, [], { nuggets, now }).slug, 'a');
-    assert.strictEqual(thoughts.chooseThought({ callProblems: ['pitch'] }, shelf, [], { nuggets, now }).slug, 'b');
-    const had = [{ kind: 'one-pager', key: 'a', form: 'full', sent_at: '2026-10-01T00:00:00Z' }];
-    assert.strictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, shelf, had, { nuggets, now, exclude: ['b'] }).slug, 'c');
-    const usedAsThought = [{ kind: 'personal', key: 'check-in', sent_at: '2026-10-19T00:00:00Z', meta: { thought: 'a' } }];
-    assert.notStrictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, shelf, usedAsThought, { nuggets, now }).slug, 'a');
-    const longAgo = [{ kind: 'one-pager', key: 'a', form: 'full', sent_at: '2026-06-01T00:00:00Z' }];
-    assert.strictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, shelf, longAgo, { nuggets, now }).slug, 'a');
-    assert.strictEqual(thoughts.chooseThought({}, shelf, [], { nuggets, now, exclude: ['a', 'b', 'c'] }), null, 'a draft piece is never quoted');
+  const tShelf = [
+    { slug: 'a', title: 'A', status: 'final', labels: { stops: ['calls'], problems: [] } },
+    { slug: 'b', title: 'B', status: 'final', labels: { stops: [], problems: ['pitch'] } },
+    { slug: 'c', title: 'C', status: 'final', labels: { stops: [], problems: [] } },
+    { slug: 'd', title: 'D', status: 'draft', labels: { stops: ['calls'], problems: [] } },
+  ];
+  const tNuggets = { a: 'Aa.', b: 'Bb.', c: 'Cc.', d: 'Dd.' };
+  const tNow = Date.parse('2026-10-26T00:00:00Z');
+  await check('repeats are fine (Guy, 22 Oct) - only never the same thought two weeks running, never this week\'s own piece, never a draft', () => {
+    const had = [{ kind: 'one-pager', key: 'a', form: 'full', sent_at: '2026-10-19T00:00:00Z' }];
+    assert.strictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, tShelf, had, { nuggets: tNuggets, now: tNow }).slug, 'a', 'had the piece last week - still fine as a thought');
+    const lastWeek = [{ kind: 'personal', key: 'check-in', sent_at: '2026-10-19T00:00:00Z', meta: { thought: 'a' } }];
+    assert.notStrictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, tShelf, lastWeek, { nuggets: tNuggets, now: tNow }).slug, 'a');
+    const fortnightAgo = [{ kind: 'personal', key: 'check-in', sent_at: '2026-10-12T00:00:00Z', meta: { thought: 'a' } }];
+    assert.strictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, tShelf, fortnightAgo, { nuggets: tNuggets, now: tNow }).slug, 'a');
+    assert.notStrictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, tShelf, [], { nuggets: tNuggets, now: tNow, exclude: ['a'] }).slug, 'a', "this week's own piece");
+    assert.strictEqual(thoughts.chooseThought({}, tShelf, [], { nuggets: tNuggets, now: tNow, exclude: ['a', 'b', 'c'] }), null, 'a draft piece is never quoted');
+  });
+  await check('without Claude (or without material) the labels choose: journey stop, then call problems - and say why', () => {
+    const a = thoughts.chooseThought({ stuckStop: 'calls' }, tShelf, [], { nuggets: tNuggets, now: tNow });
+    assert.strictEqual(a.slug, 'a'); assert.match(a.why, /calls/);
+    assert.strictEqual(thoughts.chooseThought({ callProblems: ['pitch'] }, tShelf, [], { nuggets: tNuggets, now: tNow }).slug, 'b');
+  });
+  await check("Claude chooses from the client's own world - calls, emails, note - and the why is kept for Guy", async () => {
+    let prompt = null;
+    const llm = { messages: { create: async (req) => { prompt = req; return { content: [{ type: 'text', text: '{"slug":"c","why":"flat out at work - this speaks to keeping it going when busy"}' }] }; } } };
+    const out = await thoughts.chooseThoughtForClient({ facts: { stuckStop: 'calls' }, shelf: tShelf, record: [], client: { clientName: 'Hiresh Shinde' }, nuggets: tNuggets, now: tNow, llm,
+      material: { note: 'Works at Globant', meetings: [{ date: '2026-08-20', title: 'Session', summary: 'stuck on Linked Helper' }], emails: [{ date: '2026-10-10', dir: 'them', subject: 'Sorry', text: 'flat out at work' }] } });
+    assert.strictEqual(out.slug, 'c'); assert.strictEqual(out.text, 'Cc.'); assert.match(out.why, /flat out/); assert.strictEqual(out.source, 'llm');
+    assert.ok(prompt.messages[0].content.includes('Works at Globant')); assert.ok(prompt.messages[0].content.includes('flat out at work')); assert.ok(prompt.messages[0].content.includes('- c: Cc.'));
+    assert.ok(!prompt.messages[0].content.includes('- d: Dd.'), 'a draft is never offered');
+    assert.strictEqual(prompt.max_tokens, 16000);
+  });
+  await check('a bad or failed choice falls back to the labels; no material skips Claude altogether', async () => {
+    const bad = { messages: { create: async () => ({ content: [{ type: 'text', text: '{"slug":"zzz","why":"x"}' }] }) } };
+    assert.strictEqual((await thoughts.chooseThoughtForClient({ facts: { stuckStop: 'calls' }, shelf: tShelf, record: [], client: {}, nuggets: tNuggets, now: tNow, llm: bad, material: { note: 'n' } })).source, 'labels');
+    let called = false;
+    const spy = { messages: { create: async () => { called = true; return { content: [] }; } } };
+    await thoughts.chooseThoughtForClient({ facts: {}, shelf: tShelf, record: [], client: {}, nuggets: tNuggets, now: tNow, llm: spy, material: {} });
+    assert.strictEqual(called, false);
   });
   await check('with nothing to choose between, clients get different thoughts (a stable per-client shuffle)', () => {
     const picks = new Set(['Rick-Wong', 'Sam-Noble', 'Hiresh-Shinde', 'Julian-Davis', 'Roland-Illyes'].map((id) => thoughts.chooseThought({}, SHELF, [], { now: Date.now(), seed: `${id}|2026-10-26` }).slug));

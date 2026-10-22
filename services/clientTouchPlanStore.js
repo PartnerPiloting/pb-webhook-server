@@ -271,6 +271,18 @@ async function setPlanStatus(week, clientId, status, { opening, subject, bodyHtm
   }, null);
 }
 
+/** Guy changes the thought for the week on a row (it is stored inside the pick). Leaves the status alone. */
+async function setPlanThought(week, clientId, thought) {
+  return withDb(async (c) => {
+    const r = await c.query(
+      `UPDATE client_touch_plans SET pick = jsonb_set(COALESCE(pick, '{}'::jsonb), '{thought}', $3::jsonb, true), updated_at = now()
+       WHERE week_of = $1 AND client_id = $2 RETURNING *`,
+      [week, clientId, JSON.stringify(thought || null)],
+    );
+    return rowOut(r.rows[0]);
+  }, null);
+}
+
 /** The share approved without a change, per week - the measure that decides send-with-veto. */
 async function approvalRates(weeks = 6) {
   return withDb(async (c) => {
@@ -421,6 +433,7 @@ module.exports = {
   plansFor,
   planFor,
   setPlanStatus,
+  setPlanThought,
   approvalRates,
   setPin,
   clearPin,

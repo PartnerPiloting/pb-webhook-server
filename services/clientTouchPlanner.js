@@ -640,11 +640,21 @@ async function buildPlan(coachClientId, opts = {}) {
     let openingDraft = null;
     let body = null;
     let subject = '';
+    let material = null;
     if (pick.leftOut) status = 'left-out';
     else if (!pick.what) status = 'nothing';
     else {
       body = await buildBody(pick, { coach, client, week, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
       subject = body.error ? '' : subjectFor(pick, body);
+      // The client's world, read once: the opening and the thought for the week both draw on it.
+      if (!body.error && opts.openings !== false && !material) {
+        const od = opts.openingDeps || {};
+        const [meetings, emails] = await Promise.all([
+          od.meetings || opening.gatherMeetings(coach.clientId, client, od).catch(() => []),
+          od.emails || opening.gatherEmails(coach, client, od).catch(() => []),
+        ]);
+        material = { meetings, emails, note: facts.noteText };
+      }
       if (!body.error && pick.what.kind === 'call') {
         openingDraft = { opening: CALL_OPENING, check: opening.checkOpening(CALL_OPENING), confidence: 1, factsUsed: [], source: 'fixed' };
       } else if (!body.error && opts.openings !== false) {
@@ -653,16 +663,20 @@ async function buildPlan(coachClientId, opts = {}) {
           pick: { title: body.title, dek: body.dek, form: pick.form, kindLine: pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind },
           factLines: factLines(facts, facts.signals, card),
           today: new Date(at).toISOString().slice(0, 10),
-        }, opts.openingDeps || {});
+        }, { ...(opts.openingDeps || {}), ...(material ? { meetings: material.meetings, emails: material.emails } : {}) });
       }
     }
-    // A thought for the week, when the body is not itself a one-pager piece.
+    // A thought for the week, when the body is not itself a one-pager piece - chosen from the
+    // client's own world (their calls, emails and note), with a one-line why for Guy.
     let thought = null;
     if (pick.what && !body.error && pick.what.kind !== 'one-pager') {
-      const record = ctx.touchesByClient.get(client.clientId) || [];
-      const ahead = picker.projectAhead(facts, shelf, record, { at, order: MANIFEST.client, thisPick: pick, weeks: 2 });
-      const exclude = [pick.what.key, ...ahead.filter((x) => x.what).map((x) => x.what.key)];
-      thought = require('./clientTouchThought').chooseThought(facts, shelf, record, { exclude, now: at, seed: `${client.clientId}|${week}` });
+      let llm = opts.thoughtLlm;
+      if (llm === undefined) { try { llm = require('../config/anthropicClient').resolveClientAnthropic(coach).llm; } catch (_) { llm = null; } }
+      thought = await require('./clientTouchThought').chooseThoughtForClient({
+        facts, shelf, client, record: ctx.touchesByClient.get(client.clientId) || [], material: material || { note: facts.noteText },
+        exclude: [pick.what.key], now: at, seed: `${client.clientId}|${week}`, llm: opts.openings === false ? null : llm,
+        pieceThisWeek: `${pick.what.title} (${pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind})`, logger,
+      });
     }
     const { noteText, signals, ...storedFacts } = facts;
     const row = await planStore.upsertPlan({
@@ -1119,6 +1133,7 @@ function outlookFor(row, record, shelf, { week, pinsAhead = [], order = MANIFEST
     opening: row.opening || '',
     subject: row.subject || '',
     hold: row.hold || null,
+    thought: pick && pick.thought ? pick.thought : null,
   } : null;
   let likelyNext = [];
   if (row && row.facts) {
@@ -1155,6 +1170,7 @@ function formatOutlook(name, o) {
     lines.push(t.what ? `  ${t.what.title} (${KIND_LABEL[t.what.kind] || t.what.kind}${t.form === 'short' ? ', short' : ''})` : '  nothing');
     if (t.reason) lines.push(`  why: ${t.reason}`);
     if (t.opening) lines.push(`  opening: "${t.opening}"`);
+    if (t.thought && t.thought.text) lines.push(`  thought for the week (${t.thought.title}): "${t.thought.text}"${t.thought.why ? ` - why: ${t.thought.why}` : ''}`);
     if (t.hold && t.hold.changed && t.hold.changed.length) lines.push(`  what changed: ${t.hold.changed.join('; ')}`);
   }
   lines.push('');
@@ -1245,6 +1261,8 @@ async function screenFor(coachClientId, week) {
     build: buildStatus(buildRun),
     autosend: autosendOn(),
     shelf,
+    // The thoughts Guy can swap in on a row (approved pieces with a nugget).
+    thoughts: (() => { const n = require('./clientTouchThought').loadNuggets(); return content.listPieces().filter((p) => p.status === 'final' && n[p.slug]).map((p) => ({ slug: p.slug, title: p.title, text: n[p.slug] })); })(),
     rows,
     leftOut: rows.filter((r) => r.status === 'left-out').map((r) => ({ clientId: r.clientId, clientName: r.clientName, reason: r.pick ? r.pick.reason : '' })),
     onboardingNotBooked: rows.filter((r) => r.group === 'onboarding' && !r.nextSessionAt).map((r) => ({ clientId: r.clientId, clientName: r.clientName })),
