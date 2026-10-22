@@ -202,7 +202,11 @@ async function draftOpening({ coach, client, pick, factLines, note, today = new 
     try {
       const response = await llm.messages.create({
         model: MODEL_ID,
-        max_tokens: 600,
+        // The model thinks before it answers (on by default on Sonnet 5.5). A tight ceiling let the
+        // thinking use it all up and cut the reply off before any JSON (22 Oct: 5 of 6 openings).
+        // Room to finish, and low effort - a three-sentence opening needs little deliberation.
+        max_tokens: 16000,
+        output_config: { effort: 'low' },
         system: prompt.system + (attempt ? '\nSTRICT: answer with one JSON object only, no prose.' : ''),
         messages: [{ role: 'user', content: prompt.user }],
       });
