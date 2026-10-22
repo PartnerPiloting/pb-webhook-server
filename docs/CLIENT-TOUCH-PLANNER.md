@@ -249,6 +249,21 @@ its own. A client who is stuck or drifting can be brought forward; a client in o
 is skipped. This is a regular rhythm, not a stalled-client alert (the 24 Aug 2026 "no alerts"
 decision stands).
 
+**Tuning by approval (Guy, 22 Oct).** Every week Claude prepares each client's email; Guy approves
+it, or says in a few words why not. Each "why not" is filed where it fixes the cause, not just that
+email - so the same mistake can't come back:
+
+| Guy's reason is about... | It goes to... |
+| --- | --- |
+| the body ("that point's wrong") | content/one-pagers/IMPROVEMENTS.md, under that piece |
+| the choice ("too soon for this one", "he's had enough on X") | a rule in this document |
+| the person ("Rick hates long emails") | that client's note |
+| how openings are written ("too gushing", "don't mention the call") | a writing instruction for openings, used every week |
+
+Measure it: the share approved without a change. When it stays at about 9 in 10 for three or
+four weeks, switch to send-with-veto (below). It won't be perfect - it'll be close enough that
+reading the preview takes minutes, and every miss still teaches it.
+
 **First month: Guy approves every email.** After that it sends on its own with a Monday preview
 he can veto until Tuesday 9am. **When Guy is away** (Thailand, soon): approve the next two weeks
 before leaving, or switch to send-with-veto from his phone for that stretch.
