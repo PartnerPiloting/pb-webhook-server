@@ -110,7 +110,7 @@ export default function TouchPlannerPanel() {
   const keep = async (row) => {
     if (!window.confirm(`Send ${row.clientName}'s email now? The never-send checks still run first.`)) return null;
     const r = await post(`/${row.clientId}/keep`, {}, row.clientId);
-    if (r) setNotice({ kind: r.sent ? 'ok' : 'err', text: r.sent ? `Sent to ${row.clientName}.` : `Not sent - ${(r.results[0] && r.results[0].reason) || 'held'}.` });
+    if (r) setNotice({ kind: r.sent ? 'ok' : 'err', text: r.sent ? `Sent to ${row.clientName}.` : r.refused || `Not sent - ${(r.results[0] && r.results[0].reason) || 'held'}.` });
     return r;
   };
   const saveEdit = async (row) => {
@@ -192,7 +192,7 @@ export default function TouchPlannerPanel() {
               ? <span className="text-red-700 font-medium">Send-with-veto is ON - anything you have not skipped goes at {sendHour}am Monday.</span>
               : mondaySend
                 ? <span className="text-green-700">Only what you approve goes - by itself at {sendHour}am Monday, after a fresh check. Anything not approved by then is not sent.</span>
-                : <span className="text-red-700">The Monday send is switched off (CLIENT_TOUCH_MONDAY_SEND=off) - nothing goes by itself.</span>}
+                : <span className="text-red-700">{screen.sendEnabled ? 'The Monday send is switched off (CLIENT_TOUCH_MONDAY_SEND=off) - nothing goes by itself.' : 'Sending is switched off on this server - nothing here can reach a client.'}</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">

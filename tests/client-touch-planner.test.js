@@ -305,6 +305,17 @@ const routes = require('../routes/clientTouchRoutes');
     assert.deepStrictEqual(calls, ['build']); assert.strictEqual(out.ran, 'build');
   });
 
+  await check('CLIENT_TOUCH_SEND_ENABLED=off (staging) refuses every send - nothing mailed, no row touched; on by default', async () => {
+    assert.strictEqual(planner.sendEnabled(), true);
+    process.env.CLIENT_TOUCH_SEND_ENABLED = 'off';
+    try {
+      const mailer = mailerOk(); const rows = [approvedRow()];
+      const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF, keep: new Set(['Steve-Nelson']) });
+      assert.strictEqual(out.sent, 0); assert.strictEqual(mailer.sent.length, 0); assert.match(out.refused, /switched off/);
+      assert.strictEqual(rows[0].status, 'approved');
+    } finally { delete process.env.CLIENT_TOUCH_SEND_ENABLED; }
+  });
+
   console.log('already had | this Monday | likely next');
   await check("the three columns for one client: history newest first, this Monday's pick, five weeks ahead", () => {
     const record = [

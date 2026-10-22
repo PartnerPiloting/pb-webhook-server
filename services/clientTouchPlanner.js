@@ -65,6 +65,15 @@ function mondaySendOn() {
   return lower(process.env.CLIENT_TOUCH_MONDAY_SEND || 'on') !== 'off';
 }
 
+/**
+ * The master switch on sending ANY planner email to a client - the Monday send, "keep", the by-hand
+ * route. On unless CLIENT_TOUCH_SEND_ENABLED=off; staging sets it off, so clicking around the staging
+ * panel can never reach a real client (staging reads the same Airtable clients as production).
+ */
+function sendEnabled() {
+  return lower(process.env.CLIENT_TOUCH_SEND_ENABLED || 'on') !== 'off';
+}
+
 /** The sending moment for a plan week: that Monday at SEND_HOUR, Brisbane. */
 function sendAt(week, hour = SEND_HOUR) {
   const [y, m, d] = String(week).split('-').map(Number);
@@ -614,6 +623,10 @@ async function freshFactsFor(coachClientId, week, clientIds) {
  * Returns { sent, failed, held, results }.
  */
 async function sendApproved(coachClientId, week, deps = {}) {
+  if (!sendEnabled()) {
+    logger.warn(`send ${week} refused - CLIENT_TOUCH_SEND_ENABLED=off on this server`);
+    return { weekOf: week, sent: 0, failed: 0, held: 0, results: [], refused: 'Sending is switched off on this server (CLIENT_TOUCH_SEND_ENABLED=off) - nothing was sent.' };
+  }
   const mailer = deps.mailer || require('./seriesMailer');
   const ps = deps.planStore || planStore;
   const ts = deps.touchStore || touchStore;
@@ -993,7 +1006,8 @@ async function screenFor(coachClientId, week) {
     planningWeek: planStore.planningWeek(new Date(), SEND_HOUR),
     sendAt: sendAt(week).toISOString(),
     sendHour: SEND_HOUR,
-    mondaySend: mondaySendOn(),
+    mondaySend: mondaySendOn() && sendEnabled(),
+    sendEnabled: sendEnabled(),
     autosend: autosendOn(),
     shelf,
     rows,
@@ -1039,6 +1053,7 @@ module.exports = {
   startClientTouchPlanner,
   autosendOn,
   mondaySendOn,
+  sendEnabled,
   // pure, tested
   sendAt,
   lastTouches,
