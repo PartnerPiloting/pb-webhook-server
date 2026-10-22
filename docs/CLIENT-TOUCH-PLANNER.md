@@ -138,9 +138,17 @@ one reach-out and receives one a month. Guy approves the month's pairs on the Mo
 appears in that week's email ("This month's inner circle connection: <name> - why you two should
 talk") with a short suggested message the client can send. Pairs never repeat until good matches run
 out; the next month's email asks how it went. Recorded in the introductions record.
-Decisions owed by Guy when built: who is "in the circle" (proposal: all graduated clients, anyone can
-opt out); who is left out (e.g. Paul Faix - data-careful); whether Guy introduces the first few pairs
-himself to start the habit.
+Decided by Guy, 22 Oct:
+- **The inner circle is a list Guy curates** (a yes/no on each client record), not everyone. Only
+  graduated clients are eligible, and Guy selects them. When a client graduates, the Monday panel asks
+  "Add <name> to the inner circle?" and keeps nudging until Guy answers yes or no.
+- **Guy approves every month's pairs.** A pair is never repeated.
+- **The following month's email asks "How did it go?"**
+- **Two good reasons to connect, both valid:** (1) a functional fit - one can help the other or knows
+  the people they want to meet; (2) simply because both are on the list - they're connectors, and two
+  connectors will come across people who are good for each other. The reason line on the panel and in
+  the email says which.
+Still to settle when built: whether Guy introduces the first few pairs himself to start the habit.
 
 ## Emails set off by something that happened
 
