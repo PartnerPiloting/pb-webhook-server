@@ -46,7 +46,8 @@ const EMAIL_MAX = 60;
 const LINKEDIN_MAX = 60;
 const THREAD_CHARS = 60000;        // the email thread handed to the synthesis
 const DIGEST_CONCURRENCY = 4;
-const BRIEF_VERSION = 'b1';
+// b2 (23 Oct 2026): "important" narrowed to what a client is waiting on - every brief re-reads once.
+const BRIEF_VERSION = 'b2';
 const DAY = 86400000;
 
 // Guy's quality bar for a custom email (22 Oct 2026, written by hand for Ashley Knowles; Guy: "perfect").
@@ -290,7 +291,7 @@ const BRIEF_SYSTEM = `You keep the working brief Guy Wilson - a network-building
 Rules:
 - LIVE FACTS are checked this morning and win over anything said on a call or in an email. If the facts say invitations are NOT going out, the campaign has not launched, whatever was hoped on a call.
 - OWED is only what Guy (or the system on his behalf) promised and has NOT done, or a worry or question of theirs he has not answered. Check every LATER email, call and LinkedIn message - if it was done, answered or overtaken, leave it out. Keep the same id as last week's brief for the same item.
-- important = true when sending an ordinary weekly email while it is still open would feel like being ignored: an unanswered worry (their data, money, something that went wrong), a promised introduction, a promised fix. Small admin (a link, a date) is false.
+- important = true ONLY when the client is waiting on it, so an ordinary weekly email while it is open would feel like being ignored: a worry or question of theirs left unanswered (their data, money, something that went wrong), a fix or answer they are waiting on, or something Guy told them that turned out wrong and needs correcting. A promised introduction is important only if they have chased it; otherwise it is owed but false (Guy, 23 Oct 2026: introductions stay on the list, they do not hold the email). Small admin (a link, a date), offers the client did not take up, and things waiting on someone else are false.
 - Anything under HANDLED BY GUY is not owed unless newer material reopens it.
 - Ground everything in the material. Quotes verbatim. Never invent. Empty arrays are right when the material holds nothing.
 - Plain short spaced dashes ' - ', never an em or en dash. Australian English.`;

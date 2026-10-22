@@ -399,8 +399,8 @@ the standard, every Monday, for every client (`services/clientTouchBrief.js`):
   (dates and quotes), what they are waiting on, wins, what is on their mind, how to write to them and
   what never to say. Rebuilt only when that material changed - otherwise last week's stands. The live
   facts win over anything said on a call. Shown on the row as a short brief ("the whole brief" opens it).
-- **First things first.** When Guy owes something important (an unanswered worry, a promised
-  introduction or fix), the row says "Send a personal note first", names what is owed with the
+- **First things first.** When a client is waiting on Guy (an unanswered worry, a fix or answer they are waiting on, a correction he owes them - Guy, 23 Oct: a promised introduction shows as owed but does not
+  hold the email unless they have chased it), the row says "Send a personal note first", names what is owed with the
   quotes, and offers a note drafted in his voice (with "check before you send" for anything he must
   confirm first). He edits it, copies it, sends it himself, and presses "I've sent it" (recorded in
   the touch record; it does not make the week a quiet one) or "Not needed". Until then the weekly
