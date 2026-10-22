@@ -114,7 +114,8 @@ async function suggestionsFor(coachClientId, week, { refresh = false, deps = {} 
   const prompt = buildPrompt(profiles, allowed);
   let pairs = [];
   try {
-    const response = await llm.messages.create({ model: MODEL_ID, max_tokens: 800, system: prompt.system, messages: [{ role: 'user', content: prompt.user }] });
+    // Room for the model's thinking as well as the answer (a tight max_tokens cut the openings off, 22 Oct).
+    const response = await llm.messages.create({ model: MODEL_ID, max_tokens: 16000, output_config: { effort: 'low' }, system: prompt.system, messages: [{ role: 'user', content: prompt.user }] });
     const text = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
     pairs = parsePairs(text, allowed);
   } catch (e) {
