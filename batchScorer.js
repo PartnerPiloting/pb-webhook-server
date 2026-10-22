@@ -416,7 +416,8 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
     // text, usage and finish reason in the Gemini shape so the parsing below is provider-agnostic.
     async function callScoringModelOnce() {
         if (isClaudeScoring()) {
-            return callClaudeForScoring({ systemPrompt: systemPromptInstructions, userPrompt: generationPromptForGemini, timeoutMs: GEMINI_TIMEOUT_MS });
+            const { positives, negatives } = await loadAttributes(null, clientId);
+            return callClaudeForScoring({ systemPrompt: systemPromptInstructions, userPrompt: generationPromptForGemini, timeoutMs: GEMINI_TIMEOUT_MS, positives, negatives });
         }
         const modelInstanceForRequest = BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
             model: BATCH_SCORER_GEMINI_MODEL_ID,
@@ -504,7 +505,49 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         return lastError;
     }
 
+    // One bad answer must not cost a whole chunk. When a multi-lead chunk's answer can't be used
+    // (unparseable, empty, the wrong number of results, or a non-transient API error), its leads are
+    // scored one at a time instead, so a failure lands only on the lead that caused it. A one-lead
+    // chunk has nowhere to split to and falls through to its Failed status as before. Until 22 Oct
+    // 2026 the whole chunk was marked Failed, and since the nightly run only reads "To Be Scored",
+    // those leads were never scored again.
+    async function rescoreOneByOne(reason) {
+        log.warn(`${reason} - re-scoring the ${scorable.length} leads of this chunk one at a time`);
+        const totals = { processed: records.length, successful: 0, failed: 0, tokensUsed: usageMetadataForBatch.totalTokenCount || 0, perLead: [] };
+        for (const item of scorable) {
+            const one = await scoreChunk([item.rec], clientId, clientBase, runId, persist);
+            totals.successful += one.successful || 0;
+            totals.failed += one.failed || 0;
+            totals.tokensUsed += one.tokensUsed || 0;
+            if (Array.isArray(one.perLead)) totals.perLead.push(...one.perLead);
+        }
+        log.info(`One-at-a-time re-score finished: ${totals.successful} scored, ${totals.failed} failed`);
+        return totals;
+    }
+
     const lastError = await requestBatch();
+    // Rate limits, overloads and 5xx that outlast the backoff are the provider being down. A timeout
+    // is different: the chunk may simply be too big to finish, so it is split like any other failure.
+    const isOutage = (error) => isTransientModelError(error) && !/timeout/i.test(String(error?.message || ''));
+
+    if (lastError && scorable.length > 1 && !isOutage(lastError)) {
+        return rescoreOneByOne(`${providerLabel} API call failed for the chunk (${lastError.message})`);
+    }
+
+    if (lastError && isOutage(lastError)) {
+        // Still failing after the backoff retries: an outage, not these leads. Leave them on
+        // "To Be Scored" so the next run picks them up, rather than parking them on a Failed status
+        // nothing ever reads again.
+        await logErrorWithStackTrace(lastError, {
+            runId: runId || 'UNKNOWN',
+            clientId: clientId,
+            context: `${providerLabel} API unavailable for chunk of ${scorable.length} leads - left in queue`,
+            loggerName: 'BATCH-SCORER',
+            operation: 'geminiAPICall',
+        });
+        await alertAdmin(`${providerLabel} API Unavailable (batchScorer Chunk)`, `Client: ${clientId || 'unknown'}\nError: ${lastError.message}\n${scorable.length} leads left on "To Be Scored" for the next run.\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
+        return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 };
+    }
 
     if (lastError) {
         await logErrorWithStackTrace(lastError, {
@@ -568,6 +611,10 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         log.debug(`DBG-RAW-GEMINI (MAX_TOKENS - Batch Snippet):\n${rawResponseText.substring(0, 2000)}...`);
     }
 
+    if (rawResponseText.trim() === "" && scorable.length > 1) {
+        return rescoreOneByOne(`${providerLabel} returned an empty answer for the chunk (finish reason ${modelFinishReasonForBatch || 'Unknown'})`);
+    }
+
     if (rawResponseText.trim() === "") {
         const errorMessage = `batchScorer.scoreChunk: [${clientId || 'unknown'}] ${providerLabel} response text is empty for batch. Finish Reason: ${modelFinishReasonForBatch || 'Unknown'}. Cannot parse scores.`;
         log.error(errorMessage);
@@ -606,6 +653,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         });
         
         log.error(`🚨 JSON_PARSE_FAILED: ${JSON.stringify(jsonParseFailInfo)}`);
+        if (scorable.length > 1) return rescoreOneByOne(`${providerLabel} answer for the chunk did not parse (${parseErr.message})`);
         await alertAdmin(`${providerLabel} JSON Parse Failed (batchScorer)`, `Client: ${clientId || 'unknown'}\nError: ${parseErr.message}\nRaw: ${rawResponseText.substring(0, 500)}...\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Parse Error", "Date Scored": new Date().toISOString() } }));
         if (persist && failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for parse-failed leads: ${e.message}`));
@@ -639,6 +687,9 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
             outputArray = retryArray;
         } else {
             if (retryArray) log.warn(`Count-mismatch retry also returned ${retryArray.length} results.`);
+            // Results are matched to leads by position, so a short or long answer can't be trusted
+            // for ANY lead in it - not just the missing tail.
+            if (scorable.length > 1) return rescoreOneByOne(`${providerLabel} returned ${outputArray.length} results for ${scorable.length} leads, twice`);
             await alertAdmin(`${providerLabel} Result Count Mismatch (batchScorer)`, `Client: ${clientId || 'unknown'}\nExpected ${scorable.length}, got ${outputArray.length}${retryArray ? ` (retry: ${retryArray.length})` : ' (retry failed)'}.`);
         }
     }

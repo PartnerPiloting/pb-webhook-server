@@ -12,6 +12,9 @@
 //   SCORING_CLAUDE_MAX_TOKENS default 32000. Output cap per chunk call (10 leads ~ 9k tokens).
 //   SCORING_CLAUDE_EFFORT     default "low". Haiku 5.5 effort level; medium was measured worse
 //                             AND dearer on 21 Oct 2026, so leave it.
+//   SCORING_CLAUDE_STRUCTURED default on. "off" drops the enforced answer shape (see
+//                             claudeScoringOutputFormat) and goes back to asking for JSON in the
+//                             prompt only - the rollback if the schema itself ever misbehaves.
 //
 // Why the scale exists (measured 21 Oct 2026, 120 leads x 3 clients, memory note
 // project_haiku_scoring_drift_test): Haiku 5.5 ranks leads as well as Gemini 3.5 Flash (Spearman
@@ -33,6 +36,10 @@ const DEFAULT_CLAUDE_MODEL_ID = 'claude-haiku-5-5';
 const DEFAULT_CLAUDE_SCALE = 1.45;
 const DEFAULT_CLAUDE_MAX_TOKENS = 32000;
 const JSON_ONLY_SUFFIX = '\n\nRespond with only the JSON array - no prose, no code fence.';
+const STRUCTURED_SUFFIX = '\n\nReturn {"leads": [...]} with exactly one object per lead, in the same order as the input. '
+    + 'Every attribute ID must appear in positive_scores or negative_scores, and in attribute_reasoning. '
+    + 'For an attribute you cannot score, give it 0 and an empty reason AND list its ID in unscored_attributes - '
+    + 'that list, not the 0, is what marks it unscored.';
 
 function scoringProvider() {
     return String(process.env.SCORING_PROVIDER || 'gemini').trim().toLowerCase() === 'claude' ? 'claude' : 'gemini';
@@ -70,6 +77,84 @@ function claudeMaxTokens() {
 function claudeEffort() {
     const e = String(process.env.SCORING_CLAUDE_EFFORT || 'low').trim().toLowerCase();
     return ['low', 'medium', 'high'].includes(e) ? e : 'low';
+}
+
+function claudeStructuredOutput() {
+    return String(process.env.SCORING_CLAUDE_STRUCTURED || 'on').trim().toLowerCase() !== 'off';
+}
+
+/**
+ * The answer shape Claude is held to (structured outputs), built from the client's own attribute
+ * IDs. Before this the shape was only asked for in the prompt, and now and then Haiku slipped one
+ * character - on 22 Oct 2026 that lost a whole 40-lead chunk for Matthew Bulat ("Expected
+ * double-quoted property name"). With it, the API can only return JSON that matches.
+ *
+ * Every key is required and nothing is nullable, because the API caps a schema at 24 optional and
+ * 16 nullable properties and one client's attributes can exceed that on their own. So an attribute
+ * Claude cannot score comes back as 0 with an empty reason and its ID in unscored_attributes, and
+ * normaliseClaudeScoringText takes it out again - restoring the prompt's "omit it" convention
+ * before anything downstream sees it. The root is an object ({ leads: [...] }), the documented
+ * root type; normaliseClaudeScoringText unwraps it back to the bare array the scorers parse.
+ */
+function claudeScoringOutputFormat(positives, negatives) {
+    const posIds = Object.keys(positives || {});
+    const negIds = Object.keys(negatives || {});
+    const allIds = [...posIds, ...negIds];
+    const keyed = (ids, type) => ({
+        type: 'object',
+        properties: Object.fromEntries(ids.map(id => [id, { type }])),
+        required: ids,
+        additionalProperties: false,
+    });
+    const leadProps = {
+        positive_scores: keyed(posIds, 'integer'),
+        negative_scores: keyed(negIds, 'integer'),
+        attribute_reasoning: keyed(allIds, 'string'),
+        contact_readiness: { type: 'boolean' },
+        unscored_attributes: { type: 'array', items: allIds.length ? { type: 'string', enum: allIds } : { type: 'string' } },
+        aiProfileAssessment: { type: 'string' },
+        ai_excluded: { type: 'string', enum: ['Yes', 'No'] },
+        exclude_details: { type: 'string' },
+    };
+    const lead = { type: 'object', properties: leadProps, required: Object.keys(leadProps), additionalProperties: false };
+    return {
+        type: 'json_schema',
+        schema: {
+            type: 'object',
+            properties: { leads: { type: 'array', items: lead } },
+            required: ['leads'],
+            additionalProperties: false,
+        },
+    };
+}
+
+/**
+ * Turn a structured-output answer back into what the scorers have always parsed: a bare JSON array
+ * whose unscored attributes are absent rather than 0. Text that does not parse (a max_tokens cut,
+ * a refusal) is returned unchanged so the scorers' own parse-failure handling still sees it.
+ */
+function normaliseClaudeScoringText(text) {
+    let parsed;
+    try { parsed = JSON.parse(text); } catch (_) { return text; }
+    const leads = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.leads) ? parsed.leads : null);
+    if (!leads) return text;
+    for (const lead of leads) {
+        if (!lead || typeof lead !== 'object') continue;
+        const unscored = Array.isArray(lead.unscored_attributes) ? lead.unscored_attributes : [];
+        for (const id of unscored) {
+            if (lead.positive_scores) delete lead.positive_scores[id];
+            if (lead.negative_scores) delete lead.negative_scores[id];
+            if (lead.attribute_reasoning) delete lead.attribute_reasoning[id];
+        }
+        if (lead.attribute_reasoning) {
+            for (const [id, reason] of Object.entries(lead.attribute_reasoning)) {
+                if (typeof reason !== 'string' || reason.trim() === '') delete lead.attribute_reasoning[id];
+            }
+        }
+        // The API may return an enum value differing only in case; downstream compares === "Yes".
+        if (typeof lead.ai_excluded === 'string') lead.ai_excluded = /^yes$/i.test(lead.ai_excluded.trim()) ? 'Yes' : 'No';
+    }
+    return JSON.stringify(leads);
 }
 
 /** Human label for log lines: "Gemini" or "Claude". */
@@ -116,21 +201,25 @@ function finishReasonFromStop(stopReason) {
 }
 
 /**
- * One scoring call to Claude. Same system prompt and user prompt the Gemini path builds; the only
- * addition is a one-line "JSON array only" instruction, because Claude has no responseMimeType.
+ * One scoring call to Claude. Same system prompt and user prompt the Gemini path builds. Pass the
+ * client's `positives` and `negatives` and the answer is held to claudeScoringOutputFormat (unless
+ * SCORING_CLAUDE_STRUCTURED=off); without them it falls back to a one-line "JSON array only" ask.
  * Returns the Gemini-shaped bundle the scorers already consume, so the parsing path is unchanged:
  *   { rawResponseText, usageMetadata: { promptTokenCount, candidatesTokenCount, totalTokenCount, provider, modelId }, finishReason }
  * No temperature is set - Haiku 5.5 rejects it. Streaming is used so a long chunk never trips the
  * SDK's non-streaming time limit; the caller's own timeout aborts the stream.
  */
-async function callClaudeForScoring({ systemPrompt, userPrompt, timeoutMs, client = null } = {}) {
+async function callClaudeForScoring({ systemPrompt, userPrompt, timeoutMs, client = null, positives = null, negatives = null } = {}) {
     const llm = client || getAnthropicClient();
+    const structured = claudeStructuredOutput() && !!positives && !!negatives;
+    const outputConfig = { effort: claudeEffort() };
+    if (structured) outputConfig.format = claudeScoringOutputFormat(positives, negatives);
     const params = {
         model: claudeScoringModelId(),
         max_tokens: claudeMaxTokens(),
         system: systemPrompt,
-        output_config: { effort: claudeEffort() },
-        messages: [{ role: 'user', content: String(userPrompt) + JSON_ONLY_SUFFIX }],
+        output_config: outputConfig,
+        messages: [{ role: 'user', content: String(userPrompt) + (structured ? STRUCTURED_SUFFIX : JSON_ONLY_SUFFIX) }],
     };
     const stream = llm.messages.stream(params);
     let timerId;
@@ -153,8 +242,9 @@ async function callClaudeForScoring({ systemPrompt, userPrompt, timeoutMs, clien
     const usage = (msg && msg.usage) || {};
     const promptTokenCount = Number(usage.input_tokens) || 0;
     const candidatesTokenCount = Number(usage.output_tokens) || 0;
+    const text = claudeMessageText(msg);
     return {
-        rawResponseText: claudeMessageText(msg),
+        rawResponseText: structured ? normaliseClaudeScoringText(text) : text,
         usageMetadata: {
             promptTokenCount,
             candidatesTokenCount,
@@ -198,6 +288,9 @@ module.exports = {
     claudeOffset,
     claudeMaxTokens,
     claudeEffort,
+    claudeStructuredOutput,
+    claudeScoringOutputFormat,
+    normaliseClaudeScoringText,
     isRetryableClaudeError,
     callClaudeForScoring,
     claudeMessageText,

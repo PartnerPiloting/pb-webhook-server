@@ -65,7 +65,8 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
     // parsing below consumes: { rawResponseText, usageMetadata, finishReason, safetyRatings }.
     async function callScoringModelOnce() {
         if (isClaudeScoring()) {
-            return callClaudeForScoring({ systemPrompt: systemInstructionText, userPrompt: userPromptContent, timeoutMs: GEMINI_TIMEOUT_MS });
+            const { positives, negatives } = await loadAttributes(null, clientId);
+            return callClaudeForScoring({ systemPrompt: systemInstructionText, userPrompt: userPromptContent, timeoutMs: GEMINI_TIMEOUT_MS, positives, negatives });
         }
         const modelInstanceForRequest = vertexAIClient.getGenerativeModel({
             model: geminiModelId,

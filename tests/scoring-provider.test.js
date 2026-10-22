@@ -109,6 +109,76 @@ function test(name, fn) {
         process.env.SCORING_PROVIDER = 'gemini';
     });
 
+    const POS = { A: { maxPoints: 20 }, B: { maxPoints: 10 }, I: { maxPoints: 5 } };
+    const NEG = { N1: { penalty: -5 }, N2: { penalty: -10 } };
+
+    await test('claudeScoringOutputFormat: every attribute a required key, nothing optional or nullable', () => {
+        const f = sp.claudeScoringOutputFormat(POS, NEG);
+        assert.strictEqual(f.type, 'json_schema');
+        assert.strictEqual(f.schema.type, 'object');
+        const lead = f.schema.properties.leads.items;
+        assert.deepStrictEqual(lead.required, Object.keys(lead.properties));
+        assert.deepStrictEqual(lead.properties.positive_scores.required, ['A', 'B', 'I']);
+        assert.deepStrictEqual(lead.properties.negative_scores.required, ['N1', 'N2']);
+        assert.deepStrictEqual(lead.properties.attribute_reasoning.required, ['A', 'B', 'I', 'N1', 'N2']);
+        assert.deepStrictEqual(lead.properties.unscored_attributes.items.enum, ['A', 'B', 'I', 'N1', 'N2']);
+        assert.deepStrictEqual(lead.properties.ai_excluded.enum, ['Yes', 'No']);
+        // The API's limits: 24 optional and 16 nullable properties per request. Count both.
+        let optional = 0, nullable = 0;
+        (function walk(node) {
+            if (!node || typeof node !== 'object') return;
+            if (Array.isArray(node.type) || node.anyOf) nullable++;
+            if (node.properties) {
+                assert.strictEqual(node.additionalProperties, false);
+                optional += Object.keys(node.properties).filter(k => !(node.required || []).includes(k)).length;
+                Object.values(node.properties).forEach(walk);
+            }
+            if (node.items) walk(node.items);
+        })(f.schema);
+        assert.strictEqual(optional, 0);
+        assert.strictEqual(nullable, 0);
+    });
+
+    await test('normaliseClaudeScoringText: unwraps leads, drops unscored keys and empty reasons, fixes Yes/No case', () => {
+        const raw = JSON.stringify({ leads: [{
+            positive_scores: { A: 12, B: 0, I: 0 }, negative_scores: { N1: 0, N2: -10 },
+            attribute_reasoning: { A: 'Strong fit', B: '', I: '', N1: 'None seen', N2: 'Competitor' },
+            contact_readiness: false, unscored_attributes: ['B', 'I'],
+            aiProfileAssessment: 'ok', ai_excluded: 'yes', exclude_details: 'x',
+        }] });
+        const out = JSON.parse(sp.normaliseClaudeScoringText(raw));
+        assert.ok(Array.isArray(out) && out.length === 1);
+        assert.deepStrictEqual(out[0].positive_scores, { A: 12 });
+        assert.deepStrictEqual(out[0].negative_scores, { N1: 0, N2: -10 });
+        assert.deepStrictEqual(out[0].attribute_reasoning, { A: 'Strong fit', N1: 'None seen', N2: 'Competitor' });
+        assert.strictEqual(out[0].ai_excluded, 'Yes');
+    });
+
+    await test('normaliseClaudeScoringText: text that does not parse comes back unchanged', () => {
+        assert.strictEqual(sp.normaliseClaudeScoringText('{"leads": [{"a": 1'), '{"leads": [{"a": 1');
+    });
+
+    await test('callClaudeForScoring with attributes: schema enforced, structured suffix, bare array back', async () => {
+        process.env.SCORING_PROVIDER = 'claude';
+        let seen = null;
+        const answer = JSON.stringify({ leads: [{ positive_scores: { A: 5, B: 0, I: 0 }, negative_scores: { N1: 0, N2: 0 }, attribute_reasoning: { A: 'r', B: '', I: '', N1: '', N2: '' }, contact_readiness: false, unscored_attributes: ['B'], aiProfileAssessment: 'a', ai_excluded: 'No', exclude_details: '' }] });
+        const fake = { messages: { stream(params) { seen = params; return { finalMessage: async () => ({ content: [{ type: 'text', text: answer }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }), abort() {} }; } } };
+        const r = await sp.callClaudeForScoring({ systemPrompt: 'S', userPrompt: 'U', timeoutMs: 5000, client: fake, positives: POS, negatives: NEG });
+        assert.strictEqual(seen.output_config.effort, 'low');
+        assert.deepStrictEqual(seen.output_config.format, sp.claudeScoringOutputFormat(POS, NEG));
+        assert.ok(seen.messages[0].content.startsWith('U') && seen.messages[0].content.includes('unscored_attributes'));
+        const out = JSON.parse(r.rawResponseText);
+        assert.ok(Array.isArray(out));
+        assert.deepStrictEqual(out[0].positive_scores, { A: 5, I: 0 });
+
+        process.env.SCORING_CLAUDE_STRUCTURED = 'off';
+        await sp.callClaudeForScoring({ systemPrompt: 'S', userPrompt: 'U', timeoutMs: 5000, client: fake, positives: POS, negatives: NEG });
+        assert.deepStrictEqual(seen.output_config, { effort: 'low' }, 'off = rollback to prompt-only JSON');
+        assert.strictEqual(seen.messages[0].content, 'U' + sp.JSON_ONLY_SUFFIX);
+        delete process.env.SCORING_CLAUDE_STRUCTURED;
+        process.env.SCORING_PROVIDER = 'gemini';
+    });
+
     await test('callClaudeForScoring: the timeout aborts the stream and rejects', async () => {
         let aborted = false;
         const fake = { messages: { stream() { return { finalMessage: () => new Promise(() => {}), abort() { aborted = true; } }; } } };
