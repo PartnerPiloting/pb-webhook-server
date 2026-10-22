@@ -179,6 +179,11 @@ const MASTER_FIELDS = [
     description: 'Unguessable per-client token behind the unsubscribe link in every weekly email from Guy (the client touch planner, docs/CLIENT-TOUCH-PLANNER.md). The link is /series/unsubscribe?t=<token>; the route (routes/marketingRoutes.js) ticks Series Unsubscribed on this row, and the planner then sends nothing. Minted at join (joinProvisioningService stepMintToken) and backfilled by scripts/fill-client-unsub-tokens.js; never typed by hand, never reused. Added 2026-10-22.'
   },
   {
+    name: 'Touch Note',
+    type: 'multilineText',
+    description: "The client note the weekly client touch planner writes to this person by (docs/CLIENT-TOUCH-PLANNER.md, \"How to write to each person\"): the frame per topic (teach or recognise), the length they want (full or short), what to include or avoid, and their own discovery-calls-a-week number once they say it. Lasting things only - where they are right now is read live every Monday. Guy keeps it; a \"why not\" about the person on the Monday screen appends to it. Read by clientService as touchNote. Added 2026-10-22."
+  },
+  {
     name: 'Connection Lookback Days',
     type: 'number',
     description: 'Thanks-for-Connecting worklist: only connections from the last N days appear in the Outstanding queue. Set to roughly match this client\'s Linked Helper follow-up window. Empty is treated as 14 by the app. Added 2026-06-20.',

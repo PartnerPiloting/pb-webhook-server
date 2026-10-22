@@ -141,6 +141,10 @@ async function getAllClients() {
                 // planner cannot send to them yet (a dead link is worse than no email).
                 const emailUnsubToken = record.get('Email Unsubscribe Token') || null;
                 const emailUnsubscribed = Boolean(record.get('Series Unsubscribed'));
+                // The client note the weekly planner writes to them by (docs/CLIENT-TOUCH-PLANNER.md,
+                // "How to write to each person"): frame per topic, length, what to avoid, their own
+                // number. Lasting things only; Guy keeps it, the "why not" box appends to it.
+                const touchNote = record.get('Touch Note') || '';
 
                 // Smart Follow-Up configuration
                 const clientType = record.get('Client Type') || 'A - Partner Selection';
@@ -410,6 +414,7 @@ async function getAllClients() {
                     rescoreCreditsStart,
                     emailUnsubToken,
                     emailUnsubscribed,
+                    touchNote,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });
@@ -1814,6 +1819,23 @@ async function updateTaskNotes(taskId, notes) {
  * @param {string} clientRecordId - Airtable record ID of the client
  * @param {string} notes - The new coach notes
  */
+/**
+ * Write the client's Touch Note (the planner's client note). Replaces the whole note; callers that
+ * add a line read touchNote first and append.
+ */
+async function updateTouchNote(clientRecordId, note) {
+    try {
+        const base = initializeClientsBase();
+        await base('Clients').update(clientRecordId, { 'Touch Note': note || '' });
+        clearCache();
+        logger.info(`Updated touch note for client ${clientRecordId}`);
+        return { success: true };
+    } catch (error) {
+        logger.error(`Error updating touch note for ${clientRecordId}:`, error.message);
+        return { success: false, error: error.message };
+    }
+}
+
 async function updateCoachNotes(clientRecordId, notes) {
     try {
         const base = initializeClientsBase();
@@ -1991,5 +2013,6 @@ module.exports = {
     updateTaskStatus,
     updateTaskNotes,
     updateCoachNotes,
+    updateTouchNote,
     clearSystemSettingsCache
 };
