@@ -669,7 +669,8 @@ async function buildPlan(coachClientId, opts = {}) {
       weekOf: week, clientId: client.clientId, status,
       pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound, slots: body.slots || undefined } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null, thought },
       facts: { ...storedFacts, builtAt: new Date(now).toISOString(), at: new Date(at).toISOString(), signals: { paused: signals.paused, runningLow: signals.runningLow, acceptancesSlow: signals.acceptancesSlow, live: signals.live, pausedWaiting: signals.pausedWaiting } },
-      opening: openingDraft ? openingDraft.opening : '',
+      // Stored as it will be sent - the panel shows exactly what goes (no "Rick, ..." under "Hi Rick,").
+      opening: openingDraft ? stripLeadingName(openingDraft.opening, require('./onePagerEmail').firstNameOf(client.clientFirstName || client.clientName)) : '',
       subject,
       bodyHtml: body && !body.error ? body.bodyHtml : '',
       bodyPreview: body && !body.error ? previewText(body.bodyHtml) : (body && body.error ? `could not build: ${body.error}` : ''),
