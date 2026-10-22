@@ -426,6 +426,7 @@ const routes = require('../routes/clientTouchRoutes');
     assert.ok(prompt.messages[0].content.includes('Works at Globant')); assert.ok(prompt.messages[0].content.includes('flat out at work')); assert.ok(prompt.messages[0].content.includes('- c: Cc.'));
     assert.ok(!prompt.messages[0].content.includes('- d: Dd.'), 'a draft is never offered');
     assert.strictEqual(prompt.max_tokens, 16000);
+    assert.ok(prompt.system.includes('must ADD something'), 'the thought adds to the week, never repeats its point');
   });
   await check('a bad or failed choice falls back to the labels; no material skips Claude altogether', async () => {
     const bad = { messages: { create: async () => ({ content: [{ type: 'text', text: '{"slug":"zzz","why":"x"}' }] }) } };

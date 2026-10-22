@@ -89,6 +89,7 @@ function buildChoicePrompt({ client, note, meetings, emails, candidates, pieceTh
   const system = [
     "You choose the 'thought for the week' that goes at the end of a short weekly email from Guy Wilson - a network-building coach - to one of his clients. Guy reads every email before it is sent.",
     'Read what is going on for this client RIGHT NOW - their recent calls with Guy, recent emails, and the note Guy keeps about them - and pick the ONE thought below that would speak to them most this week: their pressures, what they are stuck on, what they are trying to do. It is fine if they have read the piece before.',
+    "The thought sits at the end of this week's email, so it must ADD something - a different angle from what this week's email already says, never the same point in other words.",
     'Answer with ONE JSON object and nothing else: {"slug": "<the chosen slug>", "why": "<one plain line for Guy, under 40 words: what in their world this speaks to, concrete, from the material>"}. Never invent facts that are not in the material.',
   ].join('\n');
   const lines = [`Today is ${today}.`, `CLIENT: ${client.clientName}.`];
