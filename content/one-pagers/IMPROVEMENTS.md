@@ -325,6 +325,25 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
     Mindset Mastery BCC lists in Gmail are the record.
   - Placement: the planner's mindset rhythm (every fourth email) after the opening run.
 
+### book one-pagers - one book, one idea, applied to building a network
+
+- *22 Oct 2026, Guy:* comb through the short-form book emails (Shortform - weekly "recommended
+  books" from recommendations@mailer.shortform.com, plus guide round-ups) and do one-pagers on books
+  people would value - Atomic Habits and the like. **Waiting**
+  - Shape: not a book summary (that is Shortform's product, and their guides are copyrighted - never
+    write from their text). Each email = the book's one central idea, in Guy's words, what it means
+    for building a network, and one thing to do this week. At most a short attributed quote.
+  - Choose for FIT, not from Shortform's weekly picks (mostly unrelated - Eat That Frog, Awaken the
+    Giant Within, A Mind for Numbers). Strong candidates to check: Give and Take (Adam Grant -
+    givers), Never Eat Alone (Keith Ferrazzi), The Go-Giver (Burg and Mann), How to Win Friends and
+    Influence People (Carnegie - interested, not interesting), Atomic Habits (James Clear - the
+    Today tab habit), Superconnector (Gerber and Paugh), The Long Game (Dorie Clark - patience),
+    Eat That Frog (Brian Tracy - clear Today first).
+  - Honesty: "a book worth knowing" unless Guy has actually read it - never "I've just read".
+  - Placement: the mindset rhythm, alongside the Beth / Mindset Mastery pieces; some can be
+    event-set-off (Atomic Habits the week the Today tab first fills; The Long Game in the flat
+    stretch).
+
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
 (Kind 2 in docs/CLIENT-TOUCH-PLANNER.md. Each: the problem, the fix, one thing this week.)
