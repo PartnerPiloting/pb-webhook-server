@@ -129,6 +129,19 @@ sorted into one of three kinds:
 **One idea per email.** A link only when the depth already exists (the playbook, another piece),
 at most one per email, and never as a way to squeeze in a second idea.
 
+## Monthly inner-circle connections (Guy, 22 Oct - to build after the deep client brief)
+
+Once a month every graduated client gets ONE person in the inner circle to reach out to, chosen for
+fit from both people's briefs (what each wants, who each wants to meet - e.g. Ashley wants platform
+builders, so Julian). Pairs run as a chain (Ashley -> Julian -> someone -> ...) so each person makes
+one reach-out and receives one a month. Guy approves the month's pairs on the Monday panel. The pair
+appears in that week's email ("This month's inner circle connection: <name> - why you two should
+talk") with a short suggested message the client can send. Pairs never repeat until good matches run
+out; the next month's email asks how it went. Recorded in the introductions record.
+Decisions owed by Guy when built: who is "in the circle" (proposal: all graduated clients, anyone can
+opt out); who is left out (e.g. Paul Faix - data-careful); whether Guy introduces the first few pairs
+himself to start the habit.
+
 ## Emails set off by something that happened
 
 The best time for an email is just before the client needs it - not week three. Examples:
