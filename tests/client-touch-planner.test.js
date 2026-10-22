@@ -32,6 +32,10 @@ const routes = require('../routes/clientTouchRoutes');
     assert.strictEqual(planner.noteSettings('Rick asked for short - dek and three bullets').length, 'short');
     assert.strictEqual(planner.noteSettings('Recognise on everything relationship').length, 'full');
   });
+  await check('"weekly tips" in the note switches the tips email on', () => {
+    assert.strictEqual(planner.noteSettings('Old friend. Weekly tips - Boolean searches, one-liners').weeklyTips, true);
+    assert.strictEqual(planner.noteSettings('Recognise on everything relationship').weeklyTips, false);
+  });
   await check('the current journey stop is the first not done', () => {
     assert.strictEqual(planner.currentStop({ claude: 'done', reconnect: 'done', voice: 'started' }), 'voice');
     assert.strictEqual(planner.currentStop({ claude: 'done', reconnect: 'done', voice: 'done', linkedin: 'done', calendar: 'done', calls: 'done', rhythm: 'done', newpeople: 'done' }), null);

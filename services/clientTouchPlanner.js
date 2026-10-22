@@ -219,10 +219,13 @@ function campaignSignals(snapshot) {
   return out;
 }
 
-/** The note's "length" - full unless the note asks for short in so many words. */
+/**
+ * The note's settings: "length" - full unless the note asks for short in so many words; "weeklyTips" -
+ * "weekly tips" in the note gives an onboarding client a tips email most weeks (Guy, 23 Oct 2026 - Dean).
+ */
 function noteSettings(note) {
   const n = String(note || '');
-  return { length: /\b(short|brief|keep (it|them) short)\b/i.test(n) ? 'short' : 'full', text: n };
+  return { length: /\b(short|brief|keep (it|them) short)\b/i.test(n) ? 'short' : 'full', weeklyTips: /\bweekly tips?\b/i.test(n), text: n };
 }
 
 /** The journey stop a client is sat on, from the statuses: the first stop not done. */
@@ -388,6 +391,7 @@ async function factsFor(client, card, ctx) {
     stuckDays,
     quietOrBusy: !!firstSeen.busy,
     note: { length: note.length },
+    weeklyTips: note.weeklyTips,
     noteText: note.text,
     pin: ctx.pins.get(client.clientId) || null,
     pinForEveryone: ctx.pins.get('*') || null,
@@ -679,7 +683,7 @@ function guardText({ pick, opening, bodyHtml }) {
  * Returns { pick, body, firstThings, customDeclined }. Throws only BudgetError.
  * deps.briefs for tests; llmFor(purpose) -> a metered llm or null.
  */
-async function deepen({ pick, body, brief, client, facts, factLinesNow = [], week, firstWeekly = false, llmFor = () => null, at = Date.now() }, deps = {}) {
+async function deepen({ pick, body, brief, client, facts, factLinesNow = [], week, firstWeekly = false, pastTips = [], llmFor = () => null, at = Date.now() }, deps = {}) {
   const b = deps.briefs || briefs;
   const out = { pick, body, firstThings: null, customDeclined: null };
   if (!brief || pick.leftOut || (brief.error && !(brief.trueNow || []).length)) return out;
@@ -708,16 +712,18 @@ async function deepen({ pick, body, brief, client, facts, factLinesNow = [], wee
   } else if (!pick.what && pick.rule === 'waiting-for-invitations' && facts && facts.group === 'running') {
     notFit = 'no invitation has gone out yet, so the welcome and the opening run cannot start';
   }
+  const tips = !pick.what && pick.rule === 'weekly-tips';
+  if (tips) notFit = 'in onboarding - the weekly tips email their note asks for';
   if (notFit && llmFor('custom')) {
     try {
-      const c = await b.draftCustomEmail(llmFor('custom'), { client, brief, notFit, firstWeekly });
+      const c = await b.draftCustomEmail(llmFor('custom'), { client, brief, notFit, firstWeekly, tips, note: (facts && facts.noteText) || '', pastTips });
       if (!c.subject || !c.paragraphs.length) out.customDeclined = c.why || 'nothing true and useful to say this week';
       else {
         out.pick = {
           what: { kind: 'custom', key: `custom:${week}`, title: c.subject },
           form: 'one-off',
           rule: 'custom',
-          reason: `CUSTOM - nothing on the shelf fits: ${notFit}`,
+          reason: tips ? `CUSTOM - ${notFit}` : `CUSTOM - nothing on the shelf fits: ${notFit}`,
           customWhy: c.why || null,
           replaces: { what: pick.what || null, rule: pick.rule || null, reason: pick.reason || '', form: pick.form || null },
         };
@@ -726,6 +732,14 @@ async function deepen({ pick, body, brief, client, facts, factLinesNow = [], wee
     } catch (e) { budget(e); out.customDeclined = `the custom email could not be written (${e.message})`; }
   }
   return out;
+}
+
+/** Every email written for them so far (custom, or a custom one Guy pinned), newest first, as "subject: body" - so a tip never repeats. Pure. */
+function pastTipsFrom(record) {
+  return (record || []).filter((r) => (r.kind === 'custom' || r.kind === 'one-off') && r.meta)
+    .sort((a, b) => String(b.sent_at || '').localeCompare(String(a.sent_at || '')))
+    .slice(0, 12)
+    .map((r) => `${r.meta.subject || ''}: ${String(r.meta.body || '').replace(/\s+/g, ' ').slice(0, 300)}`);
 }
 
 /** The brief's facts the opening drafter should also know (what is true, what never to say). Pure. */
@@ -826,7 +840,7 @@ async function buildPlan(coachClientId, opts = {}) {
         body = await buildBody(pick, { coach, client, week, firstEmail, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
       }
       if (brief) {
-        deep = await deepen({ pick, body, brief, client, facts, factLinesNow: liveLines, week, firstWeekly, llmFor, at });
+        deep = await deepen({ pick, body, brief, client, facts, factLinesNow: liveLines, week, firstWeekly, pastTips: pastTipsFrom(record), llmFor, at });
         pick = deep.pick;
         body = deep.body;
       }
@@ -1202,7 +1216,7 @@ async function sendApproved(coachClientId, week, deps = {}) {
     await ts.record({
       clientId: row.clientId, kind, key: row.pick.what.key, form: row.pick.form, sentAt: new Date(),
       reason: row.pick.reason, source: 'planner', recipient: to,
-      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '', firstWeekly, ...(row.pick.thought ? { thought: row.pick.thought.slug } : {}), ...(offeredSlots ? { slots: offeredSlots.map((x) => x.time) } : {}), ...(kind === 'custom' ? { body: briefs.htmlText(bodyHtml).slice(0, 4000), replaces: row.pick.replaces || null } : {}) },
+      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '', firstWeekly, ...(row.pick.thought ? { thought: row.pick.thought.slug } : {}), ...(offeredSlots ? { slots: offeredSlots.map((x) => x.time) } : {}), ...(kind === 'custom' ? { body: briefs.htmlText(bodyHtml).slice(0, 4000), replaces: row.pick.replaces || null } : {}), ...(kind === 'one-off' ? { body: briefs.htmlText(bodyHtml).slice(0, 4000) } : {}) },
     });
     await ps.setPlanStatus(week, row.clientId, 'sent', { sentAt: new Date() });
     sent++;

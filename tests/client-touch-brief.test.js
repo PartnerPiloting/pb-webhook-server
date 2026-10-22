@@ -31,7 +31,7 @@ function fakeLlm(answers = {}) {
       create: async (params) => {
         const s = params.system || '';
         const kind = /digest ONE recorded call/.test(s) ? 'digest' : /keep the working brief/.test(s) ? 'brief' : /personal email from Guy Wilson/.test(s) ? 'note'
-          : /Decide whether it FITS/.test(s) ? 'fit' : /nothing on his approved shelf fits/.test(s) ? 'custom' : /List every FACTUAL claim/.test(s) ? 'guard' : 'other';
+          : /Decide whether it FITS/.test(s) ? 'fit' : /nothing on his approved shelf fits/.test(s) ? 'custom' : /this week's tips email/.test(s) ? 'tips' : /List every FACTUAL claim/.test(s) ? 'guard' : 'other';
         calls.push({ kind, model: params.model, user: params.messages[0].content });
         const a = typeof answers[kind] === 'function' ? answers[kind](params) : answers[kind];
         return { content: [{ type: 'text', text: JSON.stringify(a || {}) }], usage: { input_tokens: 1000, output_tokens: 200 } };
@@ -253,6 +253,18 @@ const BRIEF_ANSWER = {
     const { llm, llmFor } = deps(ANSWERS);
     const out = await planner.deepen({ pick: pinned, body: { title: 'X', bodyHtml: '<p>x</p>' }, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'running' }, week: '2026-11-02', llmFor, at: AT });
     assert.strictEqual(out.pick, pinned); assert.ok(!llm.calls.some((c) => c.kind === 'fit'));
+  });
+  await check('weekly tips (onboarding, note asks) -> a tips email written for them, past tips passed so none repeats', async () => {
+    const { llm, llmFor } = deps({ ...ANSWERS, tips: { subject: 'A search for healthy-ageing people', paragraphs: ['Paste this into LinkedIn search: ("healthy ageing" OR longevity) AND coach'], why: 'his market' } });
+    const tipsPick = { what: null, rule: 'weekly-tips', reason: 'in onboarding - a weekly tips email' };
+    const out = await planner.deepen({ pick: tipsPick, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'onboarding', noteText: 'weekly tips' }, week: '2026-11-02', pastTips: ['A search to try: "healthy ageing" AND dietitian'], llmFor, at: AT });
+    assert.strictEqual(out.pick.what.kind, 'custom'); assert.strictEqual(out.pick.replaces.rule, 'weekly-tips');
+    assert.match(out.pick.reason, /^CUSTOM - in onboarding - the weekly tips email/);
+    const call = llm.calls.find((c) => c.kind === 'tips');
+    assert.ok(call, 'the tips prompt was used'); assert.ok(!llm.calls.some((c) => c.kind === 'custom'));
+    assert.match(call.user, /PAST TIPS \(never repeat one\):\n- A search to try/);
+    assert.match(call.user, /GUY'S NOTE ON THEM: weekly tips/);
+    assert.ok(planner.stillAsBuilt({ what: null, rule: 'weekly-tips' }, out.pick), 'the sending-morning check still lands on it');
   });
   await check('nothing true to say -> no custom email, and the row says why', async () => {
     const out = await planner.deepen({ pick: nothingPick, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'running' }, week: '2026-11-02', llmFor: deps({ ...ANSWERS, custom: { subject: '', paragraphs: [], why: 'too little on record' } }).llmFor, at: AT });

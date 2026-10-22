@@ -382,6 +382,8 @@ function pickFor(facts, shelf, record, opts = {}) {
         };
       }
     }
+    // "weekly tips" in their Touch Note: the planner writes a tips email for them (planner deepen).
+    if (facts.weeklyTips) return nothing('weekly-tips', 'in onboarding - a weekly tips email, because their note asks for one');
     return nothing('onboarding', 'in onboarding - the session is the touch, nothing scheduled');
   }
 

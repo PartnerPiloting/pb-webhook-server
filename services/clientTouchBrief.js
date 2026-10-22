@@ -475,10 +475,27 @@ ${QUALITY_BAR.body.join('\n\n')}
 (Why it works: ${QUALITY_BAR.why}.)
 Return ONE JSON object: {"subject": "short, specific to them, no brand name", "paragraphs": ["..."], "why": "one line for Guy: what in their world this speaks to"}. If there is genuinely nothing true and useful to say this week, return {"subject": "", "paragraphs": [], "why": "the reason"}.`;
 
-async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly }) {
+const TIPS_SYSTEM = `You write this week's tips email from Guy Wilson - a network-building coach (I Know A Guy) - to one of his clients who is still getting set up. Guy asked for it: on top of their weekly call, they love a practical hint each week. Guy reads it closely before anything is sent.
+- ONE tip, ready to use today, for finding or warming up the right people on LinkedIn in THEIR market (read it from the brief and Guy's note): a Boolean search string to paste into LinkedIn search (quotes for phrases, OR / AND / NOT, brackets - on a paragraph of its own), a search filter worth adding, a way into the connections they already have, a profile touch, a kind of post or comment that starts conversations.
+- Never repeat a tip from PAST TIPS - a different angle or a different slice of their market each week.
+- Short: two to four short paragraphs, under 130 words in all. Say what to do, then in one line why it finds the right people.
+- An offer, not homework: no tasks, no "let me know". At most "if you like, we can try it together" when a session is coming up.
+- Everything you say about them must be true in TRUE NOW. Respect NEVER SAY and HOW TO WRITE. What has not happened yet is not mentioned.
+- Do not deal with what Guy owes them - a separate personal note handles that.
+- Begin with the substance (no greeting) and stop before any sign-off: the system adds "Hi <name>,", a thought for the week, and "Cheers, Guy".
+- ${STYLE}
+Return ONE JSON object: {"subject": "short, says what the tip is, no brand name", "paragraphs": ["..."], "why": "one line for Guy: why this tip for them now"}. If there is genuinely nothing true and useful to say, return {"subject": "", "paragraphs": [], "why": "the reason"}.`;
+
+/**
+ * This week's email written for them: in place of a piece that does not fit (notFit), or - tips set -
+ * the weekly tips email Guy asked for (pastTips = what they have already had, so no tip repeats).
+ */
+async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips = false, note = '', pastTips = [] }) {
   const user = [
     `CLIENT: ${client.clientName}${client.clientFirstName ? ` (first name ${client.clientFirstName})` : ''}.`,
-    `WHY NOTHING ON THE SHELF FITS: ${notFit}`,
+    tips ? '' : `WHY NOTHING ON THE SHELF FITS: ${notFit}`,
+    tips && note ? `GUY'S NOTE ON THEM: ${note}` : '',
+    tips && arr(pastTips).length ? ['PAST TIPS (never repeat one):', ...arr(pastTips).map((t) => `- ${t}`)].join('\n') : '',
     firstWeekly ? 'This is the FIRST weekly email they will ever get from Guy (a one-line note about the weekly emails is added after it).' : '',
     '', 'TRUE NOW:', ...arr(brief.trueNow).map((t) => `- ${t}`),
     '', 'WINS:', ...arr(brief.wins).map((w) => `- ${w.what}${w.date ? ` (${w.date})` : ''}`),
@@ -487,7 +504,7 @@ async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly }) {
     '', 'HOW TO WRITE TO THEM:', ...arr(brief.howToWrite).map((t) => `- ${t}`),
     '', 'NEVER SAY:', ...arr(brief.neverSay).map((t) => `- ${t}`),
   ].filter((x) => x !== '').join('\n');
-  const j = await ask(llm, { system: CUSTOM_SYSTEM, user, effort: 'medium' });
+  const j = await ask(llm, { system: tips ? TIPS_SYSTEM : CUSTOM_SYSTEM, user, effort: 'medium' });
   const paragraphs = arr(j.paragraphs).map((p) => dash(String(p).trim())).filter(Boolean);
   return { subject: str(j.subject), paragraphs, why: str(j.why) };
 }

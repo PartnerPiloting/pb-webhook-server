@@ -124,6 +124,15 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
     assert.strictEqual(r.what, null); assert.strictEqual(r.rule, 'onboarding');
     assert.ok(!/week without a session/.test(r.reason));
   });
+  await check('Dean: onboarding, "weekly tips" in the note -> a tips email (written at build), a pin still wins', () => {
+    const base = { group: 'onboarding', lastInviteSent: null, sessionBooked: true, weeklyTips: true };
+    const r = run(running(base));
+    assert.strictEqual(r.what, null); assert.strictEqual(r.rule, 'weekly-tips');
+    assert.strictEqual(run(running({ ...base, weeklyTips: false })).rule, 'onboarding');
+    const pinned = run(running({ ...base, pin: { kind: 'one-off', key: 'custom:a-search', title: 'A search', bodyHtml: '<p>x</p>' } }));
+    assert.strictEqual(pinned.rule, 'pinned');
+    assert.strictEqual(run(running(base), [sent('x', 1)]).rule, 'onboarding', 'still one a week at most');
+  });
   await check('onboarding: the previous setup step done -> the next setup step', () => {
     const r = run(running({ group: 'onboarding', lastInviteSent: null, nextSetupStep: { key: 'setup:linkedin', title: 'Connect your LinkedIn' } }));
     assert.strictEqual(r.what.kind, 'setup'); assert.strictEqual(r.what.key, 'setup:linkedin');

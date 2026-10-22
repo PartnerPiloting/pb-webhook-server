@@ -70,6 +70,12 @@ no scheduled emails. Only setup steps and emails set off by an event (below), at
 The session is the touch. Note: "a week without a session" is the wrong test - Mehnaaz's
 sessions are three weeks apart.
 
+**Weekly tips during onboarding** (Guy, 23 Oct 2026 - Dean): "weekly tips" anywhere in a client's
+Touch Note gives them, in a week with nothing else (no pin, event or setup step), a tips email
+written for them at build - ONE ready-to-use LinkedIn tip for their market (a Boolean search
+string, a filter, a way into connections they already have), never repeating a past one, plus the
+usual thought for the week. It is a CUSTOM email: fact-guarded, never sent by veto, Guy approves it.
+
 **The opening run starts the week the client's first invitations actually go out** - the
 record's "Last Invite Sent" fills in. That is when the plumbing turns into real conversations.
 Not "the machine says IDLE" - a paused campaign also says IDLE (Steve, 19 Oct). Guy can start it
