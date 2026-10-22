@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { labelsFrom } = require('../config/clientTouchLabels');
 
 const CONTENT_DIR = path.join(__dirname, '..', 'content', 'one-pagers');
 
@@ -120,6 +121,10 @@ function listPieces() {
       order: Number.isFinite(Number(meta.order)) ? Number(meta.order) : 9999,
       status: meta.status || '',
       audience: meta.audience || '',
+      // The weekly client touch planner's labels (config/clientTouchLabels.js):
+      // kind, stops, problems, resend, event, teases. Empty for prospect-only
+      // pieces, which carry none.
+      labels: labelsFrom(meta),
     };
   });
   pieces.sort((a, b) => a.order - b.order);

@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 82
 status: final
 audience: insider-flavoured - client run only (the inner circle is what you get by joining; for a prospect it reads as a pitch)
+kind: way-of-thinking
+stops: any
+problems: solo
+resend: yes
+event: first introduction received from the circle
+teases: yes
 ---
 
 # One introduction from ten thousand people

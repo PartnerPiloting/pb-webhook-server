@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 60
 status: draft
 audience: outsider-safe
+kind: way-of-thinking
+stops: claude, rhythm, calls
+problems: no-time
+resend: yes
+event: none
+teases: no
 ---
 
 # Four hours, not forty

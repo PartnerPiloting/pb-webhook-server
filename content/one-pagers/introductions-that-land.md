@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 84
 status: final
 audience: insider-flavoured - client run only (craft companion to #80, after #82); tech generic, library-safe for warm prospects
+kind: how
+stops: any
+problems: earn-it
+resend: yes
+event: first introduction made
+teases: yes
 ---
 
 # Most introductions die in the inbox

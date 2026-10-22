@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 90
 status: final
 audience: insider - the Wingguy reveal (names it out loud); the feasibility close + client upsell; both audiences
+kind: how
+stops: claude, voice
+problems: no-time
+resend: no
+event: none
+teases: no
 ---
 
 # Increase your intelligence with Wingguy

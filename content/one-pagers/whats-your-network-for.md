@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 39
 status: final
 audience: client - just before choose-the-room (a way-of-thinking piece)
+kind: way-of-thinking
+stops: newpeople
+problems: buyers
+resend: yes
+event: before the campaign starts, or the campaign running out
+teases: no
 ---
 
 # What's your network for?

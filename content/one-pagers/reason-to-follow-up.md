@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 40
 status: final
 audience: outsider-safe
+kind: way-of-thinking
+stops: rhythm, reconnect
+problems: fizzle
+resend: yes
+event: follow-up list first has people
+teases: yes
 ---
 
 # A reason to follow up

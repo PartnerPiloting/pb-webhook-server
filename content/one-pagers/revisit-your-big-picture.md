@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 5
 status: draft
 audience: outsider-safe
+kind: mindset
+stops: any
+problems: no-time
+resend: yes
+event: client drifting (quiet for a few weeks while still paying)
+teases: yes
 ---
 
 # Revisit your big picture

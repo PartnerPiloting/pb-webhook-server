@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 45
 status: final
 audience: outsider-safe
+kind: way-of-thinking
+stops: any
+problems: pitch
+resend: yes
+event: first discovery call booked (the day before)
+teases: yes
 ---
 
 # What can you discover?

@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 50
 status: draft
 audience: outsider-safe
+kind: mindset
+stops: newpeople
+problems: too-slow
+resend: yes
+event: "week 8-12 of the campaign, or an 'it's not working' reply"
+teases: no
 ---
 
 # The patience curve

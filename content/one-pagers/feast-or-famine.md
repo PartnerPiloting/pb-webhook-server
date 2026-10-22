@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 10
 status: final
 audience: outsider-safe
+kind: way-of-thinking
+stops: any
+problems: no-time
+resend: yes
+event: a busy stretch (no logins, campaign still running)
+teases: yes
 ---
 
 # Overcoming feast or famine

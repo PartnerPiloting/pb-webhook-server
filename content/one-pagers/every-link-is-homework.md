@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 42
 status: final
 audience: insider-flavoured - client run only (step 7 craft, after #40); tech generic, library-safe for warm prospects
+kind: how
+stops: rhythm
+problems: fizzle
+resend: yes
+event: after the first discovery call happens
+teases: no
 ---
 
 # Every link is homework

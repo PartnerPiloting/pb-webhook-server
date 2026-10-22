@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 32
 status: final
 audience: outsider-safe
+kind: how
+stops: newpeople
+problems: buyers
+resend: yes
+event: campaign running out, or acceptances slow
+teases: yes
 ---
 
 # Who should I reach out to?

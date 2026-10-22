@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 70
 status: final
 audience: outsider-safe
+kind: way-of-thinking
+stops: any
+problems: solo
+resend: yes
+event: none
+teases: yes
 ---
 
 # Building nodes

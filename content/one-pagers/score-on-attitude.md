@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 33
 status: final
 audience: insider-flavoured - references the scoring system (base system, NOT Wingguy); fine for warm prospects via the library
+kind: how
+stops: newpeople
+problems: buyers
+resend: yes
+event: first acceptances scored
+teases: yes
 ---
 
 # The filter everyone skips

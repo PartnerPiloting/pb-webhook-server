@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 37
 status: final
 audience: outsider-safe
+kind: how
+stops: calendar
+problems: fizzle
+resend: yes
+event: first lead says yes to a chat
+teases: yes
 ---
 
 # Why I'll rarely send you a Calendly link

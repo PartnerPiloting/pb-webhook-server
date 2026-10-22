@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 47
 status: final
 audience: insider-flavoured - craft companion to #45 (carries a compressed why for jumpers, but reads best after the paradigm)
+kind: how
+stops: any
+problems: pitch, small-talk
+resend: yes
+event: first discovery call booked (the day before)
+teases: yes
 ---
 
 # What to say in the discovery call

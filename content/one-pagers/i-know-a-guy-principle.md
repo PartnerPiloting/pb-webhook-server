@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 80
 status: final
 audience: outsider-safe
+kind: way-of-thinking
+stops: any
+problems: earn-it
+resend: yes
+event: none
+teases: yes
 ---
 
 # Become the person who knows a guy

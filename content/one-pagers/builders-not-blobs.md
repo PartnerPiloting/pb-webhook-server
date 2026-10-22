@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 67
 status: draft
 audience: outsider-safe
+kind: way-of-thinking
+stops: newpeople
+problems: buyers
+resend: yes
+event: none
+teases: yes
 ---
 
 # Someone with a big network - or someone building one?

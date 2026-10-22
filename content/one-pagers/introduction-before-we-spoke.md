@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 15
 status: final
 audience: outsider-safe
+kind: way-of-thinking
+stops: any
+problems: earn-it
+resend: no
+event: none
+teases: yes
 ---
 
 # Does it really work?

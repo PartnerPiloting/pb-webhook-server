@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 30
 status: final
 audience: outsider-safe
+kind: way-of-thinking
+stops: newpeople
+problems: buyers
+resend: yes
+event: none
+teases: yes
 ---
 
 # Choose Rather Than Collect

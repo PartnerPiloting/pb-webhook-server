@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 44
 status: final
 audience: client - opens the weekly client run (discovery calls first)
+kind: way-of-thinking
+stops: calendar, newpeople
+problems: pitch
+resend: yes
+event: none
+teases: no
 ---
 
 # Begin with the end in mind

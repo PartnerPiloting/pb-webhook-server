@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 12
 status: final
 audience: insider-flavoured - client email #1 + library start-here page (NOT in the prospect drip)
+kind: how
+stops: any
+problems: solo
+resend: no
+event: none
+teases: no
 ---
 
 # The whole process on one page

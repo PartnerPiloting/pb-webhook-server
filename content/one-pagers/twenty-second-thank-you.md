@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 35
 status: final
 audience: outsider-safe
+kind: how
+stops: linkedin, voice
+problems: no-time
+resend: yes
+event: Today tab first fills (the week after make-the-important-urgent)
+teases: yes
 ---
 
 # A thanks-for-connecting that delights

@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 46
 status: final
 audience: outsider-safe
+kind: how
+stops: any
+problems: small-talk
+resend: yes
+event: none
+teases: no
 ---
 
 # Connection isn't charm

@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 37
 status: final
 audience: client - sent the week the client's Today tab first fills (an event, even mid opening run)
+kind: habit
+stops: rhythm, linkedin, reconnect
+problems: no-time
+resend: yes
+event: Today tab first fills; again when the campaign runs low on people
+teases: no
 ---
 
 # Make the important urgent

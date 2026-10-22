@@ -6,6 +6,12 @@ series: network-building-rethought
 order: 44.5
 status: final
 audience: client - opening run #2 (the first MINDSET piece)
+kind: mindset
+stops: any
+problems: small-talk, pitch
+resend: yes
+event: none
+teases: no
 ---
 
 # What energy do you bring?
