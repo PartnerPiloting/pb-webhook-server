@@ -266,6 +266,23 @@ const BRIEF_ANSWER = {
     assert.match(call.user, /GUY'S NOTE ON THEM: weekly tips/);
     assert.ok(planner.stillAsBuilt({ what: null, rule: 'weekly-tips' }, out.pick), 'the sending-morning check still lands on it');
   });
+  await check('weekly tips: the drafter is told the day it arrives and the next session (no "on the 26th" in a 2 Nov email)', async () => {
+    const { llm, llmFor } = deps({ ...ANSWERS, tips: { subject: 'S', paragraphs: ['p'], why: 'w' } });
+    await planner.deepen({ pick: { what: null, rule: 'weekly-tips', reason: 'r' }, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'onboarding', noteText: 'weekly tips', nextSessionAt: '2026-10-26T05:00:00.000Z' }, week: '2026-11-02', llmFor, at: AT });
+    assert.match(llm.calls.find((c) => c.kind === 'tips').user, /THE EMAIL ARRIVES: Monday 2026-11-02, 8am Brisbane\. NEXT SESSION: 2026-10-26 05:00\./);
+  });
+  await check("last week's email still waiting for its Monday counts as a past tip; a sent or empty one does not", () => {
+    const row = { status: 'approved', subject: 'A search to try', bodyHtml: '<p>Paste this:</p>\n<p>("healthy ageing")</p>', sentAt: null };
+    assert.deepStrictEqual(planner.plannedTipFrom(row), ['A search to try: Paste this: ("healthy ageing")']);
+    assert.deepStrictEqual(planner.plannedTipFrom({ ...row, sentAt: '2026-10-26' }), []);
+    assert.deepStrictEqual(planner.plannedTipFrom({ ...row, status: 'nothing', subject: '' }), []);
+    assert.deepStrictEqual(planner.plannedTipFrom(null), []);
+  });
+  await check("a custom email Guy pinned in his own words gets no drafted opening; a pinned piece still does", () => {
+    assert.strictEqual(planner.ownWordsPin({ rule: 'pinned', what: { kind: 'one-off', key: 'custom:a-search-to-try' } }), true);
+    assert.strictEqual(planner.ownWordsPin({ rule: 'pinned', what: { kind: 'one-pager', key: 'begin' } }), false);
+    assert.strictEqual(planner.ownWordsPin({ rule: 'setup-step', what: { kind: 'one-off', key: 'custom:x' } }), false);
+  });
   await check('nothing true to say -> no custom email, and the row says why', async () => {
     const out = await planner.deepen({ pick: nothingPick, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'running' }, week: '2026-11-02', llmFor: deps({ ...ANSWERS, custom: { subject: '', paragraphs: [], why: 'too little on record' } }).llmFor, at: AT });
     assert.strictEqual(out.pick, nothingPick); assert.strictEqual(out.customDeclined, 'too little on record');

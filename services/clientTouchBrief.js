@@ -479,7 +479,8 @@ const TIPS_SYSTEM = `You write this week's tips email from Guy Wilson - a networ
 - ONE tip, ready to use today, for finding or warming up the right people on LinkedIn in THEIR market (read it from the brief and Guy's note): a Boolean search string to paste into LinkedIn search (quotes for phrases, OR / AND / NOT, brackets - on a paragraph of its own), a search filter worth adding, a way into the connections they already have, a profile touch, a kind of post or comment that starts conversations.
 - Never repeat a tip from PAST TIPS - a different angle or a different slice of their market each week.
 - Short: two to four short paragraphs, under 130 words in all. Say what to do, then in one line why it finds the right people.
-- An offer, not homework: no tasks, no "let me know". At most "if you like, we can try it together" when a session is coming up.
+- An offer, not homework: no tasks, no "let me know". At most "if you like, we can try it together" - only when NEXT SESSION is after the day the email ARRIVES, and never name a date that will already be past.
+- What a search will bring up is a suggestion ("should bring up"), never a promise. Name a city or region only when TRUE NOW or Guy's note gives it.
 - Everything you say about them must be true in TRUE NOW. Respect NEVER SAY and HOW TO WRITE. What has not happened yet is not mentioned.
 - Do not deal with what Guy owes them - a separate personal note handles that.
 - Begin with the substance (no greeting) and stop before any sign-off: the system adds "Hi <name>,", a thought for the week, and "Cheers, Guy".
@@ -490,10 +491,11 @@ Return ONE JSON object: {"subject": "short, says what the tip is, no brand name"
  * This week's email written for them: in place of a piece that does not fit (notFit), or - tips set -
  * the weekly tips email Guy asked for (pastTips = what they have already had, so no tip repeats).
  */
-async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips = false, note = '', pastTips = [] }) {
+async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips = false, note = '', pastTips = [], arrives = null, nextSessionAt = null }) {
   const user = [
     `CLIENT: ${client.clientName}${client.clientFirstName ? ` (first name ${client.clientFirstName})` : ''}.`,
     tips ? '' : `WHY NOTHING ON THE SHELF FITS: ${notFit}`,
+    tips && arrives ? `THE EMAIL ARRIVES: Monday ${arrives}, 8am Brisbane. NEXT SESSION: ${nextSessionAt ? String(nextSessionAt).slice(0, 16).replace('T', ' ') : 'none booked'}.` : '',
     tips && note ? `GUY'S NOTE ON THEM: ${note}` : '',
     tips && arr(pastTips).length ? ['PAST TIPS (never repeat one):', ...arr(pastTips).map((t) => `- ${t}`)].join('\n') : '',
     firstWeekly ? 'This is the FIRST weekly email they will ever get from Guy (a one-line note about the weekly emails is added after it).' : '',

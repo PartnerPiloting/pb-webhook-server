@@ -716,7 +716,7 @@ async function deepen({ pick, body, brief, client, facts, factLinesNow = [], wee
   if (tips) notFit = 'in onboarding - the weekly tips email their note asks for';
   if (notFit && llmFor('custom')) {
     try {
-      const c = await b.draftCustomEmail(llmFor('custom'), { client, brief, notFit, firstWeekly, tips, note: (facts && facts.noteText) || '', pastTips });
+      const c = await b.draftCustomEmail(llmFor('custom'), { client, brief, notFit, firstWeekly, tips, note: (facts && facts.noteText) || '', pastTips, arrives: week, nextSessionAt: (facts && facts.nextSessionAt) || null });
       if (!c.subject || !c.paragraphs.length) out.customDeclined = c.why || 'nothing true and useful to say this week';
       else {
         out.pick = {
@@ -732,6 +732,17 @@ async function deepen({ pick, body, brief, client, facts, factLinesNow = [], wee
     } catch (e) { budget(e); out.customDeclined = `the custom email could not be written (${e.message})`; }
   }
   return out;
+}
+
+/** Last week's row when its email has not gone yet (pinned or approved, waiting for its Monday) - so this week's tip is not the same one. Pure. */
+function plannedTipFrom(row) {
+  if (!row || row.sentAt || !row.subject || !['proposed', 'approved', 'held'].includes(row.status)) return [];
+  return [`${row.subject}: ${briefs.htmlText(row.bodyHtml || '').replace(/\s+/g, ' ').slice(0, 300)}`];
+}
+
+/** A custom email Guy pinned in his own words: it goes as he wrote it, top to bottom. Pure. */
+function ownWordsPin(pick) {
+  return !!(pick && pick.rule === 'pinned' && pick.what && pick.what.kind === 'one-off' && String(pick.what.key || '').startsWith('custom:'));
 }
 
 /** Every email written for them so far (custom, or a custom one Guy pinned), newest first, as "subject: body" - so a tip never repeats. Pure. */
@@ -840,7 +851,8 @@ async function buildPlan(coachClientId, opts = {}) {
         body = await buildBody(pick, { coach, client, week, firstEmail, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
       }
       if (brief) {
-        deep = await deepen({ pick, body, brief, client, facts, factLinesNow: liveLines, week, firstWeekly, pastTips: pastTipsFrom(record), llmFor, at });
+        const lastWeek = !pick.what && pick.rule === 'weekly-tips' ? await planStore.planFor(planStore.addWeeks(week, -1), client.clientId).catch(() => null) : null;
+        deep = await deepen({ pick, body, brief, client, facts, factLinesNow: liveLines, week, firstWeekly, pastTips: [...plannedTipFrom(lastWeek), ...pastTipsFrom(record)], llmFor, at });
         pick = deep.pick;
         body = deep.body;
       }
@@ -861,7 +873,7 @@ async function buildPlan(coachClientId, opts = {}) {
         }
         if (!body.error && pick.what.kind === 'call') {
           openingDraft = { opening: CALL_OPENING, check: opening.checkOpening(CALL_OPENING), confidence: 1, factsUsed: [], source: 'fixed' };
-        } else if (!body.error && pick.what.kind === 'custom') {
+        } else if (!body.error && (pick.what.kind === 'custom' || ownWordsPin(pick))) {
           openingDraft = null; // a custom email is Guy's words from top to bottom - no separate opening
         } else if (!body.error && opts.openings !== false) {
           openingDraft = await opening.draftOpening({
@@ -1788,6 +1800,8 @@ module.exports = {
   deepen,
   // pure, tested
   stillAsBuilt,
+  plannedTipFrom,
+  ownWordsPin,
   firstThingsOpen,
   guardText,
   briefFactLines,
