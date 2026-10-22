@@ -316,6 +316,39 @@ const routes = require('../routes/clientTouchRoutes');
     } finally { delete process.env.CLIENT_TOUCH_SEND_ENABLED; }
   });
 
+  console.log('Build runs in the background (the panel polls)');
+  await check('build status: running while started and unfinished; finished with a row count; a stale run reads as stopped', () => {
+    const now = Date.parse('2026-10-22T10:10:00Z');
+    assert.deepStrictEqual(planner.buildStatus(null, now).running, false);
+    assert.strictEqual(planner.buildStatus(JSON.stringify({ startedAt: '2026-10-22T10:06:00Z' }), now).running, true);
+    const done = planner.buildStatus(JSON.stringify({ startedAt: '2026-10-22T10:06:00Z', finishedAt: '2026-10-22T10:09:00Z', rows: 28 }), now);
+    assert.strictEqual(done.running, false); assert.strictEqual(done.rows, 28); assert.strictEqual(done.error, null);
+    const stale = planner.buildStatus(JSON.stringify({ startedAt: '2026-10-22T09:00:00Z' }), now);
+    assert.strictEqual(stale.running, false); assert.match(stale.error, /stopped part-way/);
+  });
+  await check('startBuild answers at once, records the finish, and never starts a second run for the same week', async () => {
+    const state = new Map();
+    const ps = { getState: async (k) => state.get(k) || null, setState: async (k, v) => { state.set(k, v); return true; } };
+    let release; const gate = new Promise((r) => { release = r; });
+    const calls = [];
+    const buildPlan = async (c, o) => { calls.push(o.weekOf); await gate; return { weekOf: o.weekOf, rows: [1, 2, 3] }; };
+    const first = await planner.startBuild('Guy-Wilson', '2026-10-26', {}, { planStore: ps, buildPlan });
+    assert.strictEqual(first.started, true);
+    assert.strictEqual(planner.buildStatus(state.get('build-run:2026-10-26')).running, true);
+    const second = await planner.startBuild('Guy-Wilson', '2026-10-26', {}, { planStore: ps, buildPlan });
+    assert.strictEqual(second.started, false); assert.strictEqual(calls.length, 1);
+    release(); await first.done;
+    const s = planner.buildStatus(state.get('build-run:2026-10-26'));
+    assert.strictEqual(s.running, false); assert.strictEqual(s.rows, 3);
+  });
+  await check('a build that throws is recorded as stopped with the reason', async () => {
+    const state = new Map();
+    const ps = { getState: async (k) => state.get(k) || null, setState: async (k, v) => { state.set(k, v); return true; } };
+    const r = await planner.startBuild('Guy-Wilson', '2026-11-02', {}, { planStore: ps, buildPlan: async () => { throw new Error('Airtable 503'); } });
+    await r.done;
+    assert.match(planner.buildStatus(state.get('build-run:2026-11-02')).error, /Airtable 503/);
+  });
+
   console.log('already had | this Monday | likely next');
   await check("the three columns for one client: history newest first, this Monday's pick, five weeks ahead", () => {
     const record = [

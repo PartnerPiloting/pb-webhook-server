@@ -101,10 +101,27 @@ export default function TouchPlannerPanel() {
     }
   };
 
+  // The build runs in the background on the server (an opening per client takes minutes); the
+  // panel re-reads the screen every few seconds while it runs, so rows appear as they are written.
   const build = async () => {
     const r = await post('/build', {}, 'build');
-    if (r) setNotice({ kind: 'ok', text: `Plan for ${mondayLabel(r.weekOf)} built - ${r.rows} clients looked at. Rows you had already approved or skipped were kept.` });
+    if (r) setNotice({ kind: 'ok', text: r.started ? `Building the plan for ${mondayLabel(r.weekOf)} - a few minutes. Rows appear here as they are ready; rows you had already approved or skipped are kept.` : `A build for ${mondayLabel(r.weekOf)} is already running - rows appear here as they are ready.` });
   };
+  const building = !!(screen && screen.build && screen.build.running);
+  const [wasBuilding, setWasBuilding] = useState(false);
+  useEffect(() => {
+    if (!building) return undefined;
+    const t = setTimeout(load, 5000);
+    return () => clearTimeout(t);
+  }, [building, screen, load]);
+  useEffect(() => {
+    if (building) { setWasBuilding(true); return; }
+    if (wasBuilding && screen) {
+      setWasBuilding(false);
+      const b = screen.build || {};
+      setNotice(b.error ? { kind: 'err', text: `The build stopped: ${b.error}` } : { kind: 'ok', text: `Plan for ${mondayLabel(screen.weekOf)} built - ${b.rows ?? screen.rows.length} clients looked at.` });
+    }
+  }, [building, wasBuilding, screen]);
   const sendPassed = screen ? Date.now() >= new Date(screen.sendAt).getTime() : false;
   const approve = (row) => (sendPassed ? keep(row) : post(`/${row.clientId}/approve`, {}, row.clientId));
   const keep = async (row) => {
@@ -197,7 +214,7 @@ export default function TouchPlannerPanel() {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setCollapsed((c) => !c)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-[13px] text-gray-600 hover:bg-gray-50">{collapsed ? 'Show' : 'Hide'}</button>
-          {!sendPassed && <button onClick={build} disabled={busy === 'build'} className="px-3 py-1.5 rounded-lg border border-gray-200 text-[13px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">{busy === 'build' ? 'Building…' : (rows.length ? `Rebuild ${mondayLabel(weekOf)}` : `Build ${mondayLabel(weekOf)}`)}</button>}
+          {!sendPassed && <button onClick={build} disabled={busy === 'build' || building} className="px-3 py-1.5 rounded-lg border border-gray-200 text-[13px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">{busy === 'build' || building ? `Building… ${rows.length} so far` : (rows.length ? `Rebuild ${mondayLabel(weekOf)}` : `Build ${mondayLabel(weekOf)}`)}</button>}
           {!sendPassed && <button onClick={() => setPinAll((p) => ({ ...p, show: !p.show }))} className="px-3 py-1.5 rounded-lg border border-gray-200 text-[13px] text-gray-700 hover:bg-gray-50">Pin for everyone</button>}
         </div>
       </div>
@@ -219,7 +236,8 @@ export default function TouchPlannerPanel() {
 
       {!collapsed && (
         <>
-          {!rows.length && <p className="px-5 py-4 text-sm text-gray-500">No plan for {mondayLabel(weekOf)} yet. Each Monday morning the following Monday&rsquo;s plan builds itself - or press Build.</p>}
+          {building && <p className="px-5 pt-3 text-sm text-amber-800">Building the plan for {mondayLabel(weekOf)} - drafting an opening for each client takes a few minutes. {rows.length} ready so far; this page fills in by itself.</p>}
+          {!rows.length && !building && <p className="px-5 py-4 text-sm text-gray-500">No plan for {mondayLabel(weekOf)} yet. Each Monday morning the following Monday&rsquo;s plan builds itself - or press Build.</p>}
           {rows.length > 0 && (
             <div className="grid gap-4 px-5 pt-3 pb-1 text-[11px] uppercase tracking-wide text-gray-400" style={{ gridTemplateColumns: '150px 1fr 1.6fr 1fr 120px' }}>
               <span>Client</span><span>Already had</span><span>{mondayLabel(weekOf)}</span><span>Likely next - if nothing changes</span><span />

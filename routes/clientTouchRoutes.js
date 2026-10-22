@@ -76,9 +76,10 @@ router.get('/', wrap('touch_plan_screen', async (req, res) => {
 router.post('/build', parseJson, wrap('touch_plan_build', async (req, res, logger) => {
   const week = weekFrom(req);
   const clientIds = Array.isArray(req.body && req.body.clientIds) ? req.body.clientIds : null;
-  const plan = await planner.buildPlan(req.client.clientId, { weekOf: week, clientIds, force: !!(req.body && req.body.force) });
-  logger.info(`built ${week}: ${plan.rows.length} rows`);
-  res.json({ success: true, weekOf: week, rows: plan.rows.length });
+  // In the background - drafting every opening takes minutes; the panel polls the screen's `build`.
+  const out = await planner.startBuild(req.client.clientId, week, { clientIds, force: !!(req.body && req.body.force) });
+  logger.info(out.started ? `build ${week} started in the background` : `build ${week} already running since ${out.already.startedAt}`);
+  res.json({ success: true, weekOf: week, started: out.started, startedAt: out.startedAt || (out.already && out.already.startedAt) });
 }));
 
 router.get('/introductions', wrap('touch_plan_intros', async (req, res) => {

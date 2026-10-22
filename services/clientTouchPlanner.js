@@ -521,6 +521,55 @@ async function buildPlan(coachClientId, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// "Build" from the panel runs in the background - drafting an opening for every client takes
+// minutes, longer than a browser will wait on one request (22 Oct: Guy's first press sat on
+// "Building..." while the rows were being written). The run's state lives in client_touch_state
+// under build-run:<week>, so the panel can poll it and a restart never leaves it "running" forever.
+
+const BUILD_STALE_MS = 20 * 60 * 1000;
+
+/** What a stored build-run value says, now. Pure. */
+function buildStatus(value, now = Date.now()) {
+  let s = null;
+  try { s = value ? JSON.parse(value) : null; } catch (_) { s = null; }
+  if (!s || !s.startedAt) return { running: false, startedAt: null, finishedAt: null, rows: null, error: null };
+  const started = new Date(s.startedAt).getTime();
+  const running = !s.finishedAt && now - started < BUILD_STALE_MS;
+  return {
+    running,
+    startedAt: s.startedAt,
+    finishedAt: s.finishedAt || null,
+    rows: s.rows ?? null,
+    error: s.error || (!s.finishedAt && !running ? 'the build stopped part-way (the server restarted?) - press Build again; rows already written are kept' : null),
+  };
+}
+
+/**
+ * Start a build without waiting for it. Returns { started: true } or, when one for that week is
+ * already running, { started: false, already: status }. deps.buildPlan / deps.planStore for tests.
+ */
+async function startBuild(coachClientId, week, opts = {}, deps = {}) {
+  const ps = deps.planStore || planStore;
+  const run = deps.buildPlan || buildPlan;
+  const key = `build-run:${week}`;
+  const current = buildStatus(await ps.getState(key));
+  if (current.running) return { started: false, weekOf: week, already: current };
+  const startedAt = new Date().toISOString();
+  await ps.setState(key, JSON.stringify({ startedAt }));
+  const done = (async () => {
+    try {
+      const plan = await run(coachClientId, { ...opts, weekOf: week });
+      await ps.setState(key, JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), rows: plan.rows.length }));
+      logger.info(`background build ${week}: ${plan.rows.length} rows`);
+    } catch (e) {
+      logger.error(`background build ${week} failed: ${e.message}`);
+      await ps.setState(key, JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), error: e.message }));
+    }
+  })();
+  return { started: true, weekOf: week, startedAt, done };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Sending
 
 /** The never-sent check again, from a FRESH record, at the moment of sending. */
@@ -969,9 +1018,9 @@ async function clientEmails(coachClientId, query, opts = {}) {
 
 /** The whole screen for a week: rows (with names and each client's three columns), the left-out list, call-due list, improvements, the approval rate. */
 async function screenFor(coachClientId, week) {
-  const [plan, rates, all, pins, skips, touchesByClient, pinsAhead] = await Promise.all([
+  const [plan, rates, all, pins, skips, touchesByClient, pinsAhead, buildRun] = await Promise.all([
     planStore.plansFor(week), planStore.approvalRates(6), clientService.getAllClients(), planStore.pinsFor(week), planStore.skips(),
-    allTouchesByClient(), pinsAheadOf(week),
+    allTouchesByClient(), pinsAheadOf(week), planStore.getState(`build-run:${week}`),
   ]);
   const byId = new Map(all.map((c) => [c.clientId, c]));
   const waiting = waitingImprovements(improvementsFile());
@@ -1008,6 +1057,7 @@ async function screenFor(coachClientId, week) {
     sendHour: SEND_HOUR,
     mondaySend: mondaySendOn() && sendEnabled(),
     sendEnabled: sendEnabled(),
+    build: buildStatus(buildRun),
     autosend: autosendOn(),
     shelf,
     rows,
@@ -1042,6 +1092,8 @@ module.exports = {
   buildPlan,
   sendApproved,
   sendGuard,
+  startBuild,
+  buildStatus,
   mondaySend,
   rollOff,
   screenFor,
