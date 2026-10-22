@@ -81,6 +81,14 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
     assert.match(run(running({ skipUntil: '2026-11-03' })).reason, /nothing until 2026-11-03/);
     assert.ok(!run(running({ skipUntil: '2026-10-01' })).leftOut);
   });
+  await check('winding down (a cancellation scheduled) -> left out, with the date', () => {
+    const r = run(running({ windingDownUntil: '2027-01-15T00:00:00.000Z' }));
+    assert.strictEqual(r.leftOut, true); assert.match(r.reason, /winding down.*2027-01-15/);
+  });
+  await check("on Guy's leave-off list for all-client emails -> left out, with his reason", () => {
+    const r = run(running({ leaveOff: 'on your leave-off list for all-client emails (since 14 Oct 2026, until you say otherwise)' }));
+    assert.strictEqual(r.leftOut, true); assert.match(r.reason, /leave-off list/);
+  });
   await check('a paying client who has gone quiet is NOT left out - that drift is what the emails are for', () => {
     const r = run(running({ quietOrBusy: true, daysSinceLastCall: 30 }));
     assert.ok(!r.leftOut); assert.ok(r.what);

@@ -316,6 +316,35 @@ const routes = require('../routes/clientTouchRoutes');
     } finally { delete process.env.CLIENT_TOUCH_SEND_ENABLED; }
   });
 
+  console.log('who is left out, and when "Today first has records" really is news');
+  await check('the Today-first-records event carries the REAL first record date - months-old records are no event', () => {
+    const at = Date.parse('2026-10-25T22:00:00Z'); // Monday 26 Oct, 8am Brisbane
+    const longStanding = planner.todayFirstSeen({ 'today-first-records': '2026-10-22T09:36:44.814Z', busy: '2026-10-01T00:00:00Z' }, '2026-03-04T00:00:00.000Z');
+    assert.strictEqual(longStanding['today-first-records'], '2026-03-04T00:00:00.000Z'); assert.strictEqual(longStanding.busy, '2026-10-01T00:00:00Z');
+    assert.deepStrictEqual(planner.recentEvents(longStanding, at).map((e) => e.key), []);
+    const fresh = planner.todayFirstSeen({}, '2026-10-20T00:00:00.000Z');
+    assert.deepStrictEqual(planner.recentEvents(fresh, at).map((e) => e.key), ['today-first-records']);
+    assert.ok(!('today-first-records' in planner.todayFirstSeen({ 'today-first-records': '2026-10-22T00:00:00Z' }, null)));
+  });
+  await check('a Stripe subscription set to cancel gives its end date; a live or already-cancelled one gives none', () => {
+    assert.strictEqual(planner.cancellationFrom({ status: 'active', cancel_at: 1799971200 }), new Date(1799971200 * 1000).toISOString());
+    assert.strictEqual(planner.cancellationFrom({ status: 'active', cancel_at_period_end: true, current_period_end: 1799971200 }), new Date(1799971200 * 1000).toISOString());
+    assert.strictEqual(planner.cancellationFrom({ status: 'active', cancel_at_period_end: false, cancel_at: null }), null);
+    assert.strictEqual(planner.cancellationFrom({ status: 'canceled', cancel_at: 1799971200 }), null);
+    assert.strictEqual(planner.cancellationFrom(null), null);
+  });
+  await check("Guy's leave-off list is read from config/clientEmailOverrides.json (Brendon, with the reason shown)", () => {
+    const list = planner.leaveOffList();
+    assert.ok(list.has('Brendon-Campbell')); assert.match(list.get('Brendon-Campbell'), /leave-off list/);
+    assert.strictEqual(planner.leaveOffList('no-such-file.json').size, 0);
+  });
+  await check('the send-time check holds a client added to the leave-off list since Guy approved', async () => {
+    const rows = [approvedRow()];
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer: mailerOk(), touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF,
+      leaveOff: new Map([['Steve-Nelson', 'on your leave-off list for all-client emails']]), keep: new Set(['Steve-Nelson']) });
+    assert.strictEqual(out.sent, 0); assert.strictEqual(rows[0].hold.hard, true); assert.match(rows[0].sendError, /leave-off/);
+  });
+
   console.log('Build runs in the background (the panel polls)');
   await check('build status: running while started and unfinished; finished with a row count; a stale run reads as stopped', () => {
     const now = Date.parse('2026-10-22T10:10:00Z');

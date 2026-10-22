@@ -1,0 +1,23 @@
+{
+  "_what": "Guy's standing overrides for emails that go to ALL clients - the weekly client touch planner (services/clientTouchPlanner.js) and any all-client broadcast. leaveOff: active clients who get none of them, with the reason Guy sees on the Monday emails panel. add: people who are not a client row but go on all-client broadcasts.",
+  "_rules": [
+    "Match by clientId (the master Clients row's Client ID); the email is for broadcasts built outside the planner.",
+    "Guy sets these; they stand until he lifts them. Remove the entry to lift one."
+  ],
+  "leaveOff": [
+    {
+      "clientId": "Brendon-Campbell",
+      "email": "brendoncampbell@outlook.com",
+      "since": "2026-10-14",
+      "reason": "on your leave-off list for all-client emails (since 14 Oct 2026, until you say otherwise)"
+    }
+  ],
+  "add": [
+    {
+      "name": "Matthew Armour",
+      "email": "matthew@procurespot.com",
+      "since": "2026-10-14",
+      "note": "not a client row (Joshua Tunstall is, at Procure Spot) - include him on all-client broadcasts"
+    }
+  ]
+}

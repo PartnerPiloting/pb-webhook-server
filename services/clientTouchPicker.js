@@ -20,6 +20,8 @@
 //   coachingStatus    'Graduated' | 'Paused' | null
 //   group             'onboarding' | 'running' | 'paused'  (the client board's grouping)
 //   billingLapsed     true when the billing lapse chain has paused them
+//   windingDownUntil  ISO - a cancellation is already scheduled on their subscription (leaving)
+//   leaveOff          the reason, when Guy has them on his leave-off list for all-client emails
 //   unsubscribed      Series Unsubscribed ticked
 //   hasUnsubToken     an unsubscribe link can be built
 //   address           the address the client reads (null = none known)
@@ -163,6 +165,8 @@ function neverSentReason(facts, now) {
   if (facts.status !== 'Active') return 'not an active client (Status is not Active)';
   if (facts.coachingStatus === 'Paused' || facts.group === 'paused') return 'paused - on the board\'s paused group';
   if (facts.billingLapsed) return 'billing has lapsed';
+  if (facts.windingDownUntil) return `winding down - their subscription is set to cancel on ${String(facts.windingDownUntil).slice(0, 10)}`;
+  if (facts.leaveOff) return facts.leaveOff;
   if (facts.unsubscribed) return 'unsubscribed from the weekly emails';
   if (!facts.address) return 'no working email address on the record';
   if (facts.bounced) return 'recent mail to their address bounced';

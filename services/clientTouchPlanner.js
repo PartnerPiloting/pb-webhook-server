@@ -117,17 +117,78 @@ async function bouncedAddresses(coachClientId) {
   return new Set(r.map((x) => x.a));
 }
 
-/** Has the client's Today tab ever had records? = a lead in their base with Date Connected. */
-async function todayHasRecords(client) {
-  if (!client.airtableBaseId) return false;
+/**
+ * When did the client's Today tab FIRST have records? = the earliest Date Connected in their base
+ * (ISO date), or null when it has none (or the base cannot be read). "First" means the real first:
+ * a client who has had Today records for months is not having that moment now (22 Oct 2026 - the
+ * planner's first week saw it fire for every long-standing client).
+ */
+async function todayFirstRecordAt(client) {
+  if (!client.airtableBaseId) return null;
   try {
     const base = clientService.getClientBase(client.airtableBaseId);
-    const recs = await base('Leads').select({ filterByFormula: "{Date Connected} != ''", maxRecords: 1, fields: ['Date Connected'] }).firstPage();
-    return recs.length > 0;
+    const recs = await base('Leads').select({
+      filterByFormula: "{Date Connected} != ''", sort: [{ field: 'Date Connected', direction: 'asc' }], maxRecords: 1, fields: ['Date Connected'],
+    }).firstPage();
+    const v = recs[0] && recs[0].get('Date Connected');
+    const t = v ? new Date(v) : null;
+    return t && !Number.isNaN(t.getTime()) ? t.toISOString() : null;
   } catch (e) {
     logger.warn(`Today probe for ${client.clientId} skipped: ${e.message}`);
-    return false;
+    return null;
   }
+}
+
+/**
+ * Is this client winding down - a cancellation already scheduled on their Stripe subscription?
+ * Returns the end date (ISO) or null. Unknown (no subscription, Stripe not set up, a read error)
+ * = null: never leave someone out on a guess.
+ */
+async function stripeCancellationAt(client, deps = {}) {
+  if (!client.stripeSubscriptionId) return null;
+  let stripe = deps.stripe;
+  if (!stripe) {
+    try {
+      const sc = require('../config/stripeClient');
+      if (!sc.isStripeAvailable()) return null;
+      stripe = sc.stripe;
+    } catch (_) { return null; }
+  }
+  try {
+    return cancellationFrom(await stripe.subscriptions.retrieve(client.stripeSubscriptionId));
+  } catch (e) {
+    logger.warn(`Stripe read for ${client.clientId} skipped: ${e.message}`);
+    return null;
+  }
+}
+
+/** The scheduled end of a Stripe subscription that is set to cancel, or null. Pure. */
+function cancellationFrom(sub) {
+  if (!sub || ['canceled', 'incomplete_expired'].includes(sub.status)) return null; // already over - Status covers it
+  const at = sub.cancel_at || (sub.cancel_at_period_end ? (sub.current_period_end || (sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].current_period_end)) : null);
+  return at ? new Date(at * 1000).toISOString() : null;
+}
+
+/** Guy's leave-off list for all-client emails (config/clientEmailOverrides.json): clientId -> reason. */
+function leaveOffList(file = path.join(__dirname, '..', 'config', 'clientEmailOverrides.json')) {
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return new Map((data.leaveOff || []).filter((x) => x && x.clientId).map((x) => [x.clientId, x.reason || 'on your leave-off list for all-client emails']));
+  } catch (e) {
+    logger.warn(`leave-off list unreadable: ${e.message}`);
+    return new Map();
+  }
+}
+
+/**
+ * The today-first-records event's date: the REAL first record date when there is one, so the
+ * event only counts while that is recent. Fixes the stored first-seen state too. Pure.
+ */
+function todayFirstSeen(firstSeen, firstRecordAt) {
+  const out = { ...firstSeen };
+  if (firstRecordAt) out['today-first-records'] = firstRecordAt;
+  else delete out['today-first-records'];
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -255,10 +316,11 @@ async function factsFor(client, card, ctx) {
   const seenKey = `events:${client.clientId}`;
   let firstSeen = {};
   try { firstSeen = JSON.parse((await planStore.getState(seenKey)) || '{}'); } catch (_) { firstSeen = {}; }
-  const today = await todayHasRecords(client);
+  const [todayFirstAt, cancelsAt] = await Promise.all([todayFirstRecordAt(client), stripeCancellationAt(client, ctx.stripeDeps || {})]);
+  const today = !!todayFirstAt;
+  firstSeen = todayFirstSeen(firstSeen, todayFirstAt);
   const nowIso = new Date(now).toISOString();
   const mark = (k) => { if (!firstSeen[k]) firstSeen[k] = nowIso; };
-  if (today) mark('today-first-records');
   if (signals.runningLow && client.lastInviteSent) {
     // A recurring event: it can fire again once the previous one is older than the resend window.
     const d = daysSince(firstSeen['campaign-running-low'], now);
@@ -291,6 +353,9 @@ async function factsFor(client, card, ctx) {
     coachingStatus: client.coachingStatus || null,
     group: card.group,
     billingLapsed: false, // the lapse chain flips Status to Paused - covered by status
+    windingDownUntil: cancelsAt,
+    leaveOff: (ctx.leaveOff && ctx.leaveOff.get(client.clientId)) || null,
+    todayFirstRecordAt: todayFirstAt,
     unsubscribed: !!client.emailUnsubscribed,
     hasUnsubToken: !!client.emailUnsubToken,
     address,
@@ -455,7 +520,7 @@ async function gatherContext(coachClientId, week, { now = Date.now(), at = now }
     if (!touchesByClient.has(t.client_id)) touchesByClient.set(t.client_id, []);
     touchesByClient.get(t.client_id).push(t);
   }
-  return { now, at, all, pairs, snapshots, bounced, touchesByClient, pins, skips };
+  return { now, at, all, pairs, snapshots, bounced, touchesByClient, pins, skips, leaveOff: leaveOffList() };
 }
 
 /**
@@ -587,6 +652,7 @@ async function sendGuard(clientId, row, deps = {}) {
     group: client.coachingStatus === 'Paused' || client.status !== 'Active' ? 'paused' : 'running',
     billingLapsed: false, unsubscribed: !!client.emailUnsubscribed, hasUnsubToken: !!client.emailUnsubToken,
     address: lower(client.clientEmailAddress) || null, bounced: false, skipUntil: skip ? skip.until : null, skipThisWeek: false,
+    leaveOff: (deps.leaveOff || leaveOffList()).get(clientId) || null,
   };
   const reason = picker.neverSentReason(facts, Date.now());
   if (reason) return { ok: false, reason, client };
@@ -618,6 +684,8 @@ function whatChanged(before = {}, after = {}, row = {}, fresh = null) {
   if (before.status !== after.status) lines.push(`their Status is now ${after.status || 'blank'}`);
   if (before.group !== after.group) lines.push(after.group === 'onboarding' ? 'they are back in onboarding' : after.group === 'paused' ? 'they are paused on the board' : `they moved to ${after.group}`);
   if (!before.unsubscribed && after.unsubscribed) lines.push('they unsubscribed from the weekly emails');
+  if (!before.windingDownUntil && after.windingDownUntil) lines.push(`their subscription is now set to cancel on ${String(after.windingDownUntil).slice(0, 10)}`);
+  if (!before.leaveOff && after.leaveOff) lines.push('they are now on your leave-off list for all-client emails');
   if ((before.address || null) !== (after.address || null)) lines.push(`their address changed (${before.address || 'none'} -> ${after.address || 'none'})`);
   if (!before.bounced && after.bounced) lines.push('mail to their address bounced');
   if (!before.lastInviteSent && after.lastInviteSent) lines.push(`their invitations started going out on ${weekdayName(after.lastInviteSent)}`);
@@ -1108,6 +1176,9 @@ module.exports = {
   sendEnabled,
   // pure, tested
   sendAt,
+  cancellationFrom,
+  leaveOffList,
+  todayFirstSeen,
   lastTouches,
   whatChanged,
   samePick,
