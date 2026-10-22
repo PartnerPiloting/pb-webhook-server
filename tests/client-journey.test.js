@@ -56,7 +56,7 @@ const cj = require('../services/clientJourney');
     assert.strictEqual(cj.statusFromFacts({ hasKey: true, voiceDone: true }).voice, 'done');
     assert.strictEqual(cj.statusFromFacts({ voiceDone: true }).voice, 'todo');
   });
-  await check('a machine that exists is a start on stop 8; one that is really running finishes it', () => {
+  await check('a machine that exists is a start on stop 8; one that has sent invitations finishes it', () => {
     assert.strictEqual(cj.statusFromFacts({ machineSeen: true }).newpeople, 'started');
     assert.strictEqual(cj.statusFromFacts({ machineSeen: true, leadsArriving: true }).newpeople, 'done');
   });
@@ -76,7 +76,7 @@ const cj = require('../services/clientJourney');
   await check('facts come from the record and the stores; a store that is down claims nothing', async () => {
     const db = { query: async (sql) => ({ rows: /extension_checkins|chat_metrics/.test(sql) ? [{}] : [] }) };
     const store = { getActiveRules: async () => { throw new Error('down'); }, getVariables: async () => [], getAssets: async () => [] };
-    const f = await cj.gatherFacts({ clientId: 'T', anthropicApiKey: 'sk-x', followupBrief: 'Yes', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '123', machineStatus: 'RUNNING | LinkedIn LOGGED OUT | LH 2.130.55' }, { db, store, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } });
+    const f = await cj.gatherFacts({ clientId: 'T', anthropicApiKey: 'sk-x', followupBrief: 'Yes', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '123', machineStatus: 'RUNNING | LinkedIn LOGGED OUT | LH 2.130.55', lastInviteSent: '2026-10-05T01:00:00Z' }, { db, store, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } });
     assert.strictEqual(f.usedClaude, true);
     assert.strictEqual(f.extensionSeen, true);
     assert.strictEqual(f.hasKey, true);
@@ -90,6 +90,18 @@ const cj = require('../services/clientJourney');
     const built = await cj.gatherFacts({ clientId: 'T', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '571651', machineStatus: 'WAITING FOR SIGN-IN | LinkedIn unknown | Launcher 2.130.53' }, deps);
     assert.strictEqual(built.leadsArriving, false);
     assert.strictEqual(cj.statusFromFacts(built).newpeople, 'started');
+  });
+  await check('a paused campaign reads IDLE with nobody invited yet - a start, not done (Steve Nelson, 19 Oct 2026)', async () => {
+    const db = { query: async () => ({ rows: [] }) };
+    const deps = { db, store: { getActiveRules: async () => [], getVariables: async () => [], getAssets: async () => [] }, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } };
+    const paused = await cj.gatherFacts({ clientId: 'T', machineLastSeen: '2026-10-19T00:00:00Z', lhAccountId: '123', machineStatus: 'IDLE | LinkedIn ok | LH 2.130.55', invitesWaiting: 449, lastInviteSent: null }, deps);
+    assert.strictEqual(paused.leadsArriving, false);
+    assert.strictEqual(cj.statusFromFacts(paused).newpeople, 'started');
+    const running = await cj.gatherFacts({ clientId: 'T', machineLastSeen: '2026-10-19T00:00:00Z', machineStatus: 'RUNNING | LinkedIn ok | LH 2.130.55' }, deps);
+    assert.strictEqual(running.leadsArriving, false, 'RUNNING alone is not proof an invitation went out');
+    const sent = await cj.gatherFacts({ clientId: 'T', machineLastSeen: '2026-10-19T00:00:00Z', machineStatus: 'IDLE | LinkedIn ok | LH 2.130.55', lastInviteSent: '2026-10-18T22:10:00Z' }, deps);
+    assert.strictEqual(sent.leadsArriving, true, 'once an invitation has gone out the stop is done, whatever the status line says');
+    assert.strictEqual(cj.statusFromFacts(sent).newpeople, 'done');
   });
   await check('who is shown it: the owner and clients on the new road - not clients set up before Reconnect', () => {
     assert.strictEqual(cj.onNewJourney({ clientId: 'Guy-Wilson' }, 'Guy-Wilson'), true);

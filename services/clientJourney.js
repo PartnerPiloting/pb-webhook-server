@@ -113,14 +113,18 @@ async function gatherFacts(client, deps = {}) {
     f.voiceDone = rules.length > 0 && filled === essentials.length;
     f.voiceStarted = filled > 0;
   } catch (_) { /* the instructions store is down - voice stays 'todo' rather than guessing */ }
-  // "Really going" = the machine reports its Linked Helper as RUNNING or IDLE, which it only does
-  // once someone has signed in on it (before that it says WAITING FOR SIGN-IN). Two signals that
-  // look right and are NOT used: the account number on the record (typed in from an export before
-  // anyone signs in - Roland Illyes read "done" on 5 Oct 2026 with nobody signed in), and the
-  // "LinkedIn ok / LOGGED OUT" part of the status (it read LOGGED OUT whenever the runner was
-  // mid-task on a profile page - Guy's own working machine read LOGGED OUT the same night. The
-  // watchdog was fixed on 6 Oct 2026, but a machine still on an older copy keeps saying it).
-  f.leadsArriving = f.machineSeen && /^\s*(RUNNING|IDLE)\b/.test(String(client.machineStatus || ''));
+  // "Really going" = an invitation has actually gone out: 'Last Invite Sent' on the record, which
+  // only the machine's own campaign report writes (services/lhCampaignWatch.js), from the time of
+  // the campaign's last real invitation. Three signals that look right and are NOT used:
+  //   - the status line reading RUNNING or IDLE. IDLE is also what a machine says while its
+  //     campaign is PAUSED - Steve Nelson read IDLE on 19 Oct 2026 with his campaign paused, 449
+  //     people waiting and not one invitation sent, and his journey showed this stop done.
+  //   - the account number on the record (typed in from an export before anyone signs in -
+  //     Roland Illyes read "done" on 5 Oct 2026 with nobody signed in).
+  //   - the "LinkedIn ok / LOGGED OUT" part of the status (it read LOGGED OUT whenever the runner
+  //     was mid-task on a profile page - Guy's own working machine read LOGGED OUT the same night.
+  //     The watchdog was fixed on 6 Oct 2026, but a machine still on an older copy keeps saying it).
+  f.leadsArriving = f.machineSeen && present(client.lastInviteSent);
   return f;
 }
 
