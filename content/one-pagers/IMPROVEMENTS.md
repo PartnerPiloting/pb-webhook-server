@@ -304,8 +304,26 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
   candidates: Easy to recommend (pairs with your-unique-thing), Learner's mindset (your corrections
   compound), Give before you get (long-term network building), Collaborative not competitive,
   Optimism without hype (the opposite of cynicism). **Waiting** (Guy to choose)
-  - Guy's 19 Oct note named "Beth Berghan FORM, in Guy's words" as a mindset source - its content is
-    not on file anywhere; ask Guy for it before writing.
+  - RESOLVED 22 Oct: "Beth Berghan in Guy's words" = what Guy already does in his MINDSET MASTERY
+    newsletter - ~30 editions Jun 2025 - Jun 2026 (Gmail, BCC to 50-250 people), each one of Beth's
+    weekly emails (coach@bethberghan.com, 200+ in Gmail) retold in Guy's voice with a P.S. credit
+    ("This week's nudge came from my friend Beth Berghan..."). Last edition 27 Jun 2026.
+- *22 Oct 2026, Guy:* intersperse Beth's one-pagers - the sentiment from selected ones - with these,
+  after the initial series has gone out. **Waiting**
+  - Start from Guy's own Mindset Mastery editions (already his voice, already sent by him), then new
+    picks from Beth's recent emails that fit NETWORKING - e.g. "Ever Considered That The Room Is
+    Reading You Too", "Ever Wondered Why They're Not Picking You?", "Consistency Isn't Sexy...But
+    Dayum It Works", "Start Ugly. Start Anyway.", "You Don't Need More Confidence. You Need
+    Evidence.", "Stop Treating Discomfort Like a Red Flag", "Don't Write the Year Off Yet", "How You
+    Start Matters"; Guy's "Easy To Work With, Or Easy To Overlook?" and "Motivation or Momentum?".
+  - Each gets one closing line tying it to building a network, and keeps the P.S. credit to Beth.
+  - Take the SENTIMENT, in Guy's words: some Mindset Mastery editions follow Beth's text line by line
+    (e.g. "How many tabs do you have open?" vs her 28 May email). Fine for a credited newsletter; for an
+    automated client series that runs for years, rewrite more freely - and ask Beth she's happy.
+  - Duplicates: several clients were on the Mindset Mastery BCC list (e.g. Paul Faix, Roland Illyes,
+    Matthew Bulat, Dean, Brendon). The planner must skip an edition a client already got - the
+    Mindset Mastery BCC lists in Gmail are the record.
+  - Placement: the planner's mindset rhythm (every fourth email) after the opening run.
 
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
