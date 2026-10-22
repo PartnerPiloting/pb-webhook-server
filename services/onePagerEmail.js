@@ -222,4 +222,4 @@ async function buildEmail({ audience = 'prospect', recipientName = '', sentCount
 // The weekly client touch planner (services/clientTouchPlanner.js) composes its own emails from
 // these parts: the same greeting, footer, orientation and map bodies the drip uses, so a client
 // gets the one email in the one look whichever door it came through.
-module.exports = { buildEmail, resolveItem, totalEmails, greetingFor, MANIFEST, emailFooter, clientOrientationBody, clientMapShortBody, absolutizeLinks };
+module.exports = { buildEmail, resolveItem, totalEmails, greetingFor, firstNameOf, MANIFEST, emailFooter, clientOrientationBody, clientMapShortBody, absolutizeLinks };

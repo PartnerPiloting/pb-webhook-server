@@ -45,6 +45,7 @@ const CRAFT = [
   "Guy's voice, first person, Australian English, plain. Short spaced dashes ' - ' only, never an em or en dash. No exclamation marks. No 'I hope this finds you well', no 'Great news', no 'Just checking in', no 'I wanted to reach out'.",
   "No links of any kind. Never offer a booking link. Never praise Wingguy, Claude, or the emails themselves. Never mention that anything was automated, scheduled or chosen.",
   "If there is nothing personal and true to say, one plain sentence that leads into the piece is better than an invented detail.",
+  "Never start with their name or a greeting - the email already opens with 'Hi <first name>,' on the line above, so begin with the substance.",
 ];
 
 function buildPrompt({ client, pick, facts, note, meetings, emails, rules, today }) {

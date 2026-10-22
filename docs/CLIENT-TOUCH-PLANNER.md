@@ -306,6 +306,31 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 - **From any chat:** "show me Steve's emails" (the Guy-only Wingguy tool `wingguy_client_emails`)
   returns the same three parts, so Guy can talk a client's emails through from his phone.
 
+**How the weekly email looks (Guy, 22 Oct 2026):**
+
+- **A personal email, not a newsletter.** No banner, no series branding, no big heading: "Hi
+  <first name>," then Guy's words, signed "Cheers, / Guy", and one small quiet line at the bottom -
+  "Rather not get these weekly emails? Unsubscribe". When the body is a one-pager it sits
+  underneath as plain text under a simple bold title. (The prospect series and the public /series
+  pages keep their own look.)
+- **The first weekly email** a client ever gets (no planner send on their record - Mindset Mastery
+  and Guy's own emails don't count) adds, after the body: "One more thing - from now on I'll send
+  you a short email most weeks: an idea, a tip, or something I've picked up from other clients
+  that I think will help. If one doesn't land, just reply and tell me. And if you'd rather not get
+  them, there's a link at the bottom."
+- **No doubles.** The opening never starts with the client's name (the greeting has it). An offer
+  of times for a call is ONE short note: "It's been a little while since our last call - I'd love
+  to catch up. Would any of these suit for half an hour?", the times, then "Reply with whichever
+  works and I'll send the invite - or tell me a time that suits you better." No heading.
+- **A thought for the week** in every weekly email whose body is not a one-pager (a call offer, a
+  setup step, a one-off, a habit email): two or three sentences lifted word for word from an
+  approved piece, introduced "A thought for the week:". One per piece, kept in
+  `config/clientTouchNuggets.json` (Guy can change any); chosen to fit the client (journey stop,
+  then call problems), never from a piece they had in full or as a thought in the last 8 weeks,
+  never the piece going this week or in their likely-next for the next two weeks; otherwise a
+  stable per-client shuffle so clients don't all get the same one. Times for a call are picked from
+  the Tuesday after the sending Monday and re-checked on the sending morning.
+
 ## What has to exist first
 
 - **A record of every email each client has had** - one-pagers, habit, setup, one-offs and Guy's

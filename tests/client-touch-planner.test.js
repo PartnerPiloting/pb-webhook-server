@@ -56,13 +56,47 @@ const routes = require('../routes/clientTouchRoutes');
     assert.ok(body.includes('<p>One</p>')); assert.ok(body.includes('<p>Two</p>')); assert.ok(!body.includes('Three'));
     assert.ok(body.includes('/series/begin?audience=client'));
   });
-  await check('composed email: greeting, the opening above the title, the body, the unsubscribe link, absolute links', () => {
-    const html = planner.composeEmail({ client: { clientFirstName: 'Rick', clientName: 'Rick Wong' }, opening: 'Good to talk on Tuesday.', body: { title: 'Begin with the end in mind', dek: 'What for', bodyHtml: '<p>Body <a href="/series/x?audience=client">x</a></p>' }, unsubscribeUrl: 'https://knowaguy.com.au/series/unsubscribe?t=abc', baseUrl: 'https://knowaguy.com.au' });
-    assert.ok(html.includes('Hi Rick,'));
-    assert.ok(html.indexOf('Good to talk on Tuesday.') < html.indexOf('class="op-t">Begin with the end in mind'));
-    assert.ok(html.includes('unsubscribe?t=abc'));
+  await check('a piece email looks personal: Hi <name>, the opening, a bold title, the piece, Cheers / Guy, one quiet unsubscribe line', () => {
+    const html = planner.composeEmail({ client: { clientFirstName: 'Rick', clientName: 'Rick Wong' }, opening: 'Good to talk on Tuesday.', kind: 'one-pager', body: { title: 'Begin with the end in mind', dek: 'What for', bodyHtml: '<p>Body <a href="/series/x?audience=client">x</a></p>' }, unsubscribeUrl: 'https://knowaguy.com.au/series/unsubscribe?t=abc', baseUrl: 'https://knowaguy.com.au' });
+    assert.ok(html.includes('<p>Hi Rick,</p>'));
+    assert.ok(html.indexOf('Good to talk on Tuesday.') < html.indexOf('<strong>Begin with the end in mind</strong>'));
+    assert.ok(html.indexOf('<strong>Begin with the end in mind</strong>') < html.indexOf('Cheers,<br>Guy'));
+    assert.ok(html.includes('Rather not get these weekly emails? <a href="https://knowaguy.com.au/series/unsubscribe?t=abc"'));
+    assert.ok(!/from the series|Network building, rethought|op-hero|op-t"/i.test(html), 'no banner, no series branding');
     assert.ok(html.includes('href="https://knowaguy.com.au/series/x?audience=client"'));
-    assert.ok(!/[–—]/.test(html.replace(/<style[\s\S]*?<\/style>/, '')));
+    assert.ok(!html.includes('A thought for the week'), 'a piece email carries no extra thought');
+    assert.ok(!/[–—]/.test(html));
+  });
+  await check('never "Hi Hiresh, Hiresh, ..." - a leading name (or greeting + name) is dropped from the opening', () => {
+    assert.strictEqual(planner.stripLeadingName("Hiresh, it's been a while.", 'Hiresh'), "It's been a while.");
+    assert.strictEqual(planner.stripLeadingName('Hi Hiresh - good to talk.', 'Hiresh'), 'Good to talk.');
+    assert.strictEqual(planner.stripLeadingName('It was good to see you, Rick.', 'Rick'), 'It was good to see you, Rick.');
+    assert.strictEqual(planner.stripLeadingName('Rickard said yes.', 'Rick'), 'Rickard said yes.');
+    const html = planner.composeEmail({ client: { clientName: 'Hiresh Shinde' }, opening: 'Hiresh, good to talk.', kind: 'one-pager', body: { title: 'T', bodyHtml: '' }, unsubscribeUrl: '#' });
+    assert.ok(!/Hiresh,[\s\S]*Hiresh,/.test(html));
+  });
+  await check('a call offer is ONE short note: the fixed ask, the times, the reply line - no heading, no second "it has been a while"', () => {
+    const body = planner.callOfferHtml([{ label: 'Thu 29 October, 10:30 am' }, { label: 'Fri 30 October, 10:30 am' }]);
+    const html = planner.composeEmail({ client: { clientName: 'Hiresh Shinde' }, opening: planner.CALL_OPENING, kind: 'call', body: { title: 'Time for a catch-up', bodyHtml: body }, unsubscribeUrl: '#' });
+    assert.ok(html.includes("It's been a little while since our last call - I'd love to catch up. Would any of these suit for half an hour?"));
+    assert.ok(!html.includes('<strong>Time for a catch-up</strong>')); assert.ok(!/it has been a while/i.test(html));
+    assert.ok(html.indexOf('Would any of these suit') < html.indexOf('Thu 29 October'));
+    assert.ok(html.includes("Reply with whichever works and I'll send the invite - or tell me a time that suits you better."));
+  });
+  await check('the first weekly email (no planner send on record - Mindset Mastery does not count) carries the one-time note', () => {
+    assert.strictEqual(planner.isFirstWeekly([{ kind: 'mindset', source: 'backfill' }, { kind: 'habit', source: 'backfill' }]), true);
+    assert.strictEqual(planner.isFirstWeekly([{ kind: 'one-pager', source: 'planner' }]), false);
+    const first = planner.composeEmail({ client: { clientName: 'Rick Wong' }, opening: 'x.', kind: 'call', body: { bodyHtml: '<p>b</p>' }, unsubscribeUrl: '#', firstWeekly: true });
+    assert.ok(first.includes(planner.FIRST_WEEKLY_NOTE.replace(/'/g, '&#39;')) || first.includes(planner.FIRST_WEEKLY_NOTE));
+    assert.ok(first.indexOf('<p>b</p>') < first.indexOf('One more thing - from now on'));
+    const later = planner.composeEmail({ client: { clientName: 'Rick Wong' }, opening: 'x.', kind: 'call', body: { bodyHtml: '<p>b</p>' }, unsubscribeUrl: '#', firstWeekly: false });
+    assert.ok(!later.includes('One more thing - from now on'));
+  });
+  await check('a non-piece email carries "A thought for the week:" before the sign-off', () => {
+    const html = planner.composeEmail({ client: { clientName: 'Sam Noble' }, opening: 'Next step.', kind: 'setup', body: { title: 'Connect your calendar', bodyHtml: '<p>One small thing.</p>' }, unsubscribeUrl: '#', thought: { slug: 'reason-to-follow-up', text: "Goodwill doesn't sustain a relationship. Motion does." } });
+    assert.ok(html.includes('<strong>A thought for the week:</strong> Goodwill'));
+    assert.ok(html.indexOf('A thought for the week') < html.indexOf('Cheers,<br>Guy'));
+    assert.ok(!html.includes('<strong>Connect your calendar</strong>'), 'a setup step is part of the note, not a titled piece');
   });
   await check('an opening with angle brackets is escaped, never injected', () => {
     const html = planner.composeEmail({ client: { clientName: 'X' }, opening: '<script>x</script>', body: { title: 'T', dek: '', bodyHtml: '' }, unsubscribeUrl: '#' });
@@ -343,6 +377,46 @@ const routes = require('../routes/clientTouchRoutes');
     const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer: mailerOk(), touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF,
       leaveOff: new Map([['Steve-Nelson', 'on your leave-off list for all-client emails']]), keep: new Set(['Steve-Nelson']) });
     assert.strictEqual(out.sent, 0); assert.strictEqual(rows[0].hold.hard, true); assert.match(rows[0].sendError, /leave-off/);
+  });
+
+  console.log('a thought for the week');
+  const thoughts = require('../services/clientTouchThought');
+  await check('every nugget is word for word from an APPROVED (final) piece - an edit to a piece cannot leave a misquote', () => {
+    const fs = require('fs');
+    const nuggets = thoughts.loadNuggets();
+    const finals = new Map(SHELF.filter((p) => p.status === 'final').map((p) => [p.slug, p]));
+    assert.ok(Object.keys(nuggets).length >= 15);
+    for (const [slug, text] of Object.entries(nuggets)) {
+      assert.ok(finals.has(slug), `${slug} is not a final piece`);
+      const md = fs.readFileSync(require('path').join(__dirname, '..', 'content', 'one-pagers', `${slug}.md`), 'utf8');
+      assert.ok(thoughts.plainText(md).includes(text), `${slug}: the nugget is not word for word in the piece`);
+      assert.ok(!/wingguy|claude/i.test(text), `${slug}: names the system`);
+      assert.ok(!/[–—]/.test(text), `${slug}: long dash`);
+    }
+  });
+  await check('the thought fits the client (journey stop first), and skips what they had in full or as a thought in 8 weeks, and what is coming', () => {
+    const now = Date.parse('2026-10-26T00:00:00Z');
+    const shelf = [
+      { slug: 'a', title: 'A', status: 'final', labels: { stops: ['calls'], problems: [] } },
+      { slug: 'b', title: 'B', status: 'final', labels: { stops: [], problems: ['pitch'] } },
+      { slug: 'c', title: 'C', status: 'final', labels: { stops: [], problems: [] } },
+      { slug: 'd', title: 'D', status: 'draft', labels: { stops: ['calls'], problems: [] } },
+    ];
+    const nuggets = { a: 'Aa.', b: 'Bb.', c: 'Cc.', d: 'Dd.' };
+    assert.strictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, shelf, [], { nuggets, now }).slug, 'a');
+    assert.strictEqual(thoughts.chooseThought({ callProblems: ['pitch'] }, shelf, [], { nuggets, now }).slug, 'b');
+    const had = [{ kind: 'one-pager', key: 'a', form: 'full', sent_at: '2026-10-01T00:00:00Z' }];
+    assert.strictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, shelf, had, { nuggets, now, exclude: ['b'] }).slug, 'c');
+    const usedAsThought = [{ kind: 'personal', key: 'check-in', sent_at: '2026-10-19T00:00:00Z', meta: { thought: 'a' } }];
+    assert.notStrictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, shelf, usedAsThought, { nuggets, now }).slug, 'a');
+    const longAgo = [{ kind: 'one-pager', key: 'a', form: 'full', sent_at: '2026-06-01T00:00:00Z' }];
+    assert.strictEqual(thoughts.chooseThought({ stuckStop: 'calls' }, shelf, longAgo, { nuggets, now }).slug, 'a');
+    assert.strictEqual(thoughts.chooseThought({}, shelf, [], { nuggets, now, exclude: ['a', 'b', 'c'] }), null, 'a draft piece is never quoted');
+  });
+  await check('with nothing to choose between, clients get different thoughts (a stable per-client shuffle)', () => {
+    const picks = new Set(['Rick-Wong', 'Sam-Noble', 'Hiresh-Shinde', 'Julian-Davis', 'Roland-Illyes'].map((id) => thoughts.chooseThought({}, SHELF, [], { now: Date.now(), seed: `${id}|2026-10-26` }).slug));
+    assert.ok(picks.size >= 3, [...picks].join(','));
+    assert.strictEqual(thoughts.chooseThought({}, SHELF, [], { seed: 'x|w' }).slug, thoughts.chooseThought({}, SHELF, [], { seed: 'x|w' }).slug);
   });
 
   console.log('an offer of times for a call - chosen for the day it arrives');

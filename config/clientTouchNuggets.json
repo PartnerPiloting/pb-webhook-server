@@ -1,0 +1,28 @@
+{
+  "_what": "A thought for the week (services/clientTouchThought.js): two or three sentences lifted WORD FOR WORD from each approved one-pager, used in weekly client emails whose body is not itself a piece. Guy can change any line - tests/client-touch-planner.test.js checks each still appears verbatim in its piece.",
+  "_skipped": {
+    "increase-your-intelligence": "the whole piece is about Wingguy - nothing stands alone without naming it"
+  },
+  "nuggets": {
+    "feast-or-famine": "Nobody does their bookkeeping \"when things slow down.\" It runs every month, busy or not, because the consequences of letting it lapse are unacceptable. Your network is the same kind of asset - it just rarely gets treated like one.",
+    "introduction-before-we-spoke": "The introductions aren't a distant reward for years of relationship maintenance. They're just what happens when the right people are connected and actually talking.",
+    "choose-the-room": "The charm, the follow-up, the staying in touch - all of it multiplies whatever the room contains. Selection decides what there is to multiply.",
+    "who-do-i-reach-out-to": "The shift is this: you're not searching for people who might buy. You're searching for people positioned to trust and recommend you.",
+    "score-on-attitude": "Credentials tell you what someone has done. They can't tell you how they think. And how they think - their attitude - is the best predictor there is of whether they'll ever become a great connection.",
+    "twenty-second-thank-you": "The effect isn't \"they used my name\". It's \"this person actually looked at me.\" People are rarely truly seen, and they don't forget the ones who bother.",
+    "make-the-important-urgent": "Networking is important. It's almost never urgent. And in a busy week, urgent wins every time - the client email, the deadline, the phone call.",
+    "never-send-calendly": "Effort that reads as care is no longer expensive. Which removes the last excuse for outsourcing that effort to the very person you're trying to win over.",
+    "whats-your-network-for": "A hundred well-chosen people beat a thousand random ones. Each well-chosen person brings their own trusted circle with them. A random one brings nothing but a name in your list.",
+    "reason-to-follow-up": "Goodwill doesn't sustain a relationship. Motion does. What keeps two people connected is having a reason to come back.",
+    "every-link-is-homework": "You've handed a busy person an assignment. Five links is a reading list, and a reading list gets filed under \"later\", which really means never.",
+    "begin-with-the-end-in-mind": "Every new person you get to know is someone else you can refer people to. That's what being a connector is.",
+    "what-energy-do-you-bring": "What they remember is how they felt talking to you. Listened to. Interested in. A bit lighter than when they came in.",
+    "first-discovery-call": "The call isn't a pitch. It's a discovery. You're not there to be assessed - you're there to learn.",
+    "connection-isnt-charm": "Here's the secret nobody tells you: connection isn't charm. It isn't banter, it isn't quick wit, and it is absolutely not a personality you're either born with or you're not.",
+    "discovery-call-craft": "You don't have to be interesting. You have to be interested.",
+    "nodes": "A node is small and deliberate - a handful of the right people, chosen for attitude, all quietly looking out for one another. On its own, that is already worth more than a contact list of five hundred.",
+    "i-know-a-guy-principle": "Give introductions away freely, to enough of the right people, for long enough, and the return isn't a trickle - it's more than you would ever have dared engineer. Every person you've quietly helped becomes someone who says your name in a room you'll never sit in.",
+    "ten-thousand-people": "A contact list of ten thousand is worth almost nothing - nobody on it is listening for you. Ten thousand people you can reach through someone they trust is a different animal altogether.",
+    "introductions-that-land": "An introduction is a small piece of writing whose whole job is to make the first conversation obvious. When it does that job, two people talk. When it doesn't, you've spent a favour and got nothing for anyone."
+  }
+}

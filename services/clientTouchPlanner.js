@@ -432,10 +432,16 @@ function pickCallSlots(filtered, notBefore, { max = CALL_SLOTS, tz = 'Australia/
   return picked.sort((x, y) => Date.parse(x.time) - Date.parse(y.time));
 }
 
+/**
+ * The call offer reads as ONE short note (Guy, 22 Oct): the opening asks, the body is the times and
+ * the reply line - no heading, no second "it has been a while". The opening is fixed, not drafted.
+ */
+const CALL_OPENING = "It's been a little while since our last call - I'd love to catch up. Would any of these suit for half an hour?";
+
 /** The call-offer body for a list of slots. Pure. */
 function callOfferHtml(slots) {
   const times = slots.length ? `<ul>${slots.map((s) => `<li>${s.label}</li>`).join('')}</ul>` : '<p>(no free times could be read from the calendar - add two or three by hand)</p>';
-  return `<p>It has been a while since we talked properly. Would any of these suit for half an hour?</p>${times}<p>Reply with whichever works and I will send the invite - or tell me a time that suits you better.</p>`;
+  return `${times}<p>Reply with whichever works and I'll send the invite - or tell me a time that suits you better.</p>`;
 }
 
 /** Guy's free times, filtered by his booking preferences, read now. */
@@ -517,22 +523,53 @@ function previewText(html) {
   return String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240);
 }
 
-/** Compose the full email: greeting, the opening, the body, the footer, the unsubscribe link. */
-function composeEmail({ client, opening: openingText, body, unsubscribeUrl, baseUrl }) {
+// The weekly client email looks like a personal email from Guy (22 Oct 2026): no banner, no series
+// branding, no big heading - "Hi <name>," then his words, "Cheers, / Guy", and one quiet line at
+// the bottom to stop them. A one-pager piece sits underneath as plain text under a simple bold
+// title. The prospect series and the public /series pages keep their own look (onePagerShell).
+
+const FIRST_WEEKLY_NOTE = "One more thing - from now on I'll send you a short email most weeks: an idea, a tip, or something I've picked up from other clients that I think will help. If one doesn't land, just reply and tell me. And if you'd rather not get them, there's a link at the bottom.";
+const PIECE_KINDS = new Set(['one-pager', 'habit']);
+
+/** "Hiresh, it's been..." under "Hi Hiresh," reads twice - drop a leading name (or greeting + name). Pure. */
+function stripLeadingName(text, firstName) {
+  const t = String(text || '').trim();
+  const name = String(firstName || '').trim();
+  if (!t || !name) return t;
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = t.match(new RegExp(`^(?:(?:hi|hello|hey|g'day)\\s+)?${esc}\\s*[,:!-]+\\s*`, 'i'));
+  if (!m) return t;
+  const rest = t.slice(m[0].length);
+  return rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : t;
+}
+
+/**
+ * Compose the full email. `kind` decides whether the body is a piece (bold title + text) or part of
+ * the note itself (a call offer, a setup step, a one-off). `firstWeekly` adds the one-time note
+ * about what these emails are; `thought` adds "A thought for the week:".
+ */
+function composeEmail({ client, opening: openingText, body, unsubscribeUrl, baseUrl, kind = null, firstWeekly = false, thought = null }) {
   const email = require('./onePagerEmail');
-  const esc = (s) => String(s).replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
-  const introHtml = openingText ? `<p>${esc(openingText)}</p>` : '';
-  const inner = shell.articleCard({
-    greeting: email.greetingFor(client.clientFirstName || client.clientName),
-    introHtml,
-    title: body.title,
-    dek: body.dek,
-    bodyHtml: body.bodyHtml,
-    footerHtml: email.emailFooter({ audience: 'client', unsubscribeUrl }),
-    qs: body.qs || '?audience=client',
-  });
+  const esc = (x) => String(x).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const first = email.firstNameOf(client.clientFirstName || client.clientName);
+  const parts = [`<p>${first ? `Hi ${esc(first)},` : 'Hi there,'}</p>`];
+  const op = stripLeadingName(openingText, first);
+  if (op) parts.push(`<p>${esc(op)}</p>`);
+  const isPiece = kind ? PIECE_KINDS.has(kind) : !!body.title;
+  if (isPiece && body.title) parts.push(`<p style="margin-top:22px"><strong>${esc(body.title)}</strong></p>`);
+  parts.push(body.bodyHtml || '');
+  if (thought && thought.text) parts.push(`<p><strong>A thought for the week:</strong> ${esc(thought.text)}</p>`);
+  if (firstWeekly) parts.push(`<p>${esc(FIRST_WEEKLY_NOTE)}</p>`);
+  parts.push('<p>Cheers,<br>Guy</p>');
+  parts.push(`<p style="margin-top:28px;font-size:12px;color:#888">Rather not get these weekly emails? <a href="${esc(unsubscribeUrl || '#')}" style="color:#888">Unsubscribe</a></p>`);
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(body.title || 'A note from Guy')}</title></head><body style="margin:0;padding:16px;background:#ffffff"><div style="max-width:620px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#222">${parts.join('\n')}</div></body></html>`;
   const base = baseUrl || process.env.SERIES_PUBLIC_BASE_URL || 'https://knowaguy.com.au';
-  return email.absolutizeLinks(shell.fullPage({ title: body.title, inner }), base);
+  return email.absolutizeLinks(html, base);
+}
+
+/** Is this the first weekly email the client will ever get? = no planner send on their record (Mindset Mastery and Guy's own emails don't count). Pure. */
+function isFirstWeekly(record) {
+  return !(record || []).some((r) => r.source === 'planner');
 }
 
 function subjectFor(pick, body) {
@@ -608,7 +645,9 @@ async function buildPlan(coachClientId, opts = {}) {
     else {
       body = await buildBody(pick, { coach, client, week, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
       subject = body.error ? '' : subjectFor(pick, body);
-      if (!body.error && opts.openings !== false) {
+      if (!body.error && pick.what.kind === 'call') {
+        openingDraft = { opening: CALL_OPENING, check: opening.checkOpening(CALL_OPENING), confidence: 1, factsUsed: [], source: 'fixed' };
+      } else if (!body.error && opts.openings !== false) {
         openingDraft = await opening.draftOpening({
           coach, client, note: facts.noteText,
           pick: { title: body.title, dek: body.dek, form: pick.form, kindLine: pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind },
@@ -617,10 +656,18 @@ async function buildPlan(coachClientId, opts = {}) {
         }, opts.openingDeps || {});
       }
     }
+    // A thought for the week, when the body is not itself a one-pager piece.
+    let thought = null;
+    if (pick.what && !body.error && pick.what.kind !== 'one-pager') {
+      const record = ctx.touchesByClient.get(client.clientId) || [];
+      const ahead = picker.projectAhead(facts, shelf, record, { at, order: MANIFEST.client, thisPick: pick, weeks: 2 });
+      const exclude = [pick.what.key, ...ahead.filter((x) => x.what).map((x) => x.what.key)];
+      thought = require('./clientTouchThought').chooseThought(facts, shelf, record, { exclude, now: at, seed: `${client.clientId}|${week}` });
+    }
     const { noteText, signals, ...storedFacts } = facts;
     const row = await planStore.upsertPlan({
       weekOf: week, clientId: client.clientId, status,
-      pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound, slots: body.slots || undefined } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null },
+      pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound, slots: body.slots || undefined } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null, thought },
       facts: { ...storedFacts, builtAt: new Date(now).toISOString(), at: new Date(at).toISOString(), signals: { paused: signals.paused, runningLow: signals.runningLow, acceptancesSlow: signals.acceptancesSlow, live: signals.live, pausedWaiting: signals.pausedWaiting } },
       opening: openingDraft ? openingDraft.opening : '',
       subject,
@@ -861,7 +908,8 @@ async function sendApproved(coachClientId, week, deps = {}) {
         await ps.setPlanStatus(week, row.clientId, row.status, { bodyHtml });
       }
     }
-    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml, qs: row.pick.body.qs }, unsubscribeUrl });
+    const firstWeekly = isFirstWeekly(await ts.touchesFor(row.clientId, { limit: 500 }));
+    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml, qs: row.pick.body.qs }, unsubscribeUrl, kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
     const to = lower(client.clientEmailAddress);
     const res = await mailer.sendSeriesEmail({ to, subject: row.subject, html, unsubscribeUrl, preheader: row.opening ? row.opening.slice(0, 120) : undefined, tag: `client-touch-${row.pick.what.kind}` });
     if (!res.ok) {
@@ -874,7 +922,7 @@ async function sendApproved(coachClientId, week, deps = {}) {
     await ts.record({
       clientId: row.clientId, kind, key: row.pick.what.key, form: row.pick.form, sentAt: new Date(),
       reason: row.pick.reason, source: 'planner', recipient: to,
-      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '', ...(offeredSlots ? { slots: offeredSlots.map((x) => x.time) } : {}) },
+      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '', firstWeekly, ...(row.pick.thought ? { thought: row.pick.thought.slug } : {}), ...(offeredSlots ? { slots: offeredSlots.map((x) => x.time) } : {}) },
     });
     await ps.setPlanStatus(week, row.clientId, 'sent', { sentAt: new Date() });
     sent++;
@@ -1221,7 +1269,8 @@ async function previewFor(week, clientId) {
   const client = await clientService.getClientById(clientId);
   if (!client) return null;
   const { unsubscribeUrlFor } = require('./clientUnsubscribe');
-  return composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml: row.bodyHtml, qs: row.pick.body.qs }, unsubscribeUrl: unsubscribeUrlFor(client) || '#' });
+  const firstWeekly = isFirstWeekly(await touchStore.touchesFor(clientId, { limit: 500 }));
+  return composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml: row.bodyHtml, qs: row.pick.body.qs }, unsubscribeUrl: unsubscribeUrlFor(client) || '#', kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
 }
 
 module.exports = {
@@ -1265,6 +1314,10 @@ module.exports = {
   waitingImprovements,
   factLines,
   composeEmail,
+  stripLeadingName,
+  isFirstWeekly,
+  FIRST_WEEKLY_NOTE,
+  CALL_OPENING,
   subjectFor,
   shortBody,
   buildBody,
