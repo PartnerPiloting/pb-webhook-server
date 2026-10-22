@@ -25,7 +25,7 @@ const NOW = new Date(2026, 9, 26, 9, 0, 0);
 const daysAgo = (n, hours = 10) => new Date(NOW.getTime() - n * 86400000 + (hours - 9) * 3600000).toISOString();
 
 // A synthetic shelf shaped like the real one (kind / stops / problems / resend / event / teases).
-const piece = (slug, labels) => ({ slug, title: slug.replace(/-/g, ' '), labels: { stops: [], problems: [], resend: true, event: null, teases: false, ...labels } });
+const piece = (slug, labels, status = 'final') => ({ slug, title: slug.replace(/-/g, ' '), status, labels: { stops: [], problems: [], resend: true, event: null, teases: false, ...labels } });
 const SHELF = [
   piece('begin', { kind: 'way-of-thinking', stops: ['calendar'], problems: ['pitch'] }),
   piece('energy', { kind: 'mindset', problems: ['small-talk'] }),
@@ -255,14 +255,16 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
   });
 
   console.log('the real shelf');
-  await check('the whole client run walks every manifest piece in order with no events', () => {
+  await check('the whole client run walks every APPROVED manifest piece in order with no events - and never a draft', () => {
     const content = require('../services/onePagerContent');
     const MANIFEST = require('../config/onePagerSeriesManifest');
     const shelf = content.listPieces();
     for (const slug of MANIFEST.client) assert.ok(shelf.some((p) => p.slug === slug && p.labels.kind), `${slug} is not on the shelf with labels`);
     const record = [];
     const seen = [];
-    for (let week = 0; week < MANIFEST.client.length + 1; week++) {
+    const approvedRun = MANIFEST.client.filter((slug) => shelf.find((p) => p.slug === slug).status === 'final');
+    const drafts = MANIFEST.client.filter((slug) => !approvedRun.includes(slug));
+    for (let week = 0; week < approvedRun.length + 1; week++) {
       const now = new Date(NOW.getTime() + week * 7 * 86400000);
       const r = picker.pickFor(running({ todayHasRecords: true, lastInviteSent: daysAgo(3) }), shelf, record, { now });
       assert.ok(r.what, `week ${week}: ${r.reason}`);
@@ -270,9 +272,27 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
       record.push({ kind: r.what.kind, key: r.what.key, form: r.form, sent_at: now.toISOString() });
     }
     assert.strictEqual(seen[0], ORIENTATION.slug);
-    // Every manifest piece went exactly once; the order only bends for tease pairs and the mindset rhythm.
-    assert.deepStrictEqual([...seen.slice(1)].sort(), [...MANIFEST.client].sort());
+    // Every approved piece went exactly once; the order only bends for tease pairs and the mindset rhythm.
+    assert.deepStrictEqual([...seen.slice(1)].sort(), [...approvedRun].sort());
+    assert.ok(!seen.some((k) => drafts.includes(k)), 'a draft was picked');
     assert.strictEqual(seen[1], 'begin-with-the-end-in-mind');
+  });
+
+  await check('a draft is never picked - not in order, not as a pin, not as the mindset piece - and a promise skips past a draft to the next approved piece', () => {
+    const shelf = [
+      piece('tease', { kind: 'way-of-thinking', teases: true }),
+      piece('drafty', { kind: 'way-of-thinking' }, 'draft'),
+      piece('after', { kind: 'way-of-thinking' }),
+      piece('mind-draft', { kind: 'mindset' }, 'draft'),
+    ];
+    const order = ['tease', 'drafty', 'after', 'mind-draft'];
+    const run = (facts, record) => picker.pickFor(facts, shelf, record, { now: NOW, order });
+    const promised = run(running(), [sent(ORIENTATION.slug, 14), sent('tease', 7)]);
+    assert.strictEqual(promised.what.key, 'after'); assert.strictEqual(promised.rule, 'promised'); assert.match(promised.reason, /next approved piece/);
+    assert.notStrictEqual(run(running({ pin: { kind: 'one-pager', key: 'drafty' } }), [sent(ORIENTATION.slug, 14)]).what.key, 'drafty');
+    const ahead = picker.projectAhead(running(), shelf, [], { at: NOW, order, weeks: 5 });
+    assert.ok(!ahead.some((p) => p.what && ['drafty', 'mind-draft'].includes(p.what.key)), 'Likely next shows a draft');
+    assert.strictEqual(picker.approved({ slug: ORIENTATION.slug }), true);
   });
 
   console.log('weekly timing (the plan is built a week ahead and sent Monday 8am)');

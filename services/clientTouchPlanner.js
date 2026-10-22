@@ -1249,8 +1249,9 @@ async function screenFor(coachClientId, week) {
   });
   rows.sort((a, b) => String(a.clientName).localeCompare(String(b.clientName)));
   // The shelf, for swap and pin: the orientation then the client run, with titles.
-  const titles = new Map(content.listPieces().map((p) => [p.slug, { title: p.title, kind: p.labels.kind }]));
-  const shelf = [{ slug: ORIENTATION.slug, title: "What you've actually joined", kind: 'way-of-thinking' }, ...MANIFEST.client.map((slug) => ({ slug, title: (titles.get(slug) || {}).title || slug, kind: (titles.get(slug) || {}).kind || '' }))];
+  // Approved (final) pieces only - a draft can't be swapped or pinned in until Guy approves it.
+  const titles = new Map(content.listPieces().filter((p) => p.status === 'final').map((p) => [p.slug, { title: p.title, kind: p.labels.kind }]));
+  const shelf = [{ slug: ORIENTATION.slug, title: "What you've actually joined", kind: 'way-of-thinking' }, ...MANIFEST.client.filter((slug) => titles.has(slug)).map((slug) => ({ slug, title: titles.get(slug).title, kind: titles.get(slug).kind || '' }))];
   return {
     weekOf: week,
     planningWeek: planStore.planningWeek(new Date(), SEND_HOUR),

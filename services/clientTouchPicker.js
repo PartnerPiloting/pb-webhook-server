@@ -111,8 +111,17 @@ function piecesSent(record) {
 // ---------------------------------------------------------------------------------------------
 // The shelf
 
+/**
+ * Only APPROVED pieces (status: final) are ever picked - this week, a pin, or Likely next. Guy's
+ * standing rule: nothing reaches a client until he has read it. A draft shows nowhere until he
+ * approves it. The orientation (built in code, not a markdown piece) is approved by definition.
+ */
+function approved(p) {
+  return p.slug === ORIENTATION.slug || p.status === 'final';
+}
+
 function shelfWithOrientation(shelf) {
-  const list = (shelf || []).filter((p) => p && p.slug && p.labels && p.labels.kind);
+  const list = (shelf || []).filter((p) => p && p.slug && p.labels && p.labels.kind && approved(p));
   if (!list.some((p) => p.slug === ORIENTATION.slug)) list.unshift(ORIENTATION_PIECE);
   return list;
 }
@@ -277,11 +286,20 @@ function promisePick(facts, shelf, record, order) {
   if (!last) return null;
   const piece = shelf.find((p) => p.slug === last.key);
   if (!piece || !piece.labels.teases) return null;
+  // The promised piece is the next in the run - and when that one is still a draft, the next
+  // APPROVED piece after it (drafts are not on the shelf at all).
   const i = order.indexOf(last.key);
-  const nextSlug = i >= 0 ? order[i + 1] : (last.key === ORIENTATION.slug ? order[0] : null);
-  const next = nextSlug ? shelf.find((p) => p.slug === nextSlug) : null;
+  const start = i >= 0 ? i + 1 : (last.key === ORIENTATION.slug ? 0 : -1);
+  if (start < 0) return null;
+  let next = null;
+  let skipped = false;
+  for (let k = start; k < order.length; k++) {
+    const candidate = shelf.find((p) => p.slug === order[k]);
+    if (candidate) { next = candidate; break; }
+    skipped = true;
+  }
   if (!next || !eligible(next, facts, record)) return null;
-  return pick(next, facts, 'promised', `${piece.title} ended "that's next" - ${next.title} is what it promised`);
+  return pick(next, facts, 'promised', `${piece.title} ended "that's next" - ${next.title} is ${skipped ? 'the next approved piece after the one it promised' : 'what it promised'}`);
 }
 
 /** Every fourth email is a mindset piece, when one is left. */
@@ -295,7 +313,7 @@ function mindsetPick(facts, shelf, record, order) {
 
 /** Next in the default order: the orientation, then the client run in manifest order. */
 function nextInOrderPick(facts, shelf, record, order) {
-  const run = [ORIENTATION.slug, ...order];
+  const run = [ORIENTATION.slug, ...order].filter((slug) => shelf.some((p) => p.slug === slug)); // approved only
   for (const slug of run) {
     const piece = shelf.find((p) => p.slug === slug);
     if (!piece || !eligible(piece, facts, record)) continue;
@@ -468,6 +486,7 @@ function projectAhead(facts, shelf, record, opts = {}) {
 module.exports = {
   pickFor,
   projectAhead,
+  approved,
   simulatedTouch,
   neverSentReason,
   callDue,

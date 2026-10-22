@@ -397,6 +397,9 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 
 ## What is built - how it runs (22 Oct 2026)
 
+- **Approved pieces only** (Guy's standing rule: nothing reaches a client until he has read it). The
+  picker only ever picks pieces with status final - this week, a pin, Likely next. A draft shows
+  nowhere until approved; when a piece's ending promises a draft, the next approved piece goes instead.
 - **The picker** - `services/clientTouchPicker.js`, pure. Facts + the labelled shelf + the touch
   record in, one pick out. Every rule above has a test in `tests/client-touch-picker.test.js`
   (including the Steve and Mehnaaz walk-throughs). "A week" for the two-a-week limit is a rolling
