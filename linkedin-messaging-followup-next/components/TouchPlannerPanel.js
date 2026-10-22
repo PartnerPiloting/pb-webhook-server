@@ -132,7 +132,9 @@ export default function TouchPlannerPanel() {
   };
   const saveEdit = async (row) => {
     const e = edits[row.clientId] || {};
-    const r = await post(`/${row.clientId}/edit`, { opening: e.opening ?? row.opening, subject: e.subject ?? row.subject }, row.clientId);
+    const body = { opening: e.opening ?? row.opening, subject: e.subject ?? row.subject };
+    if (e.congrats !== undefined) body.congrats = e.congrats;
+    const r = await post(`/${row.clientId}/edit`, body, row.clientId);
     if (r) setEdits((s) => ({ ...s, [row.clientId]: undefined }));
   };
   const skip = async (row) => {
@@ -286,9 +288,15 @@ export default function TouchPlannerPanel() {
                   <div className="min-w-0">
                     {row.status === 'held' && row.hold && (
                       <div className="mb-2 p-2 rounded border border-orange-200 bg-orange-50 text-xs text-orange-900">
-                        <p className="font-medium">Held on the sending morning - {row.hold.hard ? 'it cannot go:' : 'keep or swap?'}</p>
+                        <p className="font-medium">{row.hold.stage === 'build' ? 'Held for you to decide the wording:' : `Held on the sending morning - ${row.hold.hard ? 'it cannot go:' : 'keep or swap?'}`}</p>
                         <ul className="list-disc pl-4">{(row.hold.changed || [row.hold.reason]).map((l, i) => <li key={i}>{l}</li>)}</ul>
-                        {!row.hold.hard && (
+                        {row.hold.stage === 'build' && (
+                          <div className="flex gap-2 mt-1.5 items-center">
+                            <button onClick={() => approve(row)} disabled={busy === row.clientId} className="px-2 py-1 rounded bg-green-600 text-white font-medium disabled:opacity-40">{sendPassed ? 'Approve & send now' : 'Approve as it is'}</button>
+                            <span>or <button onClick={() => setOpen((x) => ({ ...x, [row.clientId]: true }))} className="underline">reword it</button></span>
+                          </div>
+                        )}
+                        {!row.hold.hard && row.hold.stage !== 'build' && (
                           <div className="flex gap-2 mt-1.5">
                             <button onClick={() => keep(row)} disabled={busy === row.clientId} className="px-2 py-1 rounded bg-green-600 text-white font-medium disabled:opacity-40">Keep it - send now</button>
                             {row.hold.suggestion && <button onClick={() => swapTo(row, row.hold.suggestion)} disabled={busy === row.clientId} className="px-2 py-1 rounded border border-orange-300 text-orange-900 disabled:opacity-40">Swap to &ldquo;{row.hold.suggestion.title}&rdquo;</button>}
@@ -300,7 +308,7 @@ export default function TouchPlannerPanel() {
                       <>
                         <p className="text-gray-900"><span className="font-medium">{pick.what.title}</span> <span className="text-gray-400">· {pick.what.kind}{pick.form === 'short' ? ', short' : ''}</span>{row.waitingImprovements ? <span className="ml-2 text-xs text-amber-700">{row.waitingImprovements} improvement{row.waitingImprovements === 1 ? '' : 's'} waiting on this piece</span> : null}</p>
                         <p className="text-xs text-gray-500 italic">{pick.reason}</p>
-                        {settled || ['approved', 'edited', 'held', 'lapsed'].includes(row.status) || !isOpen ? (
+                        {settled || ['approved', 'edited', 'lapsed'].includes(row.status) || (row.status === 'held' && !(row.hold && row.hold.stage === 'build')) || !isOpen ? (
                           <p className="mt-1 text-gray-800">{row.opening ? row.opening : <span className="text-red-700">no opening drafted - needs your words</span>}</p>
                         ) : (
                           <textarea value={e.opening ?? row.opening} onChange={(ev) => setEdits((s) => ({ ...s, [row.clientId]: { ...e, opening: ev.target.value } }))} rows={3} className="mt-1 w-full text-sm border border-gray-300 rounded px-2 py-1.5" placeholder="The opening - one to three sentences, in your words" />
@@ -364,6 +372,12 @@ export default function TouchPlannerPanel() {
                 {isOpen && !settled && (
                   <div className="px-5 pb-4 grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
                     <div className="flex flex-col gap-2">
+                      {pick.body && pick.body.template === 'first-email' && (
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-gray-600">The welcome's Congratulations line (empty it to leave it out)</label>
+                          <textarea value={e.congrats ?? (typeof pick.body.congrats === 'string' ? pick.body.congrats : (screen.firstEmail && screen.firstEmail.congrats) || '')} onChange={(ev) => setEdits((x) => ({ ...x, [row.clientId]: { ...e, congrats: ev.target.value } }))} rows={3} className="text-sm border border-gray-300 rounded px-2 py-1" />
+                        </div>
+                      )}
                       {hasEmail && (
                         <div className="flex gap-2 items-center">
                           <input value={e.subject ?? row.subject} onChange={(ev) => setEdits((s) => ({ ...s, [row.clientId]: { ...e, subject: ev.target.value } }))} className="flex-1 text-sm border border-gray-300 rounded px-2 py-1" placeholder="Subject" />

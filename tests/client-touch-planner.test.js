@@ -97,6 +97,20 @@ const routes = require('../routes/clientTouchRoutes');
     assert.ok(withLine.indexOf('Congratulations!') < withLine.indexOf('Good to see the first acceptances') && withLine.indexOf('Good to see the first acceptances') < withLine.indexOf('First, a quick word'));
   });
 
+  await check('a long-standing client\'s welcome is held for Guy: invitations started more than four weeks before the sending morning', () => {
+    const at = Date.parse('2026-10-25T22:00:00Z');
+    assert.strictEqual(planner.welcomeLateNote('2026-08-21T00:00:00Z', at), 'invitations started 21 Aug 2026 - "Congratulations, you\'ve started" may read late; keep or reword');
+    assert.strictEqual(planner.welcomeLateNote('2026-10-10T00:00:00Z', at), null, 'recent - goes as a normal proposal');
+    assert.strictEqual(planner.welcomeLateNote(null, at), null);
+  });
+  await check('Guy can reword the Congratulations line, or empty it to leave it out', async () => {
+    const b = await planner.buildBody({ what: { kind: 'one-pager', key: '(orientation)' }, form: 'full' }, { coach: {}, client: {}, firstEmail: true });
+    const reworded = planner.composeEmail({ client: { clientName: 'Rick Wong' }, opening: '', kind: 'one-pager', body: { ...b, congrats: 'Good to have you running for a couple of months now.' }, unsubscribeUrl: '#', firstWeekly: true });
+    assert.ok(reworded.includes('Good to have you running for a couple of months now.')); assert.ok(!reworded.includes('Congratulations!'));
+    const dropped = planner.composeEmail({ client: { clientName: 'Rick Wong' }, opening: '', kind: 'one-pager', body: { ...b, congrats: '' }, unsubscribeUrl: '#', firstWeekly: true });
+    assert.ok(!dropped.includes('Congratulations!')); assert.ok(dropped.includes('First, a quick word'));
+  });
+
   await check('never "Hi Hiresh, Hiresh, ..." - a leading name (or greeting + name) is dropped from the opening', () => {
     assert.strictEqual(planner.stripLeadingName("Hiresh, it's been a while.", 'Hiresh'), "It's been a while.");
     assert.strictEqual(planner.stripLeadingName('Hi Hiresh - good to talk.', 'Hiresh'), 'Good to talk.');
@@ -281,10 +295,13 @@ const routes = require('../routes/clientTouchRoutes');
     assert.strictEqual(out.sent, 1); assert.strictEqual(rows[0].status, 'sent');
   });
   await check('an event that would now win -> HELD with what changed, nothing sent; the panel can offer the new pick', async () => {
-    const mailer = mailerOk(); const rows = [approvedRow()];
+    // A client who has had their welcome already, approved for the next piece in the run.
+    const prior = [{ kind: 'one-pager', key: '(orientation)', form: 'full', sent_at: '2026-09-01T00:00:00Z', source: 'planner' }];
+    const nextPick = picker.pickFor(facts(), SHELF, prior, {});
+    const mailer = mailerOk(); const rows = [approvedRow({ pick: { ...nextPick, body: { title: 'T', dek: '' } } })];
     const fresh = facts({ todayHasRecords: true, lastInviteSent: '2026-10-21T23:00:00Z', events: [{ key: 'today-first-records', at: '2026-10-22T00:00:00Z' }] });
     const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF,
-      freshFacts: async () => new Map([['Steve-Nelson', { facts: fresh, record: [] }]]) });
+      freshFacts: async () => new Map([['Steve-Nelson', { facts: fresh, record: prior }]]) });
     assert.strictEqual(out.sent, 0); assert.strictEqual(out.held, 1); assert.strictEqual(mailer.sent.length, 0);
     assert.strictEqual(rows[0].status, 'held');
     assert.ok(rows[0].hold.changed.some((l) => l === 'their invitations started going out on Thursday'), rows[0].hold.changed.join(' | '));

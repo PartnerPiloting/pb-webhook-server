@@ -148,14 +148,16 @@ router.get('/:clientId/preview', wrap('touch_plan_preview', async (req, res) => 
 
 router.post('/:clientId/approve', parseJson, wrap('touch_plan_approve', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const row = await planStore.setPlanStatus(weekFrom(req), req.params.clientId, 'approved');
+  const row = await planStore.setPlanStatus(weekFrom(req), req.params.clientId, 'approved', { hold: null });
   res.json({ success: true, row });
 }));
 
 router.post('/:clientId/edit', parseJson, wrap('touch_plan_edit', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const { opening, subject } = req.body || {};
-  const row = await planStore.setPlanStatus(weekFrom(req), req.params.clientId, 'edited', { opening: typeof opening === 'string' ? opening : null, subject: typeof subject === 'string' && subject.trim() ? subject.trim() : null });
+  const { opening, subject, congrats } = req.body || {};
+  // The welcome's congratulations line, reworded (or emptied to drop it) - long-standing clients.
+  if (typeof congrats === 'string') await planStore.setPlanCongrats(weekFrom(req), req.params.clientId, congrats.replace(/[\u2013\u2014]/g, '-'));
+  const row = await planStore.setPlanStatus(weekFrom(req), req.params.clientId, 'edited', { opening: typeof opening === 'string' ? opening : null, subject: typeof subject === 'string' && subject.trim() ? subject.trim() : null, hold: null });
   res.json({ success: true, row });
 }));
 

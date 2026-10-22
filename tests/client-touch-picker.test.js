@@ -51,7 +51,9 @@ const running = (over = {}) => ({
   quietOrBusy: false, note: {}, pin: null, pinForEveryone: null, nextSetupStep: null,
   ...over,
 });
-const sent = (key, days, kind = 'one-pager', form = 'full') => ({ kind, key, form, sent_at: daysAgo(days) });
+const sent = (key, days, kind = 'one-pager', form = 'full') => ({ kind, key, form, sent_at: daysAgo(days), source: 'planner' });
+// A client who has already had a weekly email - so the welcome-first rule is not what a test is about.
+const hadWelcome = () => [sent(ORIENTATION.slug, 60)];
 const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: NOW, order: ORDER });
 
 (async () => {
@@ -154,7 +156,7 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
   });
   await check('the run starts the week Last Invite Sent fills: orientation first', () => {
     const r = run(running({ lastInviteSent: daysAgo(3) }));
-    assert.strictEqual(r.what.key, ORIENTATION.slug); assert.strictEqual(r.rule, 'next-in-order');
+    assert.strictEqual(r.what.key, ORIENTATION.slug); assert.strictEqual(r.rule, 'first-email');
   });
   await check('Guy can start it earlier with Email Series Start Date', () => {
     const r = run(running({ lastInviteSent: null, seriesStartDate: '2026-10-20' }));
@@ -203,10 +205,10 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
     assert.notStrictEqual(r.rule, 'event');
   });
   await check('time for a call: six weeks since the last call, nothing booked -> a drafted offer, never a booking link', () => {
-    const r = run(running({ daysSinceLastCall: 45, daysSinceLastSubstantial: 45 }));
+    const r = run(running({ daysSinceLastCall: 45, daysSinceLastSubstantial: 45 }), hadWelcome());
     assert.strictEqual(r.what.kind, 'call'); assert.match(r.reason, /never a booking link/);
-    assert.ok(run(running({ daysSinceLastCall: 45, daysSinceLastSubstantial: 45, sessionBooked: true })).what.kind !== 'call');
-    assert.ok(run(running({ daysSinceLastCall: 30, daysSinceLastSubstantial: 20 })).what.kind !== 'call');
+    assert.ok(run(running({ daysSinceLastCall: 45, daysSinceLastSubstantial: 45, sessionBooked: true }), hadWelcome()).what.kind !== 'call');
+    assert.ok(run(running({ daysSinceLastCall: 30, daysSinceLastSubstantial: 20 }), hadWelcome()).what.kind !== 'call');
   });
   await check('time for a call: a client in onboarding sessions is skipped', () => {
     const r = run(running({ group: 'onboarding', lastInviteSent: null, daysSinceLastCall: 50, daysSinceLastSubstantial: 50 }));
@@ -295,6 +297,17 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
     assert.strictEqual(picker.approved({ slug: ORIENTATION.slug }), true);
   });
 
+  await check('the welcome is every client\'s FIRST weekly email once invitations go out - ahead of events and a call offer; only pins, onboarding and "not this week" come first', () => {
+    const ev = running({ todayHasRecords: true, events: [{ key: 'today-first-records', at: daysAgo(2) }], daysSinceLastCall: 60, daysSinceLastSubstantial: 60 });
+    const first = run(ev, [{ kind: 'mindset', key: 'Mindset Mastery: x', form: 'full', sent_at: daysAgo(40), source: 'backfill' }]);
+    assert.strictEqual(first.what.key, ORIENTATION.slug); assert.strictEqual(first.rule, 'first-email');
+    assert.notStrictEqual(run(ev, hadWelcome()).rule, 'first-email', 'once they have had a weekly email it is never the welcome again');
+    assert.strictEqual(run(running({ lastInviteSent: null, seriesStartDate: null })).rule, 'waiting-for-invitations', 'never before invitations go out');
+    assert.strictEqual(run(running({ pin: { kind: 'one-pager', key: 'nodes' } })).what.key, 'nodes', 'a pin wins');
+    assert.strictEqual(run(running({ daysSinceLastSubstantial: 3 })).rule, 'not-this-week');
+    assert.strictEqual(run(running({ group: 'onboarding' })).rule, 'onboarding');
+  });
+
   console.log('weekly timing (the plan is built a week ahead and sent Monday 8am)');
   await check("last Monday's weekly email, sent a few seconds after 8am, does not count against this Monday at 8am", () => {
     const now = new Date(2026, 10, 2, 8, 0, 0);
@@ -338,7 +351,7 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
   });
   await check('an event only counts in the weeks it is still recent; a pin for a later week is honoured', () => {
     const facts = running({ daysSinceLastSubstantial: 20, todayHasRecords: true, events: [{ key: 'today-first-records', at: daysAgo(3) }] });
-    const ahead = picker.projectAhead(facts, SHELF, [{ kind: 'one-pager', key: 'urgent', sent_at: daysAgo(30) }], {
+    const ahead = picker.projectAhead(facts, SHELF, [{ kind: 'one-pager', key: 'urgent', sent_at: daysAgo(30), source: 'planner' }], {
       at: NOW, order: ORDER, pinsByWeek: [null, null, null, { pin: { kind: 'one-pager', key: 'nodes', title: 'nodes' } }],
     });
     assert.strictEqual(ahead[0].rule, 'event'); // week 1 - the event is 10 days old

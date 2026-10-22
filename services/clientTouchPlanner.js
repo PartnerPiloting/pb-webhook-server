@@ -504,6 +504,19 @@ function firstEmailBody(orientationHtml) {
     .replace(/\s*<p>\s*Next email:[^<]*<\/p>/, '');
 }
 
+const WELCOME_LATE_DAYS = 28;
+
+/**
+ * The note when a welcome would read late: invitations started (the client's first connection,
+ * their earliest Date Connected) more than four weeks before the sending morning. Null otherwise. Pure.
+ */
+function welcomeLateNote(startedAt, at) {
+  const t = startedAt ? new Date(startedAt).getTime() : NaN;
+  if (Number.isNaN(t) || at - t <= WELCOME_LATE_DAYS * DAY) return null;
+  const d = new Date(t).toLocaleDateString('en-AU', { timeZone: 'Australia/Brisbane', day: 'numeric', month: 'short', year: 'numeric' });
+  return `invitations started ${d} - "Congratulations, you've started" may read late; keep or reword`;
+}
+
 /** Does this pick get the first-email template? Pure. */
 function usesFirstEmail(pick, { firstWeekly, lastInviteSent }) {
   return !!(pick && pick.what && pick.what.key === ORIENTATION.slug && firstWeekly && lastInviteSent);
@@ -583,7 +596,8 @@ function composeEmail({ client, opening: openingText, body, unsubscribeUrl, base
   const parts = [`<p>${first ? `Hi ${esc(first)},` : 'Hi there,'}</p>`];
   const op = stripLeadingName(openingText, first);
   if (body.template === 'first-email') {
-    parts.push(`<p>${esc(FIRST_EMAIL.congrats)}</p>`);
+    const congrats = typeof body.congrats === 'string' ? body.congrats.trim() : FIRST_EMAIL.congrats;
+    if (congrats) parts.push(`<p>${esc(congrats)}</p>`);
     if (op) parts.push(`<p>${esc(op)}</p>`);
     parts.push(`<p>${esc(FIRST_EMAIL.lead)}</p>`);
   } else if (op) parts.push(`<p>${esc(op)}</p>`);
@@ -730,7 +744,14 @@ async function buildPlan(coachClientId, opts = {}) {
       bodyPreview: body && !body.error ? previewText(body.bodyHtml) : (body && body.error ? `could not build: ${body.error}` : ''),
       recipient: facts.address,
     });
-    out.push(row || { weekOf: week, clientId: client.clientId, status, pick, opening: openingDraft ? openingDraft.opening : '', subject });
+    // "Congratulations, you've started" reads late to a client whose invitations began weeks ago:
+    // build the welcome, but HOLD it for Guy to keep or reword rather than propose it as ready.
+    let finalRow = row;
+    const lateNote = body && body.template === 'first-email' ? welcomeLateNote(facts.todayFirstRecordAt, at) : null;
+    if (row && lateNote && row.status === 'proposed') {
+      finalRow = await planStore.setPlanStatus(week, client.clientId, 'held', { sendError: `held: ${lateNote}`, hold: { stage: 'build', hard: false, changed: [lateNote], reason: lateNote, at: new Date(now).toISOString() } }) || row;
+    }
+    out.push(finalRow || { weekOf: week, clientId: client.clientId, status, pick, opening: openingDraft ? openingDraft.opening : '', subject });
   }
   logger.info(`plan ${week}: ${out.length} rows (${out.filter((r) => r.pick && r.pick.what).length} picks, ${out.filter((r) => r.status === 'left-out').length} left out)`);
   return { weekOf: week, rows: out };
@@ -964,7 +985,7 @@ async function sendApproved(coachClientId, week, deps = {}) {
       }
     }
     const firstWeekly = isFirstWeekly(await ts.touchesFor(row.clientId, { limit: 500 }));
-    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template }, unsubscribeUrl, kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
+    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template, congrats: row.pick.body.congrats }, unsubscribeUrl, kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
     const to = lower(client.clientEmailAddress);
     const res = await mailer.sendSeriesEmail({ to, subject: row.subject, html, unsubscribeUrl, preheader: row.opening ? row.opening.slice(0, 120) : undefined, tag: `client-touch-${row.pick.what.kind}` });
     if (!res.ok) {
@@ -1302,6 +1323,7 @@ async function screenFor(coachClientId, week) {
     build: buildStatus(buildRun),
     autosend: autosendOn(),
     shelf,
+    firstEmail: { congrats: FIRST_EMAIL.congrats },
     // The thoughts Guy can swap in on a row (approved pieces with a nugget).
     thoughts: (() => { const n = require('./clientTouchThought').loadNuggets(); return content.listPieces().filter((p) => p.status === 'final' && n[p.slug]).map((p) => ({ slug: p.slug, title: p.title, text: n[p.slug] })); })(),
     rows,
@@ -1330,7 +1352,7 @@ async function previewFor(week, clientId) {
   if (!client) return null;
   const { unsubscribeUrlFor } = require('./clientUnsubscribe');
   const firstWeekly = isFirstWeekly(await touchStore.touchesFor(clientId, { limit: 500 }));
-  return composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml: row.bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template }, unsubscribeUrl: unsubscribeUrlFor(client) || '#', kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
+  return composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml: row.bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template, congrats: row.pick.body.congrats }, unsubscribeUrl: unsubscribeUrlFor(client) || '#', kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
 }
 
 module.exports = {
@@ -1375,6 +1397,7 @@ module.exports = {
   factLines,
   composeEmail,
   FIRST_EMAIL,
+  welcomeLateNote,
   firstEmailBody,
   usesFirstEmail,
   stripLeadingName,

@@ -397,6 +397,14 @@ function pickFor(facts, shelf, record, opts = {}) {
   const all = pinPick(facts.pinForEveryone, facts, pieces, rows, 'everyone');
   if (all) return all;
 
+  // The welcome comes first (Guy, 22 Oct: the standard first email for every client): no planner
+  // email on record yet and invitations going out -> the orientation ("You're not doing this
+  // alone"), ahead of events and everything below. Only pins, onboarding and "not this week" win.
+  if (ms(facts.lastInviteSent) !== null && !rows.some((r) => r.source === 'planner')) {
+    const welcome = pieces.find((p) => p.slug === ORIENTATION.slug);
+    if (welcome && eligible(welcome, facts, rows)) return pick(welcome, facts, 'first-email', 'their first weekly email - invitations are going out, so the welcome goes first');
+  }
+
   // 3. An event fired - these go even before the opening run has started.
   const ev = eventPick(facts, pieces, rows, order);
   if (ev) return ev;

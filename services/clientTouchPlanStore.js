@@ -271,6 +271,18 @@ async function setPlanStatus(week, clientId, status, { opening, subject, bodyHtm
   }, null);
 }
 
+/** Guy rewords the welcome's congratulations line on a row ('' drops it). Stored inside the pick's body. */
+async function setPlanCongrats(week, clientId, text) {
+  return withDb(async (c) => {
+    const r = await c.query(
+      `UPDATE client_touch_plans SET pick = jsonb_set(COALESCE(pick, '{}'::jsonb), '{body,congrats}', $3::jsonb, true), updated_at = now()
+       WHERE week_of = $1 AND client_id = $2 AND pick ? 'body' AND pick->'body' IS NOT NULL AND jsonb_typeof(pick->'body') = 'object' RETURNING *`,
+      [week, clientId, JSON.stringify(String(text))],
+    );
+    return rowOut(r.rows[0]);
+  }, null);
+}
+
 /** Guy changes the thought for the week on a row (it is stored inside the pick). Leaves the status alone. */
 async function setPlanThought(week, clientId, thought) {
   return withDb(async (c) => {
@@ -434,6 +446,7 @@ module.exports = {
   planFor,
   setPlanStatus,
   setPlanThought,
+  setPlanCongrats,
   approvalRates,
   setPin,
   clearPin,
