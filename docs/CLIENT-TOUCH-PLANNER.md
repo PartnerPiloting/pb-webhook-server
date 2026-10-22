@@ -47,6 +47,22 @@ against. Whole fresh emails can come later, for specific situations, once truste
 | **time for a call** | a flag to Guy plus a drafted offer of times | six weeks since the last call, or stuck / drifting |
 | **nothing** | a deliberate quiet week | always allowed |
 
+## Who is never sent anything - checked every time, with a test for each
+
+Guy (22 Oct): "if a client becomes inactive, then nothing will be sent." The planner checks these
+on the day of sending (not only on Monday), and the Monday screen lists everyone left out and why:
+
+- **Not an active client** - Status is not Active, or they're in the board's paused group, or
+  they've left / been offboarded, or their billing has lapsed (the billing lapse chain pauses them).
+- **Unsubscribed** from the weekly emails.
+- **Still in onboarding** - only setup steps and event-set-off emails, as above.
+- **No working address** - the address check found no address they read, or recent mail bounced.
+- **Guy said skip** this week, or for a stretch ("away until the 3rd").
+
+**"Inactive" has two meanings - only one stops the emails.** A client who has paused or left gets
+nothing. A client who is still paying but has gone quiet (not logging in, campaign stalled) KEEPS
+getting their weekly email - that drift is exactly what it's for - and may get "time for a call".
+
 ## Who gets what, when
 
 **During onboarding** (the client board's onboarding group - until Guy marks them Graduated):
