@@ -301,6 +301,15 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
     transcript/reply shows "it's not working" / acceptances but no calls yet. Before that it is
     theory; after the quit, it's too late.
   - Reshape to the newer format (subheads, short paragraphs) if Guy wants, keeping every beat.
+- *22 Oct 2026, Guy - why consistency pays:* "We never know who knows who. It's about six degrees of
+  separation, and when you make a lasting impression with people and they understand very clearly
+  what you are doing, it's incredible who they often know and will refer you to." **Waiting**
+  - Belongs in the patience curve as the payoff of staying consistent: you can't predict which
+    conversation leads where, so every one counts. Nowhere in the series says "who knows who" yet
+    (ten-thousand-people and nodes cover the network multiplying, not the unpredictability).
+  - Two conditions in Guy's words, both already queued as their own pieces: a LASTING IMPRESSION
+    (what-energy-do-you-bring) and they UNDERSTAND CLEARLY what you do (your-unique-thing). Point to
+    them; don't repeat them.
 
 ### connection-isnt-charm - "Connection isn't charm"
 
