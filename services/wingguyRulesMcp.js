@@ -559,12 +559,64 @@ async function runClientEmails({ client, week } = {}, tenant = TENANT) {
   const w = String(week || '').trim();
   let out;
   try {
-    out = await planner.clientEmails(tenant, query, /^\d{4}-\d{2}-\d{2}$/.test(w) ? { week: w } : {});
+    out = await planner.clientEmailFull(tenant, query, /^\d{4}-\d{2}-\d{2}$/.test(w) ? { week: w } : {});
   } catch (e) {
     return { text: `Couldn't read the weekly emails: ${e.message}`, isError: true };
   }
   if (out.error) return { text: out.error, isError: true };
-  return { text: `${out.text}\n\n(To change this Monday's email - approve, edit, swap, skip, or pin one of the likely-next pieces into this Monday - use the Monday emails panel at the top of My Clients.)` };
+  return { text: `${out.text}\n\n(To change it - approve, edit, swap, skip, pin or change the thought - use wingguy_weekly_emails.)` };
+}
+
+// ---------------------------------------------------------------------------
+// The weekly review in chat (coach-only, 2026-10-22) - "let's do this week's emails". Guy goes
+// through the coming Monday's weekly client emails with Claude: the week at a glance, each email in
+// full, and his verdicts. Every action says back exactly what changed. Nothing here sends anything:
+// approved emails go by themselves at 8am Monday, after a fresh check.
+// ---------------------------------------------------------------------------
+async function runWeeklyEmails(args = {}, tenant = TENANT) {
+  const planner = require('./clientTouchPlanner');
+  const actions = require('./clientTouchActions');
+  const action = String(args.action || 'status').trim().toLowerCase();
+  const w = String(args.week || '').trim();
+  const week = /^\d{4}-\d{2}-\d{2}$/.test(w) ? w : null;
+  try {
+    if (action === 'status') {
+      const out = await planner.weekReview(tenant, week);
+      return { text: `${out.text}\n\nNext: go through the WAITING ones one at a time with action=show, client=<name>. For each, Guy decides: approve, edit, swap, skip, pin, or change the thought.` };
+    }
+    if (!args.client) return { text: 'Which client? Pass client (a name or id).', isError: true };
+    const r = await actions.resolveClient(tenant, args.client);
+    if (r.error) return { text: r.error, isError: true };
+    const id = r.client.clientId;
+    const showAfter = async (said) => {
+      const full = await planner.clientEmailFull(tenant, id, week ? { week } : {});
+      return { text: `${said}\n\n${full.text || ''}` };
+    };
+    let out;
+    switch (action) {
+      case 'show': {
+        const full = await planner.clientEmailFull(tenant, id, week ? { week } : {});
+        return full.error ? { text: full.error, isError: true } : { text: full.text };
+      }
+      case 'approve': out = await actions.approve(tenant, id, { week, override: !!args.anyway }); break;
+      case 'note': out = await actions.firstThings(tenant, id, { week, action: args.note, text: args.text }); break;
+      case 'edit':
+        out = await actions.edit(tenant, id, { week, opening: args.opening, subject: args.subject, body: args.body, congrats: args.congrats });
+        return out.ok ? showAfter(out.said) : { text: out.said, isError: true };
+      case 'swap':
+        out = await actions.swap(tenant, id, { week, piece: args.piece, title: args.title, text: args.text });
+        return out.ok ? showAfter(out.said) : { text: out.said, isError: true };
+      case 'skip': out = await actions.skip(tenant, id, { week, whyNot: args.why_not, home: args.home, until: args.until }); break;
+      case 'pin': out = await actions.pin(tenant, id, { week, piece: args.piece, title: args.title, text: args.text }); break;
+      case 'thought':
+        out = await actions.setThought(tenant, id, { week, piece: args.piece, why: args.why });
+        return out.ok ? showAfter(out.said) : { text: out.said, isError: true };
+      default: return { text: `Unknown action "${action}". Use status, show, approve, edit, swap, skip, pin, thought or note.`, isError: true };
+    }
+    return out.ok ? { text: out.said } : { text: out.said, isError: true };
+  } catch (e) {
+    return { text: `Couldn't do that: ${e.message}`, isError: true };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -987,7 +1039,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_client_emails',
-    description: 'Coach-only: one of YOUR clients\' weekly emails from Guy (the weekly client touch planner) - "show me Steve\'s emails", "what\'s Rick getting on Monday?", "what has Mehnaaz had?", "what\'s coming up for Sam?". Returns three parts: ALREADY HAD (every email on their touch record, newest first, with dates - one-pagers, habit emails, Mindset Mastery editions, setup steps, one-offs, call offers); THIS MONDAY (the email set for the coming Monday, why it was chosen, its opening and its status - waiting for approval, approved, held because something changed, sent); LIKELY NEXT (the next five weeks the planner would pick IF NOTHING CHANGES - provisional, because events such as a first call booked or a campaign running low can jump the queue). Read-only: changes (approve, edit, swap, skip, pin a likely-next piece into this Monday) are made on the Monday emails panel at the top of My Clients. Scoped to the calling coach\'s clients.',
+    description: 'Coach-only: one of YOUR clients\' weekly emails from Guy (the weekly client touch planner) - "show me Steve\'s emails", "what\'s Rick getting on Monday?", "what has Mehnaaz had?", "what\'s coming up for Sam?". Returns three parts: ALREADY HAD (every email on their touch record, newest first, with dates - one-pagers, habit emails, Mindset Mastery editions, setup steps, one-offs, call offers); THIS MONDAY (the email set for the coming Monday, why it was chosen, its opening and its status - waiting for approval, approved, held because something changed, sent); LIKELY NEXT (the next five weeks the planner would pick IF NOTHING CHANGES - provisional, because events such as a first call booked or a campaign running low can jump the queue). Read-only, and shows the email IN FULL as it would go. Changes (approve, edit, swap, skip, pin, change the thought) are made with wingguy_weekly_emails. Scoped to the calling coach\'s clients.',
     zodSchema: {
       client: z.string().describe('Client name or client id (e.g. "Steve" or "Steve-Nelson"). Matched within your coached clients only.'),
       week: z.string().optional().describe('YYYY-MM-DD of a Monday to look at instead of the coming one (e.g. last Monday, to see what went and what was held).'),
@@ -1001,6 +1053,50 @@ const TOOL_DEFS = [
       required: ['client'],
     },
     run: runClientEmails,
+  },
+  {
+    name: 'wingguy_weekly_emails',
+    description: 'Coach-only: run the weekly review of the emails Guy sends his clients each Monday - "let\'s do this week\'s emails", "go through the Monday emails", "approve Rick\'s email", "swap Sam\'s email for What\'s your network for?", "skip Julian this week, he is away". THE WAY TO RUN IT: start with action=status (the coming Monday at a glance: waiting, held, approved, sent, quiet, left out, with names). Then take the WAITING and HELD ones one at a time: action=show with the client prints that email IN FULL exactly as it would go (subject, greeting, opening, body, thought for the week, sign-off), why it was picked, why that thought, what they have already had, what is likely next, and any brief. Read it to Guy plainly, then do what he says: approve (if the fact guard flagged a claim and Guy says he has checked it, anyway=true); note (when it says SEND A PERSONAL NOTE FIRST - note=sent with text = what he sent, or note=dismiss; until then the weekly email cannot be approved); edit (his own words for the opening, subject or body - an edit counts as approved); swap (another approved piece by name, or a custom email: title + text in his words - waits for approval again); skip (with his why-not - home: body / choice / person / openings files it where it fixes the cause; until=YYYY-MM-DD for nothing until a date); pin (a piece or custom email for a later Monday, default the one after); thought (change the thought for the week: piece = a piece name, or "none"). Every action replies with exactly what changed - tell Guy that, in his words. Nothing here sends: approved emails go by themselves at 8am Monday Brisbane after a fresh check; unapproved ones are never sent. Never approve, edit, swap or skip anything Guy has not said to.',
+    zodSchema: {
+      action: z.enum(['status', 'show', 'approve', 'edit', 'swap', 'skip', 'pin', 'thought', 'note']).optional().describe('status (default) | show | approve | edit | swap | skip | pin | thought | note'),
+      anyway: z.boolean().optional().describe('approve: true when Guy has checked a fact-guard finding and wants it to go anyway'),
+      note: z.enum(['sent', 'dismiss']).optional().describe('note: sent (Guy sent the personal note himself - put what he sent in text) or dismiss (not needed)'),
+      client: z.string().optional().describe('Client name or id (every action except status)'),
+      week: z.string().optional().describe('YYYY-MM-DD of the Monday; default the coming one'),
+      opening: z.string().optional().describe('edit: Guy\'s words for the opening'),
+      subject: z.string().optional().describe('edit: a new subject line'),
+      body: z.string().optional().describe('edit: Guy\'s words for the body (blank line between paragraphs)'),
+      congrats: z.string().optional().describe('edit, the welcome email only: the Congratulations line in his words, or "" to leave it out'),
+      piece: z.string().optional().describe('swap / pin / thought: an approved piece by name or slug ("none" for thought removes it)'),
+      title: z.string().optional().describe('swap / pin, custom email: its title'),
+      text: z.string().optional().describe('swap / pin, custom email: the email in Guy\'s words'),
+      why: z.string().optional().describe('thought: one line on why this one (shown to Guy later)'),
+      why_not: z.string().optional().describe('skip: why not, in a few words'),
+      home: z.enum(['body', 'choice', 'person', 'openings']).optional().describe('skip: what the why-not is about - the body (that point is wrong), the choice (too soon...), the person (how to write to them - goes on their note), openings (how openings are written)'),
+      until: z.string().optional().describe('skip: YYYY-MM-DD - nothing for them until then'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['status', 'show', 'approve', 'edit', 'swap', 'skip', 'pin', 'thought', 'note'], description: 'status (default) | show | approve | edit | swap | skip | pin | thought | note' },
+        anyway: { type: 'boolean', description: 'approve: true when Guy has checked a fact-guard finding and wants it to go anyway' },
+        note: { type: 'string', enum: ['sent', 'dismiss'], description: 'note: sent (Guy sent the personal note himself - put what he sent in text) or dismiss (not needed)' },
+        client: { type: 'string', description: 'Client name or id (every action except status)' },
+        week: { type: 'string', description: 'YYYY-MM-DD of the Monday; default the coming one' },
+        opening: { type: 'string', description: 'edit: Guy\'s words for the opening' },
+        subject: { type: 'string', description: 'edit: a new subject line' },
+        body: { type: 'string', description: 'edit: Guy\'s words for the body (blank line between paragraphs)' },
+        congrats: { type: 'string', description: 'edit, the welcome email only: the Congratulations line in his words, or "" to leave it out' },
+        piece: { type: 'string', description: 'swap / pin / thought: an approved piece by name or slug ("none" for thought removes it)' },
+        title: { type: 'string', description: 'swap / pin, custom email: its title' },
+        text: { type: 'string', description: 'swap / pin, custom email: the email in Guy\'s words' },
+        why: { type: 'string', description: 'thought: one line on why this one' },
+        why_not: { type: 'string', description: 'skip: why not, in a few words' },
+        home: { type: 'string', enum: ['body', 'choice', 'person', 'openings'], description: 'skip: what the why-not is about' },
+        until: { type: 'string', description: 'skip: YYYY-MM-DD - nothing for them until then' },
+      },
+    },
+    run: runWeeklyEmails,
   },
   {
     name: 'wingguy_referrals',

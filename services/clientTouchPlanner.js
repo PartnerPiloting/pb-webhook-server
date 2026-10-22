@@ -11,7 +11,7 @@
 //      pinned one-off or a drafted offer of times for a call;
 //   5. the plan row is stored (services/clientTouchPlanStore.js) as a PROPOSAL.
 //
-// Nothing goes to a client from here until Guy approves it on the screen and presses "Send
+// Nothing goes to a client from here until Guy approves it (in chat with Claude, or the API) and presses "Send
 // approved" - or, only when CLIENT_TOUCH_AUTOSEND=on (off by default), until the Tuesday 9am veto
 // deadline passes. The one email that goes by itself is the Monday PREVIEW to Guy. Every send goes
 // through the series mailer (knowaguy sending key), carries the client's unsubscribe link, and is
@@ -1221,6 +1221,9 @@ function dayLabel(week) {
   return Number.isNaN(d.getTime()) ? String(week) : new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'short' }).format(d);
 }
 
+// The weekly review happens in chat with Claude (22 Oct 2026 - the panel is gone from My Clients).
+const REVIEW_LINE = "Go through them with Claude: say \"let's do this week's emails\".";
+
 function screenUrlFor() {
   return process.env.CLIENT_TOUCH_SCREEN_URL || 'https://pb-webhook-server.vercel.app/coached-clients';
 }
@@ -1237,13 +1240,13 @@ function buildPreview(plan, { screenUrl = '', autosend = false } = {}) {
   const parts = [];
   parts.push(`<p>${picks.length} email${picks.length === 1 ? '' : 's'} prepared for ${esc(when)}. ${autosend
     ? 'Send-with-veto is ON: anything you have not skipped goes by itself then, after a fresh check.'
-    : `Approve them on the screen whenever suits during the week. Only what you approve goes - by itself, on ${esc(when)}, after a fresh check that nothing has changed. Anything not approved by then is not sent.`}</p>`);
+    : `Go through them with Claude whenever suits during the week. Only what you approve goes - by itself, on ${esc(when)}, after a fresh check that nothing has changed. Anything not approved by then is not sent.`}</p>`);
   if (owed.length) {
-    parts.push(`<p><b>Send a personal note first (${owed.length})</b> - you owe these clients something important, so their weekly email waits until you send the note (a draft is on the screen) or dismiss the flag:</p>`);
+    parts.push(`<p><b>Send a personal note first (${owed.length})</b> - you owe these clients something important, so their weekly email waits until you send the note (ask Claude for the draft) or dismiss the flag:</p>`);
     parts.push(`<ul>${owed.map((r) => `<li>${name(r)}: ${esc((r.pick.firstThings.items || []).map((o) => o.what).join('; '))}</li>`).join('')}</ul>`);
   }
   if (custom.length) parts.push(`<p><b>Written for them (${custom.length}) - read these closely:</b> ${custom.map((r) => `${name(r)} - "${esc(r.pick.what.title)}"`).join('; ')}. Nothing on your approved shelf fitted where they are, so each was written from everything on record.</p>`);
-  if (screenUrl) parts.push(`<p><a href="${esc(screenUrl)}">Open the Monday emails</a></p>`);
+  parts.push(`<p>${esc(REVIEW_LINE)}</p>`);
   for (const r of picks) {
     parts.push(`<h3 style="margin-bottom:2px">${name(r)} - ${r.pick.what.kind === 'custom' ? 'CUSTOM: ' : ''}${esc(r.pick.what.title)}${r.pick.form === 'short' ? ' (short)' : ''}</h3>`);
     parts.push(`<p style="margin:0;color:#666">${esc(r.pick.reason)}</p>`);
@@ -1280,12 +1283,12 @@ function buildSendReport({ result, lapsed = [], names = new Map(), titles = new 
   const parts = [];
   parts.push(`<p><b>Went (${went.length}):</b> ${went.length ? went.map((r) => `${name(r.clientId)}${title(r.clientId)}`).join('; ') : 'nothing'}.</p>`);
   if (held.length) {
-    parts.push(`<p><b>Held for you (${held.length})</b> - you approved these, but something changed since. Keep or swap on the screen:</p>`);
+    parts.push(`<p><b>Held for you (${held.length})</b> - you approved these, but something changed since. Keep or swap them with Claude:</p>`);
     parts.push(`<ul>${held.map((r) => `<li>${name(r.clientId)}${title(r.clientId)}: ${esc((r.changed && r.changed.length ? r.changed : [r.reason]).join('; '))}</li>`).join('')}</ul>`);
   }
   if (failed.length) parts.push(`<p><b>Failed to send (${failed.length}):</b> ${failed.map((r) => `${name(r.clientId)} (${esc(r.error || 'error')})`).join('; ')}.</p>`);
   parts.push(`<p><b>Not approved, so not sent (${lapsed.length}):</b> ${lapsed.length ? lapsed.map((r) => `${name(r.clientId)} - ${esc(r.pick.what.title)}`).join('; ') : 'none'}.</p>`);
-  if (screenUrl) parts.push(`<p><a href="${esc(screenUrl)}">Open the Monday emails</a></p>`);
+  parts.push(`<p>${esc(REVIEW_LINE)}</p>`);
   const spend = [buildCost ? `building this plan: ${cost.costLine(buildCost)}` : '', guardCost && guardCost.calls ? `this morning's fact check: US$${Number(guardCost.usd).toFixed(2)} (${guardCost.calls} calls)` : ''].filter(Boolean);
   if (spend.length) parts.push(`<p style="color:#666;font-size:13px">Claude cost - ${esc(spend.join('; '))}.</p>`);
   return { subject: `Monday emails - ${went.length} went, ${held.length} held, ${lapsed.length} not approved`, html: parts.join('\n') };
@@ -1519,6 +1522,115 @@ async function clientEmails(coachClientId, query, opts = {}) {
   return { client: { clientId: client.clientId, clientName: client.clientName }, week, outlook, text: formatOutlook(client.clientName, outlook) };
 }
 
+// ---------------------------------------------------------------------------------------------
+// The weekly review in chat (Guy, 22 Oct: "let me go through, approve, change, swap and skip the
+// weekly emails here in chat with you") - what wingguy_weekly_emails reads.
+
+/** An email's HTML as the plain text a person reads. Pure. */
+function emailAsText(html) {
+  return String(html || '')
+    .replace(/^[ \t]+/gm, '') // the HTML source's own indentation
+    .replace(/<title>[\s\S]*?<\/title>/i, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '\n  - ')
+    .replace(/<\/(p|ul|ol|h1|h2|h3|blockquote|div)>/gi, '\n')
+    .replace(/<strong>([\s\S]*?)<\/strong>/gi, '**$1**')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&#39;|&rsquo;|&lsquo;/g, "'").replace(/&quot;|&ldquo;|&rdquo;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+const STATUS_WORDS = {
+  proposed: 'waiting for you', approved: 'approved', edited: 'approved (your words)', held: 'HELD', skipped: 'skipped',
+  sent: 'sent', failed: 'send failed', lapsed: 'not approved in time', nothing: 'quiet', 'left-out': 'left out',
+};
+
+/** The week at a glance, grouped: waiting / held / approved / sent / skipped / quiet / left out. Pure over the screen's rows. */
+function formatWeek(weekOf, rows, { sendHour = SEND_HOUR } = {}) {
+  const groups = [
+    ['WAITING FOR YOU', (r) => r.status === 'proposed' && r.pick && r.pick.what],
+    ['HELD - needs your call', (r) => r.status === 'held'],
+    ['APPROVED - goes Monday 8am after a fresh check', (r) => ['approved', 'edited'].includes(r.status)],
+    ['SENT', (r) => r.status === 'sent'],
+    ['FAILED', (r) => r.status === 'failed'],
+    ['SKIPPED', (r) => r.status === 'skipped'],
+    ['NOT APPROVED IN TIME', (r) => r.status === 'lapsed'],
+    ['QUIET THIS WEEK', (r) => r.status === 'nothing'],
+    ['LEFT OUT', (r) => r.status === 'left-out'],
+  ];
+  const lines = [`Weekly emails for ${dayLabel(weekOf)} (they go at ${sendHour}am that Monday - approved ones only)`, ''];
+  for (const [label, test] of groups) {
+    const hit = rows.filter(test);
+    if (!hit.length) continue;
+    lines.push(`${label} (${hit.length}):`);
+    for (const r of hit) {
+      const what = r.pick && r.pick.what ? r.pick.what.title : '';
+      const why = r.status === 'held' && r.hold ? (r.hold.changed || [r.hold.reason]).join('; ') : (r.pick ? r.pick.reason : '');
+      const flags = [firstThingsOpen(r.pick) ? 'PERSONAL NOTE FIRST' : '', r.pick && r.pick.what && r.pick.what.kind === 'custom' ? 'written for them' : '', r.pick && r.pick.guard && r.pick.guard.ok === false && !r.pick.guard.overriddenAt ? 'fact guard flagged' : ''].filter(Boolean);
+      lines.push(`  - ${r.clientName}${what ? ` - ${what}` : ''}${why ? ` (${why})` : ''}${flags.length ? ` [${flags.join(', ')}]` : ''}`);
+    }
+    lines.push('');
+  }
+  if (!rows.length) lines.push('No plan for that Monday yet. It builds itself the Monday before at 9am, or ask to build it.');
+  return lines.join('\n').trim();
+}
+
+/** The week at a glance for the chat. */
+async function weekReview(coachClientId, week) {
+  const w = week || planStore.planningWeek(new Date(), SEND_HOUR);
+  const screen = await screenFor(coachClientId, w);
+  return { weekOf: w, counts: screen.counts, text: formatWeek(w, screen.rows) };
+}
+
+/**
+ * One client's email IN FULL as it would go, plus why it was picked, the thought and why, what they
+ * have already had, likely next, any hold, and the brief (pick.brief, when the deep-brief work has
+ * put one there). For the chat.
+ */
+async function clientEmailFull(coachClientId, query, opts = {}) {
+  const base = await clientEmails(coachClientId, query, opts);
+  if (base.error) return base;
+  const { client, week, outlook } = base;
+  const row = await planStore.planFor(week, client.clientId);
+  const lines = [`${client.clientName} - ${dayLabel(week)}`, ''];
+  if (!row) {
+    lines.push('No plan row for them that Monday yet - it builds itself the Monday before at 9am.');
+    lines.push('', formatOutlook(client.clientName, outlook).split('\n').filter((l) => !/ - weekly emails$/.test(l)).join('\n'));
+    return { ...base, text: lines.join('\n') };
+  }
+  const pick = row.pick || {};
+  lines.push(`STATUS: ${STATUS_WORDS[row.status] || row.status}`);
+  lines.push(`WHY THIS EMAIL: ${pick.reason || '-'}`);
+  if (row.status === 'held' && row.hold) lines.push(`HELD BECAUSE: ${(row.hold.changed || [row.hold.reason]).join('; ')}`);
+  if (pick.what && pick.what.kind === 'custom') lines.push('WRITTEN FOR THEM - nothing on the approved shelf fitted, so read it closely.');
+  if (firstThingsOpen(pick)) {
+    const ft = pick.firstThings;
+    lines.push('', `SEND A PERSONAL NOTE FIRST - you owe them: ${(ft.items || []).map((o) => o.what).join('; ')}. The weekly email waits until you send it (or dismiss the flag).`);
+    if (ft.note && ft.note.text) lines.push(`Draft note (subject "${ft.note.subject || ''}"):`, ft.note.text, ...(ft.note.guyChecks && ft.note.guyChecks.length ? [`Check before sending: ${ft.note.guyChecks.join('; ')}`] : []));
+    if (ft.error) lines.push(`(${ft.error})`);
+  }
+  if (pick.guard && pick.guard.ok === false && !pick.guard.overriddenAt) lines.push(`FACT GUARD: ${(pick.guard.problems || []).join('; ')} - reword it, or approve anyway if you have checked.`);
+  if (pick.thought && pick.thought.text) lines.push(`THOUGHT FOR THE WEEK from "${pick.thought.title}" - why this one: ${pick.thought.why || '-'}`);
+  if (pick.what) {
+    let html = null;
+    try { html = await previewFor(week, client.clientId); } catch (e) { lines.push(`(could not render the email: ${e.message})`); }
+    if (html) {
+      lines.push('', '--- THE EMAIL, EXACTLY AS IT WOULD GO ---', `Subject: ${row.subject || '(none)'}`, '', emailAsText(html), '--- END ---');
+    }
+  } else lines.push('', 'Nothing goes to them that Monday.');
+  if (pick.brief) {
+    const b = pick.brief;
+    lines.push('', 'BRIEF:');
+    if (typeof b === 'string') lines.push(b);
+    else for (const [k, v] of Object.entries(b)) lines.push(`  ${k}: ${Array.isArray(v) ? v.join('; ') : typeof v === 'object' ? JSON.stringify(v) : v}`);
+  }
+  lines.push('', formatOutlook(client.clientName, outlook).split('\n').filter((l) => !/ - weekly emails$/.test(l)).join('\n'));
+  return { ...base, row, text: lines.join('\n') };
+}
+
 /** The whole screen for a week: rows (with names and each client's three columns), the left-out list, call-due list, improvements, the approval rate. */
 async function screenFor(coachClientId, week) {
   const [plan, rates, all, pins, skips, touchesByClient, pinsAhead, buildRun] = await Promise.all([
@@ -1643,6 +1755,10 @@ module.exports = {
   rollOff,
   screenFor,
   clientEmails,
+  clientEmailFull,
+  weekReview,
+  formatWeek,
+  emailAsText,
   previewFor,
   buildPreview,
   buildSendReport,
@@ -1682,6 +1798,7 @@ module.exports = {
   waitingImprovements,
   factLines,
   composeEmail,
+  REVIEW_LINE,
   FIRST_EMAIL,
   welcomeLateNote,
   invitationsStarted,

@@ -32,6 +32,7 @@ const { authenticateUserWithTestMode } = require('../middleware/authMiddleware')
 const planner = require('../services/clientTouchPlanner');
 const planStore = require('../services/clientTouchPlanStore');
 const clientService = require('../services/clientService');
+const actions = require('../services/clientTouchActions');
 const { createLogger } = require('../utils/contextLogger');
 
 const router = express.Router();
@@ -100,7 +101,7 @@ router.post('/pin-everyone', parseJson, wrap('touch_plan_pin_all', async (req, r
 
 router.post('/why-not', parseJson, wrap('touch_plan_why_not', async (req, res) => {
   const { clientId = null, pieceKey = null, home, words } = req.body || {};
-  const filed = await fileWhyNot(req.client.clientId, { weekOf: weekFrom(req), clientId, pieceKey, home, words });
+  const filed = await actions.fileWhyNot(req.client.clientId, { weekOf: weekFrom(req), clientId, pieceKey, home, words });
   res.json({ success: true, ...filed });
 }));
 
@@ -126,19 +127,9 @@ router.post('/:clientId/keep', parseJson, wrap('touch_plan_keep', async (req, re
 // Guy picks a different thought for the week (or none). Stays approved if it was - same email, new thought.
 router.post('/:clientId/thought', parseJson, wrap('touch_plan_thought', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const week = weekFrom(req);
-  const slug = String((req.body && req.body.slug) || '').trim();
-  let thought = null;
-  if (slug) {
-    const thoughts = require('../services/clientTouchThought');
-    const nuggets = thoughts.loadNuggets();
-    const piece = require('../services/onePagerContent').listPieces().find((p) => p.slug === slug && p.status === 'final');
-    if (!piece || !nuggets[slug]) return res.status(400).json({ success: false, error: 'Not one of the thoughts' });
-    const why = String((req.body && req.body.why) || '').replace(/[–—]/g, '-').trim();
-    thought = { slug, title: piece.title, text: nuggets[slug], why: why || 'your choice', source: 'guy' };
-  }
-  const row = await planStore.setPlanThought(week, req.params.clientId, thought);
-  res.json({ success: true, row });
+  const { slug = '', why = '' } = req.body || {};
+  const out = await actions.setThought(req.client.clientId, req.params.clientId, { week: weekFrom(req), piece: slug || 'none', why });
+  res.status(out.ok ? 200 : 400).json({ success: out.ok, said: out.said, error: out.ok ? null : out.said });
 }));
 
 router.get('/:clientId/preview', wrap('touch_plan_preview', async (req, res) => {
@@ -148,49 +139,17 @@ router.get('/:clientId/preview', wrap('touch_plan_preview', async (req, res) => 
   res.type('html').send(html);
 }));
 
-/**
- * Why a row cannot be approved yet, or null. A personal note is owed first; or the fact guard found
- * a claim the brief and the facts do not support (Guy can say "approve anyway" - he has checked).
- */
-function approveBlocked(row, { override = false } = {}) {
-  if (!row || !row.pick) return null;
-  if (planner.firstThingsOpen(row.pick)) return 'Send your personal note first (or dismiss the flag) - you owe them something important, so the weekly email waits.';
-  if (!override && row.pick.guard && row.pick.guard.ok === false) return `The fact guard found: ${row.pick.guard.problems.join('; ')}. Reword it, or approve anyway if you have checked.`;
-  return null;
-}
-
 router.post('/:clientId/approve', parseJson, wrap('touch_plan_approve', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const week = weekFrom(req);
-  const override = !!(req.body && req.body.override);
-  const blocked = approveBlocked(await planStore.planFor(week, req.params.clientId), { override });
-  if (blocked) return res.status(409).json({ success: false, error: blocked });
-  if (override) {
-    const existing = await planStore.planFor(week, req.params.clientId);
-    if (existing && existing.pick && existing.pick.guard) await planStore.setPlanPickField(week, req.params.clientId, 'guard', { ...existing.pick.guard, overriddenAt: new Date().toISOString() });
-  }
-  const row = await planStore.setPlanStatus(week, req.params.clientId, 'approved', { hold: null });
-  res.json({ success: true, row });
+  const out = await actions.approve(req.client.clientId, req.params.clientId, { week: weekFrom(req), override: !!(req.body && req.body.override) });
+  res.status(out.ok ? 200 : 409).json({ success: out.ok, row: out.row || null, said: out.said, error: out.ok ? null : out.said });
 }));
 
 router.post('/:clientId/edit', parseJson, wrap('touch_plan_edit', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const week = weekFrom(req);
-  const { opening, subject, congrats, customText } = req.body || {};
-  const clean = (s) => String(s).replace(/[\u2013\u2014]/g, '-');
-  // The welcome's congratulations line, reworded (or emptied to drop it) - long-standing clients.
-  if (typeof congrats === 'string') await planStore.setPlanCongrats(week, req.params.clientId, clean(congrats));
-  // A custom email is all Guy's words: its body is edited as plain paragraphs (a blank line between).
-  const bodyHtml = typeof customText === 'string' && customText.trim()
-    ? require('../services/clientTouchBrief').paragraphsHtml(clean(customText).split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean))
-    : null;
-  // His words are checked like the drafts were - the guard reads them again now.
-  await planStore.setPlanStatus(week, req.params.clientId, 'proposed', { opening: typeof opening === 'string' ? clean(opening) : null, subject: typeof subject === 'string' && subject.trim() ? clean(subject.trim()) : null, bodyHtml, hold: null });
-  const guard = await planner.recheckGuard(week, req.params.clientId);
-  const blocked = approveBlocked(await planStore.planFor(week, req.params.clientId));
-  if (blocked) return res.json({ success: true, approved: false, blocked, guard, row: await planStore.planFor(week, req.params.clientId) });
-  const row = await planStore.setPlanStatus(week, req.params.clientId, 'edited', { hold: null });
-  res.json({ success: true, approved: true, guard, row });
+  const { opening, subject, congrats, body, customText } = req.body || {};
+  const out = await actions.edit(req.client.clientId, req.params.clientId, { week: weekFrom(req), opening, subject, congrats, body: typeof body === 'string' ? body : customText });
+  res.status(out.ok ? 200 : 400).json({ success: out.ok, approved: !!out.approved, blocked: out.blocked || null, row: out.row || null, said: out.said, error: out.ok ? null : out.said });
 }));
 
 // "Send a personal note first": Guy sent it himself ({action:'sent', text}) or it is not needed
@@ -198,44 +157,29 @@ router.post('/:clientId/edit', parseJson, wrap('touch_plan_edit', async (req, re
 router.post('/:clientId/first-things', parseJson, wrap('touch_plan_first_things', async (req, res) => {
   if (!(await ownClient(req, res))) return;
   const { action, text = '' } = req.body || {};
-  const row = await planner.resolveFirstThings(weekFrom(req), req.params.clientId, { action, text });
-  res.json({ success: true, row });
+  const out = await actions.firstThings(req.client.clientId, req.params.clientId, { week: weekFrom(req), action, text });
+  res.status(out.ok ? 200 : 400).json({ success: out.ok, row: out.row || null, said: out.said, error: out.ok ? null : out.said });
 }));
 
 router.post('/:clientId/skip', parseJson, wrap('touch_plan_skip', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const week = weekFrom(req);
   const { whyNot = '', home = null, until = null } = req.body || {};
-  if (until && /^\d{4}-\d{2}-\d{2}$/.test(until)) await planStore.setSkip(req.params.clientId, until, whyNot);
-  const existing = await planStore.planFor(week, req.params.clientId);
-  const row = await planStore.setPlanStatus(week, req.params.clientId, 'skipped', { whyNot: whyNot || null, whyNotHome: home || null });
-  let filed = null;
-  if (whyNot && home) filed = await fileWhyNot(req.client.clientId, { weekOf: week, clientId: req.params.clientId, pieceKey: existing && existing.pick && existing.pick.what ? existing.pick.what.key : null, home, words: whyNot });
-  res.json({ success: true, row, filed });
+  const out = await actions.skip(req.client.clientId, req.params.clientId, { week: weekFrom(req), whyNot, home, until });
+  res.status(out.ok ? 200 : 400).json({ success: out.ok, row: out.row || null, said: out.said, error: out.ok ? null : out.said });
 }));
 
 router.post('/:clientId/swap', parseJson, wrap('touch_plan_swap', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const week = weekFrom(req);
-  const { kind = 'one-pager', key, title = '', bodyHtml = '', form = null } = req.body || {};
-  if (!key) return res.status(400).json({ success: false, error: 'key is required' });
-  await planStore.setPin({ clientId: req.params.clientId, weekOf: week, kind, key, title, bodyHtml, form });
-  // A swap is a new email: back to "waiting for you" so the rebuild writes the new opening, subject
-  // and body (a rebuild keeps everything on a row Guy has already approved or that was held).
-  const existing = await planStore.planFor(week, req.params.clientId);
-  if (existing && existing.status === 'sent') return res.status(400).json({ success: false, error: 'That one has already gone.' });
-  if (existing) await planStore.setPlanStatus(week, req.params.clientId, 'proposed', { hold: null });
-  const plan = await planner.buildPlan(req.client.clientId, { weekOf: week, clientIds: [req.params.clientId], force: true });
-  res.json({ success: true, row: plan.rows[0] || null });
+  const { key, title = '', text = '' } = req.body || {};
+  const out = await actions.swap(req.client.clientId, req.params.clientId, { week: weekFrom(req), piece: key, title, text });
+  res.status(out.ok ? 200 : 400).json({ success: out.ok, row: out.row || null, said: out.said, error: out.ok ? null : out.said });
 }));
 
 router.post('/:clientId/pin', parseJson, wrap('touch_plan_pin', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const { kind = 'one-pager', key, title = '', bodyHtml = '', note = '', form = null } = req.body || {};
-  if (!key) return res.status(400).json({ success: false, error: 'key is required' });
-  const week = (req.body && req.body.week) || nextWeek();
-  await planStore.setPin({ clientId: req.params.clientId, weekOf: week, kind, key, title, bodyHtml, note, form });
-  res.json({ success: true, weekOf: week });
+  const { key, title = '', text = '', week = null } = req.body || {};
+  const out = await actions.pin(req.client.clientId, req.params.clientId, { week, piece: key, title, text });
+  res.status(out.ok ? 200 : 400).json({ success: out.ok, said: out.said, error: out.ok ? null : out.said });
 }));
 
 router.post('/:clientId/unpin', parseJson, wrap('touch_plan_unpin', async (req, res) => {
@@ -249,45 +193,12 @@ router.post('/:clientId/note', parseJson, wrap('touch_plan_note', async (req, re
   if (!client) return;
   const line = String((req.body && req.body.append) || '').trim();
   if (!line) return res.status(400).json({ success: false, error: 'append is required' });
-  const next = appendNote(client.touchNote, line);
+  const next = actions.appendNote(client.touchNote, line);
   const r = await clientService.updateTouchNote(client.id, next);
   res.json({ success: !!r.success, touchNote: next, error: r.error || null });
 }));
 
-/** Where a "why not" goes (the Tuning-by-approval table), applied at once where it can be. */
-async function fileWhyNot(coachClientId, { weekOf, clientId, pieceKey, home, words }) {
-  const w = String(words || '').trim();
-  if (!w) throw new Error('words are required');
-  const target = planStore.feedbackHome(home);
-  let filedWhere = target.where;
-  let filedAt = null;
-  if (target.home === 'person' && clientId) {
-    const client = await clientService.getClientById(clientId);
-    if (client && client.coach === coachClientId) {
-      const r = await clientService.updateTouchNote(client.id, appendNote(client.touchNote, w));
-      if (r.success) { filedAt = new Date(); filedWhere = `Touch Note on ${client.clientName}'s record`; }
-    }
-  } else if (target.home === 'openings') {
-    await planStore.addOpeningRule(w, `guy ${weekOf || ''}`.trim());
-    filedAt = new Date();
-    filedWhere = 'the opening instructions (used from next week)';
-  }
-  const fb = await planStore.addFeedback({ weekOf, clientId, pieceKey, home: target.home, words: w, filedWhere, filedAt });
-  return { id: fb ? fb.id : null, home: target.home, where: filedWhere, applied: !!filedAt, laptop: !filedAt };
-}
-
-function appendNote(existing, line) {
-  const today = new Date().toISOString().slice(0, 10);
-  const base = String(existing || '').trim();
-  return `${base ? `${base}\n` : ''}${today}: ${line}`;
-}
-
-/** The Monday after the one Guy is working towards - where "pin for next week" lands. */
-function nextWeek() {
-  return planStore.addWeeks(planStore.planningWeek(new Date(), planner.SEND_HOUR), 1);
-}
-
 module.exports = router;
-module.exports.fileWhyNot = fileWhyNot;
-module.exports.appendNote = appendNote;
-module.exports.approveBlocked = approveBlocked;
+module.exports.fileWhyNot = actions.fileWhyNot;
+module.exports.appendNote = actions.appendNote;
+module.exports.approveBlocked = actions.approveBlocked;

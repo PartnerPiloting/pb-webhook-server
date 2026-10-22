@@ -629,13 +629,109 @@ const routes = require('../routes/clientTouchRoutes');
       assert.ok(/show me Steve's emails/.test(def.description));
       const ok = await def.run({ client: 'steve' }, 'Guy-Wilson');
       assert.ok(!ok.isError, ok.text);
-      assert.ok(ok.text.startsWith('Steve Nelson - weekly emails')); assert.ok(ok.text.includes('ALREADY HAD')); assert.ok(ok.text.includes('LIKELY NEXT'));
-      assert.ok(ok.text.includes('Monday emails panel'));
+      assert.ok(ok.text.startsWith('Steve Nelson - Monday'), ok.text.slice(0, 80)); assert.ok(ok.text.includes('ALREADY HAD')); assert.ok(ok.text.includes('LIKELY NEXT'));
+      assert.ok(ok.text.includes('wingguy_weekly_emails'));
       const other = await def.run({ client: 'Other Person' }, 'Guy-Wilson');
       assert.strictEqual(other.isError, true);
       const asClient = await def.run({ client: 'Steve' }, 'Steve-Nelson');
       assert.strictEqual(asClient.isError, true);
     } finally { cs.getAllClients = real; }
+  });
+
+  console.log('the weekly review in chat (wingguy_weekly_emails)');
+  const actions = require('../services/clientTouchActions');
+  const fakeStore = (rows) => {
+    const calls = [];
+    return {
+      calls,
+      planFor: async (w, id) => rows.find((r) => r.clientId === id) || null,
+      setPlanStatus: async (w, id, status, extra = {}) => { calls.push(['status', id, status, extra]); const r = rows.find((x) => x.clientId === id); Object.assign(r, { status }, extra.opening !== undefined ? { opening: extra.opening } : {}, extra.subject !== undefined ? { subject: extra.subject } : {}, extra.bodyHtml !== undefined ? { bodyHtml: extra.bodyHtml } : {}); return r; },
+      setPlanCongrats: async (w, id, t) => { calls.push(['congrats', id, t]); },
+      setPlanThought: async (w, id, t) => { calls.push(['thought', id, t]); },
+      setPin: async (p) => { calls.push(['pin', p]); },
+      setSkip: async (id, until) => { calls.push(['skipUntil', id, until]); },
+      feedbackHome: planStore.feedbackHome,
+      addFeedback: async () => ({ id: 1 }),
+      addOpeningRule: async () => 1,
+    };
+  };
+  const reviewRow = () => ({ clientId: 'Rick-Wong', status: 'proposed', subject: 'S', opening: 'O.', pick: { what: { kind: 'habit', key: 'make-the-important-urgent', title: 'Make the important urgent' }, reason: 'r', body: { title: 'T' } } });
+  await check('approve says exactly what changed and when it goes; a quiet week cannot be approved', async () => {
+    const st = fakeStore([reviewRow(), { clientId: 'Q', status: 'nothing', pick: { what: null, reason: 'quiet' } }]);
+    const a = await actions.approve('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26' }, { planStore: st });
+    assert.ok(a.ok); assert.match(a.said, /^Approved: "Make the important urgent" for Monday 26 Oct\. It goes at 8am/);
+    const q = await actions.approve('Guy-Wilson', 'Q', { week: '2026-10-26' }, { planStore: st });
+    assert.strictEqual(q.ok, false); assert.match(q.said, /quiet week/);
+  });
+  await check("edit takes Guy's words for opening / subject / body (paragraphs kept) and counts as approved", async () => {
+    const rows = [reviewRow()]; const st = fakeStore(rows);
+    const e = await actions.edit('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', opening: 'Good — to talk.', body: 'One.\n\nTwo <b>.' }, { planStore: st });
+    assert.ok(e.ok); assert.match(e.said, /Changed the opening, the body .* and approved it/);
+    assert.strictEqual(rows[0].status, 'edited'); assert.strictEqual(rows[0].opening, 'Good - to talk.');
+    assert.strictEqual(rows[0].bodyHtml, '<p>One.</p>\n<p>Two &lt;b&gt;.</p>');
+    assert.strictEqual((await actions.edit('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26' }, { planStore: st })).ok, false, 'nothing given');
+  });
+  await check('swap to an approved piece by name, or a custom email in his words; rebuilt and waiting again', async () => {
+    const st = fakeStore([reviewRow()]); const built = [];
+    const deps = { planStore: st, buildPlan: async (c, o) => { built.push(o); return { rows: [{ clientId: 'Rick-Wong' }] }; } };
+    const s1 = await actions.swap('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', piece: "what's your network for" }, deps);
+    assert.ok(s1.ok, s1.said); assert.match(s1.said, /now "What's your network for\?", instead of "Make the important urgent"/); assert.match(s1.said, /waiting for your approval/);
+    assert.deepStrictEqual(built[0], { weekOf: '2026-10-26', clientIds: ['Rick-Wong'], force: true });
+    const s2 = await actions.swap('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', title: 'Your invite to my open meeting', text: 'Come along on Thursday.' }, deps);
+    assert.ok(s2.ok); assert.match(s2.said, /"Your invite to my open meeting" \(your own words\)/);
+    assert.strictEqual(st.calls.filter((c) => c[0] === 'pin')[1][1].bodyHtml, '<p>Come along on Thursday.</p>');
+    const bad = await actions.swap('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', piece: 'revisit your big picture' }, deps);
+    assert.strictEqual(bad.ok, false, 'a draft is not an approved piece');
+  });
+  await check('skip says nothing goes, files the why-not, and can hold them until a date', async () => {
+    const rows = [reviewRow()]; const st = fakeStore(rows);
+    const sk = await actions.skip('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', whyNot: 'too soon for this one', home: 'choice', until: '2026-11-16' }, { planStore: st });
+    assert.ok(sk.ok); assert.match(sk.said, /Skipped: nothing goes to them on Monday 26 Oct \("Make the important urgent" will not be sent\)\. Nothing more until 2026-11-16\./);
+    assert.match(sk.said, /noted - it goes to docs\/CLIENT-TOUCH-PLANNER\.md/);
+    assert.strictEqual(rows[0].status, 'skipped');
+  });
+  await check('pin defaults to the Monday after; thought can be changed or removed', async () => {
+    const st = fakeStore([reviewRow()]);
+    const pn = await actions.pin('Guy-Wilson', 'Rick-Wong', { piece: 'nodes' }, { planStore: st });
+    assert.ok(pn.ok); assert.match(pn.said, /^Pinned: "Building nodes" goes to them on Monday/);
+    const th = await actions.setThought('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', piece: 'reason-to-follow-up' }, { planStore: st });
+    assert.ok(th.ok); assert.match(th.said, /Goodwill doesn't sustain a relationship/);
+    const none = await actions.setThought('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', piece: 'none' }, { planStore: st });
+    assert.match(none.said, /No thought for the week/);
+  });
+  await check('the week at a glance groups waiting / held / approved / quiet / left out, with names and reasons', () => {
+    const text = planner.formatWeek('2026-10-26', [
+      { clientName: 'Rick Wong', status: 'proposed', pick: { what: { title: 'Make the important urgent' }, reason: 'campaign low' } },
+      { clientName: 'Alex Solti', status: 'held', pick: { what: { title: "What you've actually joined" } }, hold: { changed: ['invitations started 21 Aug'] } },
+      { clientName: 'Sam Noble', status: 'approved', pick: { what: { title: 'X' }, reason: 'r' } },
+      { clientName: 'Steve Nelson', status: 'nothing', pick: { reason: 'in onboarding' } },
+      { clientName: 'Paul Salvage', status: 'left-out', pick: { reason: 'not an active client' } },
+    ]);
+    assert.ok(text.startsWith('Weekly emails for Monday 26 Oct'));
+    for (const s of ['WAITING FOR YOU (1):', '  - Rick Wong - Make the important urgent (campaign low)', 'HELD - needs your call (1):', 'invitations started 21 Aug', 'APPROVED - goes Monday 8am', 'QUIET THIS WEEK (1):', 'LEFT OUT (1):']) assert.ok(text.includes(s), s);
+  });
+  await check('the email reads as plain text - greeting, bold title, list items, sign-off', () => {
+    const t = planner.emailAsText('<html><head><title>X</title></head><body><p>Hi Rick,</p><p><strong>Title</strong></p><ul><li>Thu 10am</li></ul><p>Cheers,<br>Guy</p></body></html>');
+    assert.strictEqual(t, 'Hi Rick,\n**Title**\n\n  - Thu 10am\nCheers,\nGuy');
+  });
+  await check('the chat tool is registered, Guy-only, carries the phrase, and every action but status needs a client of his', async () => {
+    const def = require('../services/wingguyRulesMcp').TOOL_DEFS.find((d) => d.name === 'wingguy_weekly_emails');
+    assert.ok(def); assert.ok(def.description.includes("let's do this week's emails"));
+    const cs = require('../services/clientService'); const real = cs.getAllClients;
+    cs.getAllClients = async () => [{ clientId: 'Rick-Wong', clientName: 'Rick Wong', coach: 'Guy-Wilson' }, { clientId: 'X', clientName: 'Other', coach: 'Someone' }];
+    try {
+      assert.strictEqual((await def.run({ action: 'approve' }, 'Guy-Wilson')).isError, true);
+      assert.strictEqual((await def.run({ action: 'approve', client: 'Other' }, 'Guy-Wilson')).isError, true);
+      assert.strictEqual((await def.run({ action: 'approve', client: 'Rick' }, 'Rick-Wong')).isError, true, 'a client cannot run it');
+      assert.match((await def.run({ action: 'nonsense', client: 'Rick' }, 'Guy-Wilson')).text, /Unknown action/);
+    } finally { cs.getAllClients = real; }
+  });
+  await check("Guy's Monday emails point him at the chat, not a screen", () => {
+    const r = planner.buildSendReport({ result: { results: [] }, lapsed: [] });
+    assert.ok(r.html.includes('Go through them with Claude: say &quot;let\'s do this week\'s emails&quot;.'));
+    const pv = planner.buildPreview({ weekOf: '2026-10-26', rows: [] });
+    assert.ok(pv.html.includes("let's do this week's emails") || pv.html.includes('let&#39;s do this week&#39;s emails') || pv.html.includes('&quot;let\'s do this week\'s emails&quot;'));
+    assert.ok(!/on the screen|Open the Monday emails/.test(r.html + pv.html));
   });
 
   console.log('the "why not" box');

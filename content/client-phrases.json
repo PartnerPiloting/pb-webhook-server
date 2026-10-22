@@ -17,131 +17,233 @@
       "phrase": "Help me set up my Linked Helper machine",
       "tool": "wingguy_learn",
       "topic": "YOUR LINKED HELPER MACHINE",
-      "where": ["content/templates/plan-one-pager.md", "docs/wingguy-onboarding-checklist.md"]
+      "where": [
+        "content/templates/plan-one-pager.md",
+        "docs/wingguy-onboarding-checklist.md"
+      ]
     },
     {
       "phrase": "where are we up to?",
       "tool": "wingguy_learn",
       "tour": "status",
-      "where": ["docs/client-tour.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "docs/client-tour.md",
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "continue",
       "tool": "wingguy_learn",
       "tour": "advance",
-      "where": ["docs/client-tour.md"]
+      "where": [
+        "docs/client-tour.md"
+      ]
     },
     {
       "phrase": "read me everything",
       "tool": "wingguy_learn",
       "everything": true,
-      "where": ["docs/client-playbook.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "docs/client-playbook.md",
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "Who should I be connecting with?",
       "tool": "wingguy_learn",
       "topic": "WHO YOU'RE LOOKING FOR",
-      "where": ["linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "What do I say to thank someone for connecting?",
       "tool": "wingguy_learn",
       "topic": "THANKS FOR CONNECTING",
-      "where": ["linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "How do I keep on top of follow-ups?",
       "tool": "wingguy_learn",
       "topic": "YOUR DAILY FOLLOW-UP LIST",
-      "where": ["linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "show me my follow-ups",
       "tool": "wingguy_queue",
-      "where": ["docs/client-playbook.md", "docs/client-tour.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "docs/client-playbook.md",
+        "docs/client-tour.md",
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "let's set up my instructions",
       "tool": "wingguy_setup_rules",
-      "where": ["docs/client-tour.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "docs/client-tour.md",
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "what can I do with Wingguy?",
       "tool": "wingguy_vision",
-      "where": ["docs/wingguy-onboarding-checklist.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "docs/wingguy-onboarding-checklist.md",
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "review my edits",
       "tool": "wingguy_edit_review",
-      "where": ["docs/client-playbook.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "docs/client-playbook.md",
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "prep me for my meetings",
       "tool": "wingguy_list_events",
-      "where": ["docs/wingguy-onboarding-checklist.md", "docs/client-playbook.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "docs/wingguy-onboarding-checklist.md",
+        "docs/client-playbook.md",
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "what's on my calendar this week?",
       "tool": "wingguy_list_events",
-      "where": ["docs/wingguy-onboarding-checklist.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "docs/wingguy-onboarding-checklist.md",
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "book it",
       "tool": "wingguy_book_meeting",
-      "where": ["docs/client-playbook.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "docs/client-playbook.md",
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "draft the follow-up from my last call",
       "tool": "wingguy_dossier",
-      "where": ["linkedin-messaging-followup-next/app/start-here/page.tsx"]
+      "where": [
+        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+      ]
     },
     {
       "phrase": "Help me with my first campaign",
       "tool": "wingguy_learn",
       "topic": "YOUR FIRST CAMPAIGN",
-      "where": ["content/site/your-campaign.html"]
+      "where": [
+        "content/site/your-campaign.html"
+      ]
     },
     {
       "phrase": "open my Linked Helper machine",
       "tool": "wingguy_open_machine",
-      "where": ["content/site/open-your-machine.html"]
+      "where": [
+        "content/site/open-your-machine.html"
+      ]
     },
     {
       "phrase": "put this file on my machine",
       "tool": "wingguy_send_file_to_machine",
-      "where": ["content/site/open-your-machine.html"]
+      "where": [
+        "content/site/open-your-machine.html"
+      ]
     },
     {
       "phrase": "rebuild my scoring",
       "tool": "wingguy_scoring_get",
-      "where": ["docs/client-playbook.md"]
+      "where": [
+        "docs/client-playbook.md"
+      ]
     },
     {
       "phrase": "set up my reconnect list",
       "tool": "wingguy_reconnect_setup",
-      "where": ["docs/client-tour.md"]
+      "where": [
+        "docs/client-tour.md"
+      ]
     },
     {
       "phrase": "refresh my follow-ups",
       "tool": "wingguy_prepare_brief",
-      "where": ["services/wingguyFollowupBrief.js"]
+      "where": [
+        "services/wingguyFollowupBrief.js"
+      ]
     },
     {
       "phrase": "what campaigns do I have?",
       "tool": "wingguy_campaigns",
-      "where": ["docs/client-playbook.md"]
+      "where": [
+        "docs/client-playbook.md"
+      ]
+    },
+    {
+      "phrase": "let's do this week's emails",
+      "tool": "wingguy_weekly_emails",
+      "audience": "coach",
+      "note": "Guy-only: runs the weekly review of his client emails in chat (22 Oct 2026). Printed in the Monday preview and report emails Guy gets.",
+      "where": [
+        "services/clientTouchPlanner.js",
+        "docs/CLIENT-TOUCH-PLANNER.md"
+      ]
     }
   ],
   "near_misses": [
-    { "phrase": "help me set up my extension", "not": "YOUR LINKED HELPER MACHINE" },
-    { "phrase": "help me set up my instructions", "not": "YOUR LINKED HELPER MACHINE", "expect": "YOUR INSTRUCTIONS" },
-    { "phrase": "help me set up my Claude key", "not": "YOUR LINKED HELPER MACHINE" },
-    { "phrase": "how do I open my Linked Helper machine", "not": "YOUR LINKED HELPER MACHINE", "expect": "OPEN YOUR LINKED HELPER MACHINE" },
-    { "phrase": "the icon on my desktop won't open", "expect": "OPEN YOUR LINKED HELPER MACHINE" },
-    { "phrase": "connection request note", "not": "WHO YOU'RE LOOKING FOR", "expect": "THANKS FOR CONNECTING" },
-    { "phrase": "what should the note on my connection request say?", "not": "WHO YOU'RE LOOKING FOR", "expect": "THANKS FOR CONNECTING" },
-    { "phrase": "can I change the invite wording?", "not": "YOUR FIRST CAMPAIGN", "expect": "THANKS FOR CONNECTING" },
-    { "phrase": "what do I write in my invite?", "not": "YOUR FIRST CAMPAIGN", "expect": "THANKS FOR CONNECTING" },
-    { "phrase": "how many invites go out a day?", "not": "THANKS FOR CONNECTING" }
+    {
+      "phrase": "help me set up my extension",
+      "not": "YOUR LINKED HELPER MACHINE"
+    },
+    {
+      "phrase": "help me set up my instructions",
+      "not": "YOUR LINKED HELPER MACHINE",
+      "expect": "YOUR INSTRUCTIONS"
+    },
+    {
+      "phrase": "help me set up my Claude key",
+      "not": "YOUR LINKED HELPER MACHINE"
+    },
+    {
+      "phrase": "how do I open my Linked Helper machine",
+      "not": "YOUR LINKED HELPER MACHINE",
+      "expect": "OPEN YOUR LINKED HELPER MACHINE"
+    },
+    {
+      "phrase": "the icon on my desktop won't open",
+      "expect": "OPEN YOUR LINKED HELPER MACHINE"
+    },
+    {
+      "phrase": "connection request note",
+      "not": "WHO YOU'RE LOOKING FOR",
+      "expect": "THANKS FOR CONNECTING"
+    },
+    {
+      "phrase": "what should the note on my connection request say?",
+      "not": "WHO YOU'RE LOOKING FOR",
+      "expect": "THANKS FOR CONNECTING"
+    },
+    {
+      "phrase": "can I change the invite wording?",
+      "not": "YOUR FIRST CAMPAIGN",
+      "expect": "THANKS FOR CONNECTING"
+    },
+    {
+      "phrase": "what do I write in my invite?",
+      "not": "YOUR FIRST CAMPAIGN",
+      "expect": "THANKS FOR CONNECTING"
+    },
+    {
+      "phrase": "how many invites go out a day?",
+      "not": "THANKS FOR CONNECTING"
+    }
   ]
 }

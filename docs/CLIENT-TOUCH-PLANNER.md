@@ -327,6 +327,15 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 - **From any chat:** "show me Steve's emails" (the Guy-only Wingguy tool `wingguy_client_emails`)
   returns the same three parts, so Guy can talk a client's emails through from his phone.
 
+**The weekly review happens in chat (Guy, 22 Oct 2026)** - the Monday emails panel is gone from My
+Clients. Guy says "let's do this week's emails" in any Claude chat and the Guy-only tool
+`wingguy_weekly_emails` runs it: the coming Monday at a glance, then each waiting email in full (why it
+was picked, the thought and why, what they have had, likely next, any brief), and his verdicts -
+approve, edit (his words, counts as approved), swap (another approved piece or a custom email), skip
+(with a why-not filed to its home), pin, change the thought. Each says back exactly what changed.
+The actions live in `services/clientTouchActions.js` (the web routes call the same code). The Monday
+preview and report emails end "Go through them with Claude: say "let's do this week's emails"."
+
 **How the weekly email looks (Guy, 22 Oct 2026):**
 
 - **A personal email, not a newsletter.** No banner, no series branding, no big heading: "Hi
