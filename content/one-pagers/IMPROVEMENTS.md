@@ -327,6 +327,11 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
 
 ### book one-pagers - one book, one idea, applied to building a network
 
+- *22 Oct 2026, Guy:* leaves it to Claude to CHOOSE both the Beth pieces and the books. Claude picks
+  by fit (pairs with a piece or a journey stop, says something the series doesn't already), drafts
+  in Guy's words, and Guy still approves each finished email. Guy's only jobs: the final read, and
+  asking Beth she's happy.
+
 - *22 Oct 2026, Guy:* comb through the short-form book emails (Shortform - weekly "recommended
   books" from recommendations@mailer.shortform.com, plus guide round-ups) and do one-pagers on books
   people would value - Atomic Habits and the like. **Waiting**
