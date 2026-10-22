@@ -44,7 +44,7 @@ against. Whole fresh emails can come later, for specific situations, once truste
 | **setup step** | the next small to-do during onboarding | when the previous step is done; during onboarding only |
 | **one-off** | an event, a client's open meeting | the week Guy pins it |
 | **personal note** | Guy writes it himself ("ask how the call with John went") | Guy's choice |
-| **time for a call** | a flag to Guy, not an email | client stuck, drifting, or long since the last call |
+| **time for a call** | a flag to Guy plus a drafted offer of times | six weeks since the last call, or stuck / drifting |
 | **nothing** | a deliberate quiet week | always allowed |
 
 ## Who gets what, when
@@ -225,6 +225,29 @@ one-line reason, the email with its personal opening, and buttons to approve, ed
 or pin for next week. "Pin for everyone this week" for one-offs. One "Send approved" button.
 Also on the screen: onboarding clients with no next session booked, or an invite not accepted
 within a week, and the waiting improvements count per piece.
+
+**Two more things on the Monday screen (Guy, 22 Oct):**
+
+- **Last touched base, per client.** How long since Guy last had a call with them, and since any
+  real touch (call, substantial email, introduction). Read live from the calendar, the transcript
+  store and the send record - the client board already works out "last session".
+- **Introductions to make.** Each week, one to three suggested PAIRS of people - client to client,
+  or a client to someone in Guy's wider network - who would clearly benefit from meeting and have
+  NOT already been introduced. Each with a one-line why, from what each has said they want (their
+  client note: what the network is for, their unique thing) and their call transcripts. Guy
+  approves a pair and Wingguy drafts the introduction (the existing introduction instructions and
+  layout). Rules: pairwise only, never "all these people"; space each person's introductions about
+  a week apart; never suggest a pair already introduced - which needs every introduction recorded
+  (the master Clients base Referrals table records introductions TO Guy today; client-to-client
+  and Guy-made introductions must be recorded too, or the "not already connected" check can't work).
+
+**Six-weekly check-in calls (Guy, 22 Oct).** Every running client gets a call with Guy about every
+six weeks. When one is due (six weeks since the last call, nothing booked), the planner shows
+"time for a call" and drafts an email offering two or three considered times from Guy's free slots
+(never a booking link - never-send-calendly). Guy approves the draft; nothing is booked or sent on
+its own. A client who is stuck or drifting can be brought forward; a client in onboarding sessions
+is skipped. This is a regular rhythm, not a stalled-client alert (the 24 Aug 2026 "no alerts"
+decision stands).
 
 **First month: Guy approves every email.** After that it sends on its own with a Monday preview
 he can veto until Tuesday 9am. **When Guy is away** (Thailand, soon): approve the next two weeks
