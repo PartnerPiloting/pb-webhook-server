@@ -3641,7 +3641,7 @@ const logCriticalError = async () => {}; // No-op
     This endpoint allows local dev machines to fetch current env vars from Render.
     SECURITY: Protected by PB_WEBHOOK_SECRET (same as other admin endpoints)
     
-    Usage: curl -H "Authorization: Bearer Diamond9753!!@@pb" https://pb-webhook-server-staging.onrender.com/export-env-vars
+    Usage: curl -H "Authorization: Bearer <PB_WEBHOOK_SECRET>" https://pb-webhook-server-staging.onrender.com/export-env-vars
 ------------------------------------------------------------------*/
 app.get('/export-env-vars', (req, res) => {
     const endpointLogger = createLogger({ runId: 'EXPORT_ENV', clientId: 'SYSTEM', operation: 'export_env_vars' });

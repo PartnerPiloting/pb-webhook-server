@@ -24,7 +24,7 @@ When searching Render logs, ALWAYS use this two-step approach:
 ### Step 1: Fetch logs to a single file
 
 ```bash
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=120&limit=500" -o temp-render-logs.json
+curl.exe -s -H "Authorization: Bearer $PB_WEBHOOK_SECRET" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=120&limit=500" -o temp-render-logs.json
 ```
 
 ### Step 2: Parse JSON and search message fields with Node.js

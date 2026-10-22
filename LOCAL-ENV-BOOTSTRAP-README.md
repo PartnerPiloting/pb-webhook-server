@@ -92,7 +92,7 @@ npm run local check-execution-log-errors.js
 
 The `/export-env-vars` endpoint is protected by:
 - ✅ Same `PB_WEBHOOK_SECRET` used for other admin endpoints
-- ✅ Requires `Authorization: Bearer Diamond9753!!@@pb` header
+- ✅ Requires `Authorization: Bearer $PB_WEBHOOK_SECRET` header
 - ✅ Returns 401 Unauthorized if secret is wrong
 
 ### .gitignore Protection

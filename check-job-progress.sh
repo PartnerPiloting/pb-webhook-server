@@ -14,7 +14,7 @@ echo "2. Looking for signs of job activity..."
 # Test if we can hit an endpoint that would be called by the script
 echo "Testing lead scoring endpoint (same as script would call)..."
 response=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
-  -H "x-webhook-secret: Diamond9753!!@@pb" \
+  -H "x-webhook-secret: $PB_WEBHOOK_SECRET" \
   "https://pb-webhook-server-staging.onrender.com/run-batch-score-v2?stream=1&limit=1&clientId=Guy-Wilson" 2>/dev/null)
 
 http_code=$(echo "$response" | grep "HTTP_CODE:" | cut -d: -f2)

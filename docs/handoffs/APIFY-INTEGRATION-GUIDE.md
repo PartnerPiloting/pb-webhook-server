@@ -20,7 +20,7 @@ This guide documents the integration of Apify's LinkedIn Profile Posts service a
 
 ### Current PhantomBuster Webhook
 - **Endpoint**: `POST /api/pb-webhook`
-- **Secret**: `Diamond9753!!@@pb` (query parameter)
+- **Secret**: `$PB_WEBHOOK_SECRET` (query parameter)
 - **Function**: Processes LinkedIn posts from PhantomBuster
 - **Status**: Working with hardcoded 'Guy-Wilson' client fix
 

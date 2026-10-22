@@ -58,7 +58,7 @@ Expected outcome:
 2. **Test Lock Reset Endpoint**:
    ```bash
    curl -X POST 'http://localhost:3001/reset-smart-resume-lock' \
-     -H 'x-webhook-secret: Diamond9753!!@@pb' \
+     -H 'x-webhook-secret: $PB_WEBHOOK_SECRET' \
      -H 'Content-Type: application/json' -d '{}'
    ```
    Expected outcome:

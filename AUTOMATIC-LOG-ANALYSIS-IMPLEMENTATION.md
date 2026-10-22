@@ -180,7 +180,7 @@ Status: NEW (ready for you to investigate)
 3. **Trigger smart-resume:**
    ```bash
    curl -X POST https://pb-webhook-server-staging.onrender.com/smart-resume-client-by-client \
-     -H "x-webhook-secret: Diamond9753!!@@pb" \
+     -H "x-webhook-secret: $PB_WEBHOOK_SECRET" \
      -H "Content-Type: application/json" \
      -d '{"stream": 1}'
    ```

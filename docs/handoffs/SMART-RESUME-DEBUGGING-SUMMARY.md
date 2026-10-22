@@ -81,7 +81,7 @@ This change has been pushed to staging and we're testing it now.
 ### Start a Smart Resume Job
 ```bash
 curl -X POST 'https://pb-webhook-server-staging.onrender.com/smart-resume-client-by-client' \
-  -H 'x-webhook-secret: Diamond9753!!@@pb' \
+  -H 'x-webhook-secret: $PB_WEBHOOK_SECRET' \
   -H 'x-client-id: Guy-Wilson' \
   -H 'Content-Type: application/json' \
   -d '{"stream": 1, "leadScoringLimit": 5}'
@@ -90,13 +90,13 @@ curl -X POST 'https://pb-webhook-server-staging.onrender.com/smart-resume-client
 ### Check Status
 ```bash
 curl -X GET 'https://pb-webhook-server-staging.onrender.com/debug-smart-resume-status' \
-  -H 'x-webhook-secret: Diamond9753!!@@pb'
+  -H 'x-webhook-secret: $PB_WEBHOOK_SECRET'
 ```
 
 ### Reset/Terminate Process
 ```bash
 curl -X POST 'https://pb-webhook-server-staging.onrender.com/reset-smart-resume-lock' \
-  -H 'x-webhook-secret: Diamond9753!!@@pb' \
+  -H 'x-webhook-secret: $PB_WEBHOOK_SECRET' \
   -H 'Content-Type: application/json' \
   -d '{"forceTerminate": true}'
 ```

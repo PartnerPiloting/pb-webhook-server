@@ -20,7 +20,7 @@ This test plan outlines the steps to verify that post scoring is working correct
 1. Use the direct post scoring endpoint to test scoring functionality:
    ```bash
    curl -X POST "http://localhost:3001/run-post-batch-score-simple?clientId=Guy-Wilson" \
-     -H "x-webhook-secret: Diamond9753!!@@pb" 
+     -H "x-webhook-secret: $PB_WEBHOOK_SECRET" 
    ```
 
 2. Expected outcome:
@@ -33,7 +33,7 @@ This test plan outlines the steps to verify that post scoring is working correct
 1. Run the full Smart Resume workflow for the Guy Wilson client:
    ```bash
    curl -X POST "http://localhost:3001/smart-resume-client-by-client?stream=1" \
-     -H "x-webhook-secret: Diamond9753!!@@pb"
+     -H "x-webhook-secret: $PB_WEBHOOK_SECRET"
    ```
 
 2. Monitor logs for the execution flow:

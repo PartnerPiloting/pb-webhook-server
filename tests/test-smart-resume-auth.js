@@ -3,7 +3,7 @@
 // Test the three operations that smart resume calls to verify authentication works
 
 const baseUrl = 'https://pb-webhook-server-staging.onrender.com';
-const secret = 'Diamond9753!!@@pb';
+const secret = process.env.PB_WEBHOOK_SECRET;
 
 async function testOperation(name, config) {
     console.log(`\n🔍 Testing ${name}...`);

@@ -16,7 +16,7 @@ const options = {
   headers: {
     'Content-Type': 'application/json',
     'Content-Length': data.length,
-    'Authorization': 'Bearer Diamond9753!!@@pb'
+    'Authorization': 'Bearer ' + process.env.PB_WEBHOOK_SECRET
   }
 };
 

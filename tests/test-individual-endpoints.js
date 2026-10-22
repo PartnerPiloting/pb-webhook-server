@@ -9,7 +9,7 @@ async function testEndpoint(path, description) {
             path: path,
             method: 'GET',
             headers: {
-                'x-webhook-secret': 'Diamond9753!!@@pb'
+                'x-webhook-secret': process.env.PB_WEBHOOK_SECRET
             }
         };
 

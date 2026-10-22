@@ -38,7 +38,7 @@ The system operates as a Node.js application deployed on Render, integrating wit
 - **Schedule**: 3:30 AM daily (immediately after LH to minimize LinkedIn visit count)
 - **Source Sheet**: [LinkedIn Activity Extractor Google Sheet](https://docs.google.com/spreadsheets/d/1LwX8mzL4VsOYetlGtiVUZFyvUTqh2zdDseQoDKxLuns/edit?gid=0#gid=0)
 - **Volume**: 2 posts per profile (40 profiles = 80 posts)
-- **Webhook Endpoint**: `https://pb-webhook-server.onrender.com/api/pb-webhook?secret=Diamond9753!!@@pb`
+- **Webhook Endpoint**: `https://pb-webhook-server.onrender.com/api/pb-webhook?secret=$PB_WEBHOOK_SECRET`
 - **Data Storage**: Posts stored in Leads table "Posts Content" field as JSON
 
 **Google Apps Script Integration**:
@@ -178,7 +178,7 @@ var GOOGLE_SHEET_ID = '1LwX8mzL4VsOYetlGtiVUZFyvUTqh2zdDseQoDKxLuns';
    - No authentication parameters
 
 2. **PhantomBuster Post Update**
-   - `POST /api/pb-webhook?secret=Diamond9753!!@@pb`
+   - `POST /api/pb-webhook?secret=$PB_WEBHOOK_SECRET`
    - Purpose: Receive extracted posts and update lead records
    - Authentication: Secret parameter required
 

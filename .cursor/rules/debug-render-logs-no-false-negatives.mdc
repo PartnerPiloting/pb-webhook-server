@@ -20,7 +20,7 @@ You **must** complete the steps below **before** telling the user an event does 
 - Save to a file (never rely only on piped `findstr` / `grep` on raw JSON — truncated lines cause false negatives).
 
 ```bash
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=120&limit=500" -o temp-render-logs.json
+curl.exe -s -H "Authorization: Bearer $PB_WEBHOOK_SECRET" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=120&limit=500" -o temp-render-logs.json
 ```
 
 ### 2. Parse and search correctly

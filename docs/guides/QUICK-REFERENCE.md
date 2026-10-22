@@ -56,7 +56,7 @@ cp .env.example .env.local
 # Key environment variables
 AIRTABLE_API_KEY=key...
 MASTER_CLIENTS_BASE_ID=app...
-PB_WEBHOOK_SECRET=Diamond9753!!@@pb
+PB_WEBHOOK_SECRET=$PB_WEBHOOK_SECRET
 ```
 
 ### **Common File Locations**
@@ -87,7 +87,7 @@ console.log(clients);
 ### **Webhook Problems**
 ```bash
 # Test PB webhook locally
-curl -X POST http://localhost:3000/api/pb-webhook?secret=Diamond9753!!@@pb \
+curl -X POST http://localhost:3000/api/pb-webhook?secret=$PB_WEBHOOK_SECRET \
   -H "Content-Type: application/json" \
   -d '{"resultObject": "[{\"profileUrl\": \"test\"}]"}'
 ```

@@ -77,7 +77,7 @@ Or use curl:
 ```bash
 curl -X POST https://pb-webhook-server-staging.onrender.com/api/run-daily-log-analyzer \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer Diamond9753!!@@pb" \
+  -H "Authorization: Bearer $PB_WEBHOOK_SECRET" \
   -d '{"runId":"251013-100000"}'
 ```
 
@@ -145,7 +145,7 @@ curl -X POST https://pb-webhook-server-staging.onrender.com/api/run-daily-log-an
 
 **"401 Unauthorized"**
 - Check Authorization header has correct Bearer token
-- Default: `Bearer Diamond9753!!@@pb` (PB_WEBHOOK_SECRET)
+- Default: `Bearer $PB_WEBHOOK_SECRET` (PB_WEBHOOK_SECRET)
 
 ---
 

@@ -26,7 +26,7 @@ We've implemented a comprehensive run tracking system for the LinkedIn lead mana
   ```bash
   curl -X POST 'https://pb-webhook-server-staging.onrender.com/smart-resume-client-by-client' \
   -H 'Content-Type: application/json' \
-  -H 'x-webhook-secret: Diamond9753!!@@pb' \
+  -H 'x-webhook-secret: $PB_WEBHOOK_SECRET' \
   --data-raw '{"stream": 1}'
   ```
 - The system processed:

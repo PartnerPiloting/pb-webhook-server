@@ -10,7 +10,7 @@ curl -N \
   -X POST \
   https://pb-webhook-server-staging.onrender.com/api/enhance-env-descriptions \
   -H "Content-Type: application/json" \
-  -H "x-webhook-secret: Diamond9753!!@@pb" \
+  -H "x-webhook-secret: $PB_WEBHOOK_SECRET" \
   2>/dev/null | while IFS= read -r line; do
     # Parse the SSE data line
     if [[ $line == data:* ]]; then

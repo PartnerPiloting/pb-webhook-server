@@ -56,7 +56,7 @@ async function testOperation(config, description) {
 }
 
 async function testAllOperations() {
-    const secret = 'Diamond9753!!@@pb';
+    const secret = process.env.PB_WEBHOOK_SECRET;
     const clientId = 'Dean-Hobin';
     const stream = 1;
     const limit = 2;

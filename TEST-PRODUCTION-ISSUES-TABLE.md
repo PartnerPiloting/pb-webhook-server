@@ -13,7 +13,7 @@ Once deployed, run this command to verify your Airtable table matches the code:
 
 ```bash
 curl -X GET "https://pb-webhook-server.onrender.com/api/verify-production-issues-table" \
-  -H "Authorization: Bearer Diamond9753!!@@pb"
+  -H "Authorization: Bearer $PB_WEBHOOK_SECRET"
 ```
 
 ### ✅ Success Response:
@@ -73,7 +73,7 @@ Test the analysis endpoint with some sample error logs:
 
 ```bash
 curl -X POST "https://pb-webhook-server.onrender.com/api/analyze-logs/text" \
-  -H "Authorization: Bearer Diamond9753!!@@pb" \
+  -H "Authorization: Bearer $PB_WEBHOOK_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
     "logText": "2024-10-08T14:32:15Z ERROR: Unhandled exception in batch scorer\nTypeError: Cannot read property '\''score'\'' of undefined\n    at scoreLeadBatch (batchScorer.js:145:22)\n    at processClientRun (jobTracking.js:89:15)",

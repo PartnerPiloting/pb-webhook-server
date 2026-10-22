@@ -6,7 +6,7 @@
 const https = require('https');
 
 const RENDER_URL = 'pb-webhook-server-staging.onrender.com';
-const AUTH_TOKEN = 'Diamond9753!!@@pb';
+const AUTH_TOKEN = process.env.PB_WEBHOOK_SECRET;
 
 function makeRequest(path, method = 'GET', body = null) {
   return new Promise((resolve, reject) => {

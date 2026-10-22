@@ -184,7 +184,7 @@ curl -X POST https://pb-webhook-server-staging.onrender.com/api/mark-issue-fixed
 
 **Headers**:
 ```
-Authorization: Bearer Diamond9753!!@@pb
+Authorization: Bearer $PB_WEBHOOK_SECRET
 Content-Type: application/json
 ```
 
@@ -221,7 +221,7 @@ node test-daily-log-analyzer-staging.js 251013-100000
 
 # Or use curl
 curl -X POST https://pb-webhook-server-staging.onrender.com/api/run-daily-log-analyzer \
-  -H "Authorization: Bearer Diamond9753!!@@pb" \
+  -H "Authorization: Bearer $PB_WEBHOOK_SECRET" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```

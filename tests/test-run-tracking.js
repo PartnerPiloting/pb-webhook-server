@@ -14,7 +14,7 @@ dotenv.config();
 
 // Configuration
 const STAGING_URL = process.env.STAGING_URL || 'https://pb-webhook-server-staging.onrender.com';
-const AUTH_TOKEN = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
+const AUTH_TOKEN = process.env.PB_WEBHOOK_SECRET;
 const TEST_CLIENT_ID = process.env.TEST_CLIENT_ID; // Optional: specify a client ID to test
 const TEST_LIMIT = 5; // Process only 5 leads per client for testing
 

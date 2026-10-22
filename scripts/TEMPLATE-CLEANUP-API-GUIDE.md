@@ -54,7 +54,7 @@ Test what will happen without making changes:
 POST https://pb-webhook-server.onrender.com/api/template-cleanup/clean-base
 
 Headers:
-  Authorization: Bearer Diamond9753!!@@pb
+  Authorization: Bearer $PB_WEBHOOK_SECRET
   Content-Type: application/json
 
 Body (raw JSON):
@@ -71,7 +71,7 @@ Same as above
 **cURL (from local terminal):**
 ```bash
 curl -X POST https://pb-webhook-server.onrender.com/api/template-cleanup/clean-base \
-  -H "Authorization: Bearer Diamond9753!!@@pb" \
+  -H "Authorization: Bearer $PB_WEBHOOK_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"baseId":"appYOURBASEID","deepClean":true,"dryRun":true}'
 ```
@@ -219,7 +219,7 @@ Authorization: Bearer YOUR_PB_WEBHOOK_SECRET
 
 **Secret:** Use the value from `PB_WEBHOOK_SECRET` environment variable
 - Local: Check your `.env` file
-- Staging: `Diamond9753!!@@pb`
+- Staging: `$PB_WEBHOOK_SECRET`
 
 ### Rate Limits
 - Respects Airtable's 5 requests/second limit

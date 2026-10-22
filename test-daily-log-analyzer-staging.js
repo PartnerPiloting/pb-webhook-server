@@ -28,7 +28,7 @@ const options = {
   headers: {
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(postData),
-    'Authorization': `Bearer ${process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb'}`
+    'Authorization': `Bearer ${process.env.PB_WEBHOOK_SECRET}`
   }
 };
 

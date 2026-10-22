@@ -33,7 +33,7 @@
 ### Step 2: Environment Configuration
 **Production needs these environment variables:**
 - `API_PUBLIC_BASE_URL=https://pb-webhook-server.onrender.com` (production URL)
-- `PB_WEBHOOK_SECRET=Diamond9753!!@@pb`
+- `PB_WEBHOOK_SECRET=$PB_WEBHOOK_SECRET`
 - `AIRTABLE_API_KEY` (production key)
 - `MASTER_CLIENTS_BASE_ID` (production master base)
 

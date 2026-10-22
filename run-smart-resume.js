@@ -8,7 +8,7 @@ async function triggerSmartResume() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-webhook-secret': 'Diamond9753!!@@pb'
+        'x-webhook-secret': process.env.PB_WEBHOOK_SECRET
       },
       body: JSON.stringify({
         stream: 1

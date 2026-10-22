@@ -49,18 +49,18 @@ We've identified and fixed three critical issues in the Smart Resume system:
 # Test the full Smart Resume process for all clients in stream 1
 curl -X POST 'https://pb-webhook-server-staging.onrender.com/smart-resume-client-by-client' \
   -H 'Content-Type: application/json' \
-  -H 'x-webhook-secret: Diamond9753!!@@pb' \
+  -H 'x-webhook-secret: $PB_WEBHOOK_SECRET' \
   --data-raw '{"stream": 1}'
 
 # To test a specific client only
 curl -X POST 'https://pb-webhook-server-staging.onrender.com/smart-resume-client-by-client' \
   -H 'Content-Type: application/json' \
-  -H 'x-webhook-secret: Diamond9753!!@@pb' \
+  -H 'x-webhook-secret: $PB_WEBHOOK_SECRET' \
   --data-raw '{"stream": 1, "clientId": "Guy-Wilson"}'
 
 # Check status of Smart Resume process
 curl -X GET 'https://pb-webhook-server-staging.onrender.com/smart-resume-status' \
-  -H 'x-webhook-secret: Diamond9753!!@@pb'
+  -H 'x-webhook-secret: $PB_WEBHOOK_SECRET'
 ```
 
 ## 3. Future Improvements: Better Reporting System

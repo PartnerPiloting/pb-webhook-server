@@ -5,6 +5,6 @@
 curl -X POST \
   https://pb-webhook-server-staging.onrender.com/api/scan-env-vars \
   -H "Content-Type: application/json" \
-  -H "x-webhook-secret: Diamond9753!!@@pb" \
+  -H "x-webhook-secret: $PB_WEBHOOK_SECRET" \
   -d '{"onlySetVariables": true, "includeAiDescriptions": false}' \
   | python -m json.tool

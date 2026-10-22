@@ -46,7 +46,7 @@ The post scoring endpoint (`/run-post-batch-score-v2`) needs to be investigated 
 1. Test the post scoring endpoint directly with a known client ID:
    ```
    curl -X POST "http://localhost:3001/run-post-batch-score-v2" \
-     -H "x-webhook-secret: Diamond9753!!@@pb" \
+     -H "x-webhook-secret: $PB_WEBHOOK_SECRET" \
      -H "Content-Type: application/json" \
      -d '{"clientId":"Guy-Wilson", "stream":"1", "limit":10}'
    ```

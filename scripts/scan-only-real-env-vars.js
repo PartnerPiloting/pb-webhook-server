@@ -13,7 +13,7 @@
 const https = require('https');
 
 const STAGING_URL = 'pb-webhook-server-staging.onrender.com';
-const DEBUG_API_KEY = process.env.DEBUG_API_KEY || 'Diamond9753!!@@pb';
+const DEBUG_API_KEY = process.env.DEBUG_API_KEY;
 
 /**
  * Make HTTPS request to staging server

@@ -13,7 +13,7 @@ When debugging production issues, you can query Render logs directly instead of 
 
 ```
 GET https://pb-webhook-server.onrender.com/debug-render-logs
-Authorization: Bearer Diamond9753!!@@pb
+Authorization: Bearer $PB_WEBHOOK_SECRET
 ```
 
 ## Query Parameters
@@ -35,13 +35,13 @@ Authorization: Bearer Diamond9753!!@@pb
 
 ```bash
 # Recent logs (last 5 minutes) — inspect or parse file
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=5&limit=50" -o temp-render-logs.json
+curl.exe -s -H "Authorization: Bearer $PB_WEBHOOK_SECRET" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=5&limit=50" -o temp-render-logs.json
 
 # Wider window + high limit when hunting a specific event
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=120&limit=500" -o temp-render-logs.json
+curl.exe -s -H "Authorization: Bearer $PB_WEBHOOK_SECRET" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=120&limit=500" -o temp-render-logs.json
 
 # Specific time window (UTC) — Render dashboard may show local time; convert to UTC
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?startTime=2026-02-10T10:24:00Z&endTime=2026-02-10T10:30:00Z&limit=200" -o temp-render-logs.json
+curl.exe -s -H "Authorization: Bearer $PB_WEBHOOK_SECRET" "https://pb-webhook-server.onrender.com/debug-render-logs?startTime=2026-02-10T10:24:00Z&endTime=2026-02-10T10:30:00Z&limit=200" -o temp-render-logs.json
 ```
 
 Then filter with the Node snippet in `searching-render-logs.mdc` (not `findstr` on the pipe).

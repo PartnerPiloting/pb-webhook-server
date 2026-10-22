@@ -6,7 +6,7 @@
 const https = require('https');
 
 const API_BASE = 'https://pb-webhook-server-staging.onrender.com';
-const DEBUG_API_KEY = process.env.DEBUG_API_KEY || 'Diamond9753!!@@pb';
+const DEBUG_API_KEY = process.env.DEBUG_API_KEY;
 
 async function markIssuesFixed() {
     console.log('🔧 Marking "Unknown field name: Errors" issues as FIXED...\n');

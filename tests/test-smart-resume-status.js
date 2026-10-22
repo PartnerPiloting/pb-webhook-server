@@ -20,7 +20,7 @@ console.log(`🚀 Checking smart-resume status on ${envTarget} server`);
 console.log(`🔍 Target: http${useLocalServer ? '' : 's'}://${hostname}:${port}/smart-resume-status`);
 
 // Get webhook secret from environment or fallback to value if testing
-const webhookSecret = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
+const webhookSecret = process.env.PB_WEBHOOK_SECRET;
 
 const options = {
   hostname: hostname,

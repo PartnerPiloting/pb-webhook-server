@@ -23,7 +23,7 @@ const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../
 const { JOB_TRACKING_FIELDS, CLIENT_RUN_FIELDS, CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 
 // Constants
-const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
+const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET;
 
 // Default logger - using safe logger creation
 const logger = createSafeLogger('SYSTEM', null, 'apify_webhook');

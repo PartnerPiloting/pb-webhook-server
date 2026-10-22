@@ -7,7 +7,7 @@ const options = {
   path: '/api/analyze-issues?status=unfixed&days=1',
   method: 'GET',
   headers: {
-    'Authorization': 'Bearer Diamond9753!!@@pb'
+    'Authorization': 'Bearer ' + process.env.PB_WEBHOOK_SECRET
   }
 };
 

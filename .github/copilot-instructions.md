@@ -62,7 +62,7 @@ GEMINI_MODEL_ID=gemini-2.5-pro-preview-05-06
 OPENAI_API_KEY=sk-xxx
 
 # Auth
-PB_WEBHOOK_SECRET=Diamond9753!!@@pb
+PB_WEBHOOK_SECRET=$PB_WEBHOOK_SECRET
 ```
 
 ## Critical Patterns & Conventions

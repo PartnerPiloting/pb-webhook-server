@@ -10,7 +10,7 @@ async function testPostHarvestingAuth() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer Diamond9753!!@@pb'
+                'Authorization': 'Bearer ' + process.env.PB_WEBHOOK_SECRET
             }
         };
 

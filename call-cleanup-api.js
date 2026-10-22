@@ -7,7 +7,7 @@ const options = {
   path: '/api/cleanup-record-not-found-errors',
   method: 'POST',
   headers: {
-    'Authorization': 'Bearer Diamond9753!!@@pb',
+    'Authorization': 'Bearer ' + process.env.PB_WEBHOOK_SECRET,
     'Content-Type': 'application/json'
   }
 };

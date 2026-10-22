@@ -3,4 +3,4 @@
 
 curl -X POST "https://pb-webhook-server-staging.onrender.com/api/analyze-logs/recent" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer Diamond9753!!@@pb"
+  -H "Authorization: Bearer $PB_WEBHOOK_SECRET"

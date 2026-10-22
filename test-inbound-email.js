@@ -16,7 +16,7 @@ const options = {
     path: '/api/webhooks/inbound-email/test',
     method: 'POST',
     headers: {
-        'Authorization': 'Bearer Diamond9753!!@@pb',
+        'Authorization': 'Bearer ' + process.env.PB_WEBHOOK_SECRET,
         'Content-Type': 'application/json',
         'Content-Length': data.length
     }

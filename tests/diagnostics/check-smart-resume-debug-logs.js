@@ -9,7 +9,7 @@ async function checkDebugLogs() {
   try {
     const response = await fetch('https://pb-webhook-server-staging.onrender.com/debug-logs?lines=500', {
       headers: {
-        'x-webhook-secret': 'Diamond9753!!@@pb'
+        'x-webhook-secret': process.env.PB_WEBHOOK_SECRET
       }
     });
     
