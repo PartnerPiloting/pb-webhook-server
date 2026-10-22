@@ -256,6 +256,25 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
     sometimes recommends dropping someone; nothing is sent without them. Only for clients with the
     follow-up brief switched on. No engine-room names (no Render, Postgres, crons, "LLM").
 
+### the-meeting-that-evaporates - record every call (planned 27 Sep, not written)
+
+- Plan (PROSPECT-SERIES-PLAN.md, 27 Sep): a meeting without a transcript still happened, it just
+  evaporates; recorded, the conversation keeps working after you hang up (follow-up, next prep,
+  people met). The trap: once recordings do the remembering you stop, so a missed one lands where
+  you've stopped looking. Placed after discovery-call-craft. Fills the "recording calls" gap.
+- *22 Oct 2026, Guy - the heart of it:* "The way transcripts can be used is an absolute game
+  changer in terms of productivity." Drafting emails from transcripts changes everything because
+  it's so much more REAL. The AI picks up things you would have missed and structures it precisely
+  the way you want, so you get through vastly more information and are far more effective. And
+  before a follow-up call you're reminded it's coming AND of what was discussed last time - which
+  reduces your cognitive load enormously. Alongside the LinkedIn extension, the follow-on from
+  transcripts is equally game changing. **Waiting**
+  - Lead with what it does for them (the realer email, the remembered call), then the habit that
+    makes it possible (record every call), then the trap.
+  - Voice: Guy's own experience in the first person is fine; never the tool praising its drafts.
+  - Only true for clients with a notetaker on their calls - for the rest (e.g. Steve on Meet) this
+    email IS the case for switching one on. The planner sends it with that in mind.
+
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
 (Kind 2 in docs/CLIENT-TOUCH-PLANNER.md. Each: the problem, the fix, one thing this week.)
