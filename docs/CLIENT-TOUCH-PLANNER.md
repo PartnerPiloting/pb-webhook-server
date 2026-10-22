@@ -313,6 +313,15 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
   "Rather not get these weekly emails? Unsubscribe". When the body is a one-pager it sits
   underneath as plain text under a simple bold title. (The prospect series and the public /series
   pages keep their own look.)
+- **The first-email template** (Guy approved 22 Oct): when the pick is the orientation, it is the
+  client's first planner email and their invitations are going out (Last Invite Sent - never
+  before), the subject is "You're not doing this alone" (no brand prefix) and the email reads: Hi,
+  "Congratulations! You've started the process of growing your network predictably and
+  consistently - seeded by connection requests to people you've chosen on LinkedIn. From here, small
+  tweaks to the process usually bring big improvements in results.", a personal line only when
+  there is something real and specific, "First, a quick word on what you're now part of.", the
+  heading "You're not doing this alone", the orientation without its first sentence and without
+  its "Next email" line, then the note below, Cheers / Guy and the unsubscribe line.
 - **The first weekly email** a client ever gets (no planner send on their record - Mindset Mastery
   and Guy's own emails don't count) adds, after the body: "One more thing - from now on I'll send
   you a short email most weeks: an idea, a tip, or something I've picked up from other clients

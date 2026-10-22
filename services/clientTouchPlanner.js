@@ -485,12 +485,40 @@ async function refreshCallOffer(row, coach, client, deps = {}) {
   return { ok: true, changed: true, slots, bodyHtml: callOfferHtml(slots) };
 }
 
+// ---------------------------------------------------------------------------------------------
+// The FIRST weekly email every client gets - Guy's approved template (22 Oct 2026, "That works").
+// Used when the pick is the orientation, the client has had no planner email yet, and their
+// invitations are actually going out (Last Invite Sent) - never before.
+
+const FIRST_EMAIL = {
+  subject: "You're not doing this alone",
+  title: "You're not doing this alone",
+  congrats: "Congratulations! You've started the process of growing your network predictably and consistently - seeded by connection requests to people you've chosen on LinkedIn. From here, small tweaks to the process usually bring big improvements in results.",
+  lead: "First, a quick word on what you're now part of.",
+};
+
+/** The orientation body for the first email: without "Your engine is switched on." and without the "Next email" line. Pure. */
+function firstEmailBody(orientationHtml) {
+  return String(orientationHtml)
+    .replace(/<p>\s*Your engine is switched on\.\s*/, '<p>')
+    .replace(/\s*<p>\s*Next email:[^<]*<\/p>/, '');
+}
+
+/** Does this pick get the first-email template? Pure. */
+function usesFirstEmail(pick, { firstWeekly, lastInviteSent }) {
+  return !!(pick && pick.what && pick.what.key === ORIENTATION.slug && firstWeekly && lastInviteSent);
+}
+
 /** Render the body for a pick: { title, dek, bodyHtml, preview }. Never throws; a failed render is flagged. */
-async function buildBody(pick, { coach, client, pin, week }) {
+async function buildBody(pick, { coach, client, pin, week, firstEmail = false }) {
   const kind = pick.what.kind;
   try {
     if (kind === 'one-pager' || kind === 'habit') {
       const slug = pick.what.key;
+      if (slug === ORIENTATION.slug && firstEmail) {
+        const email = require('./onePagerEmail');
+        return { title: FIRST_EMAIL.title, dek: '', bodyHtml: firstEmailBody(email.clientOrientationBody()), qs: '?audience=client', template: 'first-email' };
+      }
       if (slug === ORIENTATION.slug) {
         const email = require('./onePagerEmail');
         return { title: "What you've actually joined", dek: '', bodyHtml: email.clientOrientationBody(), qs: '?audience=client' };
@@ -554,7 +582,11 @@ function composeEmail({ client, opening: openingText, body, unsubscribeUrl, base
   const first = email.firstNameOf(client.clientFirstName || client.clientName);
   const parts = [`<p>${first ? `Hi ${esc(first)},` : 'Hi there,'}</p>`];
   const op = stripLeadingName(openingText, first);
-  if (op) parts.push(`<p>${esc(op)}</p>`);
+  if (body.template === 'first-email') {
+    parts.push(`<p>${esc(FIRST_EMAIL.congrats)}</p>`);
+    if (op) parts.push(`<p>${esc(op)}</p>`);
+    parts.push(`<p>${esc(FIRST_EMAIL.lead)}</p>`);
+  } else if (op) parts.push(`<p>${esc(op)}</p>`);
   const isPiece = kind ? PIECE_KINDS.has(kind) : !!body.title;
   if (isPiece && body.title) parts.push(`<p style="margin-top:22px"><strong>${esc(body.title)}</strong></p>`);
   parts.push(body.bodyHtml || '');
@@ -573,6 +605,7 @@ function isFirstWeekly(record) {
 }
 
 function subjectFor(pick, body) {
+  if (body && body.template === 'first-email') return FIRST_EMAIL.subject;
   const kind = pick.what.kind;
   if (kind === 'one-pager' || kind === 'habit') return `${BRAND} - ${body.title}`;
   return body.title;
@@ -644,7 +677,8 @@ async function buildPlan(coachClientId, opts = {}) {
     if (pick.leftOut) status = 'left-out';
     else if (!pick.what) status = 'nothing';
     else {
-      body = await buildBody(pick, { coach, client, week, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
+      const firstEmail = usesFirstEmail(pick, { firstWeekly: isFirstWeekly(ctx.touchesByClient.get(client.clientId) || []), lastInviteSent: facts.lastInviteSent });
+      body = await buildBody(pick, { coach, client, week, firstEmail, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
       subject = body.error ? '' : subjectFor(pick, body);
       // The client's world, read once: the opening and the thought for the week both draw on it.
       if (!body.error && opts.openings !== false && !material) {
@@ -660,10 +694,16 @@ async function buildPlan(coachClientId, opts = {}) {
       } else if (!body.error && opts.openings !== false) {
         openingDraft = await opening.draftOpening({
           coach, client, note: facts.noteText,
-          pick: { title: body.title, dek: body.dek, form: pick.form, kindLine: pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind },
+          pick: { title: body.title, dek: body.dek, form: pick.form, kindLine: body.template === 'first-email'
+            ? "the client's FIRST weekly email - it already opens with a fixed congratulations paragraph. Add ONE sentence only if there is something real and specific to say from the material; otherwise answer with an empty opening"
+            : pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind },
           factLines: factLines(facts, facts.signals, card),
           today: new Date(at).toISOString().slice(0, 10),
         }, { ...(opts.openingDeps || {}), ...(material ? { meetings: material.meetings, emails: material.emails } : {}) });
+        // The first email's personal line is optional - an empty one is right, not a problem.
+        if (body.template === 'first-email' && openingDraft && !String(openingDraft.opening || '').trim() && !openingDraft.error) {
+          openingDraft = { ...openingDraft, opening: '', check: { ok: true, problems: [], sentences: 0 } };
+        }
       }
     }
     // A thought for the week, when the body is not itself a one-pager piece - chosen from the
@@ -681,7 +721,7 @@ async function buildPlan(coachClientId, opts = {}) {
     const { noteText, signals, ...storedFacts } = facts;
     const row = await planStore.upsertPlan({
       weekOf: week, clientId: client.clientId, status,
-      pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound, slots: body.slots || undefined } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null, thought },
+      pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound, slots: body.slots || undefined, template: body.template || undefined } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null, thought },
       facts: { ...storedFacts, builtAt: new Date(now).toISOString(), at: new Date(at).toISOString(), signals: { paused: signals.paused, runningLow: signals.runningLow, acceptancesSlow: signals.acceptancesSlow, live: signals.live, pausedWaiting: signals.pausedWaiting } },
       // Stored as it will be sent - the panel shows exactly what goes (no "Rick, ..." under "Hi Rick,").
       opening: openingDraft ? stripLeadingName(openingDraft.opening, require('./onePagerEmail').firstNameOf(client.clientFirstName || client.clientName)) : '',
@@ -924,7 +964,7 @@ async function sendApproved(coachClientId, week, deps = {}) {
       }
     }
     const firstWeekly = isFirstWeekly(await ts.touchesFor(row.clientId, { limit: 500 }));
-    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml, qs: row.pick.body.qs }, unsubscribeUrl, kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
+    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template }, unsubscribeUrl, kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
     const to = lower(client.clientEmailAddress);
     const res = await mailer.sendSeriesEmail({ to, subject: row.subject, html, unsubscribeUrl, preheader: row.opening ? row.opening.slice(0, 120) : undefined, tag: `client-touch-${row.pick.what.kind}` });
     if (!res.ok) {
@@ -1290,7 +1330,7 @@ async function previewFor(week, clientId) {
   if (!client) return null;
   const { unsubscribeUrlFor } = require('./clientUnsubscribe');
   const firstWeekly = isFirstWeekly(await touchStore.touchesFor(clientId, { limit: 500 }));
-  return composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml: row.bodyHtml, qs: row.pick.body.qs }, unsubscribeUrl: unsubscribeUrlFor(client) || '#', kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
+  return composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml: row.bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template }, unsubscribeUrl: unsubscribeUrlFor(client) || '#', kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
 }
 
 module.exports = {
@@ -1334,6 +1374,9 @@ module.exports = {
   waitingImprovements,
   factLines,
   composeEmail,
+  FIRST_EMAIL,
+  firstEmailBody,
+  usesFirstEmail,
   stripLeadingName,
   isFirstWeekly,
   FIRST_WEEKLY_NOTE,

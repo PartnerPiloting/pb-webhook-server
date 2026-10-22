@@ -67,6 +67,36 @@ const routes = require('../routes/clientTouchRoutes');
     assert.ok(!html.includes('A thought for the week'), 'a piece email carries no extra thought');
     assert.ok(!/[–—]/.test(html));
   });
+  console.log("the first weekly email - Guy's approved template");
+  await check('used only for the orientation, only on the first planner email, only once invitations are going out', () => {
+    const o = { what: { kind: 'one-pager', key: '(orientation)' } };
+    assert.strictEqual(planner.usesFirstEmail(o, { firstWeekly: true, lastInviteSent: '2026-10-22' }), true);
+    assert.strictEqual(planner.usesFirstEmail(o, { firstWeekly: true, lastInviteSent: null }), false, 'invitations not started - never');
+    assert.strictEqual(planner.usesFirstEmail(o, { firstWeekly: false, lastInviteSent: '2026-10-22' }), false, 'not their first');
+    assert.strictEqual(planner.usesFirstEmail({ what: { kind: 'one-pager', key: 'nodes' } }, { firstWeekly: true, lastInviteSent: 'x' }), false);
+  });
+  await check('the built body: the orientation without "Your engine is switched on." and without the "Next email" line; its own subject', async () => {
+    const b = await planner.buildBody({ what: { kind: 'one-pager', key: '(orientation)' }, form: 'full' }, { coach: {}, client: {}, firstEmail: true });
+    assert.strictEqual(b.template, 'first-email'); assert.strictEqual(b.title, "You're not doing this alone");
+    assert.ok(/^\s*<p>The setup we built together is behind you/.test(b.bodyHtml));
+    assert.ok(!b.bodyHtml.includes('engine is switched on')); assert.ok(!b.bodyHtml.includes('Next email'));
+    assert.ok(b.bodyHtml.includes('who could I introduce them to?'));
+    assert.strictEqual(planner.subjectFor({ what: { kind: 'one-pager', key: '(orientation)' } }, b), "You're not doing this alone");
+    const normal = await planner.buildBody({ what: { kind: 'one-pager', key: '(orientation)' }, form: 'full' }, { coach: {}, client: {} });
+    assert.ok(normal.bodyHtml.includes('engine is switched on'), 'any other time the orientation is unchanged');
+  });
+  await check('the email in order: Hi, Congratulations, (a personal line only if one), the lead, the heading, the body, One more thing, Cheers / Guy, unsubscribe', async () => {
+    const b = await planner.buildBody({ what: { kind: 'one-pager', key: '(orientation)' }, form: 'full' }, { coach: {}, client: {}, firstEmail: true });
+    const html = planner.composeEmail({ client: { clientName: 'Alex Solti' }, opening: '', kind: 'one-pager', body: b, unsubscribeUrl: 'https://x/u', firstWeekly: true });
+    const at = (s) => html.indexOf(s);
+    const order = ['<p>Hi Alex,</p>', 'Congratulations! You&#39;ve started', 'First, a quick word on what you&#39;re now part of.', '<strong>You&#39;re not doing this alone</strong>', 'The setup we built together', 'One more thing - from now on', 'Cheers,<br>Guy', 'Rather not get these weekly emails?'];
+    const found = order.map((s) => at(s.replace(/&#39;/g, "'")) >= 0 ? at(s.replace(/&#39;/g, "'")) : at(s));
+    assert.ok(found.every((x) => x >= 0), JSON.stringify(found));
+    assert.deepStrictEqual([...found].sort((a, c) => a - c), found, 'out of order');
+    const withLine = planner.composeEmail({ client: { clientName: 'Alex Solti' }, opening: 'Good to see the first acceptances already.', kind: 'one-pager', body: b, unsubscribeUrl: '#', firstWeekly: true });
+    assert.ok(withLine.indexOf('Congratulations!') < withLine.indexOf('Good to see the first acceptances') && withLine.indexOf('Good to see the first acceptances') < withLine.indexOf('First, a quick word'));
+  });
+
   await check('never "Hi Hiresh, Hiresh, ..." - a leading name (or greeting + name) is dropped from the opening', () => {
     assert.strictEqual(planner.stripLeadingName("Hiresh, it's been a while.", 'Hiresh'), "It's been a while.");
     assert.strictEqual(planner.stripLeadingName('Hi Hiresh - good to talk.', 'Hiresh'), 'Good to talk.');
