@@ -192,6 +192,8 @@ const BRIEF_ANSWER = {
     assert.deepStrictEqual(briefs.deterministicClaims("The campaign hasn't launched, so no invitations are going out yet.", { lastInviteSent: null }, AT), []);
     assert.deepStrictEqual(briefs.deterministicClaims('Your invitations are not going out yet.', { lastInviteSent: null }, AT), []);
     assert.strictEqual(briefs.deterministicClaims("No rush on that. Your invitations are going out.", { lastInviteSent: null }, AT).length, 1);
+    // a correction quotes the earlier mistake - that is not the claim being made again
+    assert.deepStrictEqual(briefs.deterministicClaims("I need to correct my 15 Oct email. I said the first invitations were going out. They aren't.", { lastInviteSent: null }, AT), []);
   });
   await check('the personal note never starts with their name (the greeting has it)', async () => {
     const llm = fakeLlm({ note: { subject: 'S', body: 'Ash, on 7 Oct I said I would.', guy_checks: [] } });

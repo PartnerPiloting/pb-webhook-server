@@ -81,8 +81,11 @@ async function ensureSchema(client) {
   `);
   // The kind check follows KINDS, so adding a kind (custom, 22 Oct 2026) widens the table too. The
   // table was first made with the check inline, which Postgres named client_touches_kind_check.
-  await client.query('ALTER TABLE client_touches DROP CONSTRAINT IF EXISTS client_touches_kind_check');
-  await client.query(`ALTER TABLE client_touches ADD CONSTRAINT client_touches_kind_check CHECK (kind IN (${KINDS.map((k) => `'${k}'`).join(',')}))`);
+  // One statement, so the table is never without its check; never fatal - a read must not fail
+  // because two servers widened the check at the same moment.
+  try {
+    await client.query(`ALTER TABLE client_touches DROP CONSTRAINT IF EXISTS client_touches_kind_check, ADD CONSTRAINT client_touches_kind_check CHECK (kind IN (${KINDS.map((k) => `'${k}'`).join(',')}))`);
+  } catch (e) { console.warn(`[clientTouchStore] kind check not widened: ${e.message}`); }
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_client_touches_once
     ON client_touches (client_id, kind, key, sent_at);

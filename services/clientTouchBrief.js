@@ -415,7 +415,7 @@ function firstThingsDue(brief, handled = []) {
 const NOTE_SYSTEM = `You draft a short personal email from Guy Wilson (a network-building coach) to one of his clients, to deal with what Guy owes them BEFORE any ordinary weekly email goes. Guy edits it and sends it himself.
 - Deal with each item honestly and specifically. Never say something is done, fixed or sent unless TRUE NOW says so. Where Guy must check or do something first (confirm a fix, ask a third party before an introduction), put that in guy_checks - never pretend it in the email.
 - Own it plainly where Guy dropped the ball; no grovelling, no excuses.
-- Short: under 120 words, two or three short paragraphs, no lists or numbering. Never start with their name - the greeting "Hi <name>," and the sign-off are added. One small easy next step at most.
+- Short: under 120 words, two or three short paragraphs, no lists or numbering. Never start with their name, and write no sign-off line - the greeting "Hi <name>," and "Cheers, Guy" are added. One small easy next step at most.
 - Only what is owed - leave out every other open item, however tempting.
 - ${STYLE}
 Return ONE JSON object: {"subject": "short and specific", "body": "the paragraphs, separated by a blank line", "guy_checks": ["what Guy must confirm or do before he sends it"]}`;
@@ -517,7 +517,9 @@ function deterministicClaims(text, facts = {}, at = Date.now()) {
   const problems = [];
   // Per sentence, and only where the sentence says it IS happening - "no invitations are going out
   // yet" is true for a client whose campaign has not launched, and must not trip the check.
-  const NEGATED = /\b(no|not|never|yet to)\b|n't\b/i;
+  // ...and not where Guy is quoting what was said before ("I said the first invitations were going
+  // out. They aren't." - the correction Steve was owed on 22 Oct).
+  const NEGATED = /\b(no|not|never|yet to)\b|n't\b|\bI (said|told you|wrote)\b|\bmy (\d+ \w+ )?email said\b/i;
   const sentences = t.split(/(?<=[.!?])\s+|\n+/);
   if (sentences.some((s) => INVITES_RE.test(s) && !NEGATED.test(s))) {
     const sent = facts.lastInviteSent ? Date.parse(facts.lastInviteSent) : NaN;

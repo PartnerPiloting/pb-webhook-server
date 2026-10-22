@@ -812,7 +812,7 @@ async function buildPlan(coachClientId, opts = {}) {
       // The deep client brief - everything on record about them, re-read only where it changed.
       let brief = null;
       if (!pick.leftOut && opts.briefs !== false) {
-        brief = await (opts.briefFor || briefs.briefFor)(coach, client, { facts, factLines: liveLines, llm: llmFor('brief'), now: at }, opts.briefDeps || {});
+        brief = await (opts.briefFor || briefs.briefFor)(coach, client, { facts, factLines: liveLines, llm: llmFor('brief'), now }, opts.briefDeps || {});
       }
 
       let status = 'proposed';
