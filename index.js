@@ -1887,6 +1887,17 @@ try {
     moduleLogger.error("index.js: Error mounting extension dist routes", e.message, e.stack);
 }
 
+// Guy's Monday screen - the weekly client touch planner on the client board
+// (routes/clientTouchRoutes.js, docs/CLIENT-TOUCH-PLANNER.md). Mounted BEFORE the board so
+// /touch-plan is not swallowed by the board's /:clientId/detail.
+try {
+    const clientTouchRoutes = require('./routes/clientTouchRoutes.js');
+    app.use('/api/client-board/touch-plan', clientTouchRoutes);
+    moduleLogger.info("index.js: Client touch planner routes mounted at /api/client-board/touch-plan");
+} catch(e) {
+    moduleLogger.error("index.js: Error mounting client touch planner routes", e.message, e.stack);
+}
+
 // The coach's client board - "My Clients" in the portal (see routes/clientBoardRoutes.js).
 try {
     const clientBoardRoutes = require('./routes/clientBoardRoutes.js');
@@ -1999,6 +2010,16 @@ try {
     startLhWeeklyReport();
 } catch (e) {
     moduleLogger.error('index.js: Error starting LH weekly report', e.message, e.stack);
+}
+
+// The weekly client touch planner: builds every client's plan on Monday morning and emails Guy
+// the preview. Nothing reaches a client unless Guy approves it on the screen, or
+// CLIENT_TOUCH_AUTOSEND=on (off by default). CLIENT_TOUCH_PLANNER=off kills the tick.
+try {
+    const { startClientTouchPlanner } = require('./services/clientTouchPlanner.js');
+    startClientTouchPlanner();
+} catch (e) {
+    moduleLogger.error('index.js: Error starting client touch planner', e.message, e.stack);
 }
 
 

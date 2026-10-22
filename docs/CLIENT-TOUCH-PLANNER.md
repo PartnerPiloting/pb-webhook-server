@@ -338,11 +338,53 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 4. **Label the pieces; draft a note per client.** Guy checks one table and approves each note.
 5. **Plumbing:** the send record, unsubscribe links, addresses, the invitations signal.
 6. **The picker** - facts + pieces + send record + note in, `{ what, form, reason, opening }`
-   out - with a test for each rule above.
-7. **The Monday screen,** sending through the existing series mailer.
-8. **Switch on:** Guy approves every email for a month, then send-with-veto.
+   out - with a test for each rule above. **BUILT 22 Oct 2026** - see "What is built" below.
+7. **The Monday screen,** sending through the existing series mailer. **BUILT 22 Oct 2026.**
+8. **Switch on:** Guy approves every email for a month, then send-with-veto. **Guarded 22 Oct
+   2026:** nothing sends until Guy approves it on the screen; send-with-veto exists and is OFF.
 9. **Later:** the phone capture tool; the weekly call sweep that proposes improvements; tagging
    a call with a problem; whole fresh emails for specific situations.
+
+## What is built - how it runs (22 Oct 2026)
+
+- **The picker** - `services/clientTouchPicker.js`, pure. Facts + the labelled shelf + the touch
+  record in, one pick out. Every rule above has a test in `tests/client-touch-picker.test.js`
+  (including the Steve and Mehnaaz walk-throughs). "A week" for the two-a-week limit is a rolling
+  seven days. Event keys live in `config/clientTouchLabels.js` (EVENTS) and are matched from each
+  piece's `event:` label. One rule not written above: when the last piece sent ended "that's next",
+  the piece it promised goes next (ahead of the mindset rhythm and the default order) until Guy
+  approves the 17 ending rewrites.
+- **The opening** - `services/clientTouchOpening.js`. Reads the client's last three calls with Guy
+  (the transcript store), the last 60 days of email between them (Guy's mailbox), the client's
+  Touch Note and the live facts; drafts one to three sentences under the craft rules; a code check
+  refuses nudges, links, em dashes, system talk and more than three sentences (a failed check shows
+  on the screen as "needs your words"). Guy's "how openings are written" feedback becomes a standing
+  instruction in every later prompt.
+- **The client note** = the `Touch Note` field on the master Clients row (read as `touchNote`).
+  "Short" in the note = short form. The "why not" box appends to it live.
+- **The Monday run** - `services/clientTouchPlanner.js`. Mondays after 6am Brisbane it builds every
+  client's row (the client board's cards, the record, the journey, the touch record, the campaign
+  numbers, the Today tab, pins and skips), stores the proposals (`client_touch_plans`) and emails
+  Guy the preview - the only email that goes by itself. `CLIENT_TOUCH_PLANNER=off` stops the tick.
+- **The screen** - on the client board (`TouchPlannerPanel.js`, routes
+  `/api/client-board/touch-plan`). Approve / edit (your words) / swap / skip with the "why not"
+  box / pin for next week / pin for everyone; the left-out list; onboarding with no next session;
+  "time for a call" (an offer of two or three times from the calendar, never a booking link);
+  introduction pairs (`services/clientTouchIntroductions.js` - client to client, never a pair the
+  Referrals table knows, a week apart); waiting improvements per piece; the approved-unchanged share.
+- **Sending** - "Send approved" sends rows Guy approved or edited through `seriesMailer` with the
+  client's unsubscribe link, re-checks "who is never sent anything" from a fresh record at that
+  moment, and records each send in `client_touches`. A proposed row is never sent.
+- **The switch** - `CLIENT_TOUCH_AUTOSEND=on` turns on send-with-veto (untouched proposals with a
+  passing opening go Tuesday after 9am Brisbane). Default off.
+- **"Why not" filing** - person -> the Touch Note, now; openings -> the opening instructions, now;
+  body and choice -> queued in `client_touch_feedback` and written into IMPROVEMENTS.md / this
+  document by `node scripts/file-touch-feedback.js --apply` on the laptop (dry run by default).
+- **What the planner cannot yet see** (so these events never fire): a first discovery call booked
+  or held (needs the client's own calendar matched to a lead), a first yes, a first introduction
+  made or received, a call tagged with a problem, Guy's own substantial emails (the `personal`
+  touch kind is only written when the planner sends a call offer, or by hand). "Last touch" today =
+  the later of the last session and the last recorded touch.
 
 ## Still open
 

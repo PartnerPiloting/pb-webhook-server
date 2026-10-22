@@ -5,6 +5,7 @@ import { getBackendBase, getAuthenticatedHeaders } from '../services/api';
 import { getClientBoard, getClientBoardDetail } from '../services/clientBoardApi';
 import { buildAuthUrl, getCurrentClientId } from '../utils/clientUtils';
 import ReconnectBoardPanel from './ReconnectBoardPanel';
+import TouchPlannerPanel from './TouchPlannerPanel';
 import {
   UsersIcon, ExclamationTriangleIcon, KeyIcon, ClipboardDocumentIcon, CheckIcon,
   ArrowRightIcon, ChevronDownIcon, ChevronUpIcon, ArrowPathIcon, EyeIcon, PlusCircleIcon,
@@ -505,6 +506,9 @@ const CoachedClients = () => {
       {!strip.calendarRead && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">Your calendar did not read, so &ldquo;next session&rdquo; is blank everywhere. Last sessions still come from the transcript store.</p>
       )}
+
+      {/* Monday emails: the weekly client touch planner - see TouchPlannerPanel.js */}
+      <TouchPlannerPanel />
 
       {/* Reconnect: the connect link, and where each connected client is up to - see ReconnectBoardPanel.js */}
       <ReconnectBoardPanel
