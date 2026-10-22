@@ -146,7 +146,7 @@ const routes = require('../routes/clientTouchRoutes');
   });
   await check('a call offer is recorded as a personal touch (it is Guy writing), and a body that is not built is held', async () => {
     const touch = mkTouch(); const mailer = mailerOk();
-    await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: touch, planStore: mkStore([row({ pick: { what: { kind: 'call', key: 'check-in' }, form: 'one-off', rule: 'time-for-a-call', reason: 'r', body: { title: 'Time for a catch-up', dek: '' } } })]), clientService: { getClientById: async () => client() } });
+    await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: touch, planStore: mkStore([row({ pick: { what: { kind: 'call', key: 'check-in' }, form: 'one-off', rule: 'time-for-a-call', reason: 'r', body: { title: 'Time for a catch-up', dek: '' } } })]), clientService: { getClientById: async () => client() }, refreshCallOffer: async () => ({ ok: true, changed: false }) });
     assert.strictEqual(touch.recorded[0].kind, 'personal');
     const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: mkTouch(), planStore: mkStore([row({ pick: { what: { kind: 'one-off', key: 'x' }, form: 'one-off', rule: 'pinned', reason: 'r', body: { title: 'x', dek: '', missing: true } } })]), clientService: { getClientById: async () => client() } });
     assert.strictEqual(out.held, 1);
@@ -343,6 +343,66 @@ const routes = require('../routes/clientTouchRoutes');
     const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer: mailerOk(), touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF,
       leaveOff: new Map([['Steve-Nelson', 'on your leave-off list for all-client emails']]), keep: new Set(['Steve-Nelson']) });
     assert.strictEqual(out.sent, 0); assert.strictEqual(rows[0].hold.hard, true); assert.match(rows[0].sendError, /leave-off/);
+  });
+
+  console.log('an offer of times for a call - chosen for the day it arrives');
+  const slot = (iso) => ({ time: iso });
+  const day = (date, times, over = {}) => ({ date, freeSlots: times.map(slot), ...over });
+  await check('call times start no earlier than the Tuesday after the sending Monday (Brisbane)', () => {
+    assert.strictEqual(new Date(planner.callNotBefore('2026-10-26')).toISOString(), '2026-10-26T14:00:00.000Z'); // Tue 27 Oct 00:00 Brisbane
+    const filtered = { days: [
+      day('2026-10-23', ['2026-10-23T00:00:00Z']),   // Fri before - built-time day, must not be offered
+      day('2026-10-26', ['2026-10-26T00:00:00Z']),   // the sending Monday itself - too soon
+      day('2026-10-27', ['2026-10-27T00:00:00Z', '2026-10-27T01:00:00Z']),
+      day('2026-10-28', ['2026-10-28T03:00:00Z'], { busyDay: true }),
+      day('2026-10-29', ['2026-10-29T04:00:00Z']),
+      day('2026-10-30', ['2026-10-30T05:00:00Z']),
+    ] };
+    const picked = planner.pickCallSlots(filtered, planner.callNotBefore('2026-10-26'));
+    assert.deepStrictEqual(picked.map((s) => s.time), ['2026-10-27T00:00:00Z', '2026-10-29T04:00:00Z', '2026-10-30T05:00:00Z']); // one a day, light days first
+    assert.ok(picked.every((s) => s.label));
+    assert.deepStrictEqual(planner.pickCallSlots({ days: [] }, 0), []);
+  });
+  await check('the body offers the picked times (or asks Guy for some), never a booking link', () => {
+    const html = planner.callOfferHtml([{ time: 'x', label: 'Tue 27 October, 10:00 am' }]);
+    assert.ok(html.includes('<li>Tue 27 October, 10:00 am</li>')); assert.ok(!/calendly|tidycal|book/i.test(html));
+    assert.ok(planner.callOfferHtml([]).includes('add two or three by hand'));
+  });
+  await check('the built body keeps the slots on the row; nothing before the Tuesday after the send', async () => {
+    const filtered = { days: [day('2026-10-23', ['2026-10-23T00:00:00Z']), day('2026-10-28', ['2026-10-28T00:00:00Z'])] };
+    const b = await planner.callOfferBody({ clientId: 'Guy-Wilson' }, { clientId: 'H' }, { week: '2099-10-26' }, { callAvailability: async () => ({ filtered: { days: [day('2099-10-26', ['2099-10-26T00:00:00Z']), day('2099-10-28', ['2099-10-28T00:00:00Z'])] }, tz: 'Australia/Brisbane' }) });
+    assert.deepStrictEqual(b.slots.map((s) => s.time), ['2099-10-28T00:00:00Z']); assert.strictEqual(b.slotsFound, 1);
+    void filtered;
+  });
+  const callRow = (slots) => ({ clientId: 'Steve-Nelson', status: 'approved', subject: 'Time for a catch-up', opening: 'Hello.', bodyHtml: '<p>old times</p>', facts: facts(), pick: { what: { kind: 'call', key: 'check-in', title: 'Time for a call' }, form: 'one-off', rule: 'time-for-a-call', reason: 'r', body: { title: 'Time for a catch-up', dek: '', slots } } });
+  const future = (days, h = 0) => new Date(Date.now() + days * 86400000 + h * 3600000).toISOString();
+  await check('sending morning: offered times still free and a day away -> sent as approved', async () => {
+    const s1 = future(3); const s2 = future(4);
+    const out = await planner.refreshCallOffer(callRow([{ time: s1 }, { time: s2 }]), {}, {}, { callAvailability: async () => ({ filtered: { days: [day('a', [s1]), day('b', [s2])] }, tz: 'Australia/Brisbane' }) });
+    assert.deepStrictEqual(out, { ok: true, changed: false });
+  });
+  await check('sending morning: a time now taken (or too close) -> fresh times, body redrawn, approval kept', async () => {
+    const taken = future(3); const close = future(0, 5); const n1 = future(5); const n2 = future(6);
+    const out = await planner.refreshCallOffer(callRow([{ time: taken }, { time: close }]), {}, {}, { callAvailability: async () => ({ filtered: { days: [day('x', [close]), day('y', [n1]), day('z', [n2])] }, tz: 'Australia/Brisbane' }) });
+    assert.strictEqual(out.ok, true); assert.strictEqual(out.changed, true);
+    assert.deepStrictEqual(out.slots.map((s) => s.time), [n1, n2]);
+    assert.ok(out.bodyHtml.includes('<li>'));
+  });
+  await check('sending morning: no free time left -> held with a note, never sent with stale times', async () => {
+    const out = await planner.refreshCallOffer(callRow([{ time: future(3) }]), {}, {}, { callAvailability: async () => ({ filtered: { days: [] }, tz: 'Australia/Brisbane' }) });
+    assert.strictEqual(out.ok, false); assert.match(out.reason, /no free times left/);
+  });
+  await check('sendApproved re-picks call times, sends the new times, and records them', async () => {
+    const mailer = mailerOk(); const touch = mkTouch(); const rows = [callRow([{ time: future(3) }])];
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: touch, planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF, keep: new Set(['Steve-Nelson']),
+      refreshCallOffer: async () => ({ ok: true, changed: true, slots: [{ time: 'T1', label: 'Wed 4 November, 10:00 am' }], bodyHtml: '<ul><li>Wed 4 November, 10:00 am</li></ul>' }) });
+    assert.strictEqual(out.sent, 1);
+    assert.ok(mailer.sent[0].html.includes('Wed 4 November, 10:00 am')); assert.ok(!mailer.sent[0].html.includes('old times'));
+    assert.deepStrictEqual(touch.recorded[0].meta.slots, ['T1']); assert.strictEqual(touch.recorded[0].kind, 'personal');
+    const rows2 = [callRow([{ time: future(3) }])];
+    const held = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer: mailerOk(), touchStore: mkTouch(), planStore: mkStore(rows2), clientService: { getClientById: async () => steve() }, shelf: SHELF, keep: new Set(['Steve-Nelson']),
+      refreshCallOffer: async () => ({ ok: false, reason: 'the call offer has no free times left in your calendar - add times by hand or swap it' }) });
+    assert.strictEqual(held.sent, 0); assert.strictEqual(rows2[0].status, 'held'); assert.strictEqual(rows2[0].hold.hard, false);
   });
 
   console.log('Build runs in the background (the panel polls)');

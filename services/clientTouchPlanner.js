@@ -399,39 +399,88 @@ function shortBody(piece, slug) {
   return `${first}\n<p><strong><a href="/series/${slug}?audience=client">Read the full piece</a></strong></p>`;
 }
 
-/** Guy's offer of two or three considered times - never a booking link. */
-async function callOfferBody(coach, client) {
+// ---------------------------------------------------------------------------------------------
+// The offer of times for a call. The plan is built a week ahead, so the times must be chosen for
+// the day the email ARRIVES, not the day it was built (22 Oct: Hiresh's offer was drawn on the
+// Thursday for a Monday send). Only slots from the day after the sending Monday are offered, the
+// slots are kept on the plan row, and the sending-morning re-check re-picks them if any has gone.
+
+const CALL_SLOTS = 3;
+const CALL_NEAR_DAYS = 14;   // prefer times within a fortnight of the earliest offerable day
+
+/** The earliest moment a call can be offered for a plan week: 00:00 Brisbane on the Tuesday after the send. */
+function callNotBefore(week) {
+  const [y, m, d] = String(week).split('-').map(Number);
+  return Date.UTC(y, m - 1, d + 1, -BRISBANE_OFFSET_HOURS);
+}
+
+/**
+ * Two or three considered times from filtered availability, no earlier than `notBefore`: one per
+ * day, light days first within the fortnight after `notBefore`, then later days only to top up.
+ * Pure. Returns [{ time, label }].
+ */
+function pickCallSlots(filtered, notBefore, { max = CALL_SLOTS, tz = 'Australia/Brisbane' } = {}) {
+  const fmt = (s) => s.label || require('./wingguyCalendar').fmtSlot(s.time, tz);
+  const days = (filtered && filtered.days ? filtered.days : [])
+    .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => Date.parse(s.time) >= notBefore) }))
+    .filter((d) => d.freeSlots.length);
+  const nearEnd = notBefore + CALL_NEAR_DAYS * DAY;
+  const near = days.filter((d) => Date.parse(d.freeSlots[0].time) < nearEnd);
+  const later = days.filter((d) => Date.parse(d.freeSlots[0].time) >= nearEnd);
+  const ordered = [...near.filter((d) => !d.busyDay), ...near.filter((d) => d.busyDay), ...later];
+  const picked = ordered.slice(0, max).map((d) => ({ time: d.freeSlots[0].time, label: fmt(d.freeSlots[0]) }));
+  return picked.sort((x, y) => Date.parse(x.time) - Date.parse(y.time));
+}
+
+/** The call-offer body for a list of slots. Pure. */
+function callOfferHtml(slots) {
+  const times = slots.length ? `<ul>${slots.map((s) => `<li>${s.label}</li>`).join('')}</ul>` : '<p>(no free times could be read from the calendar - add two or three by hand)</p>';
+  return `<p>It has been a while since we talked properly. Would any of these suit for half an hour?</p>${times}<p>Reply with whichever works and I will send the invite - or tell me a time that suits you better.</p>`;
+}
+
+/** Guy's free times, filtered by his booking preferences, read now. */
+async function callAvailability(coach, client) {
   const cal = require('./wingguyCalendar');
   const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+  const avail = await cal.getAvailabilityForCoach(coach.clientId, client.location || client.timezone || '');
+  const filtered = cal.filterAvailability(avail, getBookingPrefs(coach.clientId), { includeFarWeeks: true });
+  return { filtered, tz: filtered.leadTimezone || filtered.yourTimezone || 'Australia/Brisbane' };
+}
+
+/** Guy's offer of two or three considered times for the week's sending Monday - never a booking link. */
+async function callOfferBody(coach, client, { week } = {}, deps = {}) {
   let slots = [];
-  let tz = 'Australia/Brisbane';
   try {
-    const avail = await cal.getAvailabilityForCoach(coach.clientId, client.location || client.timezone || '');
-    const filtered = cal.filterAvailability(avail, getBookingPrefs(coach.clientId), {});
-    tz = filtered.leadTimezone || filtered.yourTimezone || tz;
-    const seenDays = new Set();
-    for (const d of filtered.days || []) {
-      if (d.busyDay && slots.length) continue;
-      const s = (d.freeSlots || []).find((x) => !seenDays.has(d.date));
-      if (!s) continue;
-      seenDays.add(d.date);
-      slots.push(s.label || cal.fmtSlot(s.time, tz));
-      if (slots.length >= 3) break;
-    }
+    const { filtered, tz } = await (deps.callAvailability || callAvailability)(coach, client);
+    const notBefore = week ? Math.max(callNotBefore(week), Date.now() + DAY) : Date.now() + DAY;
+    slots = pickCallSlots(filtered, notBefore, { tz });
   } catch (e) {
     logger.warn(`times for ${client.clientId} skipped: ${e.message}`);
   }
-  const times = slots.length ? `<ul>${slots.map((s) => `<li>${s}</li>`).join('')}</ul>` : '<p>(no free times could be read from the calendar - add two or three by hand)</p>';
-  return {
-    title: 'Time for a catch-up',
-    dek: '',
-    bodyHtml: `<p>It has been a while since we talked properly. Would any of these suit for half an hour?</p>${times}<p>Reply with whichever works and I will send the invite - or tell me a time that suits you better.</p>`,
-    slotsFound: slots.length,
-  };
+  return { title: 'Time for a catch-up', dek: '', bodyHtml: callOfferHtml(slots), slotsFound: slots.length, slots };
+}
+
+/**
+ * The sending-morning check on a call offer: are the times still free and still at least a day
+ * away? If yes, nothing changes. If not, fresh times are picked and the body redrawn (Guy's
+ * approval stands - the email is the same offer with today's times). No free time at all -> hold.
+ * Returns { ok, bodyHtml?, slots?, changed?, reason? }.
+ */
+async function refreshCallOffer(row, coach, client, deps = {}) {
+  const offered = (row.pick && row.pick.body && row.pick.body.slots) || [];
+  const { filtered, tz } = await (deps.callAvailability || callAvailability)(coach, client);
+  const notBefore = Date.now() + DAY;
+  const free = new Set();
+  for (const d of filtered.days || []) for (const s of d.freeSlots || []) free.add(Date.parse(s.time));
+  const stillGood = offered.length > 0 && offered.every((s) => Date.parse(s.time) >= notBefore && free.has(Date.parse(s.time)));
+  if (stillGood) return { ok: true, changed: false };
+  const slots = pickCallSlots(filtered, notBefore, { tz });
+  if (!slots.length) return { ok: false, reason: 'the call offer has no free times left in your calendar - add times by hand or swap it' };
+  return { ok: true, changed: true, slots, bodyHtml: callOfferHtml(slots) };
 }
 
 /** Render the body for a pick: { title, dek, bodyHtml, preview }. Never throws; a failed render is flagged. */
-async function buildBody(pick, { coach, client, pin }) {
+async function buildBody(pick, { coach, client, pin, week }) {
   const kind = pick.what.kind;
   try {
     if (kind === 'one-pager' || kind === 'habit') {
@@ -457,7 +506,7 @@ async function buildBody(pick, { coach, client, pin }) {
       const html = (pin && pin.bodyHtml) || '';
       return { title: pick.what.title, dek: '', bodyHtml: html || '<p>(Guy writes this one - the pin has no text yet)</p>', missing: !html };
     }
-    if (kind === 'call') return await callOfferBody(coach, client);
+    if (kind === 'call') return await callOfferBody(coach, client, { week });
     return { error: `no body for kind ${kind}` };
   } catch (e) {
     return { error: e.message };
@@ -557,7 +606,7 @@ async function buildPlan(coachClientId, opts = {}) {
     if (pick.leftOut) status = 'left-out';
     else if (!pick.what) status = 'nothing';
     else {
-      body = await buildBody(pick, { coach, client, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
+      body = await buildBody(pick, { coach, client, week, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
       subject = body.error ? '' : subjectFor(pick, body);
       if (!body.error && opts.openings !== false) {
         openingDraft = await opening.draftOpening({
@@ -571,7 +620,7 @@ async function buildPlan(coachClientId, opts = {}) {
     const { noteText, signals, ...storedFacts } = facts;
     const row = await planStore.upsertPlan({
       weekOf: week, clientId: client.clientId, status,
-      pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null },
+      pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound, slots: body.slots || undefined } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null },
       facts: { ...storedFacts, builtAt: new Date(now).toISOString(), at: new Date(at).toISOString(), signals: { paused: signals.paused, runningLow: signals.runningLow, acceptancesSlow: signals.acceptancesSlow, live: signals.live, pausedWaiting: signals.pausedWaiting } },
       opening: openingDraft ? openingDraft.opening : '',
       subject,
@@ -793,7 +842,26 @@ async function sendApproved(coachClientId, week, deps = {}) {
     if (row.pick.body && (row.pick.body.error || row.pick.body.missing)) {
       held++; results.push({ clientId: row.clientId, status: 'held', reason: 'the body is not built' }); continue;
     }
-    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml: row.bodyHtml, qs: row.pick.body.qs }, unsubscribeUrl });
+    // An offer of times: the times must still be free, and at least a day away, on the morning it goes.
+    let bodyHtml = row.bodyHtml;
+    let offeredSlots = (row.pick.body && row.pick.body.slots) || null;
+    if (row.pick.what.kind === 'call') {
+      let fresh;
+      try {
+        const cs = deps.clientService || clientService;
+        const coach = (await cs.getClientById(coachClientId)) || { clientId: coachClientId };
+        fresh = await (deps.refreshCallOffer || refreshCallOffer)(row, coach, client, deps);
+      } catch (e) {
+        fresh = { ok: false, reason: `the call times could not be re-checked against your calendar (${e.message})` };
+      }
+      if (!fresh.ok) { await hold(row, fresh.reason, { hard: false, changed: [fresh.reason] }); continue; }
+      if (fresh.changed) {
+        bodyHtml = fresh.bodyHtml;
+        offeredSlots = fresh.slots;
+        await ps.setPlanStatus(week, row.clientId, row.status, { bodyHtml });
+      }
+    }
+    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml, qs: row.pick.body.qs }, unsubscribeUrl });
     const to = lower(client.clientEmailAddress);
     const res = await mailer.sendSeriesEmail({ to, subject: row.subject, html, unsubscribeUrl, preheader: row.opening ? row.opening.slice(0, 120) : undefined, tag: `client-touch-${row.pick.what.kind}` });
     if (!res.ok) {
@@ -806,7 +874,7 @@ async function sendApproved(coachClientId, week, deps = {}) {
     await ts.record({
       clientId: row.clientId, kind, key: row.pick.what.key, form: row.pick.form, sentAt: new Date(),
       reason: row.pick.reason, source: 'planner', recipient: to,
-      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '' },
+      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '', ...(offeredSlots ? { slots: offeredSlots.map((x) => x.time) } : {}) },
     });
     await ps.setPlanStatus(week, row.clientId, 'sent', { sentAt: new Date() });
     sent++;
@@ -1176,6 +1244,11 @@ module.exports = {
   sendEnabled,
   // pure, tested
   sendAt,
+  callNotBefore,
+  pickCallSlots,
+  callOfferHtml,
+  callOfferBody,
+  refreshCallOffer,
   cancellationFrom,
   leaveOffList,
   todayFirstSeen,

@@ -303,8 +303,10 @@ export default function TouchPlannerPanel() {
                         )}
                         {openingProblem && <p className="text-xs text-red-700">The draft breaks the craft ({openingProblem}) - say it your way.</p>}
                         {bodyProblem && <p className="text-xs text-red-700">Body: {bodyProblem}</p>}
+                        {/* Always there - Guy reads the whole email before approving (22 Oct: hidden behind "Edit" he never found it) */}
+                        <p className="mt-1 text-xs"><button onClick={() => openPreview(row)} className="text-blue-700 underline font-medium">Preview the whole email</button></p>
                         {isOpen && (
-                          <p className="mt-1 text-xs text-gray-500 border-l-2 border-gray-200 pl-2">{row.bodyPreview}&hellip; <button onClick={() => openPreview(row)} className="text-blue-700 underline">preview the whole email</button></p>
+                          <p className="mt-1 text-xs text-gray-500 border-l-2 border-gray-200 pl-2">{row.bodyPreview}&hellip;</p>
                         )}
                       </>
                     ) : (
