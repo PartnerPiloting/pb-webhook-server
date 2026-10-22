@@ -312,9 +312,14 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 - **Who has been introduced to whom** - so "introductions to make" never suggests a pair already
   introduced. The Referrals table holds introductions TO Guy, and (since 25 Sep) the ones Wingguy
   drafted FROM Guy; introductions Guy made by hand, and client-to-client ones, are not recorded.
-  Proposal to Guy 22 Oct 2026 (not built): one linked field `Other Client` on Referrals so both
-  sides of a row can be clients, a "have these two met?" check in referralService, and logging by
-  hand through the existing `wingguy_referrals` tool.
+  **BUILT 22 Oct 2026 (Guy's yes):** one linked field `Other Client` on Referrals so both sides
+  of a row can be clients (rolled out via ensure-client-fields.js); `alreadyIntroduced(a, b)` /
+  `introductionsBetween` in referralService match a pair either way round by record, name or
+  email (a Promised row counts - in flight is not to be suggested again; a To Guy row means the
+  client and that person have met); `wingguy_referrals action=met` asks it in chat and
+  `action=log other_client=` records a hand-made client-to-client introduction. Wingguy's own
+  drafted introductions link the other client automatically. Introductions Guy made by hand
+  before today are not on record until he logs them.
 - **The real "invitations going out" signal** - fix the journey, which counts a paused machine
   (IDLE) as leads arriving. **DONE 22 Oct 2026** (`services/clientJourney.js`: leads arriving =
   the record's Last Invite Sent is filled, not the machine's IDLE/RUNNING word).

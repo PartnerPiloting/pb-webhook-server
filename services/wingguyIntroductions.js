@@ -217,6 +217,8 @@ async function logIntroductionDraft({ tenant, coach, recipients, subject, text, 
       how: 'Email introduction',
       email: intro.other.email,
       introducedTo: intro.client.clientName,
+      // Both sides clients -> link the other one too, so "have these two met?" works by record.
+      otherClientRecordId: intro.other.client ? intro.other.client.id : null,
       notes: `${today} - Wingguy drafted this introduction ("${String(subject || '').trim()}") - not sent yet`,
     });
   }

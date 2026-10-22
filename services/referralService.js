@@ -50,6 +50,10 @@ function rowFromRecord(record) {
     linkedinUrl: g('LinkedIn URL') || '',
     email: g('Email') || '',
     introducedTo: g('Introduced To') || '',
+    // The other side of the introduction when it is ALSO one of Guy's clients (2026-10-22). With
+    // this, "have these two already been introduced?" is answerable for client-to-client pairs by
+    // record id, not by hoping the free-text Person matches a name.
+    otherClientRecordId: first(g('Other Client')),
     becameClientRecordId: first(g('Became Client')),
     notes: g('Notes') || '',
     lastModified: g('Last Modified') || null,
@@ -77,10 +81,13 @@ function scopeToCoach(rows, clients, coachClientId) {
     const client = r.clientRecordId ? byRecordId.get(r.clientRecordId) : null;
     if (r.clientRecordId && (!client || client.coach !== coachClientId)) continue;
     const became = r.becameClientRecordId ? byRecordId.get(r.becameClientRecordId) : null;
+    const other = r.otherClientRecordId ? byRecordId.get(r.otherClientRecordId) : null;
     out.push({
       ...r,
       clientId: client ? client.clientId : null,
       clientName: client ? client.clientName : null,
+      otherClientId: other ? other.clientId : null,
+      otherClientName: other ? other.clientName : null,
       becameClientId: became ? became.clientId : null,
       becameClientName: became ? became.clientName : null,
     });
@@ -123,6 +130,70 @@ function summariseClient(client, clients, rows) {
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// "Have these two already been introduced?" (2026-10-22, for the planner's introductions-to-make)
+//
+// Every Referrals row is one introduction between two sides:
+//   side A = the linked Client (the referrer for To Guy; the recipient for From Guy)
+//   side B = the Other Client link when the other side is a client too, else the free-text
+//            Person (+ Email). For a To Guy row side B is Guy himself as well - the client
+//            introduced Person TO Guy, so the client and Person have certainly met.
+// A party is given as a client object, or { recordId?, name?, email? }. It matches a side by
+// record id first, then exact name (case-insensitive), then email. Promised rows count: an
+// introduction in flight must not be suggested again.
+
+/** Normalise a party for matching. Accepts a client object or { recordId, name, email }. */
+function partyOf(p) {
+  if (!p) return { recordId: null, names: new Set(), emails: new Set() };
+  const names = new Set();
+  const emails = new Set();
+  const add = (set, v) => { const s = lower(v); if (s) set.add(s); };
+  add(names, p.clientName); add(names, p.name); add(names, p.person);
+  add(emails, p.clientEmailAddress); add(emails, p.email);
+  if (p.rawRecord) {
+    const raw = (p.rawRecord._rawJson && p.rawRecord._rawJson.fields) || {};
+    String(raw['Alternative Email Addresses'] || '').split(/[;,\n]/).forEach((e) => add(emails, e));
+  }
+  return { recordId: p.recordId || p.id || null, names, emails };
+}
+
+function sideMatches(party, side) {
+  if (party.recordId && side.recordId && party.recordId === side.recordId) return true;
+  if (side.name && party.names.has(lower(side.name))) return true;
+  if (side.email && party.emails.has(lower(side.email))) return true;
+  return false;
+}
+
+/** The two sides of a row, as the matcher sees them. `clients` resolves links to names/emails. */
+function sidesOf(row, clients) {
+  const byId = new Map((clients || []).map((c) => [c.id, c]));
+  const a = row.clientRecordId ? byId.get(row.clientRecordId) : null;
+  const sideA = { recordId: row.clientRecordId || null, name: a ? a.clientName : (row.clientName || null), email: a ? a.clientEmailAddress : null };
+  const b = row.otherClientRecordId ? byId.get(row.otherClientRecordId) : null;
+  const sideB = b
+    ? { recordId: row.otherClientRecordId, name: b.clientName, email: b.clientEmailAddress }
+    : { recordId: null, name: row.person || null, email: row.email || null };
+  return [sideA, sideB];
+}
+
+/**
+ * Rows in which these two people are the two sides, either way round. Empty = never introduced
+ * (as far as the record knows). Pass the full Referrals rows (scoped or not) and the client list.
+ */
+function introductionsBetween(a, b, rows, clients) {
+  const pa = partyOf(a);
+  const pb = partyOf(b);
+  return (rows || []).filter((row) => {
+    const [s1, s2] = sidesOf(row, clients);
+    return (sideMatches(pa, s1) && sideMatches(pb, s2)) || (sideMatches(pa, s2) && sideMatches(pb, s1));
+  });
+}
+
+/** True when any row says these two have been introduced (or an introduction is in flight). */
+function alreadyIntroduced(a, b, rows, clients) {
+  return introductionsBetween(a, b, rows, clients).length > 0;
+}
+
 function introducedByOf(client) {
   const raw = (client.rawRecord && client.rawRecord._rawJson && client.rawRecord._rawJson.fields) || {};
   return raw['Introduced By'] || null;
@@ -153,7 +224,7 @@ function normaliseDirection(v) {
 }
 
 /** Create a referral row. Returns the stored row. */
-async function logReferral({ person, clientRecordId, direction = 'To Guy', stage = 'Introduced', introducedOn = null, how = '', company = '', linkedinUrl = '', email = '', introducedTo = '', notes = '', becameClientRecordId = null }) {
+async function logReferral({ person, clientRecordId, direction = 'To Guy', stage = 'Introduced', introducedOn = null, how = '', company = '', linkedinUrl = '', email = '', introducedTo = '', notes = '', becameClientRecordId = null, otherClientRecordId = null }) {
   const base = clientService.initializeClientsBase();
   const fields = {
     Person: String(person || '').trim(),
@@ -169,6 +240,7 @@ async function logReferral({ person, clientRecordId, direction = 'To Guy', stage
   if (introducedTo) fields['Introduced To'] = introducedTo;
   if (notes) fields.Notes = notes;
   if (becameClientRecordId) fields['Became Client'] = [becameClientRecordId];
+  if (otherClientRecordId) fields['Other Client'] = [otherClientRecordId];
   const created = await base(TABLE).create([{ fields }]);
   logger.info(`referral logged: ${fields.Person} (${direction}, ${stage})`);
   return rowFromRecord(created[0]);
@@ -218,6 +290,9 @@ module.exports = {
   countsAsPayingReferral,
   introducedByName,
   introducedByOf,
+  sidesOf,
+  introductionsBetween,
+  alreadyIntroduced,
   normaliseStage,
   normaliseDirection,
   logReferral,

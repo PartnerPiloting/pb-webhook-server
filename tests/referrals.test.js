@@ -99,5 +99,51 @@ check('direction defaults to To Guy and understands in/out wording', () => {
   assert.strictEqual(ref.normaliseDirection('sideways'), null);
 });
 
+console.log('alreadyIntroduced - have these two met? (2026-10-22)');
+const rick = client('Rick', 'Rick Wong', { clientEmailAddress: 'rwong@example.com' });
+const johnZhao = { name: 'John Zhao', email: 'john@zhao.example' };
+const introRows = [
+  // Wingguy-drafted intro, both sides clients, linked by record
+  { id: 'i1', person: 'Roland Illyes', direction: 'From Guy', clientRecordId: 'recRick', otherClientRecordId: 'recRoland', stage: 'Introduced', email: '', notes: '' },
+  // Guy introduced a non-client to Rick (free text + email)
+  { id: 'i2', person: 'John Zhao', direction: 'From Guy', clientRecordId: 'recRick', otherClientRecordId: null, stage: 'Introduced', email: 'john@zhao.example', notes: '' },
+  // In flight only
+  { id: 'i3', person: 'Derek Morgan', direction: 'From Guy', clientRecordId: 'recRoland', otherClientRecordId: null, stage: 'Promised', email: '', notes: '' },
+  // A referral TO Guy: Roland knows Jay
+  { id: 'i4', person: 'Jay Critchley', direction: 'To Guy', clientRecordId: 'recRoland', otherClientRecordId: null, stage: 'Call held', email: '', notes: '' },
+];
+const allClients = [...clients, rick];
+check('two clients linked by record - either way round', () => {
+  assert.strictEqual(ref.alreadyIntroduced(rick, roland, introRows, allClients), true);
+  assert.strictEqual(ref.alreadyIntroduced(roland, rick, introRows, allClients), true);
+});
+check('a client and a non-client by name, or by email', () => {
+  assert.strictEqual(ref.alreadyIntroduced(rick, johnZhao, introRows, allClients), true);
+  assert.strictEqual(ref.alreadyIntroduced(rick, { name: 'JOHN ZHAO' }, introRows, allClients), true);
+  assert.strictEqual(ref.alreadyIntroduced(rick, { email: 'John@Zhao.example' }, introRows, allClients), true);
+});
+check('a pair with no row is not introduced', () => {
+  assert.strictEqual(ref.alreadyIntroduced(roland, johnZhao, introRows, allClients), false);
+  assert.strictEqual(ref.alreadyIntroduced(rick, { name: 'Derek Morgan' }, introRows, allClients), false);
+  assert.strictEqual(ref.alreadyIntroduced(rick, paulB, introRows, allClients), false);
+});
+check('a promised (in-flight) introduction counts, so it is not suggested again', () => {
+  assert.strictEqual(ref.alreadyIntroduced(roland, { name: 'Derek Morgan' }, introRows, allClients), true);
+});
+check('a referral TO Guy means the client and that person have met', () => {
+  assert.strictEqual(ref.alreadyIntroduced(roland, { name: 'Jay Critchley' }, introRows, allClients), true);
+});
+check('a free-text Person that happens to be a client still matches that client by name', () => {
+  const rows = [{ id: 'i5', person: 'Rick Wong', direction: 'From Guy', clientRecordId: 'recRoland', otherClientRecordId: null, stage: 'Introduced', email: '', notes: '' }];
+  assert.strictEqual(ref.alreadyIntroduced(rick, roland, rows, allClients), true);
+});
+check('introductionsBetween returns the matching rows, scopeToCoach names the other client', () => {
+  const hits = ref.introductionsBetween(rick, roland, introRows, allClients);
+  assert.deepStrictEqual(hits.map((r) => r.id), ['i1']);
+  const scoped = ref.scopeToCoach(introRows, allClients, 'Guy-Wilson');
+  assert.strictEqual(scoped.find((r) => r.id === 'i1').otherClientName, 'Roland Illyes');
+  assert.strictEqual(scoped.find((r) => r.id === 'i2').otherClientName, null);
+});
+
 if (failures) { console.error(`\n${failures} failing`); process.exit(1); }
 console.log('\nall referral tests passed');

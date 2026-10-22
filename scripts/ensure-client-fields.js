@@ -463,6 +463,22 @@ const MASTER_FIELDS = [
   }
 ];
 
+// Fields to ensure on the master base's Referrals table (services/referralService.js).
+// `linkedTable` names a table in the same base; ensureFields resolves it to linkedTableId at run time.
+const REFERRALS_TABLE = 'Referrals';
+const REFERRALS_FIELDS = [
+  {
+    name: 'Other Client',
+    type: 'multipleRecordLinks',
+    description: 'The other side of this introduction when they are ALSO one of Guy\'s clients (Client = the referrer for To Guy, the recipient for From Guy; Person stays the free-text name). Lets "have these two already been introduced?" (referralService.alreadyIntroduced, wingguy_referrals action=met) match client-to-client pairs by record, so the planner never suggests a pair already introduced. Written by wingguy_referrals log (other_client) and by Wingguy when it drafts an introduction between two clients. Added 2026-10-22.',
+    linkedTable: 'Clients',
+    // Airtable's create schema wants linkedTableId ALONE, or isReversed + prefersSingleRecordLink
+    // together - one of the two on its own is a 422 (22 Oct 2026). linkedTableId is filled in by
+    // ensureFields at run time.
+    options: {}
+  }
+];
+
 // ============================================
 // HELPERS (Airtable Metadata API)
 // ============================================
@@ -527,7 +543,14 @@ async function ensureFields(label, baseId, tableName, fieldDefs, dryRun) {
       continue;
     }
     try {
-      await addField(baseId, table.id, def);
+      let toAdd = def;
+      if (def.linkedTable) {
+        const target = tables.find((t) => t.name === def.linkedTable);
+        if (!target) throw new Error(`linked table "${def.linkedTable}" not found in this base`);
+        const { linkedTable, ...rest } = def;
+        toAdd = { ...rest, options: { ...(def.options || {}), linkedTableId: target.id } };
+      }
+      await addField(baseId, table.id, toAdd);
       console.log(`    ✅ added "${def.name}"`);
       stats.added++;
       await sleep(250); // be gentle with the metadata API rate limit
@@ -659,6 +682,7 @@ async function run() {
   // 3) Per-client config fields on the master Clients table
   if (!skipMaster) {
     await ensureFields('MASTER Clients table', process.env.MASTER_CLIENTS_BASE_ID, MASTER_TABLE, MASTER_FIELDS, dryRun);
+    await ensureFields('MASTER Referrals table', process.env.MASTER_CLIENTS_BASE_ID, REFERRALS_TABLE, REFERRALS_FIELDS, dryRun);
   } else {
     console.log('\n(skipping master — --skip-master)');
   }

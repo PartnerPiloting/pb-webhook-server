@@ -555,9 +555,10 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
 // ---------------------------------------------------------------------------
 
 function referralLine(r) {
+  const person = r.otherClientName ? `${r.otherClientName} (client)` : r.person;
   const who = r.direction === 'From Guy'
-    ? `Guy -> ${r.introducedTo || '(recipient not recorded)'}: ${r.person}`
-    : `${r.clientName || '(no client)'} -> Guy: ${r.person}`;
+    ? `Guy -> ${r.introducedTo || r.clientName || '(recipient not recorded)'}: ${person}`
+    : `${r.clientName || '(no client)'} -> Guy: ${person}`;
   const bits = [r.stage || 'no stage', r.introducedOn || 'no date', r.company || null, r.how || null].filter(Boolean);
   const note = String(r.notes || '').split('\n')[0];
   return `  #${r.id}  ${who}  [${bits.join(' · ')}]${note ? `\n      ${note}` : ''}`;
@@ -587,12 +588,48 @@ async function runReferrals(args = {}, tenant = TENANT) {
     return { error: `"${q}" matched several: ${hits.map((c) => `${c.clientName} (${c.clientId})`).join(', ')}. Use the exact client id.` };
   };
 
+  // "Have these two already been introduced?" - the planner's check before suggesting a pair
+  // (2026-10-22). Both sides may be clients; the second may also be anyone by name or email.
+  if (action === 'met') {
+    const { client, error } = findClient(args.client);
+    if (error) return { text: error, isError: true };
+    if (!client) return { text: 'Which client? Pass client, and the other person as other_client (a client) or person (a name).', isError: true };
+    let other = null;
+    if (args.other_client) {
+      const r = findClient(args.other_client);
+      if (r.error) return { text: r.error, isError: true };
+      other = r.client;
+    } else if (args.person || args.email) {
+      other = { name: String(args.person || '').trim(), email: String(args.email || '').trim() };
+    }
+    if (!other) return { text: 'Who is the other person? Pass other_client (a client) or person (a name, optionally email).', isError: true };
+    let scoped;
+    try {
+      scoped = referrals.scopeToCoach(await referrals.listAllReferrals(), all, tenant);
+    } catch (e) {
+      return { text: `Couldn't read the Referrals table: ${e.message}`, isError: true };
+    }
+    const hits = referrals.introductionsBetween(client, other, scoped, all);
+    const otherName = other.clientName || other.name || other.email;
+    if (!hits.length) return { text: `No introduction between ${client.clientName} and ${otherName} is on record. (The record covers introductions logged here or drafted through Wingguy since 25 Sep 2026 - an older one made by hand may be missing.)` };
+    return { text: `Yes - ${client.clientName} and ${otherName} have been introduced (${hits.length} row${hits.length === 1 ? '' : 's'}):\n${hits.map(referralLine).join('\n')}` };
+  }
+
   if (action === 'log') {
-    const person = String(args.person || '').trim();
-    if (!person) return { text: 'Who was introduced? Pass person (their full name).', isError: true };
     const { client, error } = findClient(args.client);
     if (error) return { text: error, isError: true };
     if (!client) return { text: 'Which client is this introduction tied to? Pass client (the referrer for an intro TO Guy, the recipient for an intro FROM Guy).', isError: true };
+    // The other side may be a client too (a client-to-client introduction Guy made by hand):
+    // pass other_client and the row links both records. person then defaults to their name.
+    let otherClient = null;
+    if (args.other_client) {
+      const r = findClient(args.other_client);
+      if (r.error) return { text: r.error, isError: true };
+      otherClient = r.client;
+      if (otherClient && otherClient.id === client.id) return { text: 'client and other_client are the same person.', isError: true };
+    }
+    const person = String(args.person || (otherClient && otherClient.clientName) || '').trim();
+    if (!person) return { text: 'Who was introduced? Pass person (their full name), or other_client when they are a client.', isError: true };
     const direction = referrals.normaliseDirection(args.direction);
     if (!direction) return { text: `direction must be "To Guy" or "From Guy" (got "${args.direction}").`, isError: true };
     const stage = args.stage ? referrals.normaliseStage(args.stage) : (direction === 'From Guy' ? 'Promised' : 'Introduced');
@@ -602,8 +639,11 @@ async function runReferrals(args = {}, tenant = TENANT) {
       const row = await referrals.logReferral({
         person, clientRecordId: client.id, direction, stage,
         introducedOn: args.introduced_on || today,
-        how: args.how || '', company: args.company || '', linkedinUrl: args.linkedin_url || '', email: args.email || '',
-        introducedTo: args.introduced_to || '', notes: args.note ? `${today} - ${args.note}` : '',
+        how: args.how || '', company: args.company || '', linkedinUrl: args.linkedin_url || '',
+        email: args.email || (otherClient && otherClient.clientEmailAddress) || '',
+        introducedTo: args.introduced_to || (direction === 'From Guy' ? client.clientName : ''),
+        notes: args.note ? `${today} - ${args.note}` : '',
+        otherClientRecordId: otherClient ? otherClient.id : null,
       });
       const who = direction === 'To Guy'
         ? `${client.clientName} introduced ${person} to Guy`
@@ -926,9 +966,10 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_referrals',
-    description: 'Coach-only referral tracking: who introduced whom to Guy, what came of each introduction, and what Guy owes back. action=list (default) shows one client\'s standing (pass client) or the whole book: introductions in play, signed, how many referred clients are ACTIVE AND PAYING right now (the maintained count that earns the reduced rate - 3 = at the rate), and the intros Guy has promised but not yet made. action=log records a new introduction (person + client + direction: "To Guy" = the client introduced this person to Guy; "From Guy" = Guy introduced this person to the client or to a prospect - pass introduced_to). action=update moves a row along (stage, note); stage=Signed also needs became_client so the new client\'s Introduced By is set. Use it whenever an introduction is made, a referred prospect has a call or demo, or Guy asks "how many has X referred" / "what do I owe Roland". INTRODUCTIONS GUY MAKES are logged BY THEMSELVES when drafted through wingguy_create_draft (one email to two people, at least one a client): a From Guy row at Promised, moved to Introduced once the send shows up. Do NOT log those again here - only log introductions made outside a Wingguy draft (phone, LinkedIn, in person). "Who have I introduced X to?" = action=list client=X (finds X on either side). When the queue/brief lists INTRODUCTIONS TO CHECK ON, record Guy\'s answer with action=update: they met -> stage "Call held", went nowhere -> "Went quiet", anything else -> a note.',
+    description: 'Coach-only referral tracking: who introduced whom to Guy, what came of each introduction, and what Guy owes back. action=list (default) shows one client\'s standing (pass client) or the whole book: introductions in play, signed, how many referred clients are ACTIVE AND PAYING right now (the maintained count that earns the reduced rate - 3 = at the rate), and the intros Guy has promised but not yet made. action=log records a new introduction (person + client + direction: "To Guy" = the client introduced this person to Guy; "From Guy" = Guy introduced this person to the client or to a prospect - pass introduced_to). action=update moves a row along (stage, note); stage=Signed also needs became_client so the new client\'s Introduced By is set. Use it whenever an introduction is made, a referred prospect has a call or demo, or Guy asks "how many has X referred" / "what do I owe Roland". INTRODUCTIONS GUY MAKES are logged BY THEMSELVES when drafted through wingguy_create_draft (one email to two people, at least one a client): a From Guy row at Promised, moved to Introduced once the send shows up. Do NOT log those again here - only log introductions made outside a Wingguy draft (phone, LinkedIn, in person, a Gmail Guy wrote himself). When BOTH sides are clients ("I introduced Rick to Roland"), pass client AND other_client so both records are linked - person is then optional. action=met answers "have these two already been introduced?" (client + other_client, or client + person) - run it BEFORE suggesting or drafting an introduction. "Who have I introduced X to?" = action=list client=X (finds X on either side). When the queue/brief lists INTRODUCTIONS TO CHECK ON, record Guy\'s answer with action=update: they met -> stage "Call held", went nowhere -> "Went quiet", anything else -> a note.',
     zodSchema: {
-      action: z.enum(['list', 'log', 'update']).optional().describe('list (default) | log a new introduction | update an existing row'),
+      action: z.enum(['list', 'log', 'update', 'met']).optional().describe('list (default) | log a new introduction | update an existing row | met: have these two been introduced?'),
+      other_client: z.string().optional().describe('log/met: the OTHER side when they are also a client (name or id). Links both client records.'),
       client: z.string().optional().describe('Client name or id. list: narrow to this client. log: the client the intro is tied to (referrer for To Guy, recipient for From Guy).'),
       person: z.string().optional().describe('The person introduced (full name). log: required. update: identifies the row when id is not given.'),
       id: z.string().optional().describe('update: the row id from the list (rec...)'),
@@ -946,7 +987,8 @@ const TOOL_DEFS = [
     jsonSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'log', 'update'], description: 'list (default) | log a new introduction | update an existing row' },
+        action: { type: 'string', enum: ['list', 'log', 'update', 'met'], description: 'list (default) | log a new introduction | update an existing row | met: have these two been introduced?' },
+        other_client: { type: 'string', description: 'log/met: the OTHER side when they are also a client (name or id). Links both client records.' },
         client: { type: 'string', description: 'Client name or id. list: narrow to this client. log: the client the intro is tied to (referrer for To Guy, recipient for From Guy).' },
         person: { type: 'string', description: 'The person introduced (full name). log: required. update: identifies the row when id is not given.' },
         id: { type: 'string', description: 'update: the row id from the list (rec...)' },
