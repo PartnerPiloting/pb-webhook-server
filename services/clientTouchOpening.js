@@ -96,7 +96,7 @@ function checkOpening(text, { maxSentences = MAX_SENTENCES } = {}) {
   const t = String(text || '').trim();
   const problems = [];
   if (!t) problems.push('empty');
-  if (/[–—]/.test(t)) problems.push('em or en dash');
+  if (/[\u2013\u2014]/.test(t)) problems.push('em or en dash');
   if (/https?:\/\/|www\.|calendly|tidycal|book a time|booking link/i.test(t)) problems.push('a link or booking offer');
   if (/we noticed|you haven't|you have not|haven't yet|still haven't|just checking in|hope this finds you|wanted to reach out|great news/i.test(t)) problems.push('an AI tell or a nudge');
   if (/wingguy|claude|this email was|automat|scheduled/i.test(t)) problems.push('mentions the system');
