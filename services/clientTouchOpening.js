@@ -207,7 +207,13 @@ async function draftOpening({ coach, client, pick, factLines, note, today = new 
         messages: [{ role: 'user', content: prompt.user }],
       });
       const text = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-      const out = parseReply(text);
+      let out;
+      try { out = parseReply(text); }
+      catch (e) {
+        // Say WHY - where the reply stopped and how it began - so a failed opening is diagnosable from the panel.
+        const kinds = (response.content || []).map((b) => b.type).join(',') || 'none';
+        throw new Error(`${e.message} (stop: ${response.stop_reason || '?'}; blocks: ${kinds}; reply began: "${text.slice(0, 140).replace(/\s+/g, ' ')}")`);
+      }
       const check = checkOpening(out.opening);
       return { ...out, check, source: 'llm', meetingsRead: meetings.length, emailsRead: emails.length };
     } catch (e) {
