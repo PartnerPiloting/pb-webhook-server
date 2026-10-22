@@ -188,6 +188,16 @@ const BRIEF_ANSWER = {
     assert.match(briefs.deterministicClaims('Your campaign is running nicely.', { lastInviteSent: '2026-10-30', signals: { paused: true, live: 0 } }, AT)[0], /paused/);
     assert.match(briefs.deterministicClaims("Congratulations! You've started the process.", { lastInviteSent: null }, AT)[0], /Last Invite Sent is empty/);
   });
+  await check('saying invitations are NOT going out is true for a client whose campaign has not launched - no flag', () => {
+    assert.deepStrictEqual(briefs.deterministicClaims("The campaign hasn't launched, so no invitations are going out yet.", { lastInviteSent: null }, AT), []);
+    assert.deepStrictEqual(briefs.deterministicClaims('Your invitations are not going out yet.', { lastInviteSent: null }, AT), []);
+    assert.strictEqual(briefs.deterministicClaims("No rush on that. Your invitations are going out.", { lastInviteSent: null }, AT).length, 1);
+  });
+  await check('the personal note never starts with their name (the greeting has it)', async () => {
+    const llm = fakeLlm({ note: { subject: 'S', body: 'Ash, on 7 Oct I said I would.', guy_checks: [] } });
+    const n = await briefs.draftOwedNote(llm, { client: CLIENT, brief: briefs.normaliseBrief(BRIEF_ANSWER), items: [] });
+    assert.strictEqual(n.text, 'On 7 Oct I said I would.');
+  });
   await check('a next session is mentioned only when one is booked; dashes, links and the system are caught', () => {
     assert.match(briefs.deterministicClaims('See you on Wednesday the 11th.', {}, AT)[0], /none is booked/);
     assert.deepStrictEqual(briefs.deterministicClaims('See you on Wednesday the 11th.', { nextSessionAt: '2026-11-11' }, AT), []);

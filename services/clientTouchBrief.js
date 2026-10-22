@@ -415,7 +415,8 @@ function firstThingsDue(brief, handled = []) {
 const NOTE_SYSTEM = `You draft a short personal email from Guy Wilson (a network-building coach) to one of his clients, to deal with what Guy owes them BEFORE any ordinary weekly email goes. Guy edits it and sends it himself.
 - Deal with each item honestly and specifically. Never say something is done, fixed or sent unless TRUE NOW says so. Where Guy must check or do something first (confirm a fix, ask a third party before an introduction), put that in guy_checks - never pretend it in the email.
 - Own it plainly where Guy dropped the ball; no grovelling, no excuses.
-- Short: under 150 words. Begin with the substance - the greeting and sign-off are added. One small easy next step at most.
+- Short: under 120 words, two or three short paragraphs, no lists or numbering. Never start with their name - the greeting "Hi <name>," and the sign-off are added. One small easy next step at most.
+- Only what is owed - leave out every other open item, however tempting.
 - ${STYLE}
 Return ONE JSON object: {"subject": "short and specific", "body": "the paragraphs, separated by a blank line", "guy_checks": ["what Guy must confirm or do before he sends it"]}`;
 
@@ -428,7 +429,16 @@ async function draftOwedNote(llm, { client, brief, items }) {
     '', 'NEVER SAY:', ...arr(brief.neverSay).map((t) => `- ${t}`),
   ].join('\n');
   const j = await ask(llm, { system: NOTE_SYSTEM, user });
-  return { subject: str(j.subject), text: dash(String(j.body || '').trim()), guyChecks: arr(j.guy_checks).map(str).filter(Boolean) };
+  return { subject: str(j.subject), text: stripName(dash(String(j.body || '').trim()), client), guyChecks: arr(j.guy_checks).map(str).filter(Boolean) };
+}
+
+/** "Ashley, on 7 Oct..." under "Hi Ashley," reads twice - drop a leading name. Pure. */
+function stripName(text, client) {
+  const first = String((client && (client.clientFirstName || client.clientName)) || '').trim().split(/\s+/)[0];
+  if (!first) return text;
+  const esc = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const out = String(text).replace(new RegExp(`^(?:(?:hi|hello|hey)\\s+)?${esc}\\s*[,:-]+\\s*`, 'i'), '');
+  return out ? out.charAt(0).toUpperCase() + out.slice(1) : text;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -451,8 +461,9 @@ async function judgeFit(llm, { client, brief, piece }) {
 
 const CUSTOM_SYSTEM = `You write this week's email from Guy Wilson - a network-building coach (I Know A Guy) - to one of his clients, because nothing on his approved shelf fits where they really are. Guy reads it closely before anything is sent.
 - Short: two to four short paragraphs, under 110 words in all.
-- Acknowledge a real win from the brief if there is one - specific, not gushing.
-- Use what they ALREADY have; ask nothing new of them - no homework, no setup, no "let me know". At most one gentle, optional idea.
+- Acknowledge a real win from the brief if there is one - specific, not gushing. Their wins in their business and life (a qualification, a launch, a big client) come before anything about Wingguy.
+- Use what they ALREADY have; ask nothing new of them - no homework, no setup, no tasks, no "let me know", no "optional:". At most an invitation to look at something already there.
+- What has not happened yet (a campaign not launched) is mentioned lightly or not at all - never as a gap they must close.
 - Everything you say must be true in TRUE NOW. Respect NEVER SAY and HOW TO WRITE.
 - Do not deal with what Guy owes them - a separate personal note handles that.
 - Begin with the substance (no greeting) and stop before any sign-off: the system adds "Hi <name>,", a thought for the week, and "Cheers, Guy".
@@ -504,20 +515,24 @@ const SESSION_RE = /\b(see you|speak|talk)\b[^.]{0,30}\b(on|next)\b[^.]{0,20}\b(
 function deterministicClaims(text, facts = {}, at = Date.now()) {
   const t = String(text || '');
   const problems = [];
-  if (INVITES_RE.test(t)) {
+  // Per sentence, and only where the sentence says it IS happening - "no invitations are going out
+  // yet" is true for a client whose campaign has not launched, and must not trip the check.
+  const NEGATED = /\b(no|not|never|yet to)\b|n't\b/i;
+  const sentences = t.split(/(?<=[.!?])\s+|\n+/);
+  if (sentences.some((s) => INVITES_RE.test(s) && !NEGATED.test(s))) {
     const sent = facts.lastInviteSent ? Date.parse(facts.lastInviteSent) : NaN;
     if (Number.isNaN(sent)) problems.push('says their invitations are going out - but Last Invite Sent is empty');
     else if (at - sent > 14 * DAY) problems.push(`says their invitations are going out - but the last one went ${String(facts.lastInviteSent).slice(0, 10)}`);
     else if (facts.signals && facts.signals.paused && !facts.signals.live) problems.push('says their invitations are going out - but their campaign is paused');
   }
-  if (SESSION_RE.test(t) && !facts.nextSessionAt) problems.push('mentions a next session - but none is booked');
+  if (sentences.some((s) => SESSION_RE.test(s) && !NEGATED.test(s)) && !facts.nextSessionAt) problems.push('mentions a next session - but none is booked');
   if (/[–—]/.test(t)) problems.push('an em or en dash');
   if (/https?:\/\/|www\./i.test(t)) problems.push('a link');
   if (/\b(wingguy|claude|automat\w*|this email was)\b/i.test(t)) problems.push('mentions the system');
   return problems;
 }
 
-const GUARD_SYSTEM = `You check an email Guy Wilson is about to send one of his clients. List every FACTUAL claim in it - anything stated as fact about the client, their business, their setup or campaign, what happened, what Guy did or will do - and check each against the BRIEF and the LIVE FACTS. Opinions, ideas, general advice and the thought for the week are not claims.
+const GUARD_SYSTEM = `You check an email Guy Wilson is about to send one of his clients. List every FACTUAL claim in it - anything stated as fact about the client, their business, their setup or campaign, or what has already happened - and check each against the BRIEF and the LIVE FACTS. NOT claims (leave them out): what Guy says he will do from now on, apologies and owning a slip, offers, opinions, ideas, general advice, and the thought for the week. Judge the meaning, not the wording - a fair paraphrase of the brief is supported.
 verdict: "supported" (the brief or facts say so), "unsupported" (nothing there says so), "contradicted" (they say otherwise).
 Return ONE JSON object: {"claims": [{"claim": "...", "verdict": "supported|unsupported|contradicted", "why": "one line"}]}`;
 

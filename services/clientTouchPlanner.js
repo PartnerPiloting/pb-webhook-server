@@ -278,7 +278,9 @@ const OWED_NOTE_KEY = 'owed-note';
 function factLines(f, signals = {}, card = null) {
   const lines = [];
   signals = signals || {};
-  lines.push(`Invitations: ${f.lastInviteSent ? `going out (last one ${String(f.lastInviteSent).slice(0, 10)})` : 'NOT going out yet'}${signals.paused ? ` - campaign PAUSED with ${signals.pausedWaiting} people waiting` : ''}`);
+  // Their standing with Guy today - a brief once read a September card failure as "status unconfirmed".
+  if (f.status) lines.push(`Client record: Status ${f.status}${f.coachingStatus ? `, coaching ${f.coachingStatus}` : ''} (current - any earlier pause or failed payment is over if this says Active)`);
+  lines.push(`Invitations:${f.lastInviteSent ? `going out (last one ${String(f.lastInviteSent).slice(0, 10)})` : 'NOT going out yet'}${signals.paused ? ` - campaign PAUSED with ${signals.pausedWaiting} people waiting` : ''}`);
   if ((signals.lines || []).length) lines.push(`Campaign numbers: ${signals.lines.join(' | ')}`);
   lines.push(`Last call with Guy: ${f.daysSinceLastCall === null ? 'none on record' : `${f.daysSinceLastCall} days ago`}${card && card.nextSession ? `; next session booked ${String(card.nextSession.at).slice(0, 10)}` : '; nothing booked'}`);
   lines.push(`Today tab: ${f.todayHasRecords ? 'has records' : 'no records yet'}`);

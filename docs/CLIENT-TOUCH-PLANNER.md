@@ -380,6 +380,52 @@ preview and report emails end "Go through them with Claude: say "let's do this w
   stop, call problems, a stable per-client shuffle). Times for a call are picked from
   the Tuesday after the sending Monday and re-checked on the sending morning.
 
+## The deep client brief - every email as considered as the one written by hand (Guy, 22 Oct 2026)
+
+Guy: "delight every client ... the email from me really does look like the email from me, based on
+everything we've got, and gives them some wisdom as well." On 22 Oct a deep read done by hand for
+Ashley Knowles (every call, email and LinkedIn message) found what the planner could not see: his
+campaign had never launched (so "Congratulations, you've started" would be untrue), Guy owed him
+three things (an answer on the account mix-up he was worried about, the Paul Faix introduction, a
+promised fix), and a personal note had to come before any weekly email. The custom email written
+from that read ("1,588 conversations you've already started") Guy called perfect. That read is now
+the standard, every Monday, for every client (`services/clientTouchBrief.js`):
+
+- **The brief.** Per client, from EVERY recorded call with Guy (each call digested once - promises
+  each side with quotes, worries, wins, what was set up - and the digest kept; calls in the last 60
+  days by Sonnet, older ones by Haiku), their email with Guy both ways (every address on the record),
+  their LinkedIn messages (the Notes on their lead in Guy's leads base), the dossier when one exists,
+  the Touch Note, last week's brief and the live facts. It holds: what is TRUE now, what Guy OWES them
+  (dates and quotes), what they are waiting on, wins, what is on their mind, how to write to them and
+  what never to say. Rebuilt only when that material changed - otherwise last week's stands. The live
+  facts win over anything said on a call. Shown on the row as a short brief ("the whole brief" opens it).
+- **First things first.** When Guy owes something important (an unanswered worry, a promised
+  introduction or fix), the row says "Send a personal note first", names what is owed with the
+  quotes, and offers a note drafted in his voice (with "check before you send" for anything he must
+  confirm first). He edits it, copies it, sends it himself, and presses "I've sent it" (recorded in
+  the touch record; it does not make the week a quiet one) or "Not needed". Until then the weekly
+  email cannot be approved, and the sending morning holds it even if it was. Items he has dealt with
+  are remembered, so next week's brief does not raise them again.
+- **A custom email when nothing on the shelf fits.** Each approved piece the picker chooses is
+  checked against the brief; when it would be untrue or tone-deaf - or a running client has no
+  invitations out yet, so neither the welcome nor the opening run can start - an email is written for
+  them from the brief: short, plain, Guy's voice, real wins acknowledged, uses what they already have,
+  asks nothing new, ending with a thought for the week lifted word for word from an approved piece
+  (and the "most weeks" note if it is their first). Marked CUSTOM on the panel; it goes only if Guy
+  approves it, and never by send-with-veto. Guy's pins are never replaced. If there is nothing true and
+  useful to say, nothing is written and the row says why.
+- **The fact guard.** Every claim in an opening, a custom email or a personal note is checked against
+  the brief and the live facts - by code (invitations going out only when Last Invite Sent says so,
+  recently and not paused; a next session only when one is booked; no dashes, links or system talk)
+  and by Claude (each claim supported, unsupported or contradicted) - at build time and again on the
+  sending morning. A failed check blocks approval until the words change or Guy says "I've checked -
+  approve anyway"; on the sending morning it holds the email with the reason.
+- **Cost.** All of it runs on Guy's own server key (ANTHROPIC_API_KEY - "Guy's Individual Org", paid
+  from his US$100/month Max credit), metered per build (`services/clientTouchCost.js`). The panel
+  header, the Monday preview email and the sending-morning report show the tokens and estimated US$.
+  A build that would pass US$10 (`CLIENT_TOUCH_BUILD_BUDGET_USD`) stops, keeps the rows it finished,
+  and emails Guy. The first build reads every call once (a few dollars); later weeks only new material.
+
 ## What has to exist first
 
 - **A record of every email each client has had** - one-pagers, habit, setup, one-offs and Guy's
