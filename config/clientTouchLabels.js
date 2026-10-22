@@ -31,6 +31,35 @@ const PROBLEMS = {
 
 const KINDS = ['way-of-thinking', 'mindset', 'how', 'habit', 'tune-up', 'event'];
 
+// The things that can happen to a client and set an email off early ("Emails set off by
+// something that happened" in the design doc). The planner's facts name them by KEY; a piece's
+// `event:` frontmatter is free text, so each key carries the words that identify it there.
+// A piece can answer several events.
+const EVENTS = {
+  'today-first-records':      { label: "The client's Today tab first has records", test: /today tab first fills/i },
+  'campaign-running-low':     { label: 'Their campaign is running low on people', test: /campaign run(s|ning) (low|out)/i },
+  'acceptances-slow':         { label: 'Acceptances are slow', test: /acceptances slow/i },
+  'before-campaign':          { label: 'Their campaign is about to start', test: /before the campaign starts/i },
+  'first-call-booked':        { label: 'Their first discovery call is booked', test: /first discovery call booked/i },
+  'first-call-happened':      { label: 'Their first discovery call has happened', test: /after the first discovery call/i },
+  'first-yes':                { label: 'A lead said yes for the first time', test: /first lead says yes/i },
+  'first-intro-made':         { label: 'They made their first introduction', test: /first introduction made/i },
+  'first-intro-received':     { label: 'They received their first introduction from the circle', test: /first introduction received/i },
+  'followups-first':          { label: 'Their follow-up list first has people', test: /follow-up list first has people/i },
+  'first-acceptances-scored': { label: 'Their first acceptances have been scored', test: /first acceptances scored/i },
+  'busy':                     { label: 'A busy stretch - no logins, campaign still running', test: /busy stretch/i },
+  'drifting':                 { label: 'Drifting - quiet for weeks while still paying', test: /client drifting/i },
+  'not-working':              { label: "Week 8-12, or an 'it's not working' reply", test: /it's not working|week 8-12/i },
+  'setup-step-done':          { label: 'The previous setup step is done', test: /previous setup step/i },
+};
+
+/** Which event keys a piece's free-text `event:` label answers. */
+function eventKeysFor(eventText) {
+  const text = String(eventText || '');
+  if (!text) return [];
+  return Object.keys(EVENTS).filter((k) => EVENTS[k].test.test(text));
+}
+
 // Email #1 of the client run - "What you've actually joined" - is built in
 // onePagerEmail.js, not from a markdown piece, so its labels live here.
 const ORIENTATION = {
@@ -64,4 +93,4 @@ function labelsFrom(meta) {
   };
 }
 
-module.exports = { PROBLEMS, KINDS, ORIENTATION, labelsFrom, splitList };
+module.exports = { PROBLEMS, KINDS, EVENTS, ORIENTATION, labelsFrom, splitList, eventKeysFor };

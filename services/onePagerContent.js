@@ -63,6 +63,9 @@ async function markdownToHtml(md) {
 // We only need a handful of scalar fields, so a full YAML parser is overkill.
 function parseFrontmatter(raw) {
   const meta = {};
+  // A Windows checkout (core.autocrlf) hands us CRLF; `.` never matches a carriage return, so
+  // every value would fail to parse and every piece would carry no title and no labels.
+  raw = String(raw).replace(/\r\n?/g, '\n');
   const m = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
   let body = raw;
   if (m) {
