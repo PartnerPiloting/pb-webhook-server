@@ -636,7 +636,14 @@ module.exports = function mountMarketingSite(app) {
 
   async function handleUnsubscribe(req, res) {
     const token = req.query.t || req.query.token || (req.body && req.body.t) || '';
-    const result = await enquiries.unsubscribeByToken(token);
+    // Prospects (site_enquiries rows) first; then clients, whose token lives on their row in the
+    // master Clients table (services/clientUnsubscribe.js). One link format for both.
+    let result = await enquiries.unsubscribeByToken(token);
+    let isClient = false;
+    if (!result.ok) {
+      result = await require('../services/clientUnsubscribe').unsubscribeClientByToken(token);
+      isClient = result.ok;
+    }
 
     if (req.method === 'POST') {
       // One-click clients want a bare 200, not a page.
@@ -649,6 +656,15 @@ module.exports = function mountMarketingSite(app) {
         <h1>That link didn't work</h1>
         <p>It may have already been used, or been cut short by an email client.</p>
         <p>Reply to any of my emails with the word STOP and I'll take you off the list myself.</p>`));
+    }
+
+    if (isClient) {
+      logger.info('[site] client unsubscribed from the weekly emails via link');
+      return res.send(unsubPage('Unsubscribed', `
+        <h1>Done - no more weekly emails.</h1>
+        <p>You won't get the weekly emails from me any more. Everything else - your portal, Wingguy, our sessions - carries on exactly as before.</p>
+        <p>Changed your mind later? Just tell me and I'll switch them back on.</p>
+        <p>- Guy</p>`));
     }
 
     logger.info('[site] unsubscribed via link');

@@ -22,6 +22,7 @@
  *   node scripts/ensure-client-fields.js --client=Guy-Wilson   # one client only (still + template/master unless skipped)
  *   node scripts/ensure-client-fields.js --skip-template       # clients + master only
  *   node scripts/ensure-client-fields.js --skip-master         # leads tables only (clients + template)
+ *   node scripts/ensure-client-fields.js --master-only         # master Clients table only
  *
  * Prerequisites (server environment — run via Render one-off job, not locally):
  *   - AIRTABLE_API_KEY (with schema/metadata write permission)
@@ -171,6 +172,11 @@ const MASTER_FIELDS = [
     type: 'date',
     description: 'When the client email series (22 emails - twice a week for 1-15, then weekly; order in config/onePagerSeriesManifest.js) starts for this client. Per-client choice, set during onboarding; the convention is the END of onboarding (the Linked Helper launch session), so the drip takes over the drumbeat when the weekly sessions stop and fills the collection quiet zone. Blank = series not started. The drip engine (not yet built) sends nothing before this date. Added 2026-08-23.',
     options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' } }
+  },
+  {
+    name: 'Email Unsubscribe Token',
+    type: 'singleLineText',
+    description: 'Unguessable per-client token behind the unsubscribe link in every weekly email from Guy (the client touch planner, docs/CLIENT-TOUCH-PLANNER.md). The link is /series/unsubscribe?t=<token>; the route (routes/marketingRoutes.js) ticks Series Unsubscribed on this row, and the planner then sends nothing. Minted at join (joinProvisioningService stepMintToken) and backfilled by scripts/fill-client-unsub-tokens.js; never typed by hand, never reused. Added 2026-10-22.'
   },
   {
     name: 'Connection Lookback Days',
@@ -617,6 +623,9 @@ async function run() {
   const dryRun = args.includes('--dry-run');
   const skipTemplate = args.includes('--skip-template');
   const skipMaster = args.includes('--skip-master');
+  // --master-only: touch nothing but the master Clients table (a master-only field, e.g. the
+  // 2026-10-22 Email Unsubscribe Token, has no business opening 20 client bases).
+  const masterOnly = args.includes('--master-only');
   const clientArg = args.find((a) => a.startsWith('--client='));
   const filterClientId = clientArg ? clientArg.split('=')[1] : null;
 
@@ -628,14 +637,20 @@ async function run() {
   if (audit) { await runAudit(); return; }
 
   // 1) Leads-table fields on every client base
-  const clients = await getClients(filterClientId);
-  console.log(`Found ${clients.length} client base(s)${filterClientId ? ` matching "${filterClientId}"` : ''}.`);
-  for (const c of clients) {
-    await ensureFields(`client: ${c.clientId}`, c.baseId, LEADS_TABLE, LEADS_FIELDS, dryRun);
+  if (masterOnly) {
+    console.log('(--master-only: skipping client bases and the template)');
+  } else {
+    const clients = await getClients(filterClientId);
+    console.log(`Found ${clients.length} client base(s)${filterClientId ? ` matching "${filterClientId}"` : ''}.`);
+    for (const c of clients) {
+      await ensureFields(`client: ${c.clientId}`, c.baseId, LEADS_TABLE, LEADS_FIELDS, dryRun);
+    }
   }
 
   // 2) Leads-table fields on the template (default target — see header note)
-  if (!skipTemplate) {
+  if (masterOnly) {
+    // already said above
+  } else if (!skipTemplate) {
     await ensureFields('CLIENT TEMPLATE', TEMPLATE_BASE_ID, LEADS_TABLE, LEADS_FIELDS, dryRun);
   } else {
     console.log('\n(skipping template — --skip-template)');

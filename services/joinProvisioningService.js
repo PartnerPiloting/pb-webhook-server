@@ -465,12 +465,19 @@ async function stepMintToken(job) {
   // Idempotent: never overwrite a token that already exists on the row.
   const row = await base('Clients').find(job.client_record_id);
   let token = row.fields['Portal Token'];
+  const updates = {};
   if (!token) {
     token = crypto.randomBytes(18).toString('base64url');
-    await base('Clients').update(job.client_record_id, { 'Portal Token': token });
+    updates['Portal Token'] = token;
   }
+  // The unsubscribe token behind every weekly email from Guy (services/clientUnsubscribe.js).
+  // Minted here so no client ever gets an email with a dead unsubscribe link.
+  if (!row.fields['Email Unsubscribe Token']) {
+    updates['Email Unsubscribe Token'] = require('./clientUnsubscribe').newToken();
+  }
+  if (Object.keys(updates).length) await base('Clients').update(job.client_record_id, updates);
   job.portal_url = `${PORTAL_BASE_URL}/?token=${token}`;
-  return { portalUrl: job.portal_url };
+  return { portalUrl: job.portal_url, unsubscribeTokenMinted: Boolean(updates['Email Unsubscribe Token']) };
 }
 
 async function stepCreateTasks(job) {

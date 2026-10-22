@@ -289,12 +289,35 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 - **A record of every email each client has had** - one-pagers, habit, setup, one-offs and Guy's
   own substantial emails - so nothing repeats and the skip rule works. A Postgres table
   (tenant, what, form full/short/one-off, sent_at, reason). `Series Sent Count` cannot say which.
+  **BUILT 22 Oct 2026:** `services/clientTouchStore.js` (table `client_touches`; kinds one-pager,
+  habit, mindset, setup, one-off, personal, call, intro; a touch is never recorded twice). History
+  that already existed goes in with `scripts/backfill-client-touches.js` (dry run by default) from
+  `scripts/data/client-touches-backfill-2026-10-22.json`: the two habit emails (Rick 14 Oct, Steve
+  16 Oct) and every Mindset Mastery edition each client was BCC'd on, Jun 2025 - Jun 2026, read from
+  Gmail Sent. Editions sent through GMass are not in Sent, so they are not in the file.
 - **A working unsubscribe link per client.** The Clients base has no token, so every client
-  email would ship a dead link.
-- **The right address for each client.** Rick's mail all comes from rwong@salesxceleration.com,
-  not the address on file; that inbox's filter rewrites links.
+  email would ship a dead link. **BUILT 22 Oct 2026:** field `Email Unsubscribe Token` on the
+  master Clients table (minted at join, backfilled for all 29 rows by
+  `scripts/fill-client-unsub-tokens.js`); the existing `/series/unsubscribe?t=` route now also
+  recognises a client token and ticks `Series Unsubscribed` (`services/clientUnsubscribe.js`).
+  The planner reads `client.emailUnsubscribed` and `client.emailUnsubToken` from clientService; no
+  token = no email.
+- **The right address for each client.** Checked 22 Oct 2026 against where each active client's
+  mail really comes from (Gmail, last 120 days). Rick's record is already rwong@salesxceleration.com.
+  Mismatches found - Steve Nelson (steve@euroswift.com, record 24hrbp), Matthew Bulat (gmail,
+  record expertaiprompts), Alex Solti (futurefunding, record alexsolti), Sam Noble (findmefirst /
+  barclayss, record hotmail), Szymon Zurek (maiababy.co.uk, record gmail), Mehnaaz Ahmed (writes
+  from both). Guy decides each; the planner should send to the address the client actually
+  writes from.
+- **Who has been introduced to whom** - so "introductions to make" never suggests a pair already
+  introduced. The Referrals table holds introductions TO Guy, and (since 25 Sep) the ones Wingguy
+  drafted FROM Guy; introductions Guy made by hand, and client-to-client ones, are not recorded.
+  Proposal to Guy 22 Oct 2026 (not built): one linked field `Other Client` on Referrals so both
+  sides of a row can be clients, a "have these two met?" check in referralService, and logging by
+  hand through the existing `wingguy_referrals` tool.
 - **The real "invitations going out" signal** - fix the journey, which counts a paused machine
-  (IDLE) as leads arriving.
+  (IDLE) as leads arriving. **DONE 22 Oct 2026** (`services/clientJourney.js`: leads arriving =
+  the record's Last Invite Sent is filled, not the machine's IDLE/RUNNING word).
 - **Labels on every piece** - kind, journey stop(s), problem, can-be-re-sent - reviewed by Guy
   in one table. The labelling also shows empty shelves (nothing yet on the voice stop or on
   recording calls).

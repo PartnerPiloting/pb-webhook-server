@@ -1,0 +1,2540 @@
+{
+ "generated": "2026-10-22",
+ "note": "Read-only from Guy's Gmail Sent folder on 22 Oct 2026: the two habit emails, and every Mindset Mastery edition (subject starts Mindset Mastery) with a client address on its BCC list. Editions sent through GMass do not appear in Sent and are NOT here.",
+ "touches": [
+  {
+   "clientId": "Rick-Wong",
+   "kind": "habit",
+   "key": "habit-1",
+   "form": "full",
+   "sentAt": "2026-10-13T22:00:00Z",
+   "recipient": "rwong@salesxceleration.com",
+   "reason": "Habit email #1 - A few minutes a morning (Gmail scheduled send)",
+   "meta": {
+    "subject": "A few minutes a morning",
+    "gmailMessageId": "1a1374792073c4c7"
+   }
+  },
+  {
+   "clientId": "Steve-Nelson",
+   "kind": "habit",
+   "key": "habit-1",
+   "form": "full",
+   "sentAt": "2026-10-15T21:00:00Z",
+   "recipient": "steve.nelson@24hrbp.com",
+   "reason": "Habit email #1 - A few minutes a morning (Gmail scheduled send; went before his campaign started)",
+   "meta": {
+    "subject": "A few minutes a morning",
+    "gmailMessageId": "1a1415d5c1357e02"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Givers, Takers, and Matchers",
+   "form": "full",
+   "sentAt": "2025-06-20T03:16:29Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1978b566806d82e5"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Givers, Takers, and Matchers",
+   "form": "full",
+   "sentAt": "2025-06-20T03:16:29Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1978b566806d82e5"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Givers, Takers, and Matchers",
+   "form": "full",
+   "sentAt": "2025-06-20T03:16:29Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1978b566806d82e5"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Givers, Takers, and Matchers",
+   "form": "full",
+   "sentAt": "2025-06-20T03:16:29Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1978b566806d82e5"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do Less, But Better",
+   "form": "full",
+   "sentAt": "2025-06-26T23:23:04Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "197ae8d3be2faa86"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do Less, But Better",
+   "form": "full",
+   "sentAt": "2025-06-26T23:23:04Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "197ae8d3be2faa86"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do Less, But Better",
+   "form": "full",
+   "sentAt": "2025-06-26T23:23:04Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "197ae8d3be2faa86"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do Less, But Better",
+   "form": "full",
+   "sentAt": "2025-06-26T23:23:04Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "197ae8d3be2faa86"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Speed of Trust",
+   "form": "full",
+   "sentAt": "2025-07-04T02:35:57Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "197d34a498bffe75"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Speed of Trust",
+   "form": "full",
+   "sentAt": "2025-07-04T02:35:57Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "197d34a498bffe75"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Speed of Trust",
+   "form": "full",
+   "sentAt": "2025-07-04T02:35:57Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "197d34a498bffe75"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Speed of Trust",
+   "form": "full",
+   "sentAt": "2025-07-04T02:35:57Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "197d34a498bffe75"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Respect Is Hard Won (and Easily Lost)",
+   "form": "full",
+   "sentAt": "2025-07-17T23:08:46Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1981aa5bed8b995d"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Respect Is Hard Won (and Easily Lost)",
+   "form": "full",
+   "sentAt": "2025-07-17T23:08:46Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1981aa5bed8b995d"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Respect Is Hard Won (and Easily Lost)",
+   "form": "full",
+   "sentAt": "2025-07-17T23:08:46Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1981aa5bed8b995d"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Respect Is Hard Won (and Easily Lost)",
+   "form": "full",
+   "sentAt": "2025-07-17T23:08:46Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1981aa5bed8b995d"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Break the Brules",
+   "form": "full",
+   "sentAt": "2025-07-31T22:00:00Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198627fce10541c0"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Break the Brules",
+   "form": "full",
+   "sentAt": "2025-07-31T22:00:00Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198627fce10541c0"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Break the Brules",
+   "form": "full",
+   "sentAt": "2025-07-31T22:00:00Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198627fce10541c0"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Break the Brules",
+   "form": "full",
+   "sentAt": "2025-07-31T22:00:00Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198627fce10541c0"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Break the Brules",
+   "form": "full",
+   "sentAt": "2025-07-31T22:00:00Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198627fce10541c0"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Age Is a State of Mind",
+   "form": "full",
+   "sentAt": "2025-08-07T23:22:58Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19886d8184b0dd58"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Age Is a State of Mind",
+   "form": "full",
+   "sentAt": "2025-08-07T23:22:58Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19886d8184b0dd58"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Age Is a State of Mind",
+   "form": "full",
+   "sentAt": "2025-08-07T23:22:58Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19886d8184b0dd58"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Age Is a State of Mind",
+   "form": "full",
+   "sentAt": "2025-08-07T23:22:58Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19886d8184b0dd58"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Age Is a State of Mind",
+   "form": "full",
+   "sentAt": "2025-08-07T23:22:58Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19886d8184b0dd58"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Psychology of Influence",
+   "form": "full",
+   "sentAt": "2025-08-15T01:58:53Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198ab7385c9dfb01"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Psychology of Influence",
+   "form": "full",
+   "sentAt": "2025-08-15T01:58:53Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198ab7385c9dfb01"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Psychology of Influence",
+   "form": "full",
+   "sentAt": "2025-08-15T01:58:53Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198ab7385c9dfb01"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Psychology of Influence",
+   "form": "full",
+   "sentAt": "2025-08-15T01:58:53Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198ab7385c9dfb01"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Psychology of Influence",
+   "form": "full",
+   "sentAt": "2025-08-15T01:58:53Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198ab7385c9dfb01"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of One More",
+   "form": "full",
+   "sentAt": "2025-08-22T00:09:18Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198cf1bb1991ef6f"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of One More",
+   "form": "full",
+   "sentAt": "2025-08-22T00:09:18Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198cf1bb1991ef6f"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of One More",
+   "form": "full",
+   "sentAt": "2025-08-22T00:09:18Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198cf1bb1991ef6f"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of One More",
+   "form": "full",
+   "sentAt": "2025-08-22T00:09:18Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198cf1bb1991ef6f"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of One More",
+   "form": "full",
+   "sentAt": "2025-08-22T00:09:18Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "198cf1bb1991ef6f"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Control the Controllables",
+   "form": "full",
+   "sentAt": "2025-09-04T20:45:00Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1991679b16d11e03"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Control the Controllables",
+   "form": "full",
+   "sentAt": "2025-09-04T20:45:00Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1991679b16d11e03"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Control the Controllables",
+   "form": "full",
+   "sentAt": "2025-09-04T20:45:00Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1991679b16d11e03"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Control the Controllables",
+   "form": "full",
+   "sentAt": "2025-09-04T20:45:00Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1991679b16d11e03"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Control the Controllables",
+   "form": "full",
+   "sentAt": "2025-09-04T20:45:00Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1991679b16d11e03"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Win the Morning, Win the Day",
+   "form": "full",
+   "sentAt": "2025-09-13T03:30:54Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19941203435cbd39"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Win the Morning, Win the Day",
+   "form": "full",
+   "sentAt": "2025-09-13T03:30:54Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19941203435cbd39"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Win the Morning, Win the Day",
+   "form": "full",
+   "sentAt": "2025-09-13T03:30:54Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19941203435cbd39"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Win the Morning, Win the Day",
+   "form": "full",
+   "sentAt": "2025-09-13T03:30:54Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19941203435cbd39"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Win the Morning, Win the Day",
+   "form": "full",
+   "sentAt": "2025-09-13T03:30:54Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19941203435cbd39"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Deep Work",
+   "form": "full",
+   "sentAt": "2025-09-19T02:20:18Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1995fc5ac402bf31"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Deep Work",
+   "form": "full",
+   "sentAt": "2025-09-19T02:20:18Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1995fc5ac402bf31"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Deep Work",
+   "form": "full",
+   "sentAt": "2025-09-19T02:20:18Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1995fc5ac402bf31"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Deep Work",
+   "form": "full",
+   "sentAt": "2025-09-19T02:20:18Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1995fc5ac402bf31"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Deep Work",
+   "form": "full",
+   "sentAt": "2025-09-19T02:20:18Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "1995fc5ac402bf31"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Them",
+   "form": "full",
+   "sentAt": "2025-09-26T22:49:09Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199883733f4f34bd"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Them",
+   "form": "full",
+   "sentAt": "2025-09-26T22:49:09Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199883733f4f34bd"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Them",
+   "form": "full",
+   "sentAt": "2025-09-26T22:49:09Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199883733f4f34bd"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Them",
+   "form": "full",
+   "sentAt": "2025-09-26T22:49:09Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199883733f4f34bd"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Them",
+   "form": "full",
+   "sentAt": "2025-09-26T22:49:09Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199883733f4f34bd"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Say It Sooner",
+   "form": "full",
+   "sentAt": "2025-10-09T20:48:15Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199cabb3df00b1f1"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Say It Sooner",
+   "form": "full",
+   "sentAt": "2025-10-09T20:48:15Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199cabb3df00b1f1"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Say It Sooner",
+   "form": "full",
+   "sentAt": "2025-10-09T20:48:15Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199cabb3df00b1f1"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Say It Sooner",
+   "form": "full",
+   "sentAt": "2025-10-09T20:48:15Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199cabb3df00b1f1"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Say It Sooner",
+   "form": "full",
+   "sentAt": "2025-10-09T20:48:15Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199cabb3df00b1f1"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: I wish someone had told me",
+   "form": "full",
+   "sentAt": "2025-10-17T00:44:20Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199ef9ff1ef93838"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: I wish someone had told me",
+   "form": "full",
+   "sentAt": "2025-10-17T00:44:20Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199ef9ff1ef93838"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: I wish someone had told me",
+   "form": "full",
+   "sentAt": "2025-10-17T00:44:20Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199ef9ff1ef93838"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: I wish someone had told me",
+   "form": "full",
+   "sentAt": "2025-10-17T00:44:20Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199ef9ff1ef93838"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: I wish someone had told me",
+   "form": "full",
+   "sentAt": "2025-10-17T00:44:20Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "199ef9ff1ef93838"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Micro-Habits for All-Day Energy",
+   "form": "full",
+   "sentAt": "2025-10-23T20:03:05Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a12aae16bedf3e"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Micro-Habits for All-Day Energy",
+   "form": "full",
+   "sentAt": "2025-10-23T20:03:05Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a12aae16bedf3e"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Micro-Habits for All-Day Energy",
+   "form": "full",
+   "sentAt": "2025-10-23T20:03:05Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a12aae16bedf3e"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Micro-Habits for All-Day Energy",
+   "form": "full",
+   "sentAt": "2025-10-23T20:03:05Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a12aae16bedf3e"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Micro-Habits for All-Day Energy",
+   "form": "full",
+   "sentAt": "2025-10-23T20:03:05Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a12aae16bedf3e"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Micro-Habits for All-Day Energy",
+   "form": "full",
+   "sentAt": "2025-10-23T20:03:05Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a12aae16bedf3e"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Ownership Isn’t Automatic",
+   "form": "full",
+   "sentAt": "2025-10-30T20:37:41Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a36d71fc30a269"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Ownership Isn’t Automatic",
+   "form": "full",
+   "sentAt": "2025-10-30T20:37:41Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a36d71fc30a269"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Ownership Isn’t Automatic",
+   "form": "full",
+   "sentAt": "2025-10-30T20:37:41Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a36d71fc30a269"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Ownership Isn’t Automatic",
+   "form": "full",
+   "sentAt": "2025-10-30T20:37:41Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a36d71fc30a269"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Ownership Isn’t Automatic",
+   "form": "full",
+   "sentAt": "2025-10-30T20:37:41Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a36d71fc30a269"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Ownership Isn’t Automatic",
+   "form": "full",
+   "sentAt": "2025-10-30T20:37:41Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a36d71fc30a269"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Replaying Conversations That Are Already Over",
+   "form": "full",
+   "sentAt": "2025-11-07T02:44:45Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a5c338b355191e"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Replaying Conversations That Are Already Over",
+   "form": "full",
+   "sentAt": "2025-11-07T02:44:45Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a5c338b355191e"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Replaying Conversations That Are Already Over",
+   "form": "full",
+   "sentAt": "2025-11-07T02:44:45Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a5c338b355191e"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Replaying Conversations That Are Already Over",
+   "form": "full",
+   "sentAt": "2025-11-07T02:44:45Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a5c338b355191e"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Replaying Conversations That Are Already Over",
+   "form": "full",
+   "sentAt": "2025-11-07T02:44:45Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a5c338b355191e"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Replaying Conversations That Are Already Over",
+   "form": "full",
+   "sentAt": "2025-11-07T02:44:45Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a5c338b355191e"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Others Sing Your Praises",
+   "form": "full",
+   "sentAt": "2025-11-14T01:37:52Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a8003007a2754c"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Others Sing Your Praises",
+   "form": "full",
+   "sentAt": "2025-11-14T01:37:52Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a8003007a2754c"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Others Sing Your Praises",
+   "form": "full",
+   "sentAt": "2025-11-14T01:37:52Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a8003007a2754c"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Others Sing Your Praises",
+   "form": "full",
+   "sentAt": "2025-11-14T01:37:52Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a8003007a2754c"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Others Sing Your Praises",
+   "form": "full",
+   "sentAt": "2025-11-14T01:37:52Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a8003007a2754c"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Let Others Sing Your Praises",
+   "form": "full",
+   "sentAt": "2025-11-14T01:37:52Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19a8003007a2754c"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Spinning – Start Solving",
+   "form": "full",
+   "sentAt": "2025-11-21T06:29:18Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aa51a54c13b272"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Spinning – Start Solving",
+   "form": "full",
+   "sentAt": "2025-11-21T06:29:18Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aa51a54c13b272"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Spinning – Start Solving",
+   "form": "full",
+   "sentAt": "2025-11-21T06:29:18Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aa51a54c13b272"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Spinning – Start Solving",
+   "form": "full",
+   "sentAt": "2025-11-21T06:29:18Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aa51a54c13b272"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Spinning – Start Solving",
+   "form": "full",
+   "sentAt": "2025-11-21T06:29:18Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aa51a54c13b272"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Stop Spinning – Start Solving",
+   "form": "full",
+   "sentAt": "2025-11-21T06:29:18Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aa51a54c13b272"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do the Opposite",
+   "form": "full",
+   "sentAt": "2025-12-04T21:34:50Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aeb4a03e5161b6"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do the Opposite",
+   "form": "full",
+   "sentAt": "2025-12-04T21:34:50Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aeb4a03e5161b6"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do the Opposite",
+   "form": "full",
+   "sentAt": "2025-12-04T21:34:50Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aeb4a03e5161b6"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do the Opposite",
+   "form": "full",
+   "sentAt": "2025-12-04T21:34:50Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aeb4a03e5161b6"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do the Opposite",
+   "form": "full",
+   "sentAt": "2025-12-04T21:34:50Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aeb4a03e5161b6"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do the Opposite",
+   "form": "full",
+   "sentAt": "2025-12-04T21:34:50Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aeb4a03e5161b6"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do the Opposite",
+   "form": "full",
+   "sentAt": "2025-12-04T21:34:50Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19aeb4a03e5161b6"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of Really Listening",
+   "form": "full",
+   "sentAt": "2025-12-12T22:00:00Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b1493f720cd3bc"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of Really Listening",
+   "form": "full",
+   "sentAt": "2025-12-12T22:00:00Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b1493f720cd3bc"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of Really Listening",
+   "form": "full",
+   "sentAt": "2025-12-12T22:00:00Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b1493f720cd3bc"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of Really Listening",
+   "form": "full",
+   "sentAt": "2025-12-12T22:00:00Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b1493f720cd3bc"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of Really Listening",
+   "form": "full",
+   "sentAt": "2025-12-12T22:00:00Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b1493f720cd3bc"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of Really Listening",
+   "form": "full",
+   "sentAt": "2025-12-12T22:00:00Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b1493f720cd3bc"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: The Power of Really Listening",
+   "form": "full",
+   "sentAt": "2025-12-12T22:00:00Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b1493f720cd3bc"
+   }
+  },
+  {
+   "clientId": "Akil-Merchant",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Cut the Noise, Keep the Focus",
+   "form": "full",
+   "sentAt": "2026-01-08T22:00:00Z",
+   "recipient": "akilm2004@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b9f9fab22c1a1d"
+   }
+  },
+  {
+   "clientId": "Alex-Solti",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Cut the Noise, Keep the Focus",
+   "form": "full",
+   "sentAt": "2026-01-08T22:00:00Z",
+   "recipient": "alex@futurefunding.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b9f9fab22c1a1d"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Cut the Noise, Keep the Focus",
+   "form": "full",
+   "sentAt": "2026-01-08T22:00:00Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b9f9fab22c1a1d"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Cut the Noise, Keep the Focus",
+   "form": "full",
+   "sentAt": "2026-01-08T22:00:00Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b9f9fab22c1a1d"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Cut the Noise, Keep the Focus",
+   "form": "full",
+   "sentAt": "2026-01-08T22:00:00Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b9f9fab22c1a1d"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Cut the Noise, Keep the Focus",
+   "form": "full",
+   "sentAt": "2026-01-08T22:00:00Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b9f9fab22c1a1d"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Cut the Noise, Keep the Focus",
+   "form": "full",
+   "sentAt": "2026-01-08T22:00:00Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b9f9fab22c1a1d"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Cut the Noise, Keep the Focus",
+   "form": "full",
+   "sentAt": "2026-01-08T22:00:00Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b9f9fab22c1a1d"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Cut the Noise, Keep the Focus",
+   "form": "full",
+   "sentAt": "2026-01-08T22:00:00Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19b9f9fab22c1a1d"
+   }
+  },
+  {
+   "clientId": "Akil-Merchant",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Why “Follow Your Passion” Might Be Bad Advice",
+   "form": "full",
+   "sentAt": "2026-01-24T07:40:04Z",
+   "recipient": "akilm2004@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19beef22b508c3ac"
+   }
+  },
+  {
+   "clientId": "Alex-Solti",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Why “Follow Your Passion” Might Be Bad Advice",
+   "form": "full",
+   "sentAt": "2026-01-24T07:40:04Z",
+   "recipient": "alex@futurefunding.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19beef22b508c3ac"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Why “Follow Your Passion” Might Be Bad Advice",
+   "form": "full",
+   "sentAt": "2026-01-24T07:40:04Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19beef22b508c3ac"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Why “Follow Your Passion” Might Be Bad Advice",
+   "form": "full",
+   "sentAt": "2026-01-24T07:40:04Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19beef22b508c3ac"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Why “Follow Your Passion” Might Be Bad Advice",
+   "form": "full",
+   "sentAt": "2026-01-24T07:40:04Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19beef22b508c3ac"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Why “Follow Your Passion” Might Be Bad Advice",
+   "form": "full",
+   "sentAt": "2026-01-24T07:40:04Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19beef22b508c3ac"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Why “Follow Your Passion” Might Be Bad Advice",
+   "form": "full",
+   "sentAt": "2026-01-24T07:40:04Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19beef22b508c3ac"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Why “Follow Your Passion” Might Be Bad Advice",
+   "form": "full",
+   "sentAt": "2026-01-24T07:40:04Z",
+   "recipient": "samnoble1@hotmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19beef22b508c3ac"
+   }
+  },
+  {
+   "clientId": "David-Gould",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Why “Follow Your Passion” Might Be Bad Advice",
+   "form": "full",
+   "sentAt": "2026-01-24T07:40:04Z",
+   "recipient": "dajomigo@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19beef22b508c3ac"
+   }
+  },
+  {
+   "clientId": "Akil-Merchant",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "akilm2004@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Alex-Solti",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "alex@futurefunding.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Annabelle-Reed",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "annabelle_reed@data3.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Clarence-Ling",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "clarence@marketlytics.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Matthew-Bulat",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "matthew.bulat@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Olivier-Reuland",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "o@whc.services",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery – Memory Dividends Don’t Wait",
+   "form": "full",
+   "sentAt": "2026-04-04T00:43:09Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19d55f1a3bc6efd2"
+   }
+  },
+  {
+   "clientId": "Akil-Merchant",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "akilm2004@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Alex-Solti",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "alex@futurefunding.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Clarence-Ling",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "clarence@marketlytics.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Hiresh-Shinde",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "hrishekesh@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Julian-Davis",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "julian@xapi.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Matthew-Bulat",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "matthew.bulat@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Olivier-Reuland",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "o@whc.services",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+   "form": "full",
+   "sentAt": "2026-05-02T00:22:01Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19de6104da45a86e"
+   }
+  },
+  {
+   "clientId": "Akil-Merchant",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "akilm2004@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Alex-Solti",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "alex@futurefunding.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Clarence-Ling",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "clarence@marketlytics.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Hiresh-Shinde",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "hrishekesh@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Julian-Davis",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "julian@xapi.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Matthew-Bulat",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "matthew.bulat@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Olivier-Reuland",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "o@whc.services",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Do you need Motivation or Momentum?",
+   "form": "full",
+   "sentAt": "2026-05-09T02:52:44Z",
+   "recipient": "info@findmefirst.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19e0aa6cbb0b1630"
+   }
+  },
+  {
+   "clientId": "Akil-Merchant",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "akilm2004@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Alasdair-Bell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "alasdair.bell@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Alex-Solti",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "alex@futurefunding.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Clarence-Ling",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "clarence@marketlytics.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Hiresh-Shinde",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "hrishekesh@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Jonathan-Bunch",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "jon@bunchesinoz.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Julian-Davis",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "julian@xapi.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Matthew-Bulat",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "matthew.bulat@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Olivier-Reuland",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "o@whc.services",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Roland-Illyes",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "roland@gracex.io",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: How many tabs do you have open?",
+   "form": "full",
+   "sentAt": "2026-06-13T04:30:56Z",
+   "recipient": "info@findmefirst.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19ebf3f461f370f3"
+   }
+  },
+  {
+   "clientId": "Akil-Merchant",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "akilm2004@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Alasdair-Bell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "alasdair.bell@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Alex-Solti",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "alex@futurefunding.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Ashley-Knowles",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "ashley@securitribe.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Clarence-Ling",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "clarence@marketlytics.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Hiresh-Shinde",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "hrishekesh@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Jonathan-Bunch",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "jon@bunchesinoz.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Julian-Davis",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "julian@xapi.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Matthew-Bulat",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "matthew.bulat@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Olivier-Reuland",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "o@whc.services",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Roland-Illyes",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "roland@gracex.io",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: You're measuring yourself against a world that's gone",
+   "form": "full",
+   "sentAt": "2026-06-19T11:54:40Z",
+   "recipient": "info@findmefirst.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19edfbbab24eb0b4"
+   }
+  },
+  {
+   "clientId": "Akil-Merchant",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "akilm2004@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Alasdair-Bell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "alasdair.bell@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Alex-Solti",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "alex@futurefunding.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Ashley-Knowles",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "ashley@securitribe.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Brendon-Campbell",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "brendoncampbell@outlook.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Clarence-Ling",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "clarence@marketlytics.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Dean-Hobin",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "dean@timeandfocus.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Eliza-Gilbertson",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "eliza.gilbertson@alliedorbit.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Hiresh-Shinde",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "hrishekesh@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Jonathan-Bunch",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "jon@bunchesinoz.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Julian-Davis",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "julian@xapi.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Luke-Swithenbank",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "luke@ridgelinestudios.co",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Matthew-Bulat",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "matthew.bulat@gmail.com",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Olivier-Reuland",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "o@whc.services",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Paul-Faix",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "paul@fortix.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Roland-Illyes",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "roland@gracex.io",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  },
+  {
+   "clientId": "Sam-Noble",
+   "kind": "mindset",
+   "key": "Mindset Mastery: Interested beats interesting",
+   "form": "full",
+   "sentAt": "2026-06-27T06:25:46Z",
+   "recipient": "info@findmefirst.com.au",
+   "reason": "Mindset Mastery edition (BCC list of the Gmail send)",
+   "meta": {
+    "gmailMessageId": "19f07c186956ba48"
+   }
+  }
+ ]
+}

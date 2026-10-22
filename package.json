@@ -48,6 +48,7 @@
     "test:wingguy-first": "node tests/wingguy-first.test.js",
     "test:retired-terms": "node tests/retired-terms.test.js",
     "test:join-lead-match": "node tests/join-lead-match.test.js",
+    "test:client-touches": "node tests/client-touch-store.test.js && node tests/client-unsubscribe.test.js",
     "test:lead-email-guards": "node tests/wingguy-extension-message-linebreaks.test.js && node tests/email-glued-prefix.test.js && node tests/booking-address-guard.test.js && node tests/bounce-watch.test.js",
     "diagnose:oauth": "node scripts/diagnose-google-oauth-scopes.js",
     "diagnose:oauth:harness": "node scripts/oauth-diagnostic-harness.js",

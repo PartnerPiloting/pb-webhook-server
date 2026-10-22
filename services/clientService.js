@@ -136,7 +136,12 @@ async function getAllClients() {
                 
                 // Portal access token for secure client access
                 const portalToken = record.get('Portal Token') || null;
-                
+                // Weekly client emails (docs/CLIENT-TOUCH-PLANNER.md): the token behind each
+                // client's unsubscribe link, and whether they have used it. Blank token = the
+                // planner cannot send to them yet (a dead link is worse than no email).
+                const emailUnsubToken = record.get('Email Unsubscribe Token') || null;
+                const emailUnsubscribed = Boolean(record.get('Series Unsubscribed'));
+
                 // Smart Follow-Up configuration
                 const clientType = record.get('Client Type') || 'A - Partner Selection';
                 const fupInstructions = record.get('FUP AI Instructions') || '';
@@ -403,6 +408,8 @@ async function getAllClients() {
                     rescoreCreditsGranted,
                     rescoreCreditsConsumed,
                     rescoreCreditsStart,
+                    emailUnsubToken,
+                    emailUnsubscribed,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });
