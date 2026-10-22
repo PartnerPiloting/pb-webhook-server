@@ -291,6 +291,22 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
     since 24 Sep - the planner should skip the link for anyone who has it.
   - Don't state prices, platforms or a productivity figure we haven't checked.
 
+### attitude pieces - live the attitudes you score others on
+
+- *22 Oct 2026, Guy asked:* what attitude pieces could go in the weekly emails? Proposal (not yet
+  agreed): build the MINDSET shelf from the network's own constitution - the shared attitude
+  attributes every client's scoring uses (config/clientBaseSeeds.json: Long-Term Network Building
+  Mindset, Easy to Recommend, Learner's Mindset, Results-Oriented, Collaborative Spirit, Grit &
+  Resilience, Leadership & Mentorship, Possibly Entrepreneurial; negatives No Personal Spark,
+  Negative Energy / Cynicism). The mirror of score-on-attitude: everyone you meet is scoring you on
+  the same things. Already covered: spark/energy (what-energy-do-you-bring), grit (patience-curve),
+  generosity (i-know-a-guy-principle), curiosity (interested-not-interesting, queued). New
+  candidates: Easy to recommend (pairs with your-unique-thing), Learner's mindset (your corrections
+  compound), Give before you get (long-term network building), Collaborative not competitive,
+  Optimism without hype (the opposite of cynicism). **Waiting** (Guy to choose)
+  - Guy's 19 Oct note named "Beth Berghan FORM, in Guy's words" as a mindset source - its content is
+    not on file anywhere; ask Guy for it before writing.
+
 ### Tune-ups - short practical emails, each set off by the client's numbers
 
 (Kind 2 in docs/CLIENT-TOUCH-PLANNER.md. Each: the problem, the fix, one thing this week.)
