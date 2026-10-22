@@ -284,6 +284,28 @@ reading the preview takes minutes, and every miss still teaches it.
 he can veto until Tuesday 9am. **When Guy is away** (Thailand, soon): approve the next two weeks
 before leaving, or switch to send-with-veto from his phone for that stretch.
 
+**The week-ahead workflow (Guy, 22 Oct 2026) - this replaces "build Monday, send by hand":**
+
+- **Built a week ahead.** Next Monday's plan is built THIS Monday (after this morning's send), so
+  Guy can chip away at it a few clients at a time all week, instead of everything at once on
+  Monday morning.
+- **Each client's whole picture on the panel:** *Already had* (every touch on the record, newest
+  first, with dates) | *This Monday* (the pick to approve, edit, swap, skip or pin) | *Likely next*
+  (the next five weeks the picker would choose IF NOTHING CHANGES - run forward on today's facts
+  with the earlier picks treated as sent; marked provisional, because an event can jump the queue).
+  Any likely-next piece can be pulled into this Monday.
+- **Re-checked on the sending morning.** Before anything goes, the never-send checks AND the
+  picker run again on fresh facts. If the client's situation changed since Guy approved (status,
+  unsubscribed, address, back in onboarding, an event that would now win, Guy wrote to them, the
+  piece no longer fits), that one is HELD and shown on the panel with what changed ("their
+  invitations started going out on Wednesday - keep or swap?"). Everything else goes.
+- **Approved emails go by themselves, Monday about 8am Brisbane.** Only what Guy approved; anything
+  not approved by then is never sent and rolls off. This is NOT send-with-veto (that stays OFF).
+  Guy then gets a short report: what went, what was held and why, what wasn't approved. Every send
+  is recorded in the touch record as before.
+- **From any chat:** "show me Steve's emails" (the Guy-only Wingguy tool `wingguy_client_emails`)
+  returns the same three parts, so Guy can talk a client's emails through from his phone.
+
 ## What has to exist first
 
 - **A record of every email each client has had** - one-pagers, habit, setup, one-offs and Guy's
@@ -350,7 +372,9 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 - **The picker** - `services/clientTouchPicker.js`, pure. Facts + the labelled shelf + the touch
   record in, one pick out. Every rule above has a test in `tests/client-touch-picker.test.js`
   (including the Steve and Mehnaaz walk-throughs). "A week" for the two-a-week limit is a rolling
-  seven days. Event keys live in `config/clientTouchLabels.js` (EVENTS) and are matched from each
+  six and a half days - so last Monday's 8am email, which went a few seconds after 8am, never
+  counts against this Monday's 8am check. After an offer of times for a call, no second offer for
+  two weeks (give them time to answer). `projectAhead` is the picker run forward - "likely next". Event keys live in `config/clientTouchLabels.js` (EVENTS) and are matched from each
   piece's `event:` label. One rule not written above: when the last piece sent ended "that's next",
   the piece it promised goes next (ahead of the mindset rhythm and the default order) until Guy
   approves the 17 ending rewrites.
@@ -362,21 +386,36 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
   instruction in every later prompt.
 - **The client note** = the `Touch Note` field on the master Clients row (read as `touchNote`).
   "Short" in the note = short form. The "why not" box appends to it live.
-- **The Monday run** - `services/clientTouchPlanner.js`. Mondays after 6am Brisbane it builds every
-  client's row (the client board's cards, the record, the journey, the touch record, the campaign
-  numbers, the Today tab, pins and skips), stores the proposals (`client_touch_plans`) and emails
-  Guy the preview - the only email that goes by itself. `CLIENT_TOUCH_PLANNER=off` stops the tick.
+- **Monday morning** - `services/clientTouchPlanner.js` `tick`, Brisbane time, each step claimed once
+  in Postgres. **8am** (`CLIENT_TOUCH_SEND_HOUR`): send what Guy approved for today, each re-checked
+  on fresh facts (below); proposals never approved are marked `lapsed` (never sent); Guy gets the
+  report. **9am** (`CLIENT_TOUCH_BUILD_HOUR`, never before the send): build NEXT Monday's plan -
+  every client's row from the client board's cards, the record, the journey, the touch record, the
+  campaign numbers, the Today tab, pins and skips - judged as at next Monday 8am (days-since counted
+  to then), store the proposals (`client_touch_plans`) and email Guy the preview.
+  `CLIENT_TOUCH_PLANNER=off` stops the tick; `CLIENT_TOUCH_MONDAY_SEND=off` stops only the 8am send.
+  "Not this week" counts Guy's OWN touches only - the planner's weekly email is not one (it would
+  make every other week a quiet one).
 - **The screen** - on the client board (`TouchPlannerPanel.js`, routes
-  `/api/client-board/touch-plan`). Approve / edit (your words) / swap / skip with the "why not"
-  box / pin for next week / pin for everyone; the left-out list; onboarding with no next session;
+  `/api/client-board/touch-plan`). Opens on the Monday Guy is working towards (`planningWeek`:
+  today before 8am on a Monday, otherwise the Monday after), with arrows to look at other Mondays.
+  Per client: Already had | This Monday | Likely next (`outlookFor`). Approve / edit (your words) /
+  swap / skip with the "why not" box / pin for the Monday after / "use now" on a likely-next piece /
+  pin for everyone; held rows show what changed with "Keep it - send now" and "Swap to ..."; the left-out list; onboarding with no next session;
   "time for a call" (an offer of two or three times from the calendar, never a booking link);
   introduction pairs (`services/clientTouchIntroductions.js` - client to client, never a pair the
   Referrals table knows, a week apart); waiting improvements per piece; the approved-unchanged share.
-- **Sending** - "Send approved" sends rows Guy approved or edited through `seriesMailer` with the
-  client's unsubscribe link, re-checks "who is never sent anything" from a fresh record at that
-  moment, and records each send in `client_touches`. A proposed row is never sent.
-- **The switch** - `CLIENT_TOUCH_AUTOSEND=on` turns on send-with-veto (untouched proposals with a
-  passing opening go Tuesday after 9am Brisbane). Default off.
+- **Sending** - `sendApproved` sends rows Guy approved or edited through `seriesMailer` with the
+  client's unsubscribe link and records each send in `client_touches`. A proposed row is never
+  sent. Each row is checked twice first: "who is never sent anything" from a fresh record (a hard
+  hold), then the picker on fresh facts - if it would no longer pick what Guy approved, the row is
+  `held` with what changed (`whatChanged`) and the pick it would choose now. "Keep" (route
+  `/:clientId/keep`) sends it anyway - the never-send checks still run.
+- **The switch** - `CLIENT_TOUCH_AUTOSEND=on` turns on send-with-veto: at the Monday send, untouched
+  proposals with a passing opening count as approved. Default off.
+- **From any chat** - `wingguy_client_emails` (services/wingguyRulesMcp.js, coach-only) returns
+  Already had / This Monday (reason, opening, status, what changed if held) / Likely next for one
+  client. Read-only; changes are made on the panel.
 - **"Why not" filing** - person -> the Touch Note, now; openings -> the opening instructions, now;
   body and choice -> queued in `client_touch_feedback` and written into IMPROVEMENTS.md / this
   document by `node scripts/file-touch-feedback.js --apply` on the laptop (dry run by default).

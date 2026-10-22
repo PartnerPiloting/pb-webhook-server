@@ -24,7 +24,9 @@ const { Pool } = require('pg');
 let pool;
 let schemaEnsured = false;
 
-const STATUSES = ['proposed', 'approved', 'edited', 'skipped', 'sent', 'failed', 'nothing', 'left-out'];
+// held   = approved, but the sending-morning re-check found something changed - Guy keeps or swaps
+// lapsed = never approved by the sending morning - it rolled off, nothing went
+const STATUSES = ['proposed', 'approved', 'edited', 'skipped', 'sent', 'failed', 'nothing', 'left-out', 'held', 'lapsed'];
 const FEEDBACK_HOMES = ['body', 'choice', 'person', 'openings'];
 
 function getPool() {
@@ -65,6 +67,9 @@ async function ensureSchema(c) {
       UNIQUE (week_of, client_id)
     );
   `);
+  // Added 22 Oct 2026 (week-ahead planner): why a row was held on the sending morning, and the
+  // pick the re-check would choose instead - so the panel can offer "keep" or "swap to that".
+  await c.query('ALTER TABLE client_touch_plans ADD COLUMN IF NOT EXISTS hold JSONB');
   await c.query(`
     CREATE TABLE IF NOT EXISTS client_touch_pins (
       id BIGSERIAL PRIMARY KEY,
@@ -149,6 +154,25 @@ function weekOf(now = new Date(), timeZone = 'Australia/Brisbane') {
   return d.toISOString().slice(0, 10);
 }
 
+/** 'YYYY-MM-DD' n weeks on from a week (negative goes back). */
+function addWeeks(week, n) {
+  const d = new Date(`${week}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 7 * n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The Monday Guy is working towards - the next sending morning that has not happened yet. Before
+ * the send hour on a Monday that is today; from then on it is the Monday after (the plan is built
+ * a week ahead, so Guy can chip away at it all week).
+ */
+function planningWeek(now = new Date(), sendHour = 8, timeZone = 'Australia/Brisbane') {
+  const parts = new Intl.DateTimeFormat('en-AU', { timeZone, hour: '2-digit', hour12: false, weekday: 'short' }).formatToParts(new Date(now));
+  const get = (t) => (parts.find((p) => p.type === t) || {}).value;
+  const thisWeek = weekOf(now, timeZone);
+  return get('weekday') === 'Mon' && Number(get('hour')) < sendHour ? thisWeek : addWeeks(thisWeek, 1);
+}
+
 /** Where a "why not" belongs (the Tuning-by-approval table). Pure; `home` must be one of FEEDBACK_HOMES. */
 function feedbackHome(home) {
   const h = String(home || '').trim().toLowerCase();
@@ -182,6 +206,7 @@ function rowOut(r) {
     whyNotHome: r.why_not_home || null,
     sentAt: r.sent_at || null,
     sendError: r.send_error || null,
+    hold: r.hold || null,
     updatedAt: r.updated_at || null,
   };
 }
@@ -224,17 +249,23 @@ async function planFor(week, clientId) {
   }, null);
 }
 
-/** Guy's verdict on a row: approve / edit (new opening or subject) / skip / swap (a new pick, rebuilt by the planner). */
-async function setPlanStatus(week, clientId, status, { opening, subject, bodyHtml, whyNot, whyNotHome, sentAt, sendError } = {}) {
+/**
+ * Guy's verdict on a row: approve / edit (new opening or subject) / skip / swap (a new pick, rebuilt
+ * by the planner) - and the sender's: sent / failed / held / lapsed. `hold` undefined leaves the
+ * stored hold as it is; null clears it; an object replaces it.
+ */
+async function setPlanStatus(week, clientId, status, { opening, subject, bodyHtml, whyNot, whyNotHome, sentAt, sendError, hold } = {}) {
   if (!STATUSES.includes(status)) throw new Error(`invalid status "${status}"`);
   return withDb(async (c) => {
     const r = await c.query(
       `UPDATE client_touch_plans SET status = $3,
          opening = COALESCE($4, opening), subject = COALESCE($5, subject), body_html = COALESCE($6, body_html),
          why_not = COALESCE($7, why_not), why_not_home = COALESCE($8, why_not_home),
-         sent_at = COALESCE($9, sent_at), send_error = $10, updated_at = now()
+         sent_at = COALESCE($9, sent_at), send_error = $10,
+         hold = CASE WHEN $11::boolean THEN $12::jsonb ELSE hold END, updated_at = now()
        WHERE week_of = $1 AND client_id = $2 RETURNING *`,
-      [week, clientId, status, opening ?? null, subject ?? null, bodyHtml ?? null, whyNot ?? null, whyNotHome ?? null, sentAt ?? null, sendError ?? null],
+      [week, clientId, status, opening ?? null, subject ?? null, bodyHtml ?? null, whyNot ?? null, whyNotHome ?? null, sentAt ?? null, sendError ?? null,
+        hold !== undefined, hold ? JSON.stringify(hold) : null],
     );
     return rowOut(r.rows[0]);
   }, null);
@@ -383,6 +414,8 @@ module.exports = {
   STATUSES,
   FEEDBACK_HOMES,
   weekOf,
+  addWeeks,
+  planningWeek,
   feedbackHome,
   upsertPlan,
   plansFor,

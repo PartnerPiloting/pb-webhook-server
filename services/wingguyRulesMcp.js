@@ -547,6 +547,27 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
 }
 
 // ---------------------------------------------------------------------------
+// A client's weekly emails (coach-only, 2026-10-22) - "show me Steve's emails":
+// what they have already had, what is set for the coming Monday (and why, and
+// its status), and what the planner would likely pick after that. Read-only;
+// the same three columns as the Monday emails panel on the client board.
+// ---------------------------------------------------------------------------
+async function runClientEmails({ client, week } = {}, tenant = TENANT) {
+  const planner = require('./clientTouchPlanner');
+  const query = String(client || '').trim();
+  if (!query) return { text: 'Which client? Pass a name or client id (e.g. "Steve" or "Steve-Nelson").', isError: true };
+  const w = String(week || '').trim();
+  let out;
+  try {
+    out = await planner.clientEmails(tenant, query, /^\d{4}-\d{2}-\d{2}$/.test(w) ? { week: w } : {});
+  } catch (e) {
+    return { text: `Couldn't read the weekly emails: ${e.message}`, isError: true };
+  }
+  if (out.error) return { text: out.error, isError: true };
+  return { text: `${out.text}\n\n(To change this Monday's email - approve, edit, swap, skip, or pin one of the likely-next pieces into this Monday - use the Monday emails panel at the top of My Clients.)` };
+}
+
+// ---------------------------------------------------------------------------
 // Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
 
@@ -963,6 +984,23 @@ const TOOL_DEFS = [
       required: ['client'],
     },
     run: runGetClient,
+  },
+  {
+    name: 'wingguy_client_emails',
+    description: 'Coach-only: one of YOUR clients\' weekly emails from Guy (the weekly client touch planner) - "show me Steve\'s emails", "what\'s Rick getting on Monday?", "what has Mehnaaz had?", "what\'s coming up for Sam?". Returns three parts: ALREADY HAD (every email on their touch record, newest first, with dates - one-pagers, habit emails, Mindset Mastery editions, setup steps, one-offs, call offers); THIS MONDAY (the email set for the coming Monday, why it was chosen, its opening and its status - waiting for approval, approved, held because something changed, sent); LIKELY NEXT (the next five weeks the planner would pick IF NOTHING CHANGES - provisional, because events such as a first call booked or a campaign running low can jump the queue). Read-only: changes (approve, edit, swap, skip, pin a likely-next piece into this Monday) are made on the Monday emails panel at the top of My Clients. Scoped to the calling coach\'s clients.',
+    zodSchema: {
+      client: z.string().describe('Client name or client id (e.g. "Steve" or "Steve-Nelson"). Matched within your coached clients only.'),
+      week: z.string().optional().describe('YYYY-MM-DD of a Monday to look at instead of the coming one (e.g. last Monday, to see what went and what was held).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        client: { type: 'string', description: 'Client name or client id (e.g. "Steve" or "Steve-Nelson"). Matched within your coached clients only.' },
+        week: { type: 'string', description: 'YYYY-MM-DD of a Monday to look at instead of the coming one (e.g. last Monday, to see what went and what was held).' },
+      },
+      required: ['client'],
+    },
+    run: runClientEmails,
   },
   {
     name: 'wingguy_referrals',

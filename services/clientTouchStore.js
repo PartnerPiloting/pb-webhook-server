@@ -246,12 +246,12 @@ async function touchesSince(sinceDate, { kinds = null } = {}) {
   return withDb(async (c) => {
     const r = kinds && kinds.length
       ? await c.query(
-        `SELECT client_id, kind, key, form, sent_at, reason, source FROM client_touches
+        `SELECT client_id, kind, key, form, sent_at, reason, source, meta FROM client_touches
          WHERE sent_at >= $1 AND kind = ANY($2) ORDER BY sent_at DESC`,
         [since, kinds],
       )
       : await c.query(
-        `SELECT client_id, kind, key, form, sent_at, reason, source FROM client_touches
+        `SELECT client_id, kind, key, form, sent_at, reason, source, meta FROM client_touches
          WHERE sent_at >= $1 ORDER BY sent_at DESC`,
         [since],
       );

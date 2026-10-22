@@ -37,8 +37,11 @@ const logger = createLogger({ runId: 'PLANNER', clientId: 'SYSTEM', operation: '
 
 const DAY = 86400000;
 const TICK_MS = 15 * 60 * 1000;
-const BUILD_HOUR = Number(process.env.CLIENT_TOUCH_BUILD_HOUR) || 6;   // Monday, Brisbane
-const VETO_HOUR = 9;                                                     // Tuesday, Brisbane (autosend only)
+// Monday morning, Brisbane: approved emails go at SEND_HOUR; then the NEXT Monday's plan is built
+// at BUILD_HOUR (after the send, so this morning's sends are in the record it reads).
+const SEND_HOUR = Number(process.env.CLIENT_TOUCH_SEND_HOUR) || 8;
+const BUILD_HOUR = Math.max(Number(process.env.CLIENT_TOUCH_BUILD_HOUR) || 9, SEND_HOUR + 1);
+const BRISBANE_OFFSET_HOURS = 10; // UTC+10, no daylight saving
 const EMAIL_KINDS = new Set(['one-pager', 'habit', 'setup', 'one-off', 'call']);
 const BRAND = 'I Know A Guy';
 
@@ -49,9 +52,23 @@ const present = (v) => Boolean(v && String(v).trim());
 const lower = (v) => String(v || '').trim().toLowerCase();
 const daysSince = (iso, now = Date.now()) => { const t = iso ? new Date(iso).getTime() : NaN; return Number.isNaN(t) ? null : Math.max(0, Math.floor((now - t) / DAY)); };
 
-/** The switch: nothing sends by itself unless this reads 'on'. */
+/**
+ * Send-with-veto: when 'on', a proposal Guy never touched is treated as approved at the Monday
+ * send (provided its opening passed the check). OFF by default - Guy approves every email.
+ */
 function autosendOn() {
   return lower(process.env.CLIENT_TOUCH_AUTOSEND) === 'on';
+}
+
+/** The Monday-morning send of what Guy APPROVED. On unless CLIENT_TOUCH_MONDAY_SEND=off. */
+function mondaySendOn() {
+  return lower(process.env.CLIENT_TOUCH_MONDAY_SEND || 'on') !== 'off';
+}
+
+/** The sending moment for a plan week: that Monday at SEND_HOUR, Brisbane. */
+function sendAt(week, hour = SEND_HOUR) {
+  const [y, m, d] = String(week).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, hour - BRISBANE_OFFSET_HOURS));
 }
 
 function brisbaneNow(now = new Date()) {
@@ -168,6 +185,18 @@ function waitingImprovements(markdown) {
   return counts;
 }
 
+/**
+ * The last substantial touch (shown as "last touch"), and the last one Guy made HIMSELF. "Not this
+ * week" reads only the second: it is about Guy's own touches (a call, a real email, an
+ * introduction). The planner's weekly email is not one - counting it would make every other week
+ * a quiet one. Times in ms, or null.
+ */
+function lastTouches(record) {
+  const latest = (rs) => rs.map((r) => new Date(r.sent_at).getTime()).filter((t) => !Number.isNaN(t)).sort((a, b) => b - a)[0] || null;
+  const substantial = (record || []).filter((r) => touchStore.SUBSTANTIAL_KINDS.includes(r.kind));
+  return { lastTouchAt: latest(substantial), lastPersonal: latest(substantial.filter((r) => r.source !== 'planner')) };
+}
+
 /** The live-fact lines the opening is allowed to rely on. */
 function factLines(f, signals, card) {
   const lines = [];
@@ -184,8 +213,14 @@ function factLines(f, signals, card) {
 // ---------------------------------------------------------------------------------------------
 // Facts for one client
 
+/**
+ * The facts for one client. `ctx.now` is the real clock (when things were first seen); `ctx.at` is
+ * the sending morning the plan is for - "days since" is counted to then, because a plan built a
+ * week ahead is judged as it will stand on the day it goes.
+ */
 async function factsFor(client, card, ctx) {
   const now = ctx.now;
+  const at = ctx.at || now;
   const snapshot = ctx.snapshots.get(client.clientId) || null;
   const signals = campaignSignals(snapshot);
   const record = ctx.touchesByClient.get(client.clientId) || [];
@@ -203,7 +238,7 @@ async function factsFor(client, card, ctx) {
   let stuckDays = 0;
   if (stop) {
     const [prevStop, since] = String(stopState || '').split('|');
-    if (prevStop === stop && since) stuckDays = daysSince(since, now) || 0;
+    if (prevStop === stop && since) stuckDays = daysSince(since, at) || 0;
     else await planStore.setState(stopKey, `${stop}|${new Date(now).toISOString()}`);
   }
 
@@ -233,9 +268,9 @@ async function factsFor(client, card, ctx) {
     if (owed[0]) nextSetupStep = { key: `setup:${owed[0].id}`, title: owed[0].task, instructionsUrl: owed[0].instructionsUrl || null };
   }
 
-  const lastTouchAt = record.filter((r) => touchStore.SUBSTANTIAL_KINDS.includes(r.kind)).map((r) => new Date(r.sent_at).getTime()).sort((a, b) => b - a)[0] || null;
-  const dSession = daysSince(card.lastSessionAt, now);
-  const dTouch = lastTouchAt ? daysSince(lastTouchAt, now) : null;
+  const { lastTouchAt, lastPersonal } = lastTouches(record);
+  const dSession = daysSince(card.lastSessionAt, at);
+  const dTouch = lastPersonal ? daysSince(lastPersonal, at) : null;
   const daysSinceLastSubstantial = [dSession, dTouch].filter((d) => d !== null).sort((a, b) => a - b)[0] ?? null;
   const skip = ctx.skips.get(client.clientId) || null;
   const note = noteSettings(client.touchNote);
@@ -259,7 +294,7 @@ async function factsFor(client, card, ctx) {
     daysSinceLastSubstantial,
     sessionBooked: !!card.nextSession,
     todayHasRecords: today,
-    events: recentEvents(firstSeen, now),
+    events: recentEvents(firstSeen, at),
     callProblems: [],
     stuckStop: stop,
     stuckDays,
@@ -399,13 +434,9 @@ async function clientsWithCards(coachClientId) {
  * Build this week's plan for every client (a dry run - stores proposals, sends nothing).
  * `opts.clientIds` limits it (the "swap" and "rebuild one" paths). Returns the plan.
  */
-async function buildPlan(coachClientId, opts = {}) {
-  const now = opts.now ? new Date(opts.now).getTime() : Date.now();
-  const week = opts.weekOf || planStore.weekOf(new Date(now));
-  const coach = await clientService.getClientById(coachClientId);
-  if (!coach) throw new Error(`coach ${coachClientId} not found`);
+/** Everything the facts read, for every client at once: the cards, the touch record, pins, skips, campaigns, bounces. */
+async function gatherContext(coachClientId, week, { now = Date.now(), at = now } = {}) {
   const { all, pairs } = await clientsWithCards(coachClientId);
-  const only = opts.clientIds ? new Set(opts.clientIds) : null;
   const since = new Date(now - 400 * DAY);
   const [touches, pins, skips, snapshots, bounced] = await Promise.all([
     touchStore.touchesSince(since), planStore.pinsFor(week), planStore.skips(), campaignSnapshots(), bouncedAddresses(coachClientId),
@@ -415,7 +446,23 @@ async function buildPlan(coachClientId, opts = {}) {
     if (!touchesByClient.has(t.client_id)) touchesByClient.set(t.client_id, []);
     touchesByClient.get(t.client_id).push(t);
   }
-  const ctx = { now, snapshots, bounced, touchesByClient, pins, skips };
+  return { now, at, all, pairs, snapshots, bounced, touchesByClient, pins, skips };
+}
+
+/**
+ * Build a week's plan for every client (stores proposals, sends nothing). The week defaults to the
+ * Monday Guy is working towards (planStore.planningWeek) - built a week ahead, judged as at that
+ * Monday's sending moment. `opts.clientIds` limits it (the "swap" and "rebuild one" paths).
+ */
+async function buildPlan(coachClientId, opts = {}) {
+  const now = opts.now ? new Date(opts.now).getTime() : Date.now();
+  const week = opts.weekOf || planStore.planningWeek(new Date(now), SEND_HOUR);
+  const at = Math.max(now, sendAt(week).getTime());
+  const coach = await clientService.getClientById(coachClientId);
+  if (!coach) throw new Error(`coach ${coachClientId} not found`);
+  const ctx = await gatherContext(coachClientId, week, { now, at });
+  const { pairs } = ctx;
+  const only = opts.clientIds ? new Set(opts.clientIds) : null;
   const shelf = content.listPieces();
   const out = [];
 
@@ -427,7 +474,7 @@ async function buildPlan(coachClientId, opts = {}) {
     try { facts = await factsFor(client, card, ctx); }
     catch (e) { logger.error(`facts for ${client.clientId} failed: ${e.message}`); continue; }
     if (opts.skipThisWeek && opts.skipThisWeek.has(client.clientId)) facts.skipThisWeek = true;
-    const pick = picker.pickFor(facts, shelf, ctx.touchesByClient.get(client.clientId) || [], { now, order: MANIFEST.client });
+    const pick = picker.pickFor(facts, shelf, ctx.touchesByClient.get(client.clientId) || [], { now: at, order: MANIFEST.client });
 
     let status = 'proposed';
     let openingDraft = null;
@@ -443,7 +490,7 @@ async function buildPlan(coachClientId, opts = {}) {
           coach, client, note: facts.noteText,
           pick: { title: body.title, dek: body.dek, form: pick.form, kindLine: pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind },
           factLines: factLines(facts, facts.signals, card),
-          today: new Date(now).toISOString().slice(0, 10),
+          today: new Date(at).toISOString().slice(0, 10),
         }, opts.openingDeps || {});
       }
     }
@@ -451,7 +498,7 @@ async function buildPlan(coachClientId, opts = {}) {
     const row = await planStore.upsertPlan({
       weekOf: week, clientId: client.clientId, status,
       pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null },
-      facts: { ...storedFacts, signals: { paused: signals.paused, runningLow: signals.runningLow, acceptancesSlow: signals.acceptancesSlow, live: signals.live, pausedWaiting: signals.pausedWaiting } },
+      facts: { ...storedFacts, builtAt: new Date(now).toISOString(), at: new Date(at).toISOString(), signals: { paused: signals.paused, runningLow: signals.runningLow, acceptancesSlow: signals.acceptancesSlow, live: signals.live, pausedWaiting: signals.pausedWaiting } },
       opening: openingDraft ? openingDraft.opening : '',
       subject,
       bodyHtml: body && !body.error ? body.bodyHtml : '',
@@ -497,9 +544,74 @@ async function sendGuard(clientId, row, deps = {}) {
   return { ok: true, client };
 }
 
+function weekdayName(iso) {
+  const t = iso ? new Date(iso) : null;
+  if (!t || Number.isNaN(t.getTime())) return '';
+  return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', weekday: 'long' }).format(t);
+}
+
 /**
- * Send every row Guy approved (status approved or edited) for the week. `deps.mailer` for tests.
- * Returns { sent, failed, held, results }. Nothing in 'proposed' is ever sent here.
+ * What changed for a client between the plan Guy approved and the sending morning - plain lines
+ * for the panel and the report ("their invitations started going out on Wednesday"). Pure.
+ * `before` = the facts the plan was built on; `after` = fresh facts; `fresh` = the picker's answer now.
+ */
+function whatChanged(before = {}, after = {}, row = {}, fresh = null) {
+  const lines = [];
+  if (before.status !== after.status) lines.push(`their Status is now ${after.status || 'blank'}`);
+  if (before.group !== after.group) lines.push(after.group === 'onboarding' ? 'they are back in onboarding' : after.group === 'paused' ? 'they are paused on the board' : `they moved to ${after.group}`);
+  if (!before.unsubscribed && after.unsubscribed) lines.push('they unsubscribed from the weekly emails');
+  if ((before.address || null) !== (after.address || null)) lines.push(`their address changed (${before.address || 'none'} -> ${after.address || 'none'})`);
+  if (!before.bounced && after.bounced) lines.push('mail to their address bounced');
+  if (!before.lastInviteSent && after.lastInviteSent) lines.push(`their invitations started going out on ${weekdayName(after.lastInviteSent)}`);
+  if (!before.sessionBooked && after.sessionBooked) lines.push(`a session with you is now booked${after.nextSessionAt ? ` (${String(after.nextSessionAt).slice(0, 10)})` : ''}`);
+  const had = new Set((before.events || []).map((e) => e.key));
+  for (const e of after.events || []) {
+    if (!had.has(e.key)) lines.push(`${((EVENTS[e.key] || {}).label || e.key).replace(/^./, (c) => c.toLowerCase())} (${weekdayName(e.at)})`);
+  }
+  const d = after.daysSinceLastSubstantial;
+  const dBefore = before.daysSinceLastSubstantial;
+  if (d !== null && d !== undefined && d <= picker.NOT_THIS_WEEK_DAYS && !(dBefore !== null && dBefore !== undefined && dBefore <= picker.NOT_THIS_WEEK_DAYS)) {
+    lines.push(`you touched base with them ${d === 0 ? 'today' : `${d} day${d === 1 ? '' : 's'} ago`}`);
+  }
+  if (!before.skipUntil && after.skipUntil) lines.push(`you said nothing until ${after.skipUntil}`);
+  if (fresh) {
+    const was = row.pick && row.pick.what ? row.pick.what.title : 'this one';
+    if (fresh.leftOut) lines.push(`the planner would now leave them out - ${fresh.reason}`);
+    else if (!fresh.what) lines.push(`the planner would now send nothing - ${fresh.reason}`);
+    else lines.push(`the planner would now pick "${fresh.what.title}" instead of "${was}" - ${fresh.reason}`);
+  }
+  return lines;
+}
+
+/** Same email? (kind + key - the opening and subject are Guy's to change). */
+function samePick(a, b) {
+  return !!(a && b && a.what && b.what && a.what.kind === b.what.kind && a.what.key === b.what.key);
+}
+
+/** Fresh facts + record for the given clients, read now - the sending-morning re-check's input. */
+async function freshFactsFor(coachClientId, week, clientIds) {
+  const now = Date.now();
+  const ctx = await gatherContext(coachClientId, week, { now, at: now });
+  const out = new Map();
+  for (const { card, client } of ctx.pairs) {
+    if (!clientIds.includes(client.clientId)) continue;
+    try { out.set(client.clientId, { facts: await factsFor(client, card, ctx), record: ctx.touchesByClient.get(client.clientId) || [] }); }
+    catch (e) { logger.warn(`fresh facts for ${client.clientId} failed: ${e.message}`); }
+  }
+  return out;
+}
+
+/**
+ * Send every row Guy approved (status approved or edited) for the week. Nothing in 'proposed' is
+ * ever sent here. Before anything goes, each row is checked twice, on fresh facts:
+ *   1. "who is never sent anything" (sendGuard) - a hard hold;
+ *   2. the picker, run again now - if it would no longer choose the email Guy approved (an event
+ *      that would now win, a call booked, the piece no longer fits) the row is HELD with what
+ *      changed, for Guy to keep or swap. `deps.keep` (a Set of clientIds) skips this one - Guy
+ *      has already looked and said keep.
+ * deps: mailer, planStore, touchStore, clientService (tests); onlyClientIds; keep; recheck (default
+ * true); freshFacts(clientIds) -> Map clientId -> { facts, record } (tests); shelf.
+ * Returns { sent, failed, held, results }.
  */
 async function sendApproved(coachClientId, week, deps = {}) {
   const mailer = deps.mailer || require('./seriesMailer');
@@ -508,16 +620,42 @@ async function sendApproved(coachClientId, week, deps = {}) {
   const { unsubscribeUrlFor } = require('./clientUnsubscribe');
   const results = [];
   let sent = 0; let failed = 0; let held = 0;
-  const plan = await ps.plansFor(week);
+  const only = deps.onlyClientIds ? new Set(deps.onlyClientIds) : null;
+  const keep = deps.keep || new Set();
+  const plan = (await ps.plansFor(week)).filter((row) => (!only || only.has(row.clientId))
+    && ['approved', 'edited'].includes(row.status) && row.pick && row.pick.what && EMAIL_KINDS.has(row.pick.what.kind));
+
+  // The picker re-check needs the live facts - read once, for everyone about to be sent.
+  const recheck = deps.recheck !== false;
+  const toCheck = plan.filter((r) => !keep.has(r.clientId)).map((r) => r.clientId);
+  let fresh = new Map();
+  if (recheck && toCheck.length) {
+    try { fresh = await (deps.freshFacts || ((ids) => freshFactsFor(coachClientId, week, ids)))(toCheck); }
+    catch (e) { logger.error(`sending-morning re-check could not read facts: ${e.message}`); }
+  }
+  const shelf = deps.shelf || content.listPieces();
+
+  const hold = async (row, reason, holdInfo) => {
+    held++;
+    results.push({ clientId: row.clientId, status: 'held', reason, changed: holdInfo.changed || [] });
+    await ps.setPlanStatus(week, row.clientId, 'held', { sendError: `held: ${reason}`, hold: { ...holdInfo, reason, at: new Date().toISOString() } });
+  };
+
   for (const row of plan) {
-    if (!['approved', 'edited'].includes(row.status)) continue;
-    if (!row.pick || !row.pick.what || !EMAIL_KINDS.has(row.pick.what.kind)) continue;
     const guard = await sendGuard(row.clientId, row, deps);
-    if (!guard.ok) {
-      held++;
-      results.push({ clientId: row.clientId, status: 'held', reason: guard.reason });
-      await ps.setPlanStatus(week, row.clientId, row.status, { sendError: `held: ${guard.reason}` });
-      continue;
+    if (!guard.ok) { await hold(row, guard.reason, { hard: true, changed: [guard.reason] }); continue; }
+
+    if (recheck && !keep.has(row.clientId)) {
+      const f = fresh.get(row.clientId);
+      if (!f) { await hold(row, 'the re-check could not read their facts this morning', { hard: false, changed: ['the re-check could not read their facts this morning'] }); continue; }
+      const now = Date.now();
+      const freshPick = picker.pickFor(f.facts, shelf, f.record, { now, order: MANIFEST.client });
+      if (!samePick(freshPick, row.pick)) {
+        const changed = whatChanged(row.facts || {}, f.facts, row, freshPick);
+        const suggestion = freshPick.what ? { kind: freshPick.what.kind, key: freshPick.what.key, title: freshPick.what.title, reason: freshPick.reason } : null;
+        await hold(row, `${changed[0] || 'something changed'} - keep or swap?`, { hard: !!freshPick.leftOut, changed, suggestion });
+        continue;
+      }
     }
     const client = guard.client;
     const unsubscribeUrl = unsubscribeUrlFor(client);
@@ -549,58 +687,123 @@ async function sendApproved(coachClientId, week, deps = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Guy's Monday preview (the only automatic email), and the tick
+// Monday morning: the send of what Guy approved, the report, the next week's build and its preview
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
 
+/** "Monday 2 Nov" for a plan week. */
+function dayLabel(week) {
+  const d = new Date(`${week}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? String(week) : new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'short' }).format(d);
+}
+
+function screenUrlFor() {
+  return process.env.CLIENT_TOUCH_SCREEN_URL || 'https://pb-webhook-server.vercel.app/coached-clients';
+}
+
 /** The preview email to Guy - every row, what it is and why, the opening - and the one link to the screen. */
-function buildPreview(plan, { screenUrl = '', autosend = false, vetoBy = 'Tuesday 9am' } = {}) {
+function buildPreview(plan, { screenUrl = '', autosend = false } = {}) {
   const picks = plan.rows.filter((r) => r.pick && r.pick.what);
   const quiet = plan.rows.filter((r) => r.status === 'nothing');
   const out = plan.rows.filter((r) => r.status === 'left-out');
+  const when = `${dayLabel(plan.weekOf)} at ${SEND_HOUR}am`;
   const parts = [];
-  parts.push(`<p>${picks.length} email${picks.length === 1 ? '' : 's'} prepared for the week of ${esc(plan.weekOf)}. ${autosend ? `They go out by themselves after ${esc(vetoBy)} unless you veto them on the screen.` : 'Nothing goes until you approve it on the screen and press Send approved.'}</p>`);
-  if (screenUrl) parts.push(`<p><a href="${esc(screenUrl)}">Open the Monday screen</a></p>`);
+  parts.push(`<p>${picks.length} email${picks.length === 1 ? '' : 's'} prepared for ${esc(when)}. ${autosend
+    ? 'Send-with-veto is ON: anything you have not skipped goes by itself then, after a fresh check.'
+    : `Approve them on the screen whenever suits during the week. Only what you approve goes - by itself, on ${esc(when)}, after a fresh check that nothing has changed. Anything not approved by then is not sent.`}</p>`);
+  if (screenUrl) parts.push(`<p><a href="${esc(screenUrl)}">Open the Monday emails</a></p>`);
   for (const r of picks) {
     parts.push(`<h3 style="margin-bottom:2px">${esc(r.facts && r.facts.clientName ? r.facts.clientName : r.clientId)} - ${esc(r.pick.what.title)}${r.pick.form === 'short' ? ' (short)' : ''}</h3>`);
     parts.push(`<p style="margin:0;color:#666">${esc(r.pick.reason)}</p>`);
     parts.push(`<p style="margin:6px 0 12px">${r.opening ? esc(r.opening) : '<i>(no opening drafted - needs your words)</i>'}</p>`);
   }
-  if (quiet.length) parts.push(`<p><b>Nothing this week:</b> ${quiet.map((r) => `${esc(r.facts && r.facts.clientName ? r.facts.clientName : r.clientId)} (${esc(r.pick ? r.pick.reason : '')})`).join('; ')}</p>`);
+  if (quiet.length) parts.push(`<p><b>Nothing that week:</b> ${quiet.map((r) => `${esc(r.facts && r.facts.clientName ? r.facts.clientName : r.clientId)} (${esc(r.pick ? r.pick.reason : '')})`).join('; ')}</p>`);
   if (out.length) parts.push(`<p><b>Left out:</b> ${out.map((r) => `${esc(r.facts && r.facts.clientName ? r.facts.clientName : r.clientId)} - ${esc(r.pick ? r.pick.reason : '')}`).join('; ')}</p>`);
-  return { subject: `Monday emails - ${plan.weekOf} - ${picks.length} to approve`, html: parts.join('\n') };
+  return { subject: `Monday emails - ${dayLabel(plan.weekOf)} - ${picks.length} to approve`, html: parts.join('\n') };
 }
 
-/** The scheduled Monday build + preview, and (autosend only) the Tuesday send. Claims in Postgres, so a restart never doubles. */
+/** Proposals Guy never approved roll off on the sending morning - marked lapsed, never sent. Returns those rows. */
+async function rollOff(week, deps = {}) {
+  const ps = deps.planStore || planStore;
+  const lapsed = [];
+  for (const r of await ps.plansFor(week)) {
+    if (r.status !== 'proposed' || !r.pick || !r.pick.what) continue;
+    await ps.setPlanStatus(week, r.clientId, 'lapsed');
+    lapsed.push(r);
+  }
+  return lapsed;
+}
+
+/** The short report to Guy after the Monday send: what went, what was held and why, what wasn't approved. Pure. */
+function buildSendReport({ result, lapsed = [], names = new Map(), titles = new Map(), screenUrl = '' }) {
+  const name = (id) => esc(names.get(id) || id);
+  const title = (id) => (titles.get(id) ? ` - ${esc(titles.get(id))}` : '');
+  const went = result.results.filter((r) => r.status === 'sent');
+  const held = result.results.filter((r) => r.status === 'held');
+  const failed = result.results.filter((r) => r.status === 'failed');
+  const parts = [];
+  parts.push(`<p><b>Went (${went.length}):</b> ${went.length ? went.map((r) => `${name(r.clientId)}${title(r.clientId)}`).join('; ') : 'nothing'}.</p>`);
+  if (held.length) {
+    parts.push(`<p><b>Held for you (${held.length})</b> - you approved these, but something changed since. Keep or swap on the screen:</p>`);
+    parts.push(`<ul>${held.map((r) => `<li>${name(r.clientId)}${title(r.clientId)}: ${esc((r.changed && r.changed.length ? r.changed : [r.reason]).join('; '))}</li>`).join('')}</ul>`);
+  }
+  if (failed.length) parts.push(`<p><b>Failed to send (${failed.length}):</b> ${failed.map((r) => `${name(r.clientId)} (${esc(r.error || 'error')})`).join('; ')}.</p>`);
+  parts.push(`<p><b>Not approved, so not sent (${lapsed.length}):</b> ${lapsed.length ? lapsed.map((r) => `${name(r.clientId)} - ${esc(r.pick.what.title)}`).join('; ') : 'none'}.</p>`);
+  if (screenUrl) parts.push(`<p><a href="${esc(screenUrl)}">Open the Monday emails</a></p>`);
+  return { subject: `Monday emails - ${went.length} went, ${held.length} held, ${lapsed.length} not approved`, html: parts.join('\n') };
+}
+
+/** The Monday-morning send: approved rows go after the fresh re-check, the rest roll off, Guy gets the report. */
+async function mondaySend(coachClientId, week, deps = {}) {
+  const ps = deps.planStore || planStore;
+  if (autosendOn()) {
+    // Send-with-veto (OFF by default): an untouched proposal with a passing opening counts as approved.
+    for (const r of await ps.plansFor(week)) {
+      if (r.status !== 'proposed' || !r.pick || !r.pick.what) continue;
+      if (r.pick.opening && r.pick.opening.check && r.pick.opening.check.ok) await ps.setPlanStatus(week, r.clientId, 'approved');
+    }
+  }
+  const before = await ps.plansFor(week);
+  const result = await sendApproved(coachClientId, week, deps);
+  const lapsed = await rollOff(week, deps);
+  let names = new Map();
+  try { names = new Map((await (deps.clientService || clientService).getAllClients()).map((c) => [c.clientId, c.clientName])); } catch (_) { /* ids will do */ }
+  const titles = new Map(before.filter((r) => r.pick && r.pick.what).map((r) => [r.clientId, r.pick.what.title]));
+  const report = buildSendReport({ result, lapsed, names, titles, screenUrl: screenUrlFor() });
+  const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
+  await send(report.subject, report.html);
+  return { ...result, lapsed: lapsed.length };
+}
+
+/**
+ * The scheduled Monday jobs, in order, each claimed in Postgres so a restart never doubles:
+ *   SEND_HOUR (8am)  - send what Guy approved for THIS Monday (re-checked), roll off the rest, report;
+ *   BUILD_HOUR (9am) - build NEXT Monday's plan and email Guy the preview, so he has the week to work through it.
+ */
 async function tick(deps = {}) {
   const coachClientId = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
-  const nowB = brisbaneNow();
-  const week = planStore.weekOf();
-  if (nowB.weekday === 'Mon' && nowB.hour >= BUILD_HOUR) {
-    if (await planStore.claimWeekly('build', week)) {
-      logger.info(`Monday build for ${week}`);
-      const plan = await buildPlan(coachClientId);
+  const nowB = deps.brisbaneNow || brisbaneNow();
+  const ps = deps.planStore || planStore;
+  const thisWeek = planStore.weekOf(deps.now || new Date());
+  const ran = [];
+  if (nowB.weekday !== 'Mon') return { ran: false };
+  if (nowB.hour >= SEND_HOUR && mondaySendOn() && await ps.claimWeekly('monday-send', thisWeek)) {
+    logger.info(`Monday send for ${thisWeek} - approved only, each re-checked on fresh facts`);
+    const res = await (deps.mondaySend || mondaySend)(coachClientId, thisWeek, deps);
+    ran.push({ ran: 'send', weekOf: thisWeek, ...res });
+  }
+  if (nowB.hour >= BUILD_HOUR) {
+    const nextWeek = planStore.addWeeks(thisWeek, 1);
+    if (await ps.claimWeekly('build', nextWeek)) {
+      logger.info(`Monday build for ${nextWeek} (a week ahead)`);
+      const plan = await (deps.buildPlan || buildPlan)(coachClientId, { weekOf: nextWeek });
       const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
-      const screenUrl = process.env.CLIENT_TOUCH_SCREEN_URL || 'https://pb-webhook-server.vercel.app/coached-clients';
-      const pv = buildPreview(plan, { screenUrl, autosend: autosendOn() });
+      const pv = buildPreview(plan, { screenUrl: screenUrlFor(), autosend: autosendOn() });
       await send(pv.subject, pv.html);
-      return { ran: 'build', weekOf: week, rows: plan.rows.length };
+      ran.push({ ran: 'build', weekOf: nextWeek, rows: plan.rows.length });
     }
   }
-  if (autosendOn() && nowB.weekday === 'Tue' && nowB.hour >= VETO_HOUR) {
-    if (await planStore.claimWeekly('autosend', week)) {
-      logger.info(`autosend for ${week} (CLIENT_TOUCH_AUTOSEND=on) - approving every untouched proposal with a passing opening`);
-      const plan = await planStore.plansFor(week);
-      for (const r of plan) {
-        if (r.status !== 'proposed' || !r.pick || !r.pick.what) continue;
-        const ok = r.pick.opening && r.pick.opening.check && r.pick.opening.check.ok;
-        if (ok) await planStore.setPlanStatus(week, r.clientId, 'approved');
-      }
-      const res = await sendApproved(coachClientId, week, deps);
-      return { ran: 'autosend', ...res };
-    }
-  }
-  return { ran: false };
+  return ran.length ? { ran: ran.map((r) => r.ran).join('+'), steps: ran } : { ran: false };
 }
 
 function startClientTouchPlanner() {
@@ -613,7 +816,7 @@ function startClientTouchPlanner() {
   };
   intervalHandle = setInterval(run, TICK_MS);
   setTimeout(run, 3 * 60 * 1000);
-  logger.info(`client-touch-planner: starting (build Mondays after ${BUILD_HOUR}:00 Brisbane; autosend ${autosendOn() ? 'ON - Tuesday 9am veto' : 'OFF - Guy approves every email'})`);
+  logger.info(`client-touch-planner: starting (Mondays Brisbane: approved emails go at ${SEND_HOUR}:00${mondaySendOn() ? '' : ' - OFF via CLIENT_TOUCH_MONDAY_SEND'}, next week built at ${BUILD_HOUR}:00; send-with-veto ${autosendOn() ? 'ON' : 'OFF - Guy approves every email'})`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -623,19 +826,152 @@ function improvementsFile() {
   try { return fs.readFileSync(path.join(__dirname, '..', 'content', 'one-pagers', 'IMPROVEMENTS.md'), 'utf8'); } catch (_) { return ''; }
 }
 
-/** The whole screen for a week: rows (with names), the left-out list, call-due list, improvements, the approval rate. */
+const KIND_LABEL = {
+  'one-pager': 'one-pager', habit: 'habit email', mindset: 'Mindset Mastery', setup: 'setup step',
+  'one-off': 'one-off', personal: 'personal', call: 'call', intro: 'introduction',
+};
+
+/** slug -> title for everything on the shelf, the orientation included. */
+function shelfTitles(shelf) {
+  const m = new Map((shelf || []).map((p) => [p.slug, p.title]));
+  m.set(ORIENTATION.slug, "What you've actually joined");
+  return m;
+}
+
+/** A plain title for a touch-record row. */
+function touchTitle(t, titles) {
+  const meta = t.meta || {};
+  if (t.kind === 'personal' && t.key === 'check-in') return 'Time for a call (an offer of times)';
+  if (t.kind === 'mindset') return t.key;
+  return titles.get(t.key) || meta.subject || t.key;
+}
+
+/** "Already had": every touch on record, newest first, with dates. Pure. */
+function historyLines(record, titles) {
+  return [...(record || [])]
+    .filter((t) => t && t.sent_at)
+    .sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at))
+    .map((t) => ({ at: new Date(t.sent_at).toISOString(), kind: t.kind, kindLabel: KIND_LABEL[t.kind] || t.kind, key: t.key, title: touchTitle(t, titles), form: t.form || null, source: t.source || null }));
+}
+
+/**
+ * One client's three columns: Already had | This Monday | Likely next. Pure - the plan row (with the
+ * facts it was built on), that client's touch record, the shelf, and the pins already set for the
+ * weeks ahead. "Likely next" treats this Monday's pick as sent unless Guy skipped it (or it lapsed).
+ */
+function outlookFor(row, record, shelf, { week, pinsAhead = [], order = MANIFEST.client } = {}) {
+  const titles = shelfTitles(shelf);
+  const alreadyHad = historyLines(record, titles);
+  const pick = row && row.pick;
+  const thisMonday = row ? {
+    weekOf: row.weekOf || week,
+    status: row.status,
+    what: pick && pick.what ? { ...pick.what } : null,
+    form: pick ? pick.form || null : null,
+    reason: pick ? pick.reason || '' : '',
+    opening: row.opening || '',
+    subject: row.subject || '',
+    hold: row.hold || null,
+  } : null;
+  let likelyNext = [];
+  if (row && row.facts) {
+    const goes = pick && pick.what && ['proposed', 'approved', 'edited', 'held'].includes(row.status);
+    const pinsByWeek = pinsAhead.map((m) => (m ? { pin: m.get(row.clientId) || null, pinForEveryone: m.get('*') || null } : {}));
+    const ahead = picker.projectAhead(row.facts, shelf, record || [], {
+      at: sendAt(row.weekOf || week).getTime(), order, thisPick: goes ? pick : null, pinsByWeek: [null, ...pinsByWeek],
+    });
+    likelyNext = ahead.map((p) => ({
+      weekOf: planStore.addWeeks(row.weekOf || week, p.weekIndex),
+      what: p.what ? { ...p.what } : null,
+      form: p.form || null,
+      reason: p.reason,
+      leftOut: !!p.leftOut,
+    }));
+  }
+  return { alreadyHad, thisMonday, likelyNext };
+}
+
+/** Plain text of one client's outlook - what wingguy_client_emails returns. Pure. */
+function formatOutlook(name, o) {
+  const d = (iso) => new Date(iso).toLocaleDateString('en-AU', { timeZone: 'Australia/Brisbane', day: 'numeric', month: 'short', year: 'numeric' });
+  const lines = [`${name} - weekly emails`, ''];
+  lines.push(`ALREADY HAD (${o.alreadyHad.length}, newest first):`);
+  if (!o.alreadyHad.length) lines.push('  nothing on the touch record yet');
+  for (const h of o.alreadyHad.slice(0, 40)) lines.push(`  ${d(h.at)} - ${h.title} (${h.kindLabel}${h.form === 'short' ? ', short' : ''})`);
+  if (o.alreadyHad.length > 40) lines.push(`  ...and ${o.alreadyHad.length - 40} older`);
+  lines.push('');
+  const t = o.thisMonday;
+  if (!t) lines.push('THIS MONDAY: no plan built for this client yet (press Build on the Monday emails panel).');
+  else {
+    const status = { proposed: 'waiting for your approval', approved: 'approved', edited: 'approved (your words)', skipped: 'skipped', sent: 'sent', failed: 'send failed', nothing: 'nothing that week', 'left-out': 'left out', held: 'HELD - something changed, keep or swap?', lapsed: 'not approved in time, not sent' }[t.status] || t.status;
+    lines.push(`THIS MONDAY (${dayLabel(t.weekOf)}) - ${status}:`);
+    lines.push(t.what ? `  ${t.what.title} (${KIND_LABEL[t.what.kind] || t.what.kind}${t.form === 'short' ? ', short' : ''})` : '  nothing');
+    if (t.reason) lines.push(`  why: ${t.reason}`);
+    if (t.opening) lines.push(`  opening: "${t.opening}"`);
+    if (t.hold && t.hold.changed && t.hold.changed.length) lines.push(`  what changed: ${t.hold.changed.join('; ')}`);
+  }
+  lines.push('');
+  lines.push('LIKELY NEXT - provisional, if nothing changes (a first call booked, a campaign running low and the like can jump the queue):');
+  if (!o.likelyNext.length) lines.push('  (needs this Monday\'s plan first)');
+  for (const n of o.likelyNext) lines.push(`  ${dayLabel(n.weekOf)} - ${n.what ? `${n.what.title} - ${n.reason}` : n.leftOut ? `left out - ${n.reason}` : `nothing - ${n.reason}`}`);
+  return lines.join('\n');
+}
+
+/** The pins already set for the weeks after `week` (index 0 = the Monday after). */
+async function pinsAheadOf(week, weeks = picker.LIKELY_WEEKS) {
+  return Promise.all(Array.from({ length: weeks }, (_, i) => planStore.pinsFor(planStore.addWeeks(week, i + 1))));
+}
+
+/** Everyone's touch record, grouped by client. */
+async function allTouchesByClient() {
+  const out = new Map();
+  for (const t of await touchStore.touchesSince(new Date('2000-01-01T00:00:00Z'))) {
+    if (!out.has(t.client_id)) out.set(t.client_id, []);
+    out.get(t.client_id).push(t);
+  }
+  return out;
+}
+
+/**
+ * "Show me Steve's emails" - one of the coach's clients, by name or id: Already had / This Monday /
+ * Likely next, for the Monday Guy is working towards (or `opts.week`). Coach-gated by the caller.
+ */
+async function clientEmails(coachClientId, query, opts = {}) {
+  const all = await clientService.getAllClients();
+  const mine = all.filter((c) => c.coach && c.coach === coachClientId);
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return { error: 'Which client? Pass a name or client id.' };
+  const exact = mine.filter((c) => (c.clientId || '').toLowerCase() === q || (c.clientName || '').toLowerCase() === q);
+  const hits = exact.length ? exact : mine.filter((c) => (c.clientId || '').toLowerCase().includes(q) || (c.clientName || '').toLowerCase().includes(q));
+  if (!hits.length) return { error: `No client of yours matched "${query}". Your clients: ${mine.map((c) => c.clientName).join(', ')}.` };
+  if (hits.length > 1) return { error: `"${query}" matched several: ${hits.map((c) => `${c.clientName} (${c.clientId})`).join(', ')}. Use the exact client id.` };
+  const client = hits[0];
+  const week = opts.week || planStore.planningWeek(new Date(), SEND_HOUR);
+  const [row, record, pinsAhead] = await Promise.all([
+    planStore.planFor(week, client.clientId), touchStore.touchesFor(client.clientId, { limit: 500 }), pinsAheadOf(week),
+  ]);
+  const outlook = outlookFor(row, record, content.listPieces(), { week, pinsAhead });
+  return { client: { clientId: client.clientId, clientName: client.clientName }, week, outlook, text: formatOutlook(client.clientName, outlook) };
+}
+
+/** The whole screen for a week: rows (with names and each client's three columns), the left-out list, call-due list, improvements, the approval rate. */
 async function screenFor(coachClientId, week) {
-  const [plan, rates, all, pins, skips] = await Promise.all([
+  const [plan, rates, all, pins, skips, touchesByClient, pinsAhead] = await Promise.all([
     planStore.plansFor(week), planStore.approvalRates(6), clientService.getAllClients(), planStore.pinsFor(week), planStore.skips(),
+    allTouchesByClient(), pinsAheadOf(week),
   ]);
   const byId = new Map(all.map((c) => [c.clientId, c]));
   const waiting = waitingImprovements(improvementsFile());
+  const pieces = content.listPieces();
   const rows = plan.filter((r) => byId.has(r.clientId) && byId.get(r.clientId).coach === coachClientId).map((r) => {
     const c = byId.get(r.clientId);
     const f = r.facts || {};
+    const outlook = outlookFor(r, touchesByClient.get(r.clientId) || [], pieces, { week, pinsAhead });
     return {
       ...r,
       bodyHtml: undefined, // heavy - the preview endpoint serves it
+      alreadyHad: outlook.alreadyHad,
+      likelyNext: outlook.likelyNext,
       clientName: c.clientName,
       group: f.group || null,
       lastCallAt: f.lastSessionAt || null,
@@ -654,6 +990,10 @@ async function screenFor(coachClientId, week) {
   const shelf = [{ slug: ORIENTATION.slug, title: "What you've actually joined", kind: 'way-of-thinking' }, ...MANIFEST.client.map((slug) => ({ slug, title: (titles.get(slug) || {}).title || slug, kind: (titles.get(slug) || {}).kind || '' }))];
   return {
     weekOf: week,
+    planningWeek: planStore.planningWeek(new Date(), SEND_HOUR),
+    sendAt: sendAt(week).toISOString(),
+    sendHour: SEND_HOUR,
+    mondaySend: mondaySendOn(),
     autosend: autosendOn(),
     shelf,
     rows,
@@ -668,6 +1008,8 @@ async function screenFor(coachClientId, week) {
       sent: rows.filter((r) => r.status === 'sent').length,
       nothing: rows.filter((r) => r.status === 'nothing').length,
       leftOut: rows.filter((r) => r.status === 'left-out').length,
+      held: rows.filter((r) => r.status === 'held').length,
+      waiting: rows.filter((r) => r.status === 'proposed' && r.pick && r.pick.what).length,
     },
   };
 }
@@ -686,13 +1028,25 @@ module.exports = {
   buildPlan,
   sendApproved,
   sendGuard,
+  mondaySend,
+  rollOff,
   screenFor,
+  clientEmails,
   previewFor,
   buildPreview,
+  buildSendReport,
   tick,
   startClientTouchPlanner,
   autosendOn,
+  mondaySendOn,
   // pure, tested
+  sendAt,
+  lastTouches,
+  whatChanged,
+  samePick,
+  historyLines,
+  outlookFor,
+  formatOutlook,
   campaignSignals,
   noteSettings,
   currentStop,
@@ -705,5 +1059,5 @@ module.exports = {
   buildBody,
   previewText,
   BUILD_HOUR,
-  VETO_HOUR,
+  SEND_HOUR,
 };

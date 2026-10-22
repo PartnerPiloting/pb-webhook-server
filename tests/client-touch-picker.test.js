@@ -267,6 +267,61 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
     assert.strictEqual(seen[1], 'begin-with-the-end-in-mind');
   });
 
+  console.log('weekly timing (the plan is built a week ahead and sent Monday 8am)');
+  await check("last Monday's weekly email, sent a few seconds after 8am, does not count against this Monday at 8am", () => {
+    const now = new Date(2026, 10, 2, 8, 0, 0);
+    const lastMonday = new Date(now.getTime() - 7 * 86400000 + 5000).toISOString();
+    const r = picker.pickFor(running({ group: 'onboarding', nextSetupStep: { key: 'setup:1', title: 'Connect your calendar' } }), SHELF, [{ kind: 'setup', key: 'setup:0', form: 'one-off', sent_at: lastMonday }], { now, order: ORDER });
+    assert.ok(r.what, r.reason); assert.strictEqual(r.what.key, 'setup:1');
+    assert.strictEqual(picker.emailsThisWeek([{ kind: 'one-pager', sent_at: lastMonday }], now.getTime()).length, 0);
+    assert.strictEqual(picker.emailsThisWeek([{ kind: 'one-pager', sent_at: new Date(now.getTime() - 2 * 86400000).toISOString() }], now.getTime()).length, 1);
+  });
+  await check('an offer of times went in the last two weeks -> no second offer yet; after that, offered again', () => {
+    const facts = running({ daysSinceLastCall: 60 });
+    const offer = (days) => ({ kind: 'personal', key: 'check-in', form: 'one-off', sent_at: daysAgo(days), source: 'planner' });
+    assert.notStrictEqual(run(facts, [offer(7)]).rule, 'time-for-a-call');
+    assert.strictEqual(run(facts, [offer(15)]).rule, 'time-for-a-call');
+  });
+
+  console.log('likely next (the picker run forward, if nothing changes)');
+  await check("five weeks ahead, each earlier pick treated as sent - this Monday's pick is never offered again", () => {
+    const facts = running({ daysSinceLastSubstantial: 20, daysSinceLastCall: 10 });
+    const thisPick = run(facts, []);
+    assert.strictEqual(thisPick.what.key, ORIENTATION.slug);
+    const ahead = picker.projectAhead(facts, SHELF, [], { at: NOW, order: ORDER, thisPick });
+    assert.strictEqual(ahead.length, picker.LIKELY_WEEKS);
+    const keys = ahead.map((p) => p.what && p.what.key);
+    assert.deepStrictEqual(keys.slice(0, 3), ['begin', 'energy', 'bigpicture']); // email 4 is the mindset rhythm
+    assert.ok(!keys.includes(ORIENTATION.slug));
+    assert.strictEqual(new Set(keys).size, keys.length);
+    assert.strictEqual(ahead[0].at, new Date(NOW.getTime() + 7 * 86400000).toISOString());
+  });
+  await check('a skipped Monday (no thisPick) leaves the run where it was', () => {
+    const facts = running({ daysSinceLastSubstantial: 20, daysSinceLastCall: 10 });
+    const ahead = picker.projectAhead(facts, SHELF, [], { at: NOW, order: ORDER });
+    assert.strictEqual(ahead[0].what.key, ORIENTATION.slug);
+  });
+  await check('the call clock keeps running: the six-weekly call comes up in the week it falls due, then not again for two weeks', () => {
+    const facts = running({ daysSinceLastSubstantial: 20, daysSinceLastCall: 30 });
+    const ahead = picker.projectAhead(facts, SHELF, [], { at: NOW, order: ORDER, thisPick: run(facts, []) });
+    const calls = ahead.filter((p) => p.rule === 'time-for-a-call');
+    assert.strictEqual(ahead.indexOf(calls[0]), 1); // 30 + 14 = 44 days >= 42
+    assert.notStrictEqual(ahead[2].rule, 'time-for-a-call'); // the offer is waiting for an answer
+  });
+  await check('an event only counts in the weeks it is still recent; a pin for a later week is honoured', () => {
+    const facts = running({ daysSinceLastSubstantial: 20, todayHasRecords: true, events: [{ key: 'today-first-records', at: daysAgo(3) }] });
+    const ahead = picker.projectAhead(facts, SHELF, [{ kind: 'one-pager', key: 'urgent', sent_at: daysAgo(30) }], {
+      at: NOW, order: ORDER, pinsByWeek: [null, null, null, { pin: { kind: 'one-pager', key: 'nodes', title: 'nodes' } }],
+    });
+    assert.strictEqual(ahead[0].rule, 'event'); // week 1 - the event is 10 days old
+    assert.ok(ahead.slice(1).every((p) => p.rule !== 'event')); // from week 2 it is over 14 days old
+    assert.strictEqual(ahead[2].what.key, 'nodes'); assert.strictEqual(ahead[2].rule, 'pinned');
+  });
+  await check('someone left out stays left out in every week ahead', () => {
+    const ahead = picker.projectAhead(running({ unsubscribed: true }), SHELF, [], { at: NOW, order: ORDER });
+    assert.ok(ahead.every((p) => p.leftOut));
+  });
+
   console.log('');
   if (failures) { console.error(`${failures} failing`); process.exit(1); }
   console.log('all passing');

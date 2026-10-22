@@ -102,7 +102,7 @@ const routes = require('../routes/clientTouchRoutes');
 
   await check('an approved row is sent through the series mailer with the unsubscribe link, and recorded as a touch', async () => {
     const mailer = mailerOk(); const touch = mkTouch(); const rows = [row()];
-    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: touch, planStore: mkStore(rows), clientService: { getClientById: async () => client() } });
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: touch, planStore: mkStore(rows), clientService: { getClientById: async () => client() } });
     assert.strictEqual(out.sent, 1);
     assert.strictEqual(mailer.sent[0].to, 'rick@example.com');
     assert.ok(mailer.sent[0].unsubscribeUrl.includes('tok123456789012345678'));
@@ -112,43 +112,43 @@ const routes = require('../routes/clientTouchRoutes');
   });
   await check('a proposed row is NEVER sent - only approved or edited', async () => {
     const mailer = mailerOk();
-    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore([row({ status: 'proposed' }), row({ status: 'skipped' }), row({ status: 'nothing', pick: null })]), clientService: { getClientById: async () => client() } });
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: mkTouch(), planStore: mkStore([row({ status: 'proposed' }), row({ status: 'skipped' }), row({ status: 'nothing', pick: null })]), clientService: { getClientById: async () => client() } });
     assert.strictEqual(out.sent, 0); assert.strictEqual(mailer.sent.length, 0);
   });
   await check('an edited row sends Guy\'s words', async () => {
     const mailer = mailerOk();
-    await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore([row({ status: 'edited', opening: 'My own line.' })]), clientService: { getClientById: async () => client() } });
+    await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: mkTouch(), planStore: mkStore([row({ status: 'edited', opening: 'My own line.' })]), clientService: { getClientById: async () => client() } });
     assert.ok(mailer.sent[0].html.includes('My own line.'));
   });
   await check('the day-of-sending check: a client paused since Monday is held, not sent', async () => {
     const mailer = mailerOk(); const rows = [row()];
-    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => client({ status: 'Paused' }) } });
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => client({ status: 'Paused' }) } });
     assert.strictEqual(out.held, 1); assert.strictEqual(mailer.sent.length, 0); assert.match(rows[0].sendError, /not an active client/);
   });
   await check('unsubscribed since Monday -> held; no token -> held', async () => {
     const mailer = mailerOk();
-    const a = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore([row()]), clientService: { getClientById: async () => client({ emailUnsubscribed: true }) } });
-    const b = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore([row()]), clientService: { getClientById: async () => client({ emailUnsubToken: null }) } });
+    const a = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: mkTouch(), planStore: mkStore([row()]), clientService: { getClientById: async () => client({ emailUnsubscribed: true }) } });
+    const b = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: mkTouch(), planStore: mkStore([row()]), clientService: { getClientById: async () => client({ emailUnsubToken: null }) } });
     assert.strictEqual(a.held + b.held, 2); assert.strictEqual(mailer.sent.length, 0);
   });
   await check('already had the full piece (recorded since Monday) -> held; something already went today -> held', async () => {
     const mailer = mailerOk();
     const t1 = { ...mkTouch(), hasHad: async () => ({ sent_at: '2026-10-20' }) };
-    const a = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: t1, planStore: mkStore([row()]), clientService: { getClientById: async () => client() } });
+    const a = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: t1, planStore: mkStore([row()]), clientService: { getClientById: async () => client() } });
     const t2 = { ...mkTouch(), touchesFor: async () => [{ kind: 'personal', sent_at: new Date().toISOString() }] };
-    const b = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: t2, planStore: mkStore([row()]), clientService: { getClientById: async () => client() } });
+    const b = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: t2, planStore: mkStore([row()]), clientService: { getClientById: async () => client() } });
     assert.strictEqual(a.held, 1); assert.strictEqual(b.held, 1); assert.strictEqual(mailer.sent.length, 0);
   });
   await check('a failed send is marked failed and NOT recorded as a touch (it comes round again)', async () => {
     const touch = mkTouch(); const rows = [row()];
-    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer: { sendSeriesEmail: async () => ({ ok: false, error: 'Mailgun 500' }) }, touchStore: touch, planStore: mkStore(rows), clientService: { getClientById: async () => client() } });
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer: { sendSeriesEmail: async () => ({ ok: false, error: 'Mailgun 500' }) }, touchStore: touch, planStore: mkStore(rows), clientService: { getClientById: async () => client() } });
     assert.strictEqual(out.failed, 1); assert.strictEqual(touch.recorded.length, 0); assert.strictEqual(rows[0].status, 'failed');
   });
   await check('a call offer is recorded as a personal touch (it is Guy writing), and a body that is not built is held', async () => {
     const touch = mkTouch(); const mailer = mailerOk();
-    await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: touch, planStore: mkStore([row({ pick: { what: { kind: 'call', key: 'check-in' }, form: 'one-off', rule: 'time-for-a-call', reason: 'r', body: { title: 'Time for a catch-up', dek: '' } } })]), clientService: { getClientById: async () => client() } });
+    await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: touch, planStore: mkStore([row({ pick: { what: { kind: 'call', key: 'check-in' }, form: 'one-off', rule: 'time-for-a-call', reason: 'r', body: { title: 'Time for a catch-up', dek: '' } } })]), clientService: { getClientById: async () => client() } });
     assert.strictEqual(touch.recorded[0].kind, 'personal');
-    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore([row({ pick: { what: { kind: 'one-off', key: 'x' }, form: 'one-off', rule: 'pinned', reason: 'r', body: { title: 'x', dek: '', missing: true } } })]), clientService: { getClientById: async () => client() } });
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { recheck: false, mailer, touchStore: mkTouch(), planStore: mkStore([row({ pick: { what: { kind: 'one-off', key: 'x' }, form: 'one-off', rule: 'pinned', reason: 'r', body: { title: 'x', dek: '', missing: true } } })]), clientService: { getClientById: async () => client() } });
     assert.strictEqual(out.held, 1);
   });
 
@@ -169,8 +169,191 @@ const routes = require('../routes/clientTouchRoutes');
     assert.ok(pv.subject.includes('1 to approve'));
     assert.ok(pv.html.includes('Rick Wong - Begin (short)')); assert.ok(pv.html.includes('next in the run')); assert.ok(pv.html.includes('Good to talk.'));
     assert.ok(pv.html.includes('Steve Nelson')); assert.ok(pv.html.includes('Paul X - unsubscribed'));
-    assert.ok(pv.html.includes('Nothing goes until you approve'));
-    assert.ok(planner.buildPreview(plan, { autosend: true }).html.includes('unless you veto'));
+    assert.ok(pv.html.includes('Only what you approve goes')); assert.ok(pv.html.includes('Anything not approved by then is not sent'));
+    assert.ok(planner.buildPreview(plan, { autosend: true }).html.includes('Send-with-veto is ON'));
+  });
+
+  console.log('a week ahead');
+  const planStore = require('../services/clientTouchPlanStore');
+  await check('the plan Guy works on: before 8am on a Monday it is today; from 8am Monday all week it is the Monday after', () => {
+    assert.strictEqual(planStore.planningWeek(new Date('2026-10-25T21:59:00Z')), '2026-10-26'); // Mon 7:59am Brisbane
+    assert.strictEqual(planStore.planningWeek(new Date('2026-10-25T22:00:00Z')), '2026-11-02'); // Mon 8:00am
+    assert.strictEqual(planStore.planningWeek(new Date('2026-10-22T03:00:00Z')), '2026-10-26'); // Thursday
+    assert.strictEqual(planStore.planningWeek(new Date('2026-11-01T10:00:00Z')), '2026-11-02'); // Sunday 8pm
+    assert.strictEqual(planStore.addWeeks('2026-10-26', 1), '2026-11-02');
+    assert.strictEqual(planStore.addWeeks('2026-11-02', -1), '2026-10-26');
+  });
+  await check('the sending moment is that Monday at 8am Brisbane', () => {
+    assert.strictEqual(planner.sendAt('2026-11-02').toISOString(), '2026-11-01T22:00:00.000Z');
+  });
+  await check("the planner's own weekly emails never make a week 'not this week' - only Guy's own touches do", () => {
+    const t = planner.lastTouches([
+      { kind: 'one-pager', sent_at: '2026-10-26T22:00:05Z', source: 'planner' },
+      { kind: 'habit', sent_at: '2026-10-13T22:00:00Z', source: 'backfill' },
+      { kind: 'mindset', sent_at: '2026-10-28T00:00:00Z', source: 'backfill' },
+    ]);
+    assert.strictEqual(new Date(t.lastTouchAt).toISOString(), '2026-10-26T22:00:05.000Z');
+    assert.strictEqual(new Date(t.lastPersonal).toISOString(), '2026-10-13T22:00:00.000Z');
+  });
+
+  console.log('the sending-morning re-check');
+  const SHELF = require('../services/onePagerContent').listPieces();
+  const facts = (over = {}) => ({
+    clientId: 'Steve-Nelson', clientName: 'Steve Nelson', status: 'Active', coachingStatus: 'Graduated', group: 'running',
+    billingLapsed: false, unsubscribed: false, hasUnsubToken: true, address: 'steve@example.com', bounced: false, skipUntil: null, skipThisWeek: false,
+    lastInviteSent: null, seriesStartDate: '2026-10-01', daysSinceLastCall: 10, daysSinceLastSubstantial: 10, sessionBooked: false,
+    todayHasRecords: false, events: [], callProblems: [], stuckStop: null, stuckDays: 0, quietOrBusy: false, note: { length: 'full' },
+    pin: null, pinForEveryone: null, nextSetupStep: null, ...over,
+  });
+  const picker = require('../services/clientTouchPicker');
+  const orientation = picker.pickFor(facts(), SHELF, [], {});
+  const approvedRow = (over = {}) => ({ clientId: 'Steve-Nelson', status: 'approved', subject: 's', opening: 'Hello.', bodyHtml: '<p>B</p>', facts: facts(), pick: { ...orientation, body: { title: 'T', dek: '' } }, ...over });
+  const steve = () => client({ clientId: 'Steve-Nelson', clientName: 'Steve Nelson', clientFirstName: 'Steve', clientEmailAddress: 'steve@example.com' });
+
+  await check('nothing changed -> the approved email goes', async () => {
+    const mailer = mailerOk(); const rows = [approvedRow()];
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF,
+      freshFacts: async () => new Map([['Steve-Nelson', { facts: facts(), record: [] }]]) });
+    assert.strictEqual(out.sent, 1); assert.strictEqual(rows[0].status, 'sent');
+  });
+  await check('an event that would now win -> HELD with what changed, nothing sent; the panel can offer the new pick', async () => {
+    const mailer = mailerOk(); const rows = [approvedRow()];
+    const fresh = facts({ todayHasRecords: true, lastInviteSent: '2026-10-21T23:00:00Z', events: [{ key: 'today-first-records', at: '2026-10-22T00:00:00Z' }] });
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF,
+      freshFacts: async () => new Map([['Steve-Nelson', { facts: fresh, record: [] }]]) });
+    assert.strictEqual(out.sent, 0); assert.strictEqual(out.held, 1); assert.strictEqual(mailer.sent.length, 0);
+    assert.strictEqual(rows[0].status, 'held');
+    assert.ok(rows[0].hold.changed.some((l) => l === 'their invitations started going out on Thursday'), rows[0].hold.changed.join(' | '));
+    assert.ok(rows[0].hold.changed.some((l) => /today tab first has records/i.test(l)));
+    assert.ok(rows[0].hold.suggestion && rows[0].hold.suggestion.key, 'the new pick is offered');
+    assert.match(rows[0].sendError, /keep or swap\?$/);
+    assert.strictEqual(rows[0].hold.hard, false);
+  });
+  await check('Guy wrote to them since he approved -> held ("you touched base")', async () => {
+    const rows = [approvedRow()];
+    await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer: mailerOk(), touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF,
+      freshFacts: async () => new Map([['Steve-Nelson', { facts: facts({ daysSinceLastSubstantial: 3 }), record: [] }]]) });
+    assert.strictEqual(rows[0].status, 'held');
+    assert.ok(rows[0].hold.changed.includes('you touched base with them 3 days ago'));
+  });
+  await check('"keep" sends it anyway (Guy has looked) - the never-send checks still run', async () => {
+    const mailer = mailerOk(); const rows = [approvedRow()];
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF,
+      keep: new Set(['Steve-Nelson']), onlyClientIds: ['Steve-Nelson'], freshFacts: async () => { throw new Error('not read for a keep'); } });
+    assert.strictEqual(out.sent, 1);
+    const rows2 = [approvedRow()];
+    const out2 = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer, touchStore: mkTouch(), planStore: mkStore(rows2), clientService: { getClientById: async () => client({ status: 'Paused' }) }, shelf: SHELF, keep: new Set(['Steve-Nelson']) });
+    assert.strictEqual(out2.sent, 0); assert.strictEqual(rows2[0].hold.hard, true);
+  });
+  await check('facts unreadable on the morning -> held, never sent blind', async () => {
+    const rows = [approvedRow()];
+    const out = await planner.sendApproved('Guy-Wilson', '2026-10-26', { mailer: mailerOk(), touchStore: mkTouch(), planStore: mkStore(rows), clientService: { getClientById: async () => steve() }, shelf: SHELF, freshFacts: async () => new Map() });
+    assert.strictEqual(out.held, 1); assert.strictEqual(rows[0].status, 'held');
+  });
+  await check('what changed, in plain words: status, unsubscribed, address, a booked session', () => {
+    const lines = planner.whatChanged(facts(), facts({ status: 'Paused', unsubscribed: true, address: 'new@example.com', sessionBooked: true, nextSessionAt: '2026-10-28T03:00:00Z' }), {}, null);
+    assert.deepStrictEqual(lines, ['their Status is now Paused', 'they unsubscribed from the weekly emails', 'their address changed (steve@example.com -> new@example.com)', 'a session with you is now booked (2026-10-28)']);
+  });
+
+  console.log('Monday morning: send the approved, roll off the rest, report');
+  await check('unapproved proposals roll off as lapsed - never sent', async () => {
+    const rows = [approvedRow({ status: 'proposed' }), approvedRow({ clientId: 'B', status: 'approved' }), approvedRow({ clientId: 'C', status: 'nothing', pick: { what: null } })];
+    const lapsed = await planner.rollOff('2026-10-26', { planStore: mkStore(rows) });
+    assert.deepStrictEqual(lapsed.map((r) => r.clientId), ['Steve-Nelson']);
+    assert.strictEqual(rows[0].status, 'lapsed'); assert.strictEqual(rows[1].status, 'approved'); assert.strictEqual(rows[2].status, 'nothing');
+  });
+  await check("the report says what went, what was held and why, and what wasn't approved", () => {
+    const r = planner.buildSendReport({
+      result: { results: [{ clientId: 'A', status: 'sent' }, { clientId: 'B', status: 'held', changed: ['their invitations started going out on Wednesday'] }] },
+      lapsed: [{ clientId: 'C', pick: { what: { title: 'Nodes' } } }],
+      names: new Map([['A', 'Ann'], ['B', 'Bob'], ['C', 'Cat']]), titles: new Map([['A', 'Begin'], ['B', 'Energy']]),
+    });
+    assert.strictEqual(r.subject, 'Monday emails - 1 went, 1 held, 1 not approved');
+    assert.ok(r.html.includes('Ann - Begin')); assert.ok(r.html.includes('Bob - Energy: their invitations started going out on Wednesday'));
+    assert.ok(r.html.includes('Cat - Nodes')); assert.ok(!/[–—]/.test(r.html));
+  });
+  await check('the Monday send emails Guy the report after sending', async () => {
+    const rows = [approvedRow(), approvedRow({ clientId: 'X', status: 'proposed' })];
+    const emails = [];
+    const out = await planner.mondaySend('Guy-Wilson', '2026-10-26', { mailer: mailerOk(), touchStore: mkTouch(), planStore: mkStore(rows), shelf: SHELF,
+      clientService: { getClientById: async () => steve(), getAllClients: async () => [steve()] },
+      freshFacts: async () => new Map([['Steve-Nelson', { facts: facts(), record: [] }]]), sendAlertEmail: async (s, h) => emails.push({ s, h }) });
+    assert.strictEqual(out.sent, 1); assert.strictEqual(out.lapsed, 1); assert.strictEqual(emails.length, 1);
+    assert.match(emails[0].s, /1 went, 0 held, 1 not approved/);
+  });
+  await check('the tick: Monday 8am sends THIS Monday; 9am builds NEXT Monday; other days nothing; each claimed once', async () => {
+    const claims = new Set(); const calls = [];
+    const ps = { claimWeekly: async (k, w) => { const id = `${k}:${w}`; if (claims.has(id)) return false; claims.add(id); return true; } };
+    const deps = (hour, weekday = 'Mon') => ({ now: new Date('2026-10-25T23:30:00Z'), brisbaneNow: { hour, weekday }, planStore: ps,
+      mondaySend: async (c, w) => { calls.push(`send ${w}`); return { sent: 0 }; },
+      buildPlan: async (c, o) => { calls.push(`build ${o.weekOf}`); return { weekOf: o.weekOf, rows: [] }; },
+      sendAlertEmail: async () => {} });
+    assert.strictEqual((await planner.tick(deps(7))).ran, false);
+    assert.strictEqual((await planner.tick(deps(8))).ran, 'send');
+    assert.strictEqual((await planner.tick(deps(9))).ran, 'build');
+    assert.strictEqual((await planner.tick(deps(10))).ran, false);
+    assert.strictEqual((await planner.tick(deps(9, 'Tue'))).ran, false);
+    assert.deepStrictEqual(calls, ['send 2026-10-26', 'build 2026-11-02']);
+  });
+  await check('CLIENT_TOUCH_MONDAY_SEND=off stops the Monday send (the build still runs)', async () => {
+    process.env.CLIENT_TOUCH_MONDAY_SEND = 'off';
+    const calls = [];
+    const ps = { claimWeekly: async () => true };
+    const out = await planner.tick({ now: new Date('2026-10-25T23:30:00Z'), brisbaneNow: { hour: 9, weekday: 'Mon' }, planStore: ps,
+      mondaySend: async () => { calls.push('send'); return {}; }, buildPlan: async (c, o) => { calls.push('build'); return { weekOf: o.weekOf, rows: [] }; }, sendAlertEmail: async () => {} });
+    delete process.env.CLIENT_TOUCH_MONDAY_SEND;
+    assert.deepStrictEqual(calls, ['build']); assert.strictEqual(out.ran, 'build');
+  });
+
+  console.log('already had | this Monday | likely next');
+  await check("the three columns for one client: history newest first, this Monday's pick, five weeks ahead", () => {
+    const record = [
+      { kind: 'mindset', key: 'Mindset Mastery: Givers', sent_at: '2026-03-01T00:00:00Z', source: 'backfill' },
+      { kind: 'habit', key: 'habit-1', sent_at: '2026-10-15T21:00:00Z', source: 'backfill', meta: { subject: 'A few minutes a morning' } },
+    ];
+    const row = approvedRow({ weekOf: '2026-10-26', status: 'proposed' });
+    const o = planner.outlookFor(row, record, SHELF, { week: '2026-10-26' });
+    assert.deepStrictEqual(o.alreadyHad.map((h) => h.title), ['A few minutes a morning', 'Mindset Mastery: Givers']);
+    assert.strictEqual(o.thisMonday.what.key, orientation.what.key); assert.strictEqual(o.thisMonday.status, 'proposed');
+    assert.strictEqual(o.likelyNext.length, 5);
+    assert.strictEqual(o.likelyNext[0].weekOf, '2026-11-02');
+    assert.ok(o.likelyNext.every((n) => !n.what || n.what.key !== orientation.what.key));
+    const text = planner.formatOutlook('Steve Nelson', o);
+    assert.ok(text.includes('ALREADY HAD (2')); assert.ok(text.includes('THIS MONDAY (Monday 26 Oct) - waiting for your approval'));
+    assert.ok(text.includes('LIKELY NEXT - provisional')); assert.ok(!/[–—]/.test(text));
+  });
+  await check('a skipped Monday is not counted as sent in "likely next"; a held one shows what changed', () => {
+    const skipped = planner.outlookFor(approvedRow({ weekOf: '2026-10-26', status: 'skipped' }), [], SHELF, { week: '2026-10-26' });
+    assert.strictEqual(skipped.likelyNext[0].what.key, orientation.what.key);
+    const held = planner.formatOutlook('Steve', planner.outlookFor(approvedRow({ weekOf: '2026-10-26', status: 'held', hold: { changed: ['their invitations started going out on Wednesday'] } }), [], SHELF, { week: '2026-10-26' }));
+    assert.ok(held.includes('HELD')); assert.ok(held.includes('what changed: their invitations started going out on Wednesday'));
+  });
+  await check('no plan yet -> says so, and asks for the build', () => {
+    const o = planner.outlookFor(null, [], SHELF, { week: '2026-10-26' });
+    assert.ok(planner.formatOutlook('X', o).includes('no plan built for this client yet'));
+  });
+
+  console.log('"show me Steve\'s emails" from any chat (wingguy_client_emails)');
+  await check('the tool answers for the coach\'s own client only, and says it is read-only', async () => {
+    const cs = require('../services/clientService');
+    const real = cs.getAllClients;
+    cs.getAllClients = async () => [
+      { clientId: 'Steve-Nelson', clientName: 'Steve Nelson', coach: 'Guy-Wilson' },
+      { clientId: 'Other-Person', clientName: 'Other Person', coach: 'Someone-Else' },
+    ];
+    try {
+      const def = require('../services/wingguyRulesMcp').TOOL_DEFS.find((d) => d.name === 'wingguy_client_emails');
+      assert.ok(def, 'tool registered');
+      assert.ok(/show me Steve's emails/.test(def.description));
+      const ok = await def.run({ client: 'steve' }, 'Guy-Wilson');
+      assert.ok(!ok.isError, ok.text);
+      assert.ok(ok.text.startsWith('Steve Nelson - weekly emails')); assert.ok(ok.text.includes('ALREADY HAD')); assert.ok(ok.text.includes('LIKELY NEXT'));
+      assert.ok(ok.text.includes('Monday emails panel'));
+      const other = await def.run({ client: 'Other Person' }, 'Guy-Wilson');
+      assert.strictEqual(other.isError, true);
+      const asClient = await def.run({ client: 'Steve' }, 'Steve-Nelson');
+      assert.strictEqual(asClient.isError, true);
+    } finally { cs.getAllClients = real; }
   });
 
   console.log('the "why not" box');

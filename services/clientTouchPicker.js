@@ -57,6 +57,9 @@ const REINFORCE_AFTER_WEEKS = 8;   // a short re-send, never within 8 weeks of t
 const CALL_EVERY_DAYS = 42;        // the six-weekly check-in
 const MAX_PER_WEEK = 2;            // at most two emails a week from Guy (habit first)
 const EMAIL_KINDS = ['one-pager', 'habit', 'setup', 'one-off', 'personal'];
+const WEEK_WINDOW_MS = 6.5 * DAY;  // see emailsThisWeek
+const CALL_OFFER_WAIT_DAYS = 14;   // an offer of times went - give them two weeks to answer before another
+const LIKELY_WEEKS = 5;            // how far "likely next" looks ahead
 
 const ORIENTATION_PIECE = { slug: ORIENTATION.slug, title: "What you've actually joined", labels: ORIENTATION };
 
@@ -75,9 +78,13 @@ function weekStart(now) {
   return d.getTime();
 }
 
-/** Emails in the last seven days - "a week" is rolling, so Monday never forgets Saturday. */
+/**
+ * Emails in the last week - "a week" is rolling, so Monday never forgets Saturday. The window is
+ * six and a half days, not seven: last Monday's weekly email went a few seconds after 8am, and
+ * this Monday's check runs at 8am - a seven-day window would count it and starve every other week.
+ */
 function emailsThisWeek(record, now) {
-  const start = now - 7 * DAY;
+  const start = now - WEEK_WINDOW_MS;
   return record.filter((r) => EMAIL_KINDS.includes(r.kind) && ms(r.sent_at) !== null && ms(r.sent_at) >= start);
 }
 
@@ -217,10 +224,15 @@ function resentRecently(record, piece, now) {
   return rows.some((r) => ms(r.sent_at) !== null && now - ms(r.sent_at) < REINFORCE_AFTER_WEEKS * 7 * DAY);
 }
 
-/** Six weeks since the last call and nothing booked -> "time for a call" (Guy approves the offer). */
-function callDue(facts) {
+/**
+ * Six weeks since the last call and nothing booked -> "time for a call" (Guy approves the offer).
+ * Not again while an offer is still waiting for an answer - one offer, then two weeks' grace.
+ */
+function callDue(facts, record = [], now = Date.now()) {
   if (facts.group !== 'running') return false;
   if (facts.sessionBooked) return false;
+  const offered = record.some((r) => r.kind === 'personal' && r.key === 'check-in' && ms(r.sent_at) !== null && now - ms(r.sent_at) < CALL_OFFER_WAIT_DAYS * DAY);
+  if (offered) return false;
   if (facts.daysSinceLastCall === null || facts.daysSinceLastCall === undefined) return true; // never had one
   return facts.daysSinceLastCall >= CALL_EVERY_DAYS;
 }
@@ -368,7 +380,7 @@ function pickFor(facts, shelf, record, opts = {}) {
   if (ev) return ev;
 
   // Time for a call - six weeks since the last one, nothing booked (running clients only).
-  if (callDue(facts)) return callPick(facts);
+  if (callDue(facts, rows, now)) return callPick(facts);
 
   // The opening run starts the week the first invitations actually go out (Last Invite Sent
   // fills in), or when Guy starts it early (Email Series Start Date). Not the machine's IDLE word.
@@ -403,8 +415,56 @@ function pickFor(facts, shelf, record, opts = {}) {
   return nothing('nothing-left', 'everything on the shelf has gone out and nothing is due a reminder yet');
 }
 
+/** The touch row a pick would leave behind once sent (the planner's own send). */
+function simulatedTouch(p, at) {
+  return { kind: p.what.kind === 'call' ? 'personal' : p.what.kind, key: p.what.key, form: p.form, sent_at: new Date(at).toISOString(), source: 'planner', simulated: true };
+}
+
+/**
+ * "Likely next": the picks the following weeks would get IF NOTHING CHANGES - the picker run
+ * forward on today's facts, each earlier pick treated as sent. Provisional by nature: an event
+ * (a first call booked, a campaign running low) can jump the queue any week.
+ *
+ * @param {object} facts     the facts the week's plan was built on (as at `at`, the sending morning)
+ * @param {object[]} shelf
+ * @param {object[]} record  this client's real touch rows
+ * @param {{ at, order?, weeks?, thisPick?, pinsByWeek? }} opts
+ *   thisPick     this Monday's pick - treated as sent at `at` (omit when nothing is going this week)
+ *   pinsByWeek   [weekIndex] -> { pin, pinForEveryone } for the weeks ahead (1 = the Monday after)
+ * @returns {{ weekIndex, at, what, form, rule, reason, leftOut? }[]}
+ */
+function projectAhead(facts, shelf, record, opts = {}) {
+  const start = ms(opts.at) !== null ? ms(opts.at) : Date.now();
+  const weeks = opts.weeks || LIKELY_WEEKS;
+  const rows = Array.isArray(record) ? [...record] : [];
+  if (opts.thisPick && opts.thisPick.what) rows.push(simulatedTouch(opts.thisPick, start));
+  const plus = (v, d) => (v === null || v === undefined ? v : v + d);
+  const out = [];
+  for (let i = 1; i <= weeks; i++) {
+    const at = start + i * 7 * DAY;
+    const shift = i * 7;
+    const pins = (opts.pinsByWeek && opts.pinsByWeek[i]) || {};
+    const wf = {
+      ...facts,
+      daysSinceLastCall: plus(facts.daysSinceLastCall, shift),
+      daysSinceLastSubstantial: plus(facts.daysSinceLastSubstantial, shift),
+      stuckDays: facts.stuckStop ? plus(facts.stuckDays || 0, shift) : facts.stuckDays,
+      events: (facts.events || []).filter((ev) => ms(ev.at) !== null && daysBetween(at, ms(ev.at)) <= 14),
+      skipThisWeek: false,
+      pin: pins.pin || null,
+      pinForEveryone: pins.pinForEveryone || null,
+    };
+    const p = pickFor(wf, shelf, rows, { now: at, order: opts.order });
+    out.push({ weekIndex: i, at: new Date(at).toISOString(), ...p });
+    if (p.what) rows.push(simulatedTouch(p, at));
+  }
+  return out;
+}
+
 module.exports = {
   pickFor,
+  projectAhead,
+  simulatedTouch,
   neverSentReason,
   callDue,
   weekStart,
@@ -414,6 +474,8 @@ module.exports = {
   MINDSET_EVERY,
   REINFORCE_AFTER_WEEKS,
   CALL_EVERY_DAYS,
+  CALL_OFFER_WAIT_DAYS,
+  LIKELY_WEEKS,
   MAX_PER_WEEK,
   ORIENTATION_PIECE,
 };

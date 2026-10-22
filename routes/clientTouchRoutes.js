@@ -3,8 +3,9 @@
 // (docs/CLIENT-TOUCH-PLANNER.md, "Guy's Monday screen"). Coach only, same auth as the board:
 // the caller is whoever the portal token resolves to, and every row is one of THEIR clients.
 //
-//   GET  /                        the screen for this week (?week=YYYY-MM-DD for another)
-//   POST /build                   rebuild this week's proposals (rows Guy has acted on are kept;
+//   GET  /                        the screen for the Monday Guy is working towards - built a week
+//                                 ahead (?week=YYYY-MM-DD for another)
+//   POST /build                   build / rebuild that Monday's proposals (rows Guy has acted on are kept;
 //                                 {clientIds:[...]} limits it; {force:true} redoes acted-on rows)
 //   GET  /:clientId/preview       the full HTML of one email as it would go
 //   POST /:clientId/approve       approve as drafted
@@ -16,7 +17,10 @@
 //   POST /:clientId/note          {append} - a line onto the client's Touch Note
 //   POST /pin-everyone            {kind, key, title, bodyHtml, week?} - a one-off for everyone
 //   POST /why-not                 {clientId?, pieceKey?, home, words} - the "why not" box on its own
-//   POST /send-approved           send every approved row through the series mailer
+//   POST /:clientId/keep          a HELD row (or one approved after its Monday went): Guy has looked -
+//                                 approve it and send it now (the never-send checks still run)
+//   POST /send-approved           send every approved row now (each re-checked) - the Monday 8am
+//                                 run does this by itself; this is the by-hand door
 //   GET  /introductions           this week's suggested pairs (built on first ask, then cached)
 //
 // Mounted from index.js at /api/client-board/touch-plan (before the board's /:clientId routes).
@@ -38,7 +42,7 @@ function coachOnly(req, res, next) {
 
 function weekFrom(req) {
   const w = String((req.query && req.query.week) || (req.body && req.body.week) || '').trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(w) ? w : planStore.weekOf();
+  return /^\d{4}-\d{2}-\d{2}$/.test(w) ? w : planStore.planningWeek(new Date(), planner.SEND_HOUR);
 }
 
 /** The client must be one of the caller's. Returns the client or sends 403. */
@@ -85,7 +89,7 @@ router.get('/introductions', wrap('touch_plan_intros', async (req, res) => {
 
 router.post('/pin-everyone', parseJson, wrap('touch_plan_pin_all', async (req, res) => {
   const { kind = 'one-off', key, title = '', bodyHtml = '', note = '' } = req.body || {};
-  const week = (req.body && req.body.week) || planStore.weekOf();
+  const week = weekFrom(req);
   if (!key) return res.status(400).json({ success: false, error: 'key is required' });
   await planStore.setPin({ clientId: '*', weekOf: week, kind, key, title, bodyHtml, note });
   res.json({ success: true, weekOf: week });
@@ -101,6 +105,18 @@ router.post('/send-approved', parseJson, wrap('touch_plan_send', async (req, res
   const week = weekFrom(req);
   const out = await planner.sendApproved(req.client.clientId, week);
   logger.info(`send-approved ${week}: ${out.sent} sent, ${out.failed} failed, ${out.held} held`);
+  res.json({ success: true, ...out });
+}));
+
+router.post('/:clientId/keep', parseJson, wrap('touch_plan_keep', async (req, res, logger) => {
+  if (!(await ownClient(req, res))) return;
+  const week = weekFrom(req);
+  const row = await planStore.planFor(week, req.params.clientId);
+  if (!row || !row.pick || !row.pick.what) return res.status(404).json({ success: false, error: 'No email prepared for this client that week.' });
+  if (!['held', 'approved', 'edited', 'proposed', 'lapsed', 'failed'].includes(row.status)) return res.status(400).json({ success: false, error: `It is ${row.status} - nothing to send.` });
+  await planStore.setPlanStatus(week, req.params.clientId, row.status === 'edited' ? 'edited' : 'approved', { hold: null });
+  const out = await planner.sendApproved(req.client.clientId, week, { onlyClientIds: [req.params.clientId], keep: new Set([req.params.clientId]) });
+  logger.info(`keep ${req.params.clientId} ${week}: ${out.sent} sent, ${out.held} held`);
   res.json({ success: true, ...out });
 }));
 
@@ -142,6 +158,11 @@ router.post('/:clientId/swap', parseJson, wrap('touch_plan_swap', async (req, re
   const { kind = 'one-pager', key, title = '', bodyHtml = '', form = null } = req.body || {};
   if (!key) return res.status(400).json({ success: false, error: 'key is required' });
   await planStore.setPin({ clientId: req.params.clientId, weekOf: week, kind, key, title, bodyHtml, form });
+  // A swap is a new email: back to "waiting for you" so the rebuild writes the new opening, subject
+  // and body (a rebuild keeps everything on a row Guy has already approved or that was held).
+  const existing = await planStore.planFor(week, req.params.clientId);
+  if (existing && existing.status === 'sent') return res.status(400).json({ success: false, error: 'That one has already gone.' });
+  if (existing) await planStore.setPlanStatus(week, req.params.clientId, 'proposed', { hold: null });
   const plan = await planner.buildPlan(req.client.clientId, { weekOf: week, clientIds: [req.params.clientId], force: true });
   res.json({ success: true, row: plan.rows[0] || null });
 }));
@@ -157,7 +178,7 @@ router.post('/:clientId/pin', parseJson, wrap('touch_plan_pin', async (req, res)
 
 router.post('/:clientId/unpin', parseJson, wrap('touch_plan_unpin', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  await planStore.clearPin(req.params.clientId, (req.body && req.body.week) || planStore.weekOf());
+  await planStore.clearPin(req.params.clientId, weekFrom(req));
   res.json({ success: true });
 }));
 
@@ -199,10 +220,9 @@ function appendNote(existing, line) {
   return `${base ? `${base}\n` : ''}${today}: ${line}`;
 }
 
+/** The Monday after the one Guy is working towards - where "pin for next week" lands. */
 function nextWeek() {
-  const d = new Date(`${planStore.weekOf()}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 7);
-  return d.toISOString().slice(0, 10);
+  return planStore.addWeeks(planStore.planningWeek(new Date(), planner.SEND_HOUR), 1);
 }
 
 module.exports = router;
