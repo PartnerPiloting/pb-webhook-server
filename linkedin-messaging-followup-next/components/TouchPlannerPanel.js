@@ -61,6 +61,8 @@ export default function TouchPlannerPanel() {
   const [skipBox, setSkipBox] = useState({});       // clientId -> { words, home, until }
   const [swapPick, setSwapPick] = useState({});     // clientId -> slug
   const [pinAll, setPinAll] = useState({ title: '', bodyHtml: '', show: false });
+  const [noteEdits, setNoteEdits] = useState({});   // clientId -> the personal note, as Guy edits it
+  const [briefOpen, setBriefOpen] = useState({});   // clientId -> true (the whole brief shown)
   const [collapsed, setCollapsed] = useState(false);
 
   const load = useCallback(async () => {
@@ -123,7 +125,19 @@ export default function TouchPlannerPanel() {
     }
   }, [building, wasBuilding, screen]);
   const sendPassed = screen ? Date.now() >= new Date(screen.sendAt).getTime() : false;
-  const approve = (row) => (sendPassed ? keep(row) : post(`/${row.clientId}/approve`, {}, row.clientId));
+  const approve = (row, override = false) => (sendPassed ? keep(row) : post(`/${row.clientId}/approve`, override ? { override: true } : {}, row.clientId));
+  // "Send a personal note first": Guy sends it himself (copy it, or edit it here first), then says so.
+  const resolveNote = async (row, action) => {
+    const text = noteEdits[row.clientId] ?? (row.pick.firstThings.note ? row.pick.firstThings.note.text : '');
+    const r = await post(`/${row.clientId}/first-things`, { action, text }, row.clientId);
+    if (r) setNotice({ kind: 'ok', text: action === 'sent' ? `Noted - your note to ${row.clientName} is on their record, and their weekly email can now be approved.` : `Flag dismissed for ${row.clientName} - their weekly email can now be approved.` });
+  };
+  const copyNote = async (row) => {
+    const ft = row.pick.firstThings;
+    const text = noteEdits[row.clientId] ?? (ft.note ? ft.note.text : '');
+    try { await navigator.clipboard.writeText(`${ft.note && ft.note.subject ? `Subject: ${ft.note.subject}\n\n` : ''}Hi ${String(row.clientName).split(' ')[0]},\n\n${text}\n\nCheers,\nGuy`); setNotice({ kind: 'ok', text: 'The note is on your clipboard - paste it into your email.' }); }
+    catch (_) { setNotice({ kind: 'err', text: 'Could not copy - select the text and copy it by hand.' }); }
+  };
   const keep = async (row) => {
     if (!window.confirm(`Send ${row.clientName}'s email now? The never-send checks still run first.`)) return null;
     const r = await post(`/${row.clientId}/keep`, {}, row.clientId);
@@ -134,8 +148,12 @@ export default function TouchPlannerPanel() {
     const e = edits[row.clientId] || {};
     const body = { opening: e.opening ?? row.opening, subject: e.subject ?? row.subject };
     if (e.congrats !== undefined) body.congrats = e.congrats;
+    if (e.customText !== undefined) body.customText = e.customText;
     const r = await post(`/${row.clientId}/edit`, body, row.clientId);
-    if (r) setEdits((s) => ({ ...s, [row.clientId]: undefined }));
+    if (r) {
+      setEdits((s) => ({ ...s, [row.clientId]: undefined }));
+      if (r.blocked) setNotice({ kind: 'err', text: `Saved your words, not approved yet: ${r.blocked}` });
+    }
   };
   const skip = async (row) => {
     const b = skipBox[row.clientId] || {};
@@ -210,6 +228,11 @@ export default function TouchPlannerPanel() {
             {picks.length} prepared &middot; {counts.waiting} waiting for you &middot; {counts.approved} approved &middot; {counts.sent} sent{counts.held ? <> &middot; <span className="text-orange-700 font-medium">{counts.held} held</span></> : null} &middot; {counts.nothing} quiet &middot; {counts.leftOut} left out
             {lastRate && lastRate.total ? <> &middot; last week {lastRate.share}% approved unchanged</> : null}
           </p>
+          {screen.build && screen.build.cost && (
+            <p className={`text-[12px] ${screen.build.stopped ? 'text-red-700 font-medium' : 'text-gray-400'}`}>
+              Claude cost of this build: US${Number(screen.build.cost.usd || 0).toFixed(2)} &middot; {Number(screen.build.cost.inputTokens || 0).toLocaleString('en-AU')} tokens in, {Number(screen.build.cost.outputTokens || 0).toLocaleString('en-AU')} out &middot; your own server key{screen.build.stopped ? ` - STOPPED: ${screen.build.stopped}` : ''}
+            </p>
+          )}
           <p className="text-[13px]">
             {autosend
               ? <span className="text-red-700 font-medium">Send-with-veto is ON - anything you have not skipped goes at {sendHour}am Monday.</span>
@@ -261,6 +284,11 @@ export default function TouchPlannerPanel() {
             const history = row.alreadyHad || [];
             const historyShown = allHistory[row.clientId] ? history : history.slice(0, HISTORY_SHOWN);
             const settled = ['sent', 'skipped'].includes(row.status);
+            const ft = pick.firstThings || null;
+            const ftOpen = !!(ft && ft.status === 'open');
+            const isCustom = !!(pick.what && pick.what.kind === 'custom');
+            const guardProblem = !!(pick.guard && pick.guard.ok === false);
+            const brief = pick.brief || null;
             return (
               <div key={row.clientId} className={`border-b border-gray-100 last:border-b-0 ${row.status === 'held' ? 'bg-orange-50/40' : ''}`}>
                 <div className="grid gap-4 px-5 py-3 text-sm items-start" style={{ gridTemplateColumns: '150px 1fr 1.6fr 1fr 120px' }}>
@@ -304,16 +332,53 @@ export default function TouchPlannerPanel() {
                         )}
                       </div>
                     )}
+                    {/* FIRST THINGS FIRST - Guy owes them something important; the weekly email waits for his note */}
+                    {ftOpen && (
+                      <div className="mb-2 p-2 rounded border border-red-200 bg-red-50 text-xs text-red-900">
+                        <p className="font-semibold">Send a personal note first - you owe {String(row.clientName).split(' ')[0]}:</p>
+                        <ul className="list-disc pl-4">
+                          {(ft.items || []).map((o) => <li key={o.id}>{o.what}{o.promisedOn ? <span className="text-red-700"> ({o.promisedOn}{o.source ? `, ${o.source}` : ''})</span> : null}{o.quote ? <span className="italic"> - &ldquo;{o.quote}&rdquo;</span> : null}</li>)}
+                        </ul>
+                        <p className="mt-1">This week&rsquo;s email waits until you send the note (or say it isn&rsquo;t needed).</p>
+                        {ft.note ? (
+                          <div className="mt-1.5 bg-white border border-red-100 rounded p-2 text-gray-800">
+                            <p className="text-[11px] text-gray-500">A draft in your voice - edit it, copy it into your email, send it yourself:</p>
+                            <p className="font-medium mt-0.5">Subject: {ft.note.subject}</p>
+                            <textarea value={noteEdits[row.clientId] ?? ft.note.text} onChange={(ev) => setNoteEdits((s) => ({ ...s, [row.clientId]: ev.target.value }))} rows={6} className="mt-1 w-full text-xs border border-gray-200 rounded px-2 py-1" />
+                            {(ft.note.guyChecks || []).length > 0 && <p className="mt-1 text-amber-800"><span className="font-medium">Check before you send:</span> {ft.note.guyChecks.join('; ')}</p>}
+                            {ft.guard && !ft.guard.ok && <p className="mt-1 text-red-700"><span className="font-medium">Fact guard:</span> {ft.guard.problems.join('; ')}</p>}
+                          </div>
+                        ) : <p className="mt-1 text-red-700">{ft.error || 'No draft - write it yourself.'}</p>}
+                        <div className="flex gap-2 mt-1.5 items-center">
+                          {ft.note && <button onClick={() => copyNote(row)} className="px-2 py-1 rounded border border-red-300 bg-white text-red-900">Copy the note</button>}
+                          <button onClick={() => resolveNote(row, 'sent')} disabled={busy === row.clientId} className="px-2 py-1 rounded bg-red-700 text-white font-medium disabled:opacity-40">I&rsquo;ve sent it</button>
+                          <button onClick={() => resolveNote(row, 'dismiss')} disabled={busy === row.clientId} className="px-2 py-1 rounded border border-red-300 text-red-900 disabled:opacity-40">Not needed</button>
+                        </div>
+                      </div>
+                    )}
+                    {ft && !ftOpen && <p className="mb-1 text-xs text-gray-500">Personal note {ft.status === 'sent' ? `sent ${ft.resolvedAt ? shortDate(ft.resolvedAt) : ''}` : 'not needed (dismissed)'} - {(ft.items || []).map((o) => o.what).join('; ')}</p>}
                     {hasEmail ? (
                       <>
-                        <p className="text-gray-900"><span className="font-medium">{pick.what.title}</span> <span className="text-gray-400">· {pick.what.kind}{pick.form === 'short' ? ', short' : ''}</span>{row.waitingImprovements ? <span className="ml-2 text-xs text-amber-700">{row.waitingImprovements} improvement{row.waitingImprovements === 1 ? '' : 's'} waiting on this piece</span> : null}</p>
-                        <p className="text-xs text-gray-500 italic">{pick.reason}</p>
-                        {settled || ['approved', 'edited', 'lapsed'].includes(row.status) || (row.status === 'held' && !(row.hold && row.hold.stage === 'build')) || !isOpen ? (
+                        <p className="text-gray-900">{isCustom && <span className="mr-1.5 px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[11px] font-semibold">CUSTOM - read closely</span>}<span className="font-medium">{pick.what.title}</span> <span className="text-gray-400">· {isCustom ? 'written for them' : pick.what.kind}{pick.form === 'short' ? ', short' : ''}</span>{row.waitingImprovements ? <span className="ml-2 text-xs text-amber-700">{row.waitingImprovements} improvement{row.waitingImprovements === 1 ? '' : 's'} waiting on this piece</span> : null}</p>
+                        <p className="text-xs text-gray-500 italic">{pick.reason}{isCustom && pick.customWhy ? ` - ${pick.customWhy}` : ''}</p>
+                        {isCustom ? (
+                          !isOpen || settled || ['approved', 'edited', 'lapsed'].includes(row.status) ? (
+                            <div className="mt-1 text-gray-800 border-l-2 border-purple-200 pl-2">{String(row.customText || '').split(/\n+/).map((p, i) => <p key={i} className="mb-1">{p}</p>)}</div>
+                          ) : (
+                            <textarea value={e.customText ?? String(row.customText || '').split(/\n+/).join('\n\n')} onChange={(ev) => setEdits((s) => ({ ...s, [row.clientId]: { ...e, customText: ev.target.value } }))} rows={8} className="mt-1 w-full text-sm border border-gray-300 rounded px-2 py-1.5" placeholder="The email, in your words - a blank line between paragraphs" />
+                          )
+                        ) : settled || ['approved', 'edited', 'lapsed'].includes(row.status) || (row.status === 'held' && !(row.hold && row.hold.stage === 'build')) || !isOpen ? (
                           <p className="mt-1 text-gray-800">{row.opening ? row.opening : <span className="text-red-700">no opening drafted - needs your words</span>}</p>
                         ) : (
                           <textarea value={e.opening ?? row.opening} onChange={(ev) => setEdits((s) => ({ ...s, [row.clientId]: { ...e, opening: ev.target.value } }))} rows={3} className="mt-1 w-full text-sm border border-gray-300 rounded px-2 py-1.5" placeholder="The opening - one to three sentences, in your words" />
                         )}
-                        {openingProblem && <p className="text-xs text-red-700">The draft breaks the craft ({openingProblem}) - say it your way.</p>}
+                        {openingProblem && !isCustom && <p className="text-xs text-red-700">The draft breaks the craft ({openingProblem}) - say it your way.</p>}
+                        {guardProblem && (
+                          <div className="mt-1 text-xs text-red-700">
+                            <p><span className="font-medium">Fact guard:</span> {pick.guard.problems.join('; ')}</p>
+                            {!settled && !pick.guard.overriddenAt && ['proposed', 'failed', 'lapsed'].includes(row.status) && <button onClick={() => approve(row, true)} disabled={busy === row.clientId || ftOpen} className="mt-0.5 underline disabled:opacity-40">I&rsquo;ve checked - approve anyway</button>}
+                          </div>
+                        )}
                         {bodyProblem && <p className="text-xs text-red-700">Body: {bodyProblem}</p>}
                         {/* Always there - Guy reads the whole email before approving (22 Oct: hidden behind "Edit" he never found it) */}
                         {/* The thought for the week, why it was chosen for them, and Guy's way to change it */}
@@ -340,9 +405,26 @@ export default function TouchPlannerPanel() {
                         )}
                       </>
                     ) : (
-                      <p className="text-gray-500">Nothing this week <span className="italic">- {pick.reason}</span></p>
+                      <p className="text-gray-500">Nothing this week <span className="italic">- {pick.reason}</span>{pick.customDeclined ? <span className="italic"> (nothing true and useful to write either: {pick.customDeclined})</span> : null}</p>
                     )}
                     {row.sendError && row.status !== 'held' && <p className="text-xs text-red-700">{row.sendError}</p>}
+                    {/* THE BRIEF - everything on record about them, read this week */}
+                    {brief && (brief.summary || (brief.trueNow || []).length) ? (
+                      <div className="mt-2 text-xs text-gray-700 bg-slate-50 border border-slate-200 rounded p-2">
+                        <p><span className="font-medium text-slate-800">The brief:</span> {brief.summary}</p>
+                        {briefOpen[row.clientId] && (
+                          <div className="mt-1 flex flex-col gap-1">
+                            {[['True now', brief.trueNow], ['Waiting on', brief.waitingOn], ['On their mind', brief.onTheirMind], ['How to write to them', brief.howToWrite], ['Never say', brief.neverSay]].filter(([, xs]) => (xs || []).length).map(([label, xs]) => (
+                              <div key={label}><p className="font-medium text-slate-700">{label}</p><ul className="list-disc pl-4">{xs.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+                            ))}
+                            {(brief.owed || []).length > 0 && <div><p className="font-medium text-slate-700">You owe them</p><ul className="list-disc pl-4">{brief.owed.map((o) => <li key={o.id}>{o.what}{o.promisedOn ? ` (${o.promisedOn})` : ''}{o.quote ? <span className="italic"> - &ldquo;{o.quote}&rdquo;</span> : null}{o.important ? <span className="text-red-700"> - important</span> : null}</li>)}</ul></div>}
+                            {(brief.wins || []).length > 0 && <div><p className="font-medium text-slate-700">Wins</p><ul className="list-disc pl-4">{brief.wins.map((w, i) => <li key={i}>{w.what}{w.date ? ` (${w.date})` : ''}</li>)}</ul></div>}
+                            {brief.read && <p className="text-gray-400">Read: {brief.read.calls} calls{brief.read.callsDigestedNow ? ` (${brief.read.callsDigestedNow} new this time)` : ''}, {brief.read.emails} emails, {brief.read.linkedin} LinkedIn messages{brief.read.dossier ? ', their dossier' : ''} &middot; built {brief.builtAt ? shortDate(brief.builtAt) : ''}</p>}
+                          </div>
+                        )}
+                        <button onClick={() => setBriefOpen((s) => ({ ...s, [row.clientId]: !s[row.clientId] }))} className="mt-0.5 text-blue-700 underline">{briefOpen[row.clientId] ? 'less' : 'the whole brief'}</button>
+                      </div>
+                    ) : pick.briefError ? <p className="mt-2 text-xs text-gray-400">No brief this week ({pick.briefError}).</p> : null}
                   </div>
 
                   <div className="min-w-0 text-xs text-gray-600">
@@ -364,7 +446,7 @@ export default function TouchPlannerPanel() {
 
                   <div className="flex flex-col gap-1 items-end">
                     {hasEmail && ['proposed', 'failed', 'lapsed'].includes(row.status) && (
-                      <button onClick={() => approve(row)} disabled={busy === row.clientId || !!bodyProblem} className="w-full px-2 py-1 rounded bg-green-600 text-white text-xs font-medium disabled:opacity-40">{sendPassed ? 'Approve & send now' : 'Approve'}</button>
+                      <button onClick={() => approve(row)} disabled={busy === row.clientId || !!bodyProblem || ftOpen || (guardProblem && !pick.guard.overriddenAt)} title={ftOpen ? 'Send your personal note first (or say it is not needed)' : guardProblem ? 'The fact guard found something - reword it, or approve anyway' : ''} className="w-full px-2 py-1 rounded bg-green-600 text-white text-xs font-medium disabled:opacity-40">{sendPassed ? 'Approve & send now' : 'Approve'}</button>
                     )}
                     {!settled && <button onClick={() => setOpen((s) => ({ ...s, [row.clientId]: !isOpen }))} className="w-full px-2 py-1 rounded border border-gray-200 text-xs text-gray-700">{isOpen ? 'Close' : (hasEmail ? 'Edit / swap / skip' : 'Swap / pin')}</button>}
                   </div>

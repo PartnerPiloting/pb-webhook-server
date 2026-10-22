@@ -1055,4 +1055,8 @@ function formatDossier(row, opts = {}) {
   return lines.join('\n');
 }
 
-module.exports = { prepareDossiers, findDossierByName, getDossierRow, listOfferSignals, formatDossier, buildLiveMiniDossier, formatLiveDossier, scrub, parseJsonArrayLoose };
+module.exports = { prepareDossiers, findDossierByName, getDossierRow, listOfferSignals, formatDossier, buildLiveMiniDossier, formatLiveDossier, scrub, parseJsonArrayLoose,
+  // The material readers, shared with the weekly client touch planner (clientTouchOpening, clientTouchBrief)
+  // so a client's calls, mail and LinkedIn thread are read the one way. gatherEmailRecord was required
+  // by the opening drafter but never exported, so every opening until 22 Oct 2026 saw no email at all.
+  gatherEmailRecord, gatherLinkedIn, clipTranscript, splitAltEmails, findLeadRecords };

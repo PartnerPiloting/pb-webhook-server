@@ -8,8 +8,10 @@
 //   POST /build                   build / rebuild that Monday's proposals (rows Guy has acted on are kept;
 //                                 {clientIds:[...]} limits it; {force:true} redoes acted-on rows)
 //   GET  /:clientId/preview       the full HTML of one email as it would go
-//   POST /:clientId/approve       approve as drafted
-//   POST /:clientId/edit          {opening, subject} - Guy's words, then approved
+//   POST /:clientId/approve       approve as drafted ({override:true} = past a fact-guard flag Guy has checked);
+//                                 refused while a personal note is owed first
+//   POST /:clientId/edit          {opening, subject, congrats?, customText?} - Guy's words, fact-guarded again, then approved
+//   POST /:clientId/first-things  {action:'sent'|'dismiss', text?} - the personal note owed first: sent by Guy, or not needed
 //   POST /:clientId/skip          {whyNot, home, until?} - not this week (and why, filed to its home)
 //   POST /:clientId/swap          {kind, key, title?, bodyHtml?} - a different piece this week (a pin + rebuild)
 //   POST /:clientId/pin           {kind, key, title?, bodyHtml?, week?} - pin for a week (default next week)
@@ -146,18 +148,57 @@ router.get('/:clientId/preview', wrap('touch_plan_preview', async (req, res) => 
   res.type('html').send(html);
 }));
 
+/**
+ * Why a row cannot be approved yet, or null. A personal note is owed first; or the fact guard found
+ * a claim the brief and the facts do not support (Guy can say "approve anyway" - he has checked).
+ */
+function approveBlocked(row, { override = false } = {}) {
+  if (!row || !row.pick) return null;
+  if (planner.firstThingsOpen(row.pick)) return 'Send your personal note first (or dismiss the flag) - you owe them something important, so the weekly email waits.';
+  if (!override && row.pick.guard && row.pick.guard.ok === false) return `The fact guard found: ${row.pick.guard.problems.join('; ')}. Reword it, or approve anyway if you have checked.`;
+  return null;
+}
+
 router.post('/:clientId/approve', parseJson, wrap('touch_plan_approve', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const row = await planStore.setPlanStatus(weekFrom(req), req.params.clientId, 'approved', { hold: null });
+  const week = weekFrom(req);
+  const override = !!(req.body && req.body.override);
+  const blocked = approveBlocked(await planStore.planFor(week, req.params.clientId), { override });
+  if (blocked) return res.status(409).json({ success: false, error: blocked });
+  if (override) {
+    const existing = await planStore.planFor(week, req.params.clientId);
+    if (existing && existing.pick && existing.pick.guard) await planStore.setPlanPickField(week, req.params.clientId, 'guard', { ...existing.pick.guard, overriddenAt: new Date().toISOString() });
+  }
+  const row = await planStore.setPlanStatus(week, req.params.clientId, 'approved', { hold: null });
   res.json({ success: true, row });
 }));
 
 router.post('/:clientId/edit', parseJson, wrap('touch_plan_edit', async (req, res) => {
   if (!(await ownClient(req, res))) return;
-  const { opening, subject, congrats } = req.body || {};
+  const week = weekFrom(req);
+  const { opening, subject, congrats, customText } = req.body || {};
+  const clean = (s) => String(s).replace(/[\u2013\u2014]/g, '-');
   // The welcome's congratulations line, reworded (or emptied to drop it) - long-standing clients.
-  if (typeof congrats === 'string') await planStore.setPlanCongrats(weekFrom(req), req.params.clientId, congrats.replace(/[\u2013\u2014]/g, '-'));
-  const row = await planStore.setPlanStatus(weekFrom(req), req.params.clientId, 'edited', { opening: typeof opening === 'string' ? opening : null, subject: typeof subject === 'string' && subject.trim() ? subject.trim() : null, hold: null });
+  if (typeof congrats === 'string') await planStore.setPlanCongrats(week, req.params.clientId, clean(congrats));
+  // A custom email is all Guy's words: its body is edited as plain paragraphs (a blank line between).
+  const bodyHtml = typeof customText === 'string' && customText.trim()
+    ? require('../services/clientTouchBrief').paragraphsHtml(clean(customText).split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean))
+    : null;
+  // His words are checked like the drafts were - the guard reads them again now.
+  await planStore.setPlanStatus(week, req.params.clientId, 'proposed', { opening: typeof opening === 'string' ? clean(opening) : null, subject: typeof subject === 'string' && subject.trim() ? clean(subject.trim()) : null, bodyHtml, hold: null });
+  const guard = await planner.recheckGuard(week, req.params.clientId);
+  const blocked = approveBlocked(await planStore.planFor(week, req.params.clientId));
+  if (blocked) return res.json({ success: true, approved: false, blocked, guard, row: await planStore.planFor(week, req.params.clientId) });
+  const row = await planStore.setPlanStatus(week, req.params.clientId, 'edited', { hold: null });
+  res.json({ success: true, approved: true, guard, row });
+}));
+
+// "Send a personal note first": Guy sent it himself ({action:'sent', text}) or it is not needed
+// ({action:'dismiss'}). Either way the weekly email can then be approved.
+router.post('/:clientId/first-things', parseJson, wrap('touch_plan_first_things', async (req, res) => {
+  if (!(await ownClient(req, res))) return;
+  const { action, text = '' } = req.body || {};
+  const row = await planner.resolveFirstThings(weekFrom(req), req.params.clientId, { action, text });
   res.json({ success: true, row });
 }));
 
@@ -249,3 +290,4 @@ function nextWeek() {
 module.exports = router;
 module.exports.fileWhyNot = fileWhyNot;
 module.exports.appendNote = appendNote;
+module.exports.approveBlocked = approveBlocked;

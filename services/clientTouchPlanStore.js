@@ -122,6 +122,28 @@ async function ensureSchema(c) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // The deep client brief (services/clientTouchBrief.js): one per client, rebuilt only when their
+  // calls, mail or LinkedIn thread changed (basis). Each call is digested from its transcript ONCE and
+  // the digest kept, so a client's earlier calls are never re-read week after week.
+  await c.query(`
+    CREATE TABLE IF NOT EXISTS client_touch_briefs (
+      client_id TEXT PRIMARY KEY,
+      basis TEXT,
+      payload JSONB,
+      usage JSONB,
+      built_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await c.query(`
+    CREATE TABLE IF NOT EXISTS client_touch_call_digests (
+      meeting_id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      meeting_date DATE,
+      model TEXT,
+      digest JSONB,
+      built_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
   schemaEnsured = true;
 }
 
@@ -409,6 +431,62 @@ async function openingRules() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The deep client brief and its per-call digests
+
+async function getBrief(clientId) {
+  return withDb(async (c) => {
+    const r = await c.query('SELECT client_id, basis, payload, usage, built_at FROM client_touch_briefs WHERE client_id = $1', [clientId]);
+    const row = r.rows[0];
+    return row ? { clientId: row.client_id, basis: row.basis, payload: row.payload, usage: row.usage, builtAt: row.built_at } : null;
+  }, null);
+}
+
+async function saveBrief(clientId, basis, payload, usage = null) {
+  return withDb(async (c) => {
+    await c.query(
+      `INSERT INTO client_touch_briefs (client_id, basis, payload, usage, built_at) VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (client_id) DO UPDATE SET basis = EXCLUDED.basis, payload = EXCLUDED.payload, usage = EXCLUDED.usage, built_at = now()`,
+      [clientId, basis, JSON.stringify(payload), usage ? JSON.stringify(usage) : null],
+    );
+    return true;
+  }, false);
+}
+
+/** meeting_id -> digest, for the meetings already read. */
+async function digestsFor(meetingIds) {
+  const ids = (meetingIds || []).map(String);
+  if (!ids.length) return new Map();
+  return withDb(async (c) => {
+    const r = await c.query('SELECT meeting_id, digest FROM client_touch_call_digests WHERE meeting_id = ANY($1)', [ids]);
+    return new Map(r.rows.map((x) => [String(x.meeting_id), x.digest]));
+  }, new Map());
+}
+
+async function saveDigest({ meetingId, clientId, date = null, model = null, digest }) {
+  return withDb(async (c) => {
+    await c.query(
+      `INSERT INTO client_touch_call_digests (meeting_id, client_id, meeting_date, model, digest, built_at) VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (meeting_id) DO UPDATE SET client_id = EXCLUDED.client_id, meeting_date = EXCLUDED.meeting_date, model = EXCLUDED.model, digest = EXCLUDED.digest, built_at = now()`,
+      [String(meetingId), clientId, date, model, JSON.stringify(digest)],
+    );
+    return true;
+  }, false);
+}
+
+/** Set one top-level field inside a plan row's pick (firstThings, guard, brief, custom...). */
+async function setPlanPickField(week, clientId, field, value) {
+  if (!/^[a-zA-Z]+$/.test(field)) throw new Error(`bad pick field "${field}"`);
+  return withDb(async (c) => {
+    const r = await c.query(
+      `UPDATE client_touch_plans SET pick = jsonb_set(COALESCE(pick, '{}'::jsonb), $3::text[], $4::jsonb, true), updated_at = now()
+       WHERE week_of = $1 AND client_id = $2 RETURNING *`,
+      [week, clientId, [field], JSON.stringify(value === undefined ? null : value)],
+    );
+    return rowOut(r.rows[0]);
+  }, null);
+}
+
+// ---------------------------------------------------------------------------------------------
 // State (the Monday claim, the preview sent, the veto deadline)
 
 async function getState(key) {
@@ -447,6 +525,11 @@ module.exports = {
   setPlanStatus,
   setPlanThought,
   setPlanCongrats,
+  setPlanPickField,
+  getBrief,
+  saveBrief,
+  digestsFor,
+  saveDigest,
   approvalRates,
   setPin,
   clearPin,

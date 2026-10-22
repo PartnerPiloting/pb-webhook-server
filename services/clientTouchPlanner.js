@@ -31,6 +31,8 @@ const content = require('./onePagerContent');
 const shell = require('./onePagerShell');
 const MANIFEST = require('../config/onePagerSeriesManifest');
 const { ORIENTATION, EVENTS } = require('../config/clientTouchLabels');
+const briefs = require('./clientTouchBrief');
+const cost = require('./clientTouchCost');
 const { createLogger } = require('../utils/contextLogger');
 
 const logger = createLogger({ runId: 'PLANNER', clientId: 'SYSTEM', operation: 'client_touch_planner' });
@@ -42,7 +44,7 @@ const TICK_MS = 15 * 60 * 1000;
 const SEND_HOUR = Number(process.env.CLIENT_TOUCH_SEND_HOUR) || 8;
 const BUILD_HOUR = Math.max(Number(process.env.CLIENT_TOUCH_BUILD_HOUR) || 9, SEND_HOUR + 1);
 const BRISBANE_OFFSET_HOURS = 10; // UTC+10, no daylight saving
-const EMAIL_KINDS = new Set(['one-pager', 'habit', 'setup', 'one-off', 'call']);
+const EMAIL_KINDS = new Set(['one-pager', 'habit', 'setup', 'one-off', 'call', 'custom']);
 const BRAND = 'I Know A Guy';
 
 let intervalHandle = null;
@@ -264,14 +266,20 @@ function waitingImprovements(markdown) {
 function lastTouches(record) {
   const latest = (rs) => rs.map((r) => new Date(r.sent_at).getTime()).filter((t) => !Number.isNaN(t)).sort((a, b) => b - a)[0] || null;
   const substantial = (record || []).filter((r) => touchStore.SUBSTANTIAL_KINDS.includes(r.kind));
-  return { lastTouchAt: latest(substantial), lastPersonal: latest(substantial.filter((r) => r.source !== 'planner')) };
+  // The personal note Guy sends to clear what he owes (first things first) is what RELEASES that
+  // week's email - it must not then make the week a quiet one.
+  const own = substantial.filter((r) => r.source !== 'planner' && !String(r.key || '').startsWith(OWED_NOTE_KEY));
+  return { lastTouchAt: latest(substantial), lastPersonal: latest(own) };
 }
 
+const OWED_NOTE_KEY = 'owed-note';
+
 /** The live-fact lines the opening is allowed to rely on. */
-function factLines(f, signals, card) {
+function factLines(f, signals = {}, card = null) {
   const lines = [];
+  signals = signals || {};
   lines.push(`Invitations: ${f.lastInviteSent ? `going out (last one ${String(f.lastInviteSent).slice(0, 10)})` : 'NOT going out yet'}${signals.paused ? ` - campaign PAUSED with ${signals.pausedWaiting} people waiting` : ''}`);
-  if (signals.lines.length) lines.push(`Campaign numbers: ${signals.lines.join(' | ')}`);
+  if ((signals.lines || []).length) lines.push(`Campaign numbers: ${signals.lines.join(' | ')}`);
   lines.push(`Last call with Guy: ${f.daysSinceLastCall === null ? 'none on record' : `${f.daysSinceLastCall} days ago`}${card && card.nextSession ? `; next session booked ${String(card.nextSession.at).slice(0, 10)}` : '; nothing booked'}`);
   lines.push(`Today tab: ${f.todayHasRecords ? 'has records' : 'no records yet'}`);
   lines.push(`Journey: ${f.group === 'onboarding' ? 'still in onboarding' : 'running'}${f.stuckStop ? `; on the "${f.stuckStop}" stop for ${f.stuckDays} days` : ''}`);
@@ -643,6 +651,92 @@ function subjectFor(pick, body) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The deep client brief's say on each week (services/clientTouchBrief.js, Guy 22 Oct 2026)
+
+/** Guy's own server key (ANTHROPIC_API_KEY - "Guy's Individual Org"), or null when it is not set. */
+function serverLlm() {
+  try { return require('../config/anthropicClient').getAnthropicClient(); } catch (_) { return null; }
+}
+
+/** The words in a row the fact guard reads: a custom email's body, or the opening (and a welcome's congratulations line). Pure. */
+function guardText({ pick, opening, bodyHtml }) {
+  if (pick && pick.what && pick.what.kind === 'custom') return briefs.htmlText(bodyHtml);
+  const parts = [];
+  if (pick && pick.body && pick.body.template === 'first-email') parts.push(typeof pick.body.congrats === 'string' ? pick.body.congrats : FIRST_EMAIL.congrats);
+  if (opening && !(pick && pick.opening && pick.opening.source === 'fixed')) parts.push(opening);
+  return parts.filter(Boolean).join('\n');
+}
+
+/**
+ * What the brief changes about one client's week. Three things, in order:
+ *   - FIRST THINGS FIRST: Guy owes them something important -> a drafted personal note for him to
+ *     edit and send himself (fact-guarded); the weekly email waits until he marks it sent or dismisses it;
+ *   - FIT: the approved piece the picker chose is checked against where they really are;
+ *   - CUSTOM: when it does not fit - or a running client has no invitations out yet, so nothing on the
+ *     shelf can start - an email is written for them from the brief. Guy's pins are never replaced.
+ * Returns { pick, body, firstThings, customDeclined }. Throws only BudgetError.
+ * deps.briefs for tests; llmFor(purpose) -> a metered llm or null.
+ */
+async function deepen({ pick, body, brief, client, facts, factLinesNow = [], week, firstWeekly = false, llmFor = () => null, at = Date.now() }, deps = {}) {
+  const b = deps.briefs || briefs;
+  const out = { pick, body, firstThings: null, customDeclined: null };
+  if (!brief || pick.leftOut || (brief.error && !(brief.trueNow || []).length)) return out;
+  const budget = (e) => { if (e && e.name === 'BudgetError') throw e; };
+
+  const due = b.firstThingsDue(brief);
+  if (due.length) {
+    const ft = { status: 'open', items: due, note: null, guard: null, error: null, at: new Date().toISOString() };
+    const llm = llmFor('note');
+    if (llm) {
+      try {
+        ft.note = await b.draftOwedNote(llm, { client, brief, items: due });
+        ft.guard = await b.checkClaims(ft.note.text, { facts, factLines: factLinesNow, brief, llm: llmFor('guard'), client, at });
+      } catch (e) { budget(e); ft.error = `the note could not be drafted (${e.message}) - write it yourself`; }
+    } else ft.error = 'no Claude key on the server - write the note yourself';
+    out.firstThings = ft;
+  }
+
+  let notFit = null;
+  if (pick.what && PIECE_KINDS.has(pick.what.kind) && pick.rule !== 'pinned' && body && !body.error && llmFor('fit')) {
+    try {
+      const text = [body.template === 'first-email' ? FIRST_EMAIL.congrats : '', briefs.htmlText(body.bodyHtml)].filter(Boolean).join('\n');
+      const fit = await b.judgeFit(llmFor('fit'), { client, brief, piece: { title: body.title, text } });
+      if (!fit.fits) notFit = `"${body.title}" - ${fit.why || 'it does not fit where they are'}`;
+    } catch (e) { budget(e); logger.warn(`fit check for ${client.clientId} skipped: ${e.message}`); }
+  } else if (!pick.what && pick.rule === 'waiting-for-invitations' && facts && facts.group === 'running') {
+    notFit = 'no invitation has gone out yet, so the welcome and the opening run cannot start';
+  }
+  if (notFit && llmFor('custom')) {
+    try {
+      const c = await b.draftCustomEmail(llmFor('custom'), { client, brief, notFit, firstWeekly });
+      if (!c.subject || !c.paragraphs.length) out.customDeclined = c.why || 'nothing true and useful to say this week';
+      else {
+        out.pick = {
+          what: { kind: 'custom', key: `custom:${week}`, title: c.subject },
+          form: 'one-off',
+          rule: 'custom',
+          reason: `CUSTOM - nothing on the shelf fits: ${notFit}`,
+          customWhy: c.why || null,
+          replaces: { what: pick.what || null, rule: pick.rule || null, reason: pick.reason || '', form: pick.form || null },
+        };
+        out.body = { title: c.subject, dek: '', bodyHtml: b.paragraphsHtml(c.paragraphs), template: 'custom' };
+      }
+    } catch (e) { budget(e); out.customDeclined = `the custom email could not be written (${e.message})`; }
+  }
+  return out;
+}
+
+/** The brief's facts the opening drafter should also know (what is true, what never to say). Pure. */
+function briefFactLines(brief) {
+  if (!brief) return [];
+  const lines = [];
+  for (const t of (brief.trueNow || []).slice(0, 8)) lines.push(`From the brief - true now: ${t}`);
+  for (const w of (brief.wins || []).slice(0, 4)) lines.push(`From the brief - a recent win: ${w.what}${w.date ? ` (${w.date})` : ''}`);
+  for (const t of (brief.neverSay || []).slice(0, 6)) lines.push(`From the brief - NEVER say: ${t}`);
+  return lines;
+}
+
+// ---------------------------------------------------------------------------------------------
 // The run
 
 /** Everyone Guy coaches, with their board card. */
@@ -689,6 +783,12 @@ async function buildPlan(coachClientId, opts = {}) {
   const only = opts.clientIds ? new Set(opts.clientIds) : null;
   const shelf = content.listPieces();
   const out = [];
+  // Every Claude call this build makes runs on Guy's own server key and is metered; past the budget
+  // (US$10) the build stops and says so rather than spending more.
+  const meter = opts.meter || cost.createMeter();
+  const baseLlm = opts.llm !== undefined ? opts.llm : (opts.openings === false ? null : serverLlm());
+  const llmFor = (purpose) => (baseLlm ? meter.wrap(baseLlm, purpose) : null);
+  let stopped = null;
 
   for (const { card, client } of pairs) {
     if (only && !only.has(client.clientId)) continue;
@@ -697,84 +797,120 @@ async function buildPlan(coachClientId, opts = {}) {
     const builtHold = existing && existing.status === 'held' && existing.hold && existing.hold.stage === 'build';
     if (existing && !['proposed', 'nothing', 'left-out'].includes(existing.status) && !builtHold && !opts.force) { out.push(existing); continue; } // Guy has spoken
     if (builtHold) await planStore.setPlanStatus(week, client.clientId, 'proposed', { hold: null, sendError: null });
-    let facts;
-    try { facts = await factsFor(client, card, ctx); }
-    catch (e) { logger.error(`facts for ${client.clientId} failed: ${e.message}`); continue; }
-    if (opts.skipThisWeek && opts.skipThisWeek.has(client.clientId)) facts.skipThisWeek = true;
-    const pick = picker.pickFor(facts, shelf, ctx.touchesByClient.get(client.clientId) || [], { now: at, order: MANIFEST.client });
+    try {
+      let facts;
+      try { facts = await factsFor(client, card, ctx); }
+      catch (e) { logger.error(`facts for ${client.clientId} failed: ${e.message}`); continue; }
+      if (opts.skipThisWeek && opts.skipThisWeek.has(client.clientId)) facts.skipThisWeek = true;
+      const record = ctx.touchesByClient.get(client.clientId) || [];
+      let pick = picker.pickFor(facts, shelf, record, { now: at, order: MANIFEST.client });
+      const firstWeekly = isFirstWeekly(record);
+      const liveLines = factLines(facts, facts.signals, card);
 
-    let status = 'proposed';
-    let openingDraft = null;
-    let body = null;
-    let subject = '';
-    let material = null;
-    if (pick.leftOut) status = 'left-out';
-    else if (!pick.what) status = 'nothing';
-    else {
-      const firstEmail = usesFirstEmail(pick, { firstWeekly: isFirstWeekly(ctx.touchesByClient.get(client.clientId) || []), lastInviteSent: facts.lastInviteSent });
-      body = await buildBody(pick, { coach, client, week, firstEmail, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
-      subject = body.error ? '' : subjectFor(pick, body);
-      // The client's world, read once: the opening and the thought for the week both draw on it.
-      if (!body.error && opts.openings !== false && !material) {
-        const od = opts.openingDeps || {};
-        const [meetings, emails] = await Promise.all([
-          od.meetings || opening.gatherMeetings(coach.clientId, client, od).catch(() => []),
-          od.emails || opening.gatherEmails(coach, client, od).catch(() => []),
-        ]);
-        material = { meetings, emails, note: facts.noteText };
+      // The deep client brief - everything on record about them, re-read only where it changed.
+      let brief = null;
+      if (!pick.leftOut && opts.briefs !== false) {
+        brief = await (opts.briefFor || briefs.briefFor)(coach, client, { facts, factLines: liveLines, llm: llmFor('brief'), now: at }, opts.briefDeps || {});
       }
-      if (!body.error && pick.what.kind === 'call') {
-        openingDraft = { opening: CALL_OPENING, check: opening.checkOpening(CALL_OPENING), confidence: 1, factsUsed: [], source: 'fixed' };
-      } else if (!body.error && opts.openings !== false) {
-        openingDraft = await opening.draftOpening({
-          coach, client, note: facts.noteText,
-          pick: { title: body.title, dek: body.dek, form: pick.form, kindLine: body.template === 'first-email'
-            ? "the client's FIRST weekly email - it already opens with a fixed congratulations paragraph. Add ONE sentence only if there is something real and specific to say from the material; otherwise answer with an empty opening"
-            : pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind },
-          factLines: factLines(facts, facts.signals, card),
-          today: new Date(at).toISOString().slice(0, 10),
-        }, { ...(opts.openingDeps || {}), ...(material ? { meetings: material.meetings, emails: material.emails } : {}) });
-        // The first email's personal line is optional - an empty one is right, not a problem.
-        if (body.template === 'first-email' && openingDraft && !String(openingDraft.opening || '').trim() && !openingDraft.error) {
-          openingDraft = { ...openingDraft, opening: '', check: { ok: true, problems: [], sentences: 0 } };
+
+      let status = 'proposed';
+      let openingDraft = null;
+      let body = null;
+      let subject = '';
+      let material = null;
+      let deep = { firstThings: null, customDeclined: null };
+      if (pick.what) {
+        const firstEmail = usesFirstEmail(pick, { firstWeekly, lastInviteSent: facts.lastInviteSent });
+        body = await buildBody(pick, { coach, client, week, firstEmail, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
+      }
+      if (brief) {
+        deep = await deepen({ pick, body, brief, client, facts, factLinesNow: liveLines, week, firstWeekly, llmFor, at });
+        pick = deep.pick;
+        body = deep.body;
+      }
+      if (pick.leftOut) status = 'left-out';
+      else if (!pick.what) status = 'nothing';
+      else {
+        subject = body.error ? '' : subjectFor(pick, body);
+        // The client's world, read once: the opening and the thought for the week both draw on it.
+        if (!body.error && opts.openings !== false && !material) {
+          const od = opts.openingDeps || {};
+          const [meetings, emails] = await Promise.all([
+            od.meetings || opening.gatherMeetings(coach.clientId, client, od).catch(() => []),
+            od.emails || opening.gatherEmails(coach, client, od).catch(() => []),
+          ]);
+          // The brief rides along with the note, so the thought is chosen knowing what is really going on.
+          const briefNote = brief && brief.summary ? `\n\nBRIEF (everything on record, read this week): ${brief.summary}${(brief.onTheirMind || []).length ? ` On their mind: ${brief.onTheirMind.join('; ')}` : ''}` : '';
+          material = { meetings, emails, note: `${facts.noteText || ''}${briefNote}`.trim() };
+        }
+        if (!body.error && pick.what.kind === 'call') {
+          openingDraft = { opening: CALL_OPENING, check: opening.checkOpening(CALL_OPENING), confidence: 1, factsUsed: [], source: 'fixed' };
+        } else if (!body.error && pick.what.kind === 'custom') {
+          openingDraft = null; // a custom email is Guy's words from top to bottom - no separate opening
+        } else if (!body.error && opts.openings !== false) {
+          openingDraft = await opening.draftOpening({
+            coach, client, note: facts.noteText,
+            pick: { title: body.title, dek: body.dek, form: pick.form, kindLine: body.template === 'first-email'
+              ? "the client's FIRST weekly email - it already opens with a fixed congratulations paragraph. Add ONE sentence only if there is something real and specific to say from the material; otherwise answer with an empty opening"
+              : pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind },
+            factLines: [...liveLines, ...briefFactLines(brief)],
+            today: new Date(at).toISOString().slice(0, 10),
+          }, { ...(opts.openingDeps || {}), llm: (opts.openingDeps && opts.openingDeps.llm) || llmFor('opening') || undefined, ...(material ? { meetings: material.meetings, emails: material.emails } : {}) });
+          // The first email's personal line is optional - an empty one is right, not a problem.
+          if (body.template === 'first-email' && openingDraft && !String(openingDraft.opening || '').trim() && !openingDraft.error) {
+            openingDraft = { ...openingDraft, opening: '', check: { ok: true, problems: [], sentences: 0 } };
+          }
         }
       }
-    }
-    // A thought for the week, when the body is not itself a one-pager piece - chosen from the
-    // client's own world (their calls, emails and note), with a one-line why for Guy.
-    let thought = null;
-    if (pick.what && !body.error && pick.what.kind !== 'one-pager') {
-      let llm = opts.thoughtLlm;
-      if (llm === undefined) { try { llm = require('../config/anthropicClient').resolveClientAnthropic(coach).llm; } catch (_) { llm = null; } }
-      thought = await require('./clientTouchThought').chooseThoughtForClient({
-        facts, shelf, client, record: ctx.touchesByClient.get(client.clientId) || [], material: material || { note: facts.noteText },
-        exclude: [pick.what.key], now: at, seed: `${client.clientId}|${week}`, llm: opts.openings === false ? null : llm,
-        pieceThisWeek: `${pick.what.title} (${pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind})`, logger,
+      // A thought for the week, when the body is not itself a one-pager piece - chosen from the
+      // client's own world (their calls, emails and note), with a one-line why for Guy.
+      let thought = null;
+      if (pick.what && !body.error && pick.what.kind !== 'one-pager') {
+        const llm = opts.thoughtLlm !== undefined ? opts.thoughtLlm : llmFor('thought');
+        thought = await require('./clientTouchThought').chooseThoughtForClient({
+          facts, shelf, client, record, material: material || { note: facts.noteText },
+          exclude: [pick.what.key, ...(pick.replaces && pick.replaces.what ? [pick.replaces.what.key] : [])], now: at, seed: `${client.clientId}|${week}`, llm: opts.openings === false ? null : llm,
+          pieceThisWeek: `${pick.what.title} (${pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind === 'custom' ? `an email written for them: ${briefs.htmlText(body.bodyHtml)}` : pick.what.kind})`, logger,
+        });
+      }
+      // THE FACT GUARD at build time: every claim in the opening or the custom email, against the brief and the live facts.
+      const openingText = openingDraft ? stripLeadingName(openingDraft.opening, require('./onePagerEmail').firstNameOf(client.clientFirstName || client.clientName)) : '';
+      let guard = null;
+      if (pick.what && body && !body.error) {
+        const text = guardText({ pick: { ...pick, body: { template: body.template }, opening: openingDraft }, opening: openingText, bodyHtml: body.bodyHtml });
+        if (text) guard = await briefs.checkClaims(text, { facts, factLines: liveLines, brief, llm: llmFor('guard'), client, at });
+      }
+      const { noteText, signals, ...storedFacts } = facts;
+      const row = await planStore.upsertPlan({
+        weekOf: week, clientId: client.clientId, status,
+        pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound, slots: body.slots || undefined, template: body.template || undefined } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null, thought,
+          brief: briefs.compactBrief(brief), briefSource: brief ? brief.source || null : null, briefError: brief && brief.error ? brief.error : null,
+          firstThings: deep.firstThings, customDeclined: deep.customDeclined, guard },
+        facts: { ...storedFacts, builtAt: new Date(now).toISOString(), at: new Date(at).toISOString(), signals: { paused: signals.paused, runningLow: signals.runningLow, acceptancesSlow: signals.acceptancesSlow, live: signals.live, pausedWaiting: signals.pausedWaiting } },
+        // Stored as it will be sent - the panel shows exactly what goes (no "Rick, ..." under "Hi Rick,").
+        opening: openingText,
+        subject,
+        bodyHtml: body && !body.error ? body.bodyHtml : '',
+        bodyPreview: body && !body.error ? previewText(body.bodyHtml) : (body && body.error ? `could not build: ${body.error}` : ''),
+        recipient: facts.address,
       });
+      // "Congratulations, you've started" reads late to a client whose invitations began weeks ago:
+      // build the welcome, but HOLD it for Guy to keep or reword rather than propose it as ready.
+      let finalRow = row;
+      const lateNote = body && body.template === 'first-email' ? welcomeLateNote(facts.invitationsStartedAt, at) : null;
+      if (row && lateNote && row.status === 'proposed') {
+        finalRow = await planStore.setPlanStatus(week, client.clientId, 'held', { sendError: `held: ${lateNote}`, hold: { stage: 'build', hard: false, changed: [lateNote], reason: lateNote, at: new Date(now).toISOString() } }) || row;
+      }
+      out.push(finalRow || { weekOf: week, clientId: client.clientId, status, pick, opening: openingDraft ? openingDraft.opening : '', subject });
+      if (opts.onRow) await opts.onRow(out.length, meter.summary());
+    } catch (e) {
+      if (e && e.name === 'BudgetError') { stopped = e.message; logger.error(`plan ${week}: ${e.message} - stopping at ${client.clientId}`); break; }
+      throw e;
     }
-    const { noteText, signals, ...storedFacts } = facts;
-    const row = await planStore.upsertPlan({
-      weekOf: week, clientId: client.clientId, status,
-      pick: { ...pick, body: body ? { title: body.title, dek: body.dek, qs: body.qs, error: body.error || null, missing: !!body.missing, slotsFound: body.slotsFound, slots: body.slots || undefined, template: body.template || undefined } : null, opening: openingDraft ? { check: openingDraft.check, confidence: openingDraft.confidence, factsUsed: openingDraft.factsUsed, source: openingDraft.source, error: openingDraft.error || null } : null, thought },
-      facts: { ...storedFacts, builtAt: new Date(now).toISOString(), at: new Date(at).toISOString(), signals: { paused: signals.paused, runningLow: signals.runningLow, acceptancesSlow: signals.acceptancesSlow, live: signals.live, pausedWaiting: signals.pausedWaiting } },
-      // Stored as it will be sent - the panel shows exactly what goes (no "Rick, ..." under "Hi Rick,").
-      opening: openingDraft ? stripLeadingName(openingDraft.opening, require('./onePagerEmail').firstNameOf(client.clientFirstName || client.clientName)) : '',
-      subject,
-      bodyHtml: body && !body.error ? body.bodyHtml : '',
-      bodyPreview: body && !body.error ? previewText(body.bodyHtml) : (body && body.error ? `could not build: ${body.error}` : ''),
-      recipient: facts.address,
-    });
-    // "Congratulations, you've started" reads late to a client whose invitations began weeks ago:
-    // build the welcome, but HOLD it for Guy to keep or reword rather than propose it as ready.
-    let finalRow = row;
-    const lateNote = body && body.template === 'first-email' ? welcomeLateNote(facts.invitationsStartedAt, at) : null;
-    if (row && lateNote && row.status === 'proposed') {
-      finalRow = await planStore.setPlanStatus(week, client.clientId, 'held', { sendError: `held: ${lateNote}`, hold: { stage: 'build', hard: false, changed: [lateNote], reason: lateNote, at: new Date(now).toISOString() } }) || row;
-    }
-    out.push(finalRow || { weekOf: week, clientId: client.clientId, status, pick, opening: openingDraft ? openingDraft.opening : '', subject });
   }
-  logger.info(`plan ${week}: ${out.length} rows (${out.filter((r) => r.pick && r.pick.what).length} picks, ${out.filter((r) => r.status === 'left-out').length} left out)`);
-  return { weekOf: week, rows: out };
+  const spend = meter.summary();
+  logger.info(`plan ${week}: ${out.length} rows (${out.filter((r) => r.pick && r.pick.what).length} picks, ${out.filter((r) => r.status === 'left-out').length} left out) - ${cost.costLine(spend)}`);
+  return { weekOf: week, rows: out, cost: spend, stopped };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -789,14 +925,18 @@ const BUILD_STALE_MS = 20 * 60 * 1000;
 function buildStatus(value, now = Date.now()) {
   let s = null;
   try { s = value ? JSON.parse(value) : null; } catch (_) { s = null; }
-  if (!s || !s.startedAt) return { running: false, startedAt: null, finishedAt: null, rows: null, error: null };
-  const started = new Date(s.startedAt).getTime();
-  const running = !s.finishedAt && now - started < BUILD_STALE_MS;
+  if (!s || !s.startedAt) return { running: false, startedAt: null, finishedAt: null, rows: null, error: null, cost: null };
+  // A deep build (every client's calls read the first time) can run well past 20 minutes, so "still
+  // running" is judged from the last row written (the heartbeat), not from when it started.
+  const last = new Date(s.heartbeatAt || s.startedAt).getTime();
+  const running = !s.finishedAt && now - last < BUILD_STALE_MS;
   return {
     running,
     startedAt: s.startedAt,
     finishedAt: s.finishedAt || null,
     rows: s.rows ?? null,
+    cost: s.cost || null,
+    stopped: s.stopped || null,
     error: s.error || (!s.finishedAt && !running ? 'the build stopped part-way (the server restarted?) - press Build again; rows already written are kept' : null),
   };
 }
@@ -815,8 +955,10 @@ async function startBuild(coachClientId, week, opts = {}, deps = {}) {
   await ps.setState(key, JSON.stringify({ startedAt }));
   const done = (async () => {
     try {
-      const plan = await run(coachClientId, { ...opts, weekOf: week });
-      await ps.setState(key, JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), rows: plan.rows.length }));
+      const onRow = async (rows, spend) => { await ps.setState(key, JSON.stringify({ startedAt, heartbeatAt: new Date().toISOString(), rows, cost: spend })); };
+      const plan = await run(coachClientId, { ...opts, weekOf: week, onRow });
+      await ps.setState(key, JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), rows: plan.rows.length, cost: plan.cost || null, stopped: plan.stopped || null }));
+      if (plan.stopped) await (deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail)(`Monday emails - the build for ${dayLabel(week)} STOPPED at the cost limit`, `<p>${esc(plan.stopped)}.</p><p>${plan.rows.length} clients were done before it stopped; the rest have no plan yet. ${esc(cost.costLine(plan.cost))}.</p><p>Press Build again to carry on (raise CLIENT_TOUCH_BUILD_BUDGET_USD first if this is expected).</p>`);
       logger.info(`background build ${week}: ${plan.rows.length} rows`);
     } catch (e) {
       logger.error(`background build ${week} failed: ${e.message}`);
@@ -906,6 +1048,23 @@ function samePick(a, b) {
   return !!(a && b && a.what && b.what && a.what.kind === b.what.kind && a.what.key === b.what.key);
 }
 
+/**
+ * Would the picker still land where it did at build time? A custom email was written in place of
+ * the picker's own choice (pick.replaces) - so the morning check compares against THAT: the same
+ * piece again, or the same "nothing" for the same reason (no invitations out yet). Pure.
+ */
+function stillAsBuilt(fresh, built) {
+  if (!built || !built.what || built.what.kind !== 'custom') return samePick(fresh, built);
+  const was = built.replaces || {};
+  if (was.what) return samePick(fresh, was);
+  return !!(fresh && !fresh.what && !fresh.leftOut && fresh.rule === was.rule);
+}
+
+/** Is the first-things-first flag still waiting on Guy? Pure. */
+function firstThingsOpen(pick) {
+  return !!(pick && pick.firstThings && pick.firstThings.status === 'open');
+}
+
 /** Fresh facts + record for the given clients, read now - the sending-morning re-check's input. */
 async function freshFactsFor(coachClientId, week, clientIds) {
   const now = Date.now();
@@ -963,20 +1122,43 @@ async function sendApproved(coachClientId, week, deps = {}) {
     await ps.setPlanStatus(week, row.clientId, 'held', { sendError: `held: ${reason}`, hold: { ...holdInfo, reason, at: new Date().toISOString() } });
   };
 
+  // The fact guard's Claude check on the sending morning - Guy's own server key, metered like a build.
+  const meter = deps.meter || cost.createMeter();
+  const guardLlm = deps.guardLlm !== undefined ? deps.guardLlm : (() => { const l = serverLlm(); return l ? meter.wrap(l, 'guard') : null; })();
+
   for (const row of plan) {
     const guard = await sendGuard(row.clientId, row, deps);
     if (!guard.ok) { await hold(row, guard.reason, { hard: true, changed: [guard.reason] }); continue; }
+    // First things first: Guy owes them something important - the weekly email waits for his note.
+    if (firstThingsOpen(row.pick)) {
+      const owed = (row.pick.firstThings.items || []).map((o) => o.what).join('; ');
+      await hold(row, 'send your personal note first (or dismiss the flag)', { hard: false, changed: [`you owe them: ${owed || 'see the brief'} - send the personal note first, or dismiss the flag`] });
+      continue;
+    }
 
     if (recheck && !keep.has(row.clientId)) {
       const f = fresh.get(row.clientId);
       if (!f) { await hold(row, 'the re-check could not read their facts this morning', { hard: false, changed: ['the re-check could not read their facts this morning'] }); continue; }
       const now = Date.now();
       const freshPick = picker.pickFor(f.facts, shelf, f.record, { now, order: MANIFEST.client });
-      if (!samePick(freshPick, row.pick)) {
+      if (!stillAsBuilt(freshPick, row.pick)) {
         const changed = whatChanged(row.facts || {}, f.facts, row, freshPick);
         const suggestion = freshPick.what ? { kind: freshPick.what.kind, key: freshPick.what.key, title: freshPick.what.title, reason: freshPick.reason } : null;
         await hold(row, `${changed[0] || 'something changed'} - keep or swap?`, { hard: !!freshPick.leftOut, changed, suggestion });
         continue;
+      }
+      // THE FACT GUARD again, on this morning's facts: every claim still true?
+      const text = guardText(row);
+      if (text) {
+        let check;
+        try {
+          check = await briefs.checkClaims(text, { facts: f.facts, factLines: factLines(f.facts, f.facts.signals || {}, null), brief: row.pick.brief || null, llm: guardLlm, client: guard.client, at: now });
+        } catch (e) { check = { ok: false, problems: [`the fact guard could not run (${e.message})`] }; }
+        if (!check.ok) {
+          await ps.setPlanPickField(week, row.clientId, 'guard', { ...check, stage: 'send' });
+          await hold(row, `the fact guard: ${check.problems[0]} - reword or keep?`, { hard: false, changed: check.problems.map((p) => `fact guard: ${p}`) });
+          continue;
+        }
       }
     }
     const client = guard.client;
@@ -1018,7 +1200,7 @@ async function sendApproved(coachClientId, week, deps = {}) {
     await ts.record({
       clientId: row.clientId, kind, key: row.pick.what.key, form: row.pick.form, sentAt: new Date(),
       reason: row.pick.reason, source: 'planner', recipient: to,
-      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '', firstWeekly, ...(row.pick.thought ? { thought: row.pick.thought.slug } : {}), ...(offeredSlots ? { slots: offeredSlots.map((x) => x.time) } : {}) },
+      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '', firstWeekly, ...(row.pick.thought ? { thought: row.pick.thought.slug } : {}), ...(offeredSlots ? { slots: offeredSlots.map((x) => x.time) } : {}), ...(kind === 'custom' ? { body: briefs.htmlText(bodyHtml).slice(0, 4000), replaces: row.pick.replaces || null } : {}) },
     });
     await ps.setPlanStatus(week, row.clientId, 'sent', { sentAt: new Date() });
     sent++;
@@ -1045,23 +1227,35 @@ function screenUrlFor() {
 
 /** The preview email to Guy - every row, what it is and why, the opening - and the one link to the screen. */
 function buildPreview(plan, { screenUrl = '', autosend = false } = {}) {
+  const name = (r) => esc(r.facts && r.facts.clientName ? r.facts.clientName : r.clientId);
   const picks = plan.rows.filter((r) => r.pick && r.pick.what);
   const quiet = plan.rows.filter((r) => r.status === 'nothing');
   const out = plan.rows.filter((r) => r.status === 'left-out');
+  const owed = plan.rows.filter((r) => firstThingsOpen(r.pick));
+  const custom = picks.filter((r) => r.pick.what.kind === 'custom');
   const when = `${dayLabel(plan.weekOf)} at ${SEND_HOUR}am`;
   const parts = [];
   parts.push(`<p>${picks.length} email${picks.length === 1 ? '' : 's'} prepared for ${esc(when)}. ${autosend
     ? 'Send-with-veto is ON: anything you have not skipped goes by itself then, after a fresh check.'
     : `Approve them on the screen whenever suits during the week. Only what you approve goes - by itself, on ${esc(when)}, after a fresh check that nothing has changed. Anything not approved by then is not sent.`}</p>`);
+  if (owed.length) {
+    parts.push(`<p><b>Send a personal note first (${owed.length})</b> - you owe these clients something important, so their weekly email waits until you send the note (a draft is on the screen) or dismiss the flag:</p>`);
+    parts.push(`<ul>${owed.map((r) => `<li>${name(r)}: ${esc((r.pick.firstThings.items || []).map((o) => o.what).join('; '))}</li>`).join('')}</ul>`);
+  }
+  if (custom.length) parts.push(`<p><b>Written for them (${custom.length}) - read these closely:</b> ${custom.map((r) => `${name(r)} - "${esc(r.pick.what.title)}"`).join('; ')}. Nothing on your approved shelf fitted where they are, so each was written from everything on record.</p>`);
   if (screenUrl) parts.push(`<p><a href="${esc(screenUrl)}">Open the Monday emails</a></p>`);
   for (const r of picks) {
-    parts.push(`<h3 style="margin-bottom:2px">${esc(r.facts && r.facts.clientName ? r.facts.clientName : r.clientId)} - ${esc(r.pick.what.title)}${r.pick.form === 'short' ? ' (short)' : ''}</h3>`);
+    parts.push(`<h3 style="margin-bottom:2px">${name(r)} - ${r.pick.what.kind === 'custom' ? 'CUSTOM: ' : ''}${esc(r.pick.what.title)}${r.pick.form === 'short' ? ' (short)' : ''}</h3>`);
     parts.push(`<p style="margin:0;color:#666">${esc(r.pick.reason)}</p>`);
-    parts.push(`<p style="margin:6px 0 12px">${r.opening ? esc(r.opening) : '<i>(no opening drafted - needs your words)</i>'}</p>`);
+    if (r.pick.brief && r.pick.brief.summary) parts.push(`<p style="margin:4px 0;color:#555;font-size:13px"><i>Brief:</i> ${esc(r.pick.brief.summary)}</p>`);
+    if (r.pick.what.kind === 'custom') parts.push(`<p style="margin:6px 0 12px">${esc(briefs.htmlText(r.bodyHtml || '').replace(/\n+/g, ' / '))}</p>`);
+    else parts.push(`<p style="margin:6px 0 12px">${r.opening ? esc(r.opening) : '<i>(no opening drafted - needs your words)</i>'}</p>`);
+    if (r.pick.guard && !r.pick.guard.ok) parts.push(`<p style="margin:0 0 12px;color:#b00">Fact guard: ${esc(r.pick.guard.problems.join('; '))}</p>`);
   }
-  if (quiet.length) parts.push(`<p><b>Nothing that week:</b> ${quiet.map((r) => `${esc(r.facts && r.facts.clientName ? r.facts.clientName : r.clientId)} (${esc(r.pick ? r.pick.reason : '')})`).join('; ')}</p>`);
-  if (out.length) parts.push(`<p><b>Left out:</b> ${out.map((r) => `${esc(r.facts && r.facts.clientName ? r.facts.clientName : r.clientId)} - ${esc(r.pick ? r.pick.reason : '')}`).join('; ')}</p>`);
-  return { subject: `Monday emails - ${dayLabel(plan.weekOf)} - ${picks.length} to approve`, html: parts.join('\n') };
+  if (quiet.length) parts.push(`<p><b>Nothing that week:</b> ${quiet.map((r) => `${name(r)} (${esc(r.pick ? r.pick.reason : '')})`).join('; ')}</p>`);
+  if (out.length) parts.push(`<p><b>Left out:</b> ${out.map((r) => `${name(r)} - ${esc(r.pick ? r.pick.reason : '')}`).join('; ')}</p>`);
+  if (plan.cost) parts.push(`<p style="color:#666;font-size:13px">${esc(cost.costLine(plan.cost))}.</p>`);
+  return { subject: `Monday emails - ${dayLabel(plan.weekOf)} - ${picks.length} to approve${owed.length ? `, ${owed.length} note${owed.length === 1 ? '' : 's'} to send first` : ''}${plan.stopped ? ' - BUILD STOPPED at the cost limit' : ''}`, html: parts.join('\n') };
 }
 
 /** Proposals Guy never approved roll off on the sending morning - marked lapsed, never sent. Returns those rows. */
@@ -1077,7 +1271,7 @@ async function rollOff(week, deps = {}) {
 }
 
 /** The short report to Guy after the Monday send: what went, what was held and why, what wasn't approved. Pure. */
-function buildSendReport({ result, lapsed = [], names = new Map(), titles = new Map(), screenUrl = '' }) {
+function buildSendReport({ result, lapsed = [], names = new Map(), titles = new Map(), screenUrl = '', buildCost = null, guardCost = null }) {
   const name = (id) => esc(names.get(id) || id);
   const title = (id) => (titles.get(id) ? ` - ${esc(titles.get(id))}` : '');
   const went = result.results.filter((r) => r.status === 'sent');
@@ -1092,6 +1286,8 @@ function buildSendReport({ result, lapsed = [], names = new Map(), titles = new 
   if (failed.length) parts.push(`<p><b>Failed to send (${failed.length}):</b> ${failed.map((r) => `${name(r.clientId)} (${esc(r.error || 'error')})`).join('; ')}.</p>`);
   parts.push(`<p><b>Not approved, so not sent (${lapsed.length}):</b> ${lapsed.length ? lapsed.map((r) => `${name(r.clientId)} - ${esc(r.pick.what.title)}`).join('; ') : 'none'}.</p>`);
   if (screenUrl) parts.push(`<p><a href="${esc(screenUrl)}">Open the Monday emails</a></p>`);
+  const spend = [buildCost ? `building this plan: ${cost.costLine(buildCost)}` : '', guardCost && guardCost.calls ? `this morning's fact check: US$${Number(guardCost.usd).toFixed(2)} (${guardCost.calls} calls)` : ''].filter(Boolean);
+  if (spend.length) parts.push(`<p style="color:#666;font-size:13px">Claude cost - ${esc(spend.join('; '))}.</p>`);
   return { subject: `Monday emails - ${went.length} went, ${held.length} held, ${lapsed.length} not approved`, html: parts.join('\n') };
 }
 
@@ -1102,16 +1298,20 @@ async function mondaySend(coachClientId, week, deps = {}) {
     // Send-with-veto (OFF by default): an untouched proposal with a passing opening counts as approved.
     for (const r of await ps.plansFor(week)) {
       if (r.status !== 'proposed' || !r.pick || !r.pick.what) continue;
+      // Never by veto: a CUSTOM email (Guy must read it), a row waiting on his personal note, a failed fact guard.
+      if (r.pick.what.kind === 'custom' || firstThingsOpen(r.pick) || (r.pick.guard && !r.pick.guard.ok)) continue;
       if (r.pick.opening && r.pick.opening.check && r.pick.opening.check.ok) await ps.setPlanStatus(week, r.clientId, 'approved');
     }
   }
   const before = await ps.plansFor(week);
-  const result = await sendApproved(coachClientId, week, deps);
+  const meter = deps.meter || cost.createMeter();
+  const result = await sendApproved(coachClientId, week, { ...deps, meter });
   const lapsed = await rollOff(week, deps);
   let names = new Map();
   try { names = new Map((await (deps.clientService || clientService).getAllClients()).map((c) => [c.clientId, c.clientName])); } catch (_) { /* ids will do */ }
   const titles = new Map(before.filter((r) => r.pick && r.pick.what).map((r) => [r.clientId, r.pick.what.title]));
-  const report = buildSendReport({ result, lapsed, names, titles, screenUrl: screenUrlFor() });
+  const built = buildStatus(ps.getState ? await ps.getState(`build-run:${week}`) : null);
+  const report = buildSendReport({ result, lapsed, names, titles, screenUrl: screenUrlFor(), buildCost: built.cost, guardCost: meter.summary() });
   const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
   await send(report.subject, report.html);
   return { ...result, lapsed: lapsed.length };
@@ -1138,7 +1338,10 @@ async function tick(deps = {}) {
     const nextWeek = planStore.addWeeks(thisWeek, 1);
     if (await ps.claimWeekly('build', nextWeek)) {
       logger.info(`Monday build for ${nextWeek} (a week ahead)`);
+      const startedAt = new Date().toISOString();
       const plan = await (deps.buildPlan || buildPlan)(coachClientId, { weekOf: nextWeek });
+      // Kept where the panel and the sending-morning report read the build's cost.
+      if (ps.setState) await ps.setState(`build-run:${nextWeek}`, JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), rows: plan.rows.length, cost: plan.cost || null, stopped: plan.stopped || null }));
       const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
       const pv = buildPreview(plan, { screenUrl: screenUrlFor(), autosend: autosendOn() });
       await send(pv.subject, pv.html);
@@ -1215,6 +1418,10 @@ function outlookFor(row, record, shelf, { week, pinsAhead = [], order = MANIFEST
     subject: row.subject || '',
     hold: row.hold || null,
     thought: pick && pick.thought ? pick.thought : null,
+    brief: pick && pick.brief ? pick.brief : null,
+    firstThings: pick && pick.firstThings ? pick.firstThings : null,
+    guard: pick && pick.guard ? pick.guard : null,
+    customText: pick && pick.what && pick.what.kind === 'custom' ? briefs.htmlText(row.bodyHtml) : null,
   } : null;
   let likelyNext = [];
   if (row && row.facts) {
@@ -1250,9 +1457,23 @@ function formatOutlook(name, o) {
     lines.push(`THIS MONDAY (${dayLabel(t.weekOf)}) - ${status}:`);
     lines.push(t.what ? `  ${t.what.title} (${KIND_LABEL[t.what.kind] || t.what.kind}${t.form === 'short' ? ', short' : ''})` : '  nothing');
     if (t.reason) lines.push(`  why: ${t.reason}`);
+    if (t.firstThings && t.firstThings.status === 'open') {
+      lines.push(`  SEND A PERSONAL NOTE FIRST - you owe them: ${(t.firstThings.items || []).map((o) => `${o.what}${o.promisedOn ? ` (${o.promisedOn})` : ''}`).join('; ')}. The weekly email waits until you mark the note sent or dismiss the flag.`);
+      if (t.firstThings.note && t.firstThings.note.text) lines.push(`  drafted note - "${t.firstThings.note.subject}": ${t.firstThings.note.text.replace(/\s*\n+\s*/g, ' / ')}`);
+    }
+    if (t.customText) lines.push(`  CUSTOM EMAIL (written for them - read closely): ${t.customText.replace(/\s*\n+\s*/g, ' / ')}`);
     if (t.opening) lines.push(`  opening: "${t.opening}"`);
+    if (t.guard && !t.guard.ok) lines.push(`  fact guard: ${t.guard.problems.join('; ')}`);
     if (t.thought && t.thought.text) lines.push(`  thought for the week (${t.thought.title}): "${t.thought.text}"${t.thought.why ? ` - why: ${t.thought.why}` : ''}`);
     if (t.hold && t.hold.changed && t.hold.changed.length) lines.push(`  what changed: ${t.hold.changed.join('; ')}`);
+    if (t.brief) {
+      const b = t.brief;
+      lines.push('', `THE BRIEF (everything on record, read ${b.builtAt ? String(b.builtAt).slice(0, 10) : 'this week'}):`);
+      if (b.summary) lines.push(`  ${b.summary}`);
+      for (const [label, xs] of [['true now', b.trueNow], ['waiting on', b.waitingOn], ['on their mind', b.onTheirMind], ['never say', b.neverSay]]) if ((xs || []).length) lines.push(`  ${label}: ${xs.join('; ')}`);
+      if ((b.owed || []).length) lines.push(`  you owe them: ${b.owed.map((o) => `${o.what}${o.promisedOn ? ` (${o.promisedOn})` : ''}${o.quote ? ` - "${o.quote}"` : ''}`).join('; ')}`);
+      if ((b.wins || []).length) lines.push(`  wins: ${b.wins.map((w) => w.what).join('; ')}`);
+    }
   }
   lines.push('');
   lines.push('LIKELY NEXT - provisional, if nothing changes (a first call booked, a campaign running low and the like can jump the queue):');
@@ -1314,6 +1535,7 @@ async function screenFor(coachClientId, week) {
     return {
       ...r,
       bodyHtml: undefined, // heavy - the preview endpoint serves it
+      customText: r.pick && r.pick.what && r.pick.what.kind === 'custom' ? briefs.htmlText(r.bodyHtml) : null, // Guy reads and edits a custom email on the row
       alreadyHad: outlook.alreadyHad,
       likelyNext: outlook.likelyNext,
       clientName: c.clientName,
@@ -1364,6 +1586,42 @@ async function screenFor(coachClientId, week) {
   };
 }
 
+/**
+ * Guy's answer to "send a personal note first": 'sent' (he sent it himself - recorded in the touch
+ * record, and the items are dealt with, so next week's brief does not raise them again) or
+ * 'dismiss' (not needed - also remembered). Either way the weekly email for that client is free to
+ * be approved. Returns the updated row.
+ */
+async function resolveFirstThings(week, clientId, { action, text = '' } = {}, deps = {}) {
+  const ps = deps.planStore || planStore;
+  const ts = deps.touchStore || touchStore;
+  const row = await ps.planFor(week, clientId);
+  if (!row || !row.pick || !row.pick.firstThings) throw new Error('No personal note is flagged for this client that week.');
+  if (!['sent', 'dismiss'].includes(action)) throw new Error('action is sent or dismiss');
+  const ft = row.pick.firstThings;
+  const items = ft.items || [];
+  const at = new Date();
+  const words = String(text || (ft.note && ft.note.text) || '').replace(/[–—]/g, '-').trim();
+  if (action === 'sent') {
+    await ts.record({ clientId, kind: 'personal', key: `${OWED_NOTE_KEY}:${week}`, form: 'one-off', sentAt: at, reason: `personal note first - ${items.map((o) => o.what).join('; ')}`.slice(0, 900), source: 'manual', meta: { weekOf: week, firstThings: true, items: items.map((o) => o.id), subject: ft.note ? ft.note.subject : '', text: words.slice(0, 4000) } });
+  }
+  await briefs.markHandled(clientId, items, action === 'sent' ? 'sent' : 'dismissed', { text: action === 'sent' ? words : '', at: at.toISOString() }, { planStore: ps });
+  return ps.setPlanPickField(week, clientId, 'firstThings', { ...ft, status: action === 'sent' ? 'sent' : 'dismissed', resolvedAt: at.toISOString(), ...(words && action === 'sent' ? { note: { ...(ft.note || {}), text: words } } : {}) });
+}
+
+/** Re-run the fact guard on a row's words now (after Guy edits them). Stores and returns the result. */
+async function recheckGuard(week, clientId, deps = {}) {
+  const ps = deps.planStore || planStore;
+  const row = await ps.planFor(week, clientId);
+  if (!row || !row.pick || !row.pick.what) return null;
+  const text = guardText(row);
+  const llm = deps.llm !== undefined ? deps.llm : serverLlm();
+  const check = text ? await briefs.checkClaims(text, { facts: row.facts || {}, factLines: factLines(row.facts || {}, (row.facts && row.facts.signals) || {}, null), brief: row.pick.brief || null, llm, client: { clientName: (row.facts && row.facts.clientName) || clientId }, at: sendAt(week).getTime() })
+    : { ok: true, problems: [], claims: [], checkedAt: new Date().toISOString(), by: 'code' };
+  await ps.setPlanPickField(week, clientId, 'guard', { ...check, stage: 'edit' });
+  return check;
+}
+
 /** The full HTML of one row's email as it would go (the screen's preview). */
 async function previewFor(week, clientId) {
   const row = await planStore.planFor(week, clientId);
@@ -1393,7 +1651,15 @@ module.exports = {
   autosendOn,
   mondaySendOn,
   sendEnabled,
+  resolveFirstThings,
+  recheckGuard,
+  deepen,
   // pure, tested
+  stillAsBuilt,
+  firstThingsOpen,
+  guardText,
+  briefFactLines,
+  OWED_NOTE_KEY,
   sendAt,
   callNotBefore,
   pickCallSlots,

@@ -38,7 +38,8 @@ const { Pool } = require('pg');
 let pool;
 let schemaEnsured = false;
 
-const KINDS = ['one-pager', 'habit', 'mindset', 'setup', 'one-off', 'personal', 'call', 'intro'];
+// custom = an email written for one client from their brief, when nothing approved on the shelf fits (22 Oct 2026)
+const KINDS = ['one-pager', 'habit', 'mindset', 'setup', 'one-off', 'personal', 'call', 'intro', 'custom'];
 const FORMS = ['full', 'short', 'one-off'];
 const SOURCES = ['planner', 'backfill', 'gmail', 'manual', 'wingguy'];
 // Kinds that count as "Guy touched base" for the planner's not-this-week rule and the Monday
@@ -66,7 +67,7 @@ async function ensureSchema(client) {
     CREATE TABLE IF NOT EXISTS client_touches (
       id BIGSERIAL PRIMARY KEY,
       client_id TEXT NOT NULL,
-      kind TEXT NOT NULL CHECK (kind IN ('one-pager','habit','mindset','setup','one-off','personal','call','intro')),
+      kind TEXT NOT NULL,
       key TEXT NOT NULL,
       form TEXT NOT NULL DEFAULT 'full' CHECK (form IN ('full','short','one-off')),
       version TEXT,
@@ -78,6 +79,10 @@ async function ensureSchema(client) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // The kind check follows KINDS, so adding a kind (custom, 22 Oct 2026) widens the table too. The
+  // table was first made with the check inline, which Postgres named client_touches_kind_check.
+  await client.query('ALTER TABLE client_touches DROP CONSTRAINT IF EXISTS client_touches_kind_check');
+  await client.query(`ALTER TABLE client_touches ADD CONSTRAINT client_touches_kind_check CHECK (kind IN (${KINDS.map((k) => `'${k}'`).join(',')}))`);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_client_touches_once
     ON client_touches (client_id, kind, key, sent_at);
