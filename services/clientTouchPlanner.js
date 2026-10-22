@@ -327,6 +327,9 @@ async function factsFor(client, card, ctx) {
     if (d === null || d > picker.REINFORCE_AFTER_WEEKS * 7) firstSeen['campaign-running-low'] = nowIso;
   }
   if (signals.acceptancesSlow) mark('acceptances-slow');
+  // When their invitations started: nothing records it (the earliest connection is often an old
+  // imported one - Alex's goes back to 2015), so the first day the planner sees invitations going out.
+  if (client.lastInviteSent) mark('invitations-going');
   const usedDays = daysSince(card.lastUsedAt, now);
   if (usedDays !== null && usedDays >= 21 && signals.live > 0 && !signals.paused) mark('busy');
   if (usedDays !== null && usedDays >= 42 && card.group === 'running') mark('drifting');
@@ -356,6 +359,7 @@ async function factsFor(client, card, ctx) {
     windingDownUntil: cancelsAt,
     leaveOff: (ctx.leaveOff && ctx.leaveOff.get(client.clientId)) || null,
     todayFirstRecordAt: todayFirstAt,
+    invitationsStartedAt: invitationsStarted(client.launchDate, firstSeen['invitations-going']),
     unsubscribed: !!client.emailUnsubscribed,
     hasUnsubToken: !!client.emailUnsubToken,
     address,
@@ -517,6 +521,19 @@ function welcomeLateNote(startedAt, at) {
   return `invitations started ${d} - "Congratulations, you've started" may read late; keep or reword`;
 }
 
+/**
+ * When a client's invitations started, as best the system can tell: their Launch Date (when their
+ * system went live - what the "since launch" filters already key on), else the first day the
+ * planner saw their invitations going out. Pure.
+ */
+function invitationsStarted(launchDate, firstSeenGoing) {
+  for (const v of [launchDate, firstSeenGoing]) {
+    const t = v ? new Date(v).getTime() : NaN;
+    if (!Number.isNaN(t)) return new Date(t).toISOString();
+  }
+  return null;
+}
+
 /** Does this pick get the first-email template? Pure. */
 function usesFirstEmail(pick, { firstWeekly, lastInviteSent }) {
   return !!(pick && pick.what && pick.what.key === ORIENTATION.slug && firstWeekly && lastInviteSent);
@@ -676,7 +693,10 @@ async function buildPlan(coachClientId, opts = {}) {
   for (const { card, client } of pairs) {
     if (only && !only.has(client.clientId)) continue;
     const existing = await planStore.planFor(week, client.clientId);
-    if (existing && !['proposed', 'nothing', 'left-out'].includes(existing.status) && !opts.force) { out.push(existing); continue; } // Guy has spoken
+    // A hold the planner put on at build time is its own, not Guy's verdict - a rebuild re-decides it.
+    const builtHold = existing && existing.status === 'held' && existing.hold && existing.hold.stage === 'build';
+    if (existing && !['proposed', 'nothing', 'left-out'].includes(existing.status) && !builtHold && !opts.force) { out.push(existing); continue; } // Guy has spoken
+    if (builtHold) await planStore.setPlanStatus(week, client.clientId, 'proposed', { hold: null, sendError: null });
     let facts;
     try { facts = await factsFor(client, card, ctx); }
     catch (e) { logger.error(`facts for ${client.clientId} failed: ${e.message}`); continue; }
@@ -747,7 +767,7 @@ async function buildPlan(coachClientId, opts = {}) {
     // "Congratulations, you've started" reads late to a client whose invitations began weeks ago:
     // build the welcome, but HOLD it for Guy to keep or reword rather than propose it as ready.
     let finalRow = row;
-    const lateNote = body && body.template === 'first-email' ? welcomeLateNote(facts.todayFirstRecordAt, at) : null;
+    const lateNote = body && body.template === 'first-email' ? welcomeLateNote(facts.invitationsStartedAt, at) : null;
     if (row && lateNote && row.status === 'proposed') {
       finalRow = await planStore.setPlanStatus(week, client.clientId, 'held', { sendError: `held: ${lateNote}`, hold: { stage: 'build', hard: false, changed: [lateNote], reason: lateNote, at: new Date(now).toISOString() } }) || row;
     }
@@ -1398,6 +1418,7 @@ module.exports = {
   composeEmail,
   FIRST_EMAIL,
   welcomeLateNote,
+  invitationsStarted,
   firstEmailBody,
   usesFirstEmail,
   stripLeadingName,

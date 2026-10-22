@@ -316,7 +316,8 @@ before leaving, or switch to send-with-veto from his phone for that stretch.
 - **The welcome comes first** (Guy, 22 Oct): every client's FIRST weekly email is the welcome
   below, as soon as their invitations are going out - ahead of events, a call offer and everything
   else; only Guy's pins, onboarding and "not this week" come before it. When their invitations
-  started more than four weeks before the sending morning (their first connection), it is built
+  started more than four weeks before the sending morning (their Launch Date, else the first day the
+  planner saw invitations going out - the earliest connection is often an old import), it is built
   but HELD on the panel: "invitations started <date> - 'Congratulations, you've started' may read
   late; keep or reword". Guy approves it as it is, or rewords (or drops) the Congratulations line.
 - **The first-email template** (Guy approved 22 Oct): when the pick is the orientation, it is the

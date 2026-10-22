@@ -103,6 +103,11 @@ const routes = require('../routes/clientTouchRoutes');
     assert.strictEqual(planner.welcomeLateNote('2026-10-10T00:00:00Z', at), null, 'recent - goes as a normal proposal');
     assert.strictEqual(planner.welcomeLateNote(null, at), null);
   });
+  await check('"invitations started" = the Launch Date, else the first day the planner saw them going - never the earliest connection (old imports)', () => {
+    assert.strictEqual(planner.invitationsStarted('2026-08-21', '2026-10-22T10:00:00Z'), new Date('2026-08-21').toISOString());
+    assert.strictEqual(planner.invitationsStarted(null, '2026-10-22T10:00:00Z'), '2026-10-22T10:00:00.000Z');
+    assert.strictEqual(planner.invitationsStarted(null, null), null);
+  });
   await check('Guy can reword the Congratulations line, or empty it to leave it out', async () => {
     const b = await planner.buildBody({ what: { kind: 'one-pager', key: '(orientation)' }, form: 'full' }, { coach: {}, client: {}, firstEmail: true });
     const reworded = planner.composeEmail({ client: { clientName: 'Rick Wong' }, opening: '', kind: 'one-pager', body: { ...b, congrats: 'Good to have you running for a couple of months now.' }, unsubscribeUrl: '#', firstWeekly: true });
