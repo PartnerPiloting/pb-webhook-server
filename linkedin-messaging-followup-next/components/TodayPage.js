@@ -120,9 +120,6 @@ function TodayInner() {
     setCampaignFilterState(v);
     try { window.localStorage.setItem('wg-today-campaign', String(v)); } catch (_) { /* per-viewer convenience only */ }
   };
-  // A remembered campaign that is no longer live falls back to All.
-  const activeFilter = !campaigns ? 'all'
-    : (campaignFilter === 'all' || campaignFilter === 'none' || campaigns.some((c) => c.id === campaignFilter)) ? campaignFilter : 'all';
   const [welcomeTally, setWelcomeTally] = useState({ counts: {}, names: {} });
   const { pickerCounts, campaigns } = useMemo(() => {
     const counts = { ...(welcomeTally.counts || {}) };
@@ -139,6 +136,9 @@ function TodayInner() {
     const places = ids.length + (counts.none ? 1 : 0);
     return { pickerCounts: counts, campaigns: runsSeveral && places > 1 ? list : null };
   }, [welcomeTally, queue, runsSeveral]);
+  // A remembered campaign that is no longer live falls back to All.
+  const activeFilter = !campaigns ? 'all'
+    : (campaignFilter === 'all' || campaignFilter === 'none' || campaigns.some((c) => c.id === campaignFilter)) ? campaignFilter : 'all';
 
   const [counts, setCounts] = useState({});
   const countOwed = useCallback((n) => setCounts((c) => (c.owed === n ? c : { ...c, owed: n })), []);
