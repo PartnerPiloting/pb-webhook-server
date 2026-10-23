@@ -77,7 +77,7 @@ function slimLead(profile = {}) {
    (Schema updated for perfect alignment with helper functions)
    MULTI-TENANT: Now accepts optional clientId parameter
 ------------------------------------------------------------------ */
-async function buildPrompt(logger = null, clientId = null) {
+async function buildPrompt(logger = null, clientId = null, attributeSet = null) {
     // Initialize logger if not provided (backward compatibility)
     if (!logger) {
         logger = require('./utils/contextLogger').createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'prompt_builder' });
@@ -85,8 +85,9 @@ async function buildPrompt(logger = null, clientId = null) {
 
     logger.info(`Starting lead scoring prompt construction${clientId ? ` for client: ${clientId}` : ''}`);
 
-    // Pass clientId to loadAttributes for multi-tenant support
-    const { preamble, positives, negatives } = await loadAttributes(logger, clientId);
+    // attributeSet: the set to score with when the caller already has it - narrowed to one campaign
+    // (services/campaignScope.js) or a what-if draft. Otherwise the client's saved set.
+    const { preamble, positives, negatives } = attributeSet || await loadAttributes(logger, clientId);
 
     logger.debug(`Loaded attributes: ${Object.keys(positives).length} positive, ${Object.keys(negatives).length} negative`);
 

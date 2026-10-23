@@ -2,8 +2,15 @@
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from '../utils/clientUtils';
+import WhatIfTest from './WhatIfTest';
 
-const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
+const SCOPE_CHOICES = [
+  { value: 'all', label: 'All campaigns' },
+  { value: 'only', label: 'Only these campaigns' },
+  { value: 'except', label: 'All campaigns except these' },
+];
+
+const AIEditModal = ({ isOpen, onClose, attribute, onSave, campaigns = [] }) => {
   const [fieldValues, setFieldValues] = useState({});
   const [chatHistory, setChatHistory] = useState({});
   const [activeFieldHelper, setActiveFieldHelper] = useState(null);
@@ -14,10 +21,18 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
 
   // Completely separate field definitions for profile vs post scoring
   const isPostAttribute = attribute?.isPostAttribute === true;
-  
+
   // A negative row either takes points off or sets the whole score to 0. It has no Max Points and no
   // minimum - the old form showed both anyway, and the numbers typed there went nowhere (Oct 2026).
   const isNegativeAttribute = !isPostAttribute && attribute?.category === 'Negative';
+
+  // "Applies to" (23 Oct 2026): only for a client running more than one Linked Helper campaign - or
+  // a row already tagged, so it can be put back. Everyone else never sees it.
+  const liveCampaigns = (campaigns || []).filter((c) => c.live);
+  const taggedIds = attribute?.campaignIds || [];
+  const scopeCampaigns = [...liveCampaigns, ...(campaigns || []).filter((c) => !c.live && taggedIds.includes(c.id))];
+  for (const id of taggedIds) if (!scopeCampaigns.some((c) => c.id === id)) scopeCampaigns.push({ id, name: `Campaign #${id}`, live: false });
+  const showScope = !isPostAttribute && (liveCampaigns.length > 1 || (attribute?.campaignScope && attribute.campaignScope !== 'all'));
 
   // Profile Scoring Fields - Complex scoring system with bonuses, qualifications, etc.
   const profileFields = [
@@ -79,6 +94,12 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       description: 'Concrete scoring scenarios that help AI understand nuances',
       rows: 4
     },
+    ...(showScope ? [{
+      key: 'campaignScope',
+      label: 'Applies to',
+      type: 'campaign-scope',
+      description: 'Which of your Linked Helper campaigns this attribute counts for. Leads are scored only on the attributes that apply to their campaign.'
+    }] : []),
     {
       key: 'active',
       label: 'Status',
@@ -177,7 +198,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   useEffect(() => {
     if (attribute) {
       console.log('AIEditModal: Setting field values for attribute:', attribute);
-      
+
       if (attribute.isPostAttribute) {
         // Post Scoring Criteria - using rich Airtable fields
         setFieldValues({
@@ -203,10 +224,12 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           minToQualify: (attribute.minToQualify && attribute.minToQualify !== 'null') ? String(attribute.minToQualify) : '',
           signals: (attribute.signals && attribute.signals !== 'null') ? String(attribute.signals) : '',
           examples: (attribute.examples && attribute.examples !== 'null') ? String(attribute.examples) : '',
-          active: Boolean(attribute.active)
+          active: Boolean(attribute.active),
+          campaignScope: attribute.campaignScope || 'all',
+          campaignIds: Array.isArray(attribute.campaignIds) ? attribute.campaignIds : []
         });
       }
-      
+
       // Initialize chat history for each field
       const initialChatHistory = {};
       fields.forEach(field => {
@@ -229,14 +252,14 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     setActiveFieldHelper(fieldKey);
     setAiInput('');
     setError(null);
-    
+
     // Get current field value
     const currentValue = fieldValues[fieldKey];
     const hasValue = currentValue && currentValue.trim() !== '' && currentValue !== 'null';
-    
+
     // Create automatic initial message based on field type and state
     let initialMessage;
-    
+
     if (fieldKey === 'heading') {
       if (hasValue) {
         initialMessage = `Current Name: ${currentValue}\n\nWould you like to make a change?`;
@@ -312,7 +335,7 @@ CURRENT SETTING: ${currentType}
 You can't change this value directly, but I can help you understand which type would work best for your criterion. What type of content evaluation are you trying to achieve?`;
     } else if (fieldKey === 'instructions') {
       const hasInstructions = currentValue && currentValue.trim() && currentValue !== 'null';
-      
+
       if (isPostAttribute) {
         initialMessage = `I'll help you create scoring instructions for ${attribute.heading || 'this post criterion'}.
 
@@ -392,14 +415,14 @@ Examples:
         initialMessage = "This field is currently empty. Tell me what you'd like to set and I'll help you configure it.";
       }
     }
-    
+
     // Initialize chat history with automatic initial message
     const initialChatHistory = [{
       type: 'assistant',
       message: initialMessage,
       timestamp: new Date().toLocaleTimeString()
     }];
-    
+
     setChatHistory(prev => ({
       ...prev,
       [fieldKey]: initialChatHistory
@@ -408,18 +431,18 @@ Examples:
 
   const handleAIHelp = async () => {
     if (!aiInput.trim() || !activeFieldHelper) return;
-    
+
     console.log('AIEditModal: Sending AI help request:', aiInput);
     setIsGenerating(true);
     setError(null);
-    
+
     // Add user message to chat history
     const userMessage = {
       type: 'user',
       message: aiInput,
       timestamp: new Date().toLocaleTimeString()
     };
-    
+
     setChatHistory(prev => ({
       ...prev,
       [activeFieldHelper]: [
@@ -427,14 +450,14 @@ Examples:
         userMessage
       ]
     }));
-    
+
     try {
       console.log('AIEditModal: Making real API call...');
       // Strip /api/linkedin suffix like other API calls do
       const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server-hotfix.onrender.com';
       const apiUrl = `${baseUrl}/api/attributes/${attribute.id}/ai-field-help`;
       console.log('API URL:', apiUrl);
-      
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -450,24 +473,24 @@ Examples:
           currentAttribute: fieldValues
         }),
       });
-      
+
       console.log('AIEditModal: Response status:', response.status);
       console.log('AIEditModal: Response ok:', response.ok);
-      
+
       // Check if response is ok before trying to parse JSON
       if (!response.ok) {
         const errorText = await response.text();
         console.log('AIEditModal: Error response text:', errorText);
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
-      
+
       const result = await response.json();
       console.log('AIEditModal: API response:', result);
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to get AI help');
       }
-      
+
       // Add AI response to chat history - with defensive string conversion
       const aiResponse = {
         type: 'ai',
@@ -475,7 +498,7 @@ Examples:
         timestamp: new Date().toLocaleTimeString(),
         suggestedValue: result.suggestedValue // Store the suggested value but don't auto-apply
       };
-      
+
       setChatHistory(prev => ({
         ...prev,
         [activeFieldHelper]: [
@@ -483,24 +506,24 @@ Examples:
           aiResponse
         ]
       }));
-      
+
       // Remove automatic field updating - let user choose
       // if (result.suggestedValue !== undefined) {
       //   handleFieldChange(activeFieldHelper, String(result.suggestedValue));
       // }
-      
+
       setAiInput('');
-      
+
     } catch (err) {
       console.error('AIEditModal: Error getting AI help:', err);
-      
+
       // Add error message to chat history
       const errorMessage = {
         type: 'error',
         message: `❌ Failed to get AI help: ${err.message}`,
         timestamp: new Date().toLocaleTimeString()
       };
-      
+
       setChatHistory(prev => ({
         ...prev,
         [activeFieldHelper]: [
@@ -516,14 +539,14 @@ Examples:
   // New function to apply AI suggestions
   const handleApplySuggestion = (fieldKey, suggestedValue) => {
     handleFieldChange(fieldKey, String(suggestedValue));
-    
+
     // Add confirmation message to chat
     const confirmationMessage = {
       type: 'system',
       message: '✅ Applied suggestion to field',
       timestamp: new Date().toLocaleTimeString()
     };
-    
+
     setChatHistory(prev => ({
       ...prev,
       [fieldKey]: [
@@ -533,14 +556,10 @@ Examples:
     }));
   };
 
-  const handleSave = async () => {
-    try {
-      setIsSaving(true);
-      setError(null);
-      
-      // Create update data based on attribute type
+  // The form's values as the save (and the what-if test) sends them. Null when they can't be used -
+  // the error is already showing.
+  const buildUpdatedData = () => {
       let updatedData;
-      
       if (attribute.isPostAttribute) {
         // Post Scoring Criteria - using rich Airtable fields
         updatedData = {
@@ -560,8 +579,7 @@ Examples:
         const amount = Number(fieldValues.penalty);
         if (!disqualify && (!Number.isInteger(amount) || amount < 1 || amount > 50)) {
           setError('Enter how many points to take off - a whole number from 1 to 50.');
-          setIsSaving(false);
-          return;
+          return null;
         }
         updatedData = {
           heading: fieldValues.heading,
@@ -585,15 +603,34 @@ Examples:
           active: fieldValues.active
         };
       }
-      
+      if (showScope) {
+        const scope = fieldValues.campaignScope || 'all';
+        const ids = scope === 'all' ? [] : (fieldValues.campaignIds || []);
+        if (scope !== 'all' && !ids.length) {
+          setError('Pick at least one campaign under "Applies to", or set it back to all campaigns.');
+          return null;
+        }
+        updatedData.campaignScope = scope;
+        updatedData.campaignIds = ids;
+      }
+      return updatedData;
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      setError(null);
+      const updatedData = buildUpdatedData();
+      if (!updatedData) { setIsSaving(false); return; }
+
       console.log('AIEditModal: Saving data:', updatedData);
       
       if (onSave) {
         await onSave(attribute.id, updatedData);
       }
-      
+
       onClose();
-      
+
     } catch (err) {
       console.error('AIEditModal: Save error:', err);
       setError(err.message);
@@ -618,13 +655,13 @@ Examples:
             <XMarkIcon className="h-6 w-6" />
           </button>
         </div>
-        
+
         {error && (
           <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
             {error}
           </div>
         )}
-        
+
         <div className="space-y-6">
           {fields.map(field => (
             <div key={field.key} className="border rounded-lg p-4 bg-gray-50">
@@ -635,6 +672,7 @@ Examples:
                   </label>
                   <p className="text-xs text-gray-500">{field.description}</p>
                 </div>
+                {field.type !== 'campaign-scope' && (
                 <button
                   onClick={() => handleOpenFieldAI(field.key)}
                   className="flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
@@ -642,7 +680,54 @@ Examples:
                   <SparklesIcon className="h-3 w-3 mr-1" />
                   AI Help
                 </button>
+                )}
               </div>
+
+              {field.type === 'campaign-scope' && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-4">
+                    {SCOPE_CHOICES.map((c) => (
+                      <label key={c.value} className="flex items-center gap-2 cursor-pointer text-sm text-gray-900">
+                        <input
+                          type="radio"
+                          name="campaignScope"
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                          checked={(fieldValues.campaignScope || 'all') === c.value}
+                          onChange={() => handleFieldChange('campaignScope', c.value)}
+                        />
+                        {c.label}
+                      </label>
+                    ))}
+                  </div>
+                  {(fieldValues.campaignScope || 'all') !== 'all' && (
+                    <div className="space-y-1 pl-1">
+                      {scopeCampaigns.map((c) => {
+                        const on = (fieldValues.campaignIds || []).includes(c.id);
+                        return (
+                          <label key={c.id} className="flex items-center gap-2 cursor-pointer text-sm text-gray-800">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                              checked={on}
+                              onChange={() => handleFieldChange('campaignIds', on
+                                ? (fieldValues.campaignIds || []).filter((x) => x !== c.id)
+                                : [...(fieldValues.campaignIds || []), c.id].sort((a, b) => a - b))}
+                            />
+                            {c.name || `Campaign #${c.id}`}
+                            {c.paused && c.live && <span className="text-xs text-gray-500">(paused)</span>}
+                            {!c.live && <span className="text-xs text-amber-700">(no longer in Linked Helper - untick it)</span>}
+                          </label>
+                        );
+                      })}
+                      <p className="text-xs text-gray-500 pt-1">
+                        {(fieldValues.campaignScope === 'only')
+                          ? 'Counts only for leads from the ticked campaigns. Leads added by hand, and campaigns you start later, are not scored on it.'
+                          : 'Counts for every lead except those from the ticked campaigns - including leads added by hand and campaigns you start later.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
               
               {field.type === 'negative-kind' && (
                 <div className="space-y-3">
@@ -690,7 +775,7 @@ Examples:
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               )}
-              
+
               {field.type === 'number' && (
                 <input
                   type="number"
@@ -700,7 +785,7 @@ Examples:
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               )}
-              
+
               {field.type === 'textarea' && (
                 <textarea
                   value={fieldValues[field.key] || ''}
@@ -710,7 +795,7 @@ Examples:
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               )}
-              
+
               {field.type === 'select' && (
                 <select
                   value={field.key === 'active' ? String(fieldValues[field.key]) : (fieldValues[field.key] || '')}
@@ -732,7 +817,7 @@ Examples:
                   ))}
                 </select>
               )}
-              
+
               {field.type === 'toggle' && (
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="flex items-center justify-between mb-3">
@@ -801,12 +886,12 @@ Examples:
                   </div>
                 </div>
               )}
-              
+
               {/* AI Chat for this field */}
               {activeFieldHelper === field.key && (
                 <div className="mt-3 p-3 bg-white border rounded">
                   <h4 className="text-sm font-medium mb-2">AI Assistant for {field.label}</h4>
-                  
+
                   {/* Chat history - Show only suggested values, not AI explanations */}
                   {chatHistory[field.key] && chatHistory[field.key].length > 0 && (
                     <div className="mb-3 space-y-2">
@@ -819,7 +904,7 @@ Examples:
                               <span className="text-gray-500 ml-2">{message.timestamp}</span>
                             </div>
                           )}
-                          
+
                           {/* Show AI assistant messages (initial helpful messages) */}
                           {message.type === 'assistant' && (
                             <div className="text-xs p-3 rounded bg-green-100 border border-green-200 mb-2">
@@ -828,7 +913,7 @@ Examples:
                               <span className="text-green-600 text-xs mt-1 block">{message.timestamp}</span>
                             </div>
                           )}
-                          
+
                           {/* Show error messages */}
                           {message.type === 'error' && (
                             <div className="text-xs p-2 rounded bg-red-100 mb-2">
@@ -836,7 +921,7 @@ Examples:
                               <span className="text-gray-500 ml-2">{message.timestamp}</span>
                             </div>
                           )}
-                          
+
                           {/* Show system messages */}
                           {message.type === 'system' && (
                             <div className="text-xs p-2 rounded bg-gray-100 mb-2">
@@ -844,14 +929,14 @@ Examples:
                               <span className="text-gray-500 ml-2">{message.timestamp}</span>
                             </div>
                           )}
-                          
+
                           {/* Show AI conversational responses */}
                           {message.type === 'ai' && (
                             <div className="text-xs p-3 rounded bg-blue-100 border border-blue-200 mb-2">
                               <div className="text-blue-700 font-medium mb-1">🤖 AI:</div>
                               <div className="text-blue-800 whitespace-pre-line">{String(message.message)}</div>
                               <span className="text-blue-600 text-xs mt-1 block">{message.timestamp}</span>
-                              
+
                               {/* Show suggested value if present */}
                               {message.suggestedValue !== undefined && message.suggestedValue !== null && (
                                 <div className="border border-green-300 rounded p-3 bg-green-50 mt-2">
@@ -873,7 +958,7 @@ Examples:
                       ))}
                     </div>
                   )}
-                  
+
                   {/* AI input */}
                   <div className="flex space-x-2">
                     <textarea
@@ -897,7 +982,14 @@ Examples:
             </div>
           ))}
         </div>
-        
+
+        {/* What-if: score a sample with the unsaved values (profile attributes only) */}
+        {!isPostAttribute && attribute?.id && (
+          <div className="mt-6">
+            <WhatIfTest recordId={attribute.id} buildData={() => { setError(null); return buildUpdatedData(); }} disabled={isSaving} />
+          </div>
+        )}
+
         {/* Bottom buttons */}
         <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
           <button

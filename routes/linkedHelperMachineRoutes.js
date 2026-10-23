@@ -211,6 +211,11 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   if (campaignReport && Array.isArray(campaignReport.campaigns)) {
     require('../services/lhWeeklyCampaignReport').saveSnapshot(client.clientId || clientId, campaignReport.campaigns);
   }
+  // Every unarchived campaign (23 Oct 2026) - the "applies to" picker on scoring attributes and the
+  // Today campaign picker (services/lhCampaignList.js). Same: not awaited, never throws.
+  if (campaignReport && Array.isArray(campaignReport.all_campaigns)) {
+    require('../services/lhCampaignList').saveList(client.clientId || clientId, campaignReport.all_campaigns);
+  }
 
   try {
     const base = clientService.initializeClientsBase();

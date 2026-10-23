@@ -186,18 +186,29 @@ async function estimate(r, { scope, size, months }) {
 //   { empty: true, result }                 - nothing in scope
 //   { insufficient: true, needed, available } - not enough credits
 //   { jobId, mode, scope, total }           - started; poll getJob(jobId)
-async function startRun(r, { mode, scope, size, months }) {
+//
+// attributeSet (what-if, 23 Oct 2026 - Sam Noble): score the sample with DRAFT attributes that are
+// not saved anywhere. Always a preview. So the answer is purely "what would my change do", the same
+// sample is first scored with the SAVED attributes when there is no earlier test on it to compare
+// with - that costs the sample twice, and the client is told before it starts (needed).
+async function startRun(r, { mode, scope, size, months, attributeSet = null }) {
+  const draft = !!attributeSet;
+  if (draft) { mode = 'preview'; scope = 'sample'; }
   const persist = mode === 'commit';
   // Scope-building + credit enforcement happen synchronously (fast) before the job starts.
   const { records, oldById, count } = await buildScope(r.base, { scope, size, months });
   if (count === 0) return { empty: true, result: { mode, scope, count: 0, rows: [], summary: { message: 'No leads in scope.' } } };
-  if (count > r.status.available) return { insufficient: true, needed: count, available: r.status.available };
+  const idsKeyUp = records.map(rec => rec.id).sort().join(',');
+  const priorBaseline = baselines.get(r.clientId);
+  const needsBaseline = draft && !(priorBaseline && priorBaseline.idsKey === idsKeyUp);
+  const needed = needsBaseline ? count * 2 : count;
+  if (needed > r.status.available) return { insufficient: true, needed, available: r.status.available };
 
   pruneJobs();
   const jobId = newJobId();
   const nameById = {}; for (const rec of records) nameById[rec.id] = `${rec.get('First Name') || ''} ${rec.get('Last Name') || ''}`.trim();
   const tier = Number(r.client.primaryFloor) || 70;
-  const job = { id: jobId, clientId: r.clientId, mode, scope, status: 'running', total: count, done: 0, result: null, error: null, startedAt: Date.now() };
+  const job = { id: jobId, clientId: r.clientId, mode, scope, draft, status: 'running', total: needed, done: 0, result: null, error: null, startedAt: Date.now() };
   jobs.set(jobId, job);
 
   // Kick off scoring in the background (do NOT await — the caller returns immediately).
@@ -205,14 +216,29 @@ async function startRun(r, { mode, scope, size, months }) {
     try {
       const gemini = require('../config/geminiClient');
       const batchScorer = require('../batchScorer');
+      let spent = 0;
+      if (needsBaseline) {
+        // The saved attributes on the same sample first - the baseline the draft is compared with.
+        const saved = await batchScorer.scoreRecordsNow({
+          records, clientId: r.clientId, clientBase: r.base,
+          dependencies: { vertexAIClient: gemini.vertexAIClient, geminiModelId: gemini.geminiModelId },
+          persist: false, runId: 'RESCORE-preview',
+          onProgress: (done) => { job.done = done; }
+        });
+        spent += saved.successful || 0;
+        const scoresById = {};
+        for (const p of (saved.perLead || [])) { if (typeof p.newScore === 'number') scoresById[p.recordId] = p.newScore; }
+        baselines.set(r.clientId, { idsKey: idsKeyUp, at: Date.now(), scoresById });
+      }
       const result = await batchScorer.scoreRecordsNow({
         records, clientId: r.clientId, clientBase: r.base,
         dependencies: { vertexAIClient: gemini.vertexAIClient, geminiModelId: gemini.geminiModelId },
-        persist, runId: `RESCORE-${mode}`,
-        onProgress: (done, total) => { job.done = done; job.total = total; }
+        persist, runId: draft ? 'RESCORE-whatif' : `RESCORE-${mode}`,
+        attributeSet,
+        onProgress: (done) => { job.done = (needsBaseline ? count : 0) + done; }
       });
       // Debit by leads actually scored (failures don't cost the client credits).
-      const creditsAfter = await clientService().debitRescoreCredits(r.clientId, result.successful || 0);
+      const creditsAfter = await clientService().debitRescoreCredits(r.clientId, spent + (result.successful || 0));
       const report = buildReport(result, oldById, nameById, tier);
 
       // Baseline compare (preview): if the previous preview covered the same lead set,
@@ -236,17 +262,20 @@ async function startRun(r, { mode, scope, size, months }) {
           }
           report.summary.vsPreviousTest = { movedUp: vsUp, movedDown: vsDown, unchanged: vsSame };
         }
-        // This preview becomes the new baseline for the next test.
-        const scoresById = {};
-        for (const p of (result.perLead || [])) { if (typeof p.newScore === 'number') scoresById[p.recordId] = p.newScore; }
-        baselines.set(r.clientId, { idsKey, at: Date.now(), scoresById });
+        // This preview becomes the new baseline for the next test - unless it was a what-if: the
+        // baseline stays "the saved attributes", so every draft is compared with what is live.
+        if (!draft) {
+          const scoresById = {};
+          for (const p of (result.perLead || [])) { if (typeof p.newScore === 'number') scoresById[p.recordId] = p.newScore; }
+          baselines.set(r.clientId, { idsKey, at: Date.now(), scoresById });
+        }
       } else {
         // Commit re-baselines the stored scores; the old test baseline is stale.
         baselines.delete(r.clientId);
       }
 
-      job.result = { mode, scope, count, credits: creditsView(creditsAfter), comparedToPreviousTest, previousTestAt, ...report };
-      job.done = count;
+      job.result = { mode, scope, count, draft, comparedToPreviousTest, previousTestAt, credits: creditsView(creditsAfter), ...report };
+      job.done = needed;
       job.status = 'done';
     } catch (e) {
       logger.error('rescore job failed', e.message, e.stack);
@@ -255,13 +284,17 @@ async function startRun(r, { mode, scope, size, months }) {
     }
   })();
 
-  return { jobId, mode, scope, total: count };
+  return { jobId, mode, scope, total: count, draft, creditsNeeded: needed };
 }
 
 const getJob = (jobId) => jobs.get(jobId) || null;
 
+// Saved attributes changed: the last test no longer shows "the saved attributes", so the next
+// what-if must re-score the sample with the new ones before comparing.
+const forgetBaseline = (clientId) => { baselines.delete(clientId); };
+
 module.exports = {
-  resolveClient, creditsView, estimate, startRun, getJob,
+  resolveClient, creditsView, estimate, startRun, getJob, forgetBaseline,
   SAMPLE_DEFAULT, SAMPLE_MAX,
   // exported for tests
   buildReport, stratifiedIds,

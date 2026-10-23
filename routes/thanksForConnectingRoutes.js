@@ -145,7 +145,9 @@ module.exports = function mountThanksForConnecting(app, base) {
       dateConnected,
       daysSinceConnected: daysSince(dateConnected),
       aiScore: r.get(LEAD_FIELDS.AI_SCORE) ?? null,
-      thanksStatus: normalizeStatus(r.get(THANKS_STATUS_FIELD))
+      thanksStatus: normalizeStatus(r.get(THANKS_STATUS_FIELD)),
+      // The Linked Helper campaign that sent them - for the campaign picker on Today (23 Oct 2026)
+      campaignId: require('../services/campaignScope').campaignIdOfRecord(r)
     };
   }
 

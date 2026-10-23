@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { matchesCampaign, tallyCampaigns } from '../utils/campaignFilter';
 import HelpButton from './HelpButton';
 import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from "../utils/clientUtils";
 
@@ -104,7 +105,8 @@ function formatScore(score) {
 // (components/TodayPage.js) - the page owns the title and the fold, so the header card is skipped,
 // and the list opens highest score first (Guy to Owen, 7 Oct: work down from the best, Skip the
 // 31s at the bottom). `onCount` reports the outstanding number for the folded header.
-export default function ThanksForConnecting({ embedded = false, onCount = null } = {}) {
+// `campaignFilter` / `onCampaignTally` (2026-10-23): the Today campaign picker - see utils/campaignFilter.js.
+export default function ThanksForConnecting({ embedded = false, onCount = null, campaignFilter = 'all', onCampaignTally = null } = {}) {
   const clientId = useMemo(() => buildClientId(), []);
   const [view, setView] = useState('outstanding'); // 'outstanding' | 'all'
   const [items, setItems] = useState([]);
@@ -137,7 +139,14 @@ export default function ThanksForConnecting({ embedded = false, onCount = null }
 
   useEffect(() => { load(view, windowDays); }, [view, windowDays, load]);
 
-  useEffect(() => { if (onCount && !loading) onCount(outstandingCount); }, [onCount, loading, outstandingCount]);
+  // With a campaign picked, the count is the outstanding rows from that campaign.
+  const shownOutstanding = campaignFilter === 'all'
+    ? outstandingCount
+    : items.filter((it) => !it.thanksStatus && matchesCampaign(it, campaignFilter)).length;
+  useEffect(() => { if (onCount && !loading) onCount(shownOutstanding); }, [onCount, loading, shownOutstanding]);
+  useEffect(() => {
+    if (onCampaignTally && !loading) onCampaignTally(tallyCampaigns(items.filter((it) => !it.thanksStatus)));
+  }, [onCampaignTally, loading, items]);
 
   // Apply a status. In Outstanding view the row leaves the queue (optimistic remove + undo).
   const setStatus = useCallback(async (item, newStatus) => {
@@ -184,7 +193,9 @@ export default function ThanksForConnecting({ embedded = false, onCount = null }
   }, [undo, clientId, view, load, windowDays]);
 
   // Sort in the UI so order is guaranteed regardless of API order or any caching.
+  const allItems = items;
   const sortedItems = useMemo(() => {
+    const items = allItems.filter((it) => matchesCampaign(it, campaignFilter));
     if (sortDir === 'score') {
       // Highest score first; unscored leads sink to the bottom, tie-broken oldest-connected first
       // so working top-down still clears the longest-waiting of equals.
@@ -204,7 +215,7 @@ export default function ThanksForConnecting({ embedded = false, onCount = null }
       const tb = b.dateConnected ? new Date(b.dateConnected).getTime() : Infinity;
       return (ta - tb) * dir;
     });
-  }, [items, sortDir]);
+  }, [allItems, sortDir, campaignFilter]);
 
   const headlineLine = (it) => {
     const parts = [];
@@ -305,7 +316,11 @@ export default function ThanksForConnecting({ embedded = false, onCount = null }
             </div>
           )}
 
-          {!loading && items.length > 0 && (
+          {!loading && items.length > 0 && sortedItems.length === 0 && (
+            <div className="py-6 text-center text-gray-600 text-sm">Nobody from this campaign is waiting - pick All campaigns at the top to see the rest.</div>
+          )}
+
+          {!loading && sortedItems.length > 0 && (
             <>
             <div className="flex items-center gap-4 pb-2 mb-1 border-b text-xs font-medium text-gray-400 uppercase tracking-wide">
               <div className="w-24 sm:w-32 shrink-0">Connected</div>

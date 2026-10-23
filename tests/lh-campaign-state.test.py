@@ -158,6 +158,24 @@ with tempfile.TemporaryDirectory() as root:
     p = by.get("Old paused", {})
     check("weekly numbers: a campaign without an accepted step reports null acceptances, and says it is paused",
           p.get("paused") is True and p.get("waiting") == 4 and p.get("accepted_7d") is None and p.get("cohort_accepted") is None)
+    every = lhw.campaign_state("777", data_dir=root).get("all_campaigns")
+    check("all campaigns: every unarchived campaign, finished ones included, archived left out (the scoring picker)",
+          every == [{"id": 1, "name": "Connect", "paused": False}, {"id": 2, "name": "Old paused", "paused": True},
+                    {"id": 3, "name": "Finished", "paused": False}])
+
+with tempfile.TemporaryDirectory() as root:
+    # A campaign created a minute ago: no steps, nobody loaded. It must still be in the list.
+    d = os.path.join(root, "Partitions", "linked-helper-account-778-main")
+    os.makedirs(d)
+    con = sqlite3.connect(os.path.join(d, "lh.db"))
+    con.executescript("CREATE TABLE campaigns (id INTEGER PRIMARY KEY, name TEXT, is_paused INT, is_archived INT);"
+                      "INSERT INTO campaigns VALUES (7,'Brand new',0,0);")
+    con.commit()
+    con.close()
+    con = sqlite3.connect(os.path.join(d, "lh.db"))
+    got = lhw.all_campaigns(con)
+    con.close()
+    check("all campaigns: lists a brand-new empty campaign straight away", got == [{"id": 7, "name": "Brand new", "paused": False}])
 
 with tempfile.TemporaryDirectory() as root:
     d = os.path.join(root, "Partitions", "linked-helper-account-42-main")

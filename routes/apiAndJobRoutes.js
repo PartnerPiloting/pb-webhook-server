@@ -899,10 +899,18 @@ router.get("/score-lead", async (req, res) => {
       debugLogger.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
     }
 
+    // Only the attributes that apply to this lead's Linked Helper campaign (services/campaignScope.js) -
+    // the same narrowed set for the prompt and for the total possible below.
+    const campaignScope = require("../services/campaignScope");
+    const scopedAttributes = campaignScope.forCampaign(
+      await loadAttributes(null, clientId),
+      campaignScope.campaignIdOfRecord(record)
+    );
     const gOut = await scoreLeadNow(profile, {
       vertexAIClient,
       geminiModelId,
       clientId,
+      attributeSet: scopedAttributes,
     });
     if (!gOut) {
         debugLogger.error(`singleScorer returned null for lead ID: ${id}`);
@@ -919,7 +927,7 @@ router.get("/score-lead", async (req, res) => {
       exclude_details = "",
     } = gOut;
 
-    const { positives, negatives } = await loadAttributes(null, clientId);    // Ensure all positive attributes are present in positive_scores and attribute_reasoning
+    const { positives, negatives } = scopedAttributes;    // Ensure all positive attributes are present in positive_scores and attribute_reasoning
     for (const key of Object.keys(positives)) {
       if (!(key in positive_scores)) {
         positive_scores[key] = 0;
@@ -4663,7 +4671,12 @@ router.post("/api/attributes/:id/save", async (req, res) => {
     if (!core.isScoring(row)) {
       return res.status(400).json({ success: false, error: "That row is not a scoring attribute and can't be edited here." });
     }
-    const check = core.checkProposal(rows, { rows: [core.portalProposal(row, updatedData)] });
+    const scopeTouched = updatedData.campaignScope !== undefined || updatedData.campaignIds !== undefined;
+    let campaigns = [];
+    if (scopeTouched) {
+      try { campaigns = (await require('../services/lhCampaignList').listCampaigns(clientId, { base: clientBase })).campaigns; } catch (_) { /* names only */ }
+    }
+    const check = core.checkProposal(rows, { rows: [core.portalProposal(row, updatedData)] }, scopeTouched ? { campaigns } : {});
     if (check.errors.length) {
       return res.status(400).json({ success: false, error: check.errors[0] });
     }
@@ -4675,14 +4688,17 @@ router.post("/api/attributes/:id/save", async (req, res) => {
         logger.error(`apiAndJobRoutes.js: backup before saving ${row.id} failed: ${e.message}`);
         return res.status(500).json({ success: false, error: "Not saved: the previous version could not be backed up first. Try again in a minute." });
       }
-      await core.writeRows(clientBase, core.buildWrites(core.touchedRows(check.changes), kinds));
+      await core.writeRows(clientBase, core.buildWrites(core.touchedRows(check.changes), kinds, require('../services/lhCampaignList').namesById(campaigns)));
       try { require('../attributeLoader').clearAttributeCache(); } catch (_) { /* clears itself within 10 min */ }
+      try { require('../services/rescoreRunner').forgetBaseline(clientId); } catch (_) { /* in-memory only */ }
     }
 
     logger.info(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId} (${check.changes.length} field changes)`);
     res.json({
       success: true,
-      message: "Attribute updated successfully"
+      message: "Attribute updated successfully",
+      // e.g. "No positive attribute applies to ..." - the editor shows these after a save
+      warnings: check.warnings.filter((w) => /campaign|applies to/i.test(w))
     });
     
   } catch (error) {
@@ -4814,16 +4830,14 @@ router.get("/api/attributes", async (req, res) => {
       });
     }
 
+    // No field list: a named field a base doesn't have yet (Campaign Scope, 23 Oct 2026) would
+    // fail the whole read, and the table is small.
     const records = await clientBase("Scoring Attributes")
       .select({
-        fields: [
-          "Attribute Id", "Heading", "Category", "Max Points", 
-          "Min To Qualify", "Penalty", "Disqualifying", "Bonus Points", "Active",
-          "Instructions", "Signals", "Examples"
-        ],
         filterByFormula: "OR({Category} = 'Positive', {Category} = 'Negative')"
       })
       .all();
+    const campaignScope = require("../services/campaignScope");
 
     const attributes = records.map(record => ({
       id: record.id,
@@ -4839,8 +4853,22 @@ router.get("/api/attributes", async (req, res) => {
       instructions: extractPlainText(record.get("Instructions")),
       signals: extractPlainText(record.get("Signals")),
       examples: extractPlainText(record.get("Examples")),
+      // Which Linked Helper campaigns it counts for (services/campaignScope.js)
+      ...(() => {
+        const sc = campaignScope.scopeFromCells(record.get("Campaign Scope"), record.get("Scope Campaigns"));
+        return { campaignScope: sc.mode, campaignIds: sc.ids };
+      })(),
       isEmpty: !record.get("Heading") && !extractPlainText(record.get("Instructions"))
     }));
+
+    // The client's Linked Helper campaigns, so the editor can offer "applies to" - only shown
+    // when there is more than one. Never fails the page.
+    let campaigns = [];
+    try {
+      campaigns = (await require("../services/lhCampaignList").listCampaigns(clientId, { base: clientBase })).campaigns;
+    } catch (e) {
+      logger.warn(`campaign list not read: ${e.message}`);
+    }
 
     // Sort attributes: Positives first (A-Z), then Negatives (N1, N2, etc.)
     attributes.sort((a, b) => {
@@ -4860,7 +4888,8 @@ router.get("/api/attributes", async (req, res) => {
     res.json({
       success: true,
       attributes,
-      count: attributes.length
+      count: attributes.length,
+      campaigns
     });
     
   } catch (error) {

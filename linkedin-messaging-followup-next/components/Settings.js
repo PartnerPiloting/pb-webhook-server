@@ -101,6 +101,8 @@ const SettingsWithParams = () => {
   const [currentView, setCurrentView] = useState('menu'); // 'menu', 'profile', 'posts', 'security'
   
   const [attributes, setAttributes] = useState([]);
+  // The client's Linked Helper campaigns (GET /api/attributes) - for "Applies to" on an attribute.
+  const [campaigns, setCampaigns] = useState([]);
   const [postAttributes, setPostAttributes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [postLoading, setPostLoading] = useState(true);
@@ -298,6 +300,7 @@ const SettingsWithParams = () => {
       // Reload attributes to show changes
       const data = await getAttributes();
       setAttributes(data.attributes || []);
+      if (Array.isArray(data.campaigns)) setCampaigns(data.campaigns);
       
       // Refresh token usage if on attribute screen
       if (currentView === 'profile' || currentView === 'posts') {
@@ -316,6 +319,7 @@ const SettingsWithParams = () => {
       // Reload attributes to show changes
       const data = await getAttributes();
       setAttributes(data.attributes || []);
+      if (Array.isArray(data.campaigns)) setCampaigns(data.campaigns);
       
       // Refresh token usage if on attribute screen
       if (currentView === 'profile' || currentView === 'posts') {
@@ -402,6 +406,7 @@ const SettingsWithParams = () => {
         // Load profile attributes
         const data = await getAttributes();
         setAttributes(data.attributes || []);
+      if (Array.isArray(data.campaigns)) setCampaigns(data.campaigns);
         
       } catch (err) {
         const errorMessage = err?.message || 'Failed to load attributes';
@@ -520,6 +525,13 @@ const SettingsWithParams = () => {
                       {needsSetup && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                           Needs Setup
+                        </span>
+                      )}
+                      {attribute.campaignScope && attribute.campaignScope !== 'all' && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
+                          title="Counts only for some of your Linked Helper campaigns - open Edit to see or change which">
+                          {attribute.campaignScope === 'only' ? 'Only: ' : 'All except: '}
+                          {(attribute.campaignIds || []).map((id) => (campaigns.find((c) => c.id === id) || {}).name || `#${id}`).join(', ')}
                         </span>
                       )}
                     </div>
@@ -1276,6 +1288,7 @@ const SettingsWithParams = () => {
           onClose={handleCloseAIModal}
           attribute={selectedAttribute}
           onSave={selectedAttribute.isPostAttribute ? handleSavePostAttribute : handleSaveAttribute}
+          campaigns={campaigns}
         />
       )}
     </div>

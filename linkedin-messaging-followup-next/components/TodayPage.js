@@ -108,6 +108,29 @@ function TodayInner() {
     return () => { alive = false; clearInterval(tick); };
   }, [hasQueue, clientId]);
 
+  // The campaign picker (23 Oct 2026): shown only when the queue says the client runs 2+ Linked
+  // Helper campaigns. One choice for the whole page; Reconnect is never filtered.
+  const campaigns = Array.isArray(queue?.campaigns) && queue.campaigns.length > 1 ? queue.campaigns : null;
+  const [campaignFilter, setCampaignFilterState] = useState(() => {
+    try { const v = window.localStorage.getItem('wg-today-campaign'); return v === null ? 'all' : (v === 'all' || v === 'none' ? v : Number(v)); } catch (_) { return 'all'; }
+  });
+  const setCampaignFilter = (v) => {
+    setCampaignFilterState(v);
+    try { window.localStorage.setItem('wg-today-campaign', String(v)); } catch (_) { /* per-viewer convenience only */ }
+  };
+  // A remembered campaign that is no longer live falls back to All.
+  const activeFilter = !campaigns ? 'all'
+    : (campaignFilter === 'all' || campaignFilter === 'none' || campaigns.some((c) => c.id === campaignFilter)) ? campaignFilter : 'all';
+  const [welcomeTally, setWelcomeTally] = useState({});
+  const pickerCounts = useMemo(() => {
+    const out = { ...welcomeTally };
+    for (const it of (queue?.items || [])) {
+      const key = it.campaignId === null || it.campaignId === undefined ? 'none' : it.campaignId;
+      out[key] = (out[key] || 0) + 1;
+    }
+    return out;
+  }, [welcomeTally, queue]);
+
   const [counts, setCounts] = useState({});
   const countOwed = useCallback((n) => setCounts((c) => (c.owed === n ? c : { ...c, owed: n })), []);
   const countWelcome = useCallback((n) => setCounts((c) => (c.welcome === n ? c : { ...c, welcome: n })), []);
@@ -139,6 +162,27 @@ function TodayInner() {
         <HelpButton area="followups" className="ml-1" title="Help: Today" />
       </div>
 
+      {campaigns && (
+        <div className="flex items-center gap-2 flex-wrap text-sm">
+          <label htmlFor="today-campaign" className="text-gray-600">Show</label>
+          <select
+            id="today-campaign"
+            className="border rounded px-2 py-1 bg-white"
+            value={String(activeFilter)}
+            onChange={(e) => { const v = e.target.value; setCampaignFilter(v === 'all' || v === 'none' ? v : Number(v)); }}
+          >
+            <option value="all">All campaigns</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                {c.name || `Campaign #${c.id}`}{pickerCounts[c.id] ? ` (${pickerCounts[c.id]})` : ''}
+              </option>
+            ))}
+            <option value="none">Added another way{pickerCounts.none ? ` (${pickerCounts.none})` : ''}</option>
+          </select>
+          {activeFilter !== 'all' && <span className="text-gray-500">Reconnect always shows everyone.</span>}
+        </div>
+      )}
+
       {order.length === 0 && (
         <div className="bg-white border rounded-lg p-6 text-center text-gray-600">
           Nothing is switched on for this page yet. Your leads are under <Link className="text-blue-700 hover:underline" href={`/leads?${qs}`}>Leads</Link>.
@@ -147,19 +191,19 @@ function TodayInner() {
 
       {hasWelcome && (
         <Section id="welcome" title="New connections to welcome" blurb="Accepted recently, best fit first" count={counts.welcome} open={open.has('welcome')} onToggle={() => toggle('welcome')}>
-          <ThanksForConnecting embedded onCount={countWelcome} />
+          <ThanksForConnecting embedded onCount={countWelcome} campaignFilter={activeFilter} onCampaignTally={setWelcomeTally} />
         </Section>
       )}
 
       {hasQueue && (
         <Section id="owed" title="Waiting on you" blurb="They wrote last - it's your turn" count={counts.owed} open={open.has('owed')} onToggle={() => toggle('owed')}>
-          <FollowUpsQueue section="owed" preloaded={queue} preloadError={queueError} onCount={countOwed} />
+          <FollowUpsQueue section="owed" preloaded={queue} preloadError={queueError} onCount={countOwed} campaignFilter={activeFilter} />
         </Section>
       )}
 
       {hasQueue && (
         <Section id="quiet" title="Worth picking up again" blurb="Good conversations that went quiet" count={counts.quiet} open={open.has('quiet')} onToggle={() => toggle('quiet')}>
-          <FollowUpsQueue section="quiet" preloaded={queue} preloadError={queueError} onCount={countQuiet} />
+          <FollowUpsQueue section="quiet" preloaded={queue} preloadError={queueError} onCount={countQuiet} campaignFilter={activeFilter} />
         </Section>
       )}
 

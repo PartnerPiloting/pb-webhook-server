@@ -70,6 +70,7 @@ let BATCH_SCORER_AIRTABLE_BASE; // Legacy support - will be dynamically set per 
 // --- Local Modules ---
 const { buildPrompt, slimLead } = require("./promptBuilder"); 
 const { loadAttributes } = require("./attributeLoader");
+const campaignScope = require("./services/campaignScope");
 const { computeFinalScore } = require("./scoring");
 const { buildAttributeBreakdown } = require("./scripts/analysis/breakdown");
 const { alertAdmin, isMissingCritical } = require('./utils/appHelpers.js');
@@ -278,7 +279,14 @@ async function fetchLeads(limit, clientBase, clientId, runId = 'UNKNOWN') {
 /* =================================================================
     scoreChunk - Processes a chunk of leads with Gemini (Client-Aware)
 =================================================================== */
-async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', persist = true) {
+/**
+ * opts (all optional):
+ *   attributeSet - the full set to score with (scopes included): a what-if draft from the Re-score
+ *                  test, or the saved set passed down so a split chunk reads the table once.
+ *   campaignId   - set on a chunk already split by campaign (see below); null = no campaign.
+ *   grouped      - true once split, so it is never split again.
+ */
+async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', persist = true, opts = {}) {
     // persist=false => PREVIEW mode: compute scores and return them, but write NOTHING to
     // Airtable (all update sites below are gated on `persist`). Reads/selects are unaffected.
     // Default persist=true preserves the exact existing behaviour used by the nightly cron.
@@ -303,6 +311,55 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         }
         return { processed: 0, successful: 0, failed: records.length, tokensUsed: 0 };
     }
+
+    // The attribute set, read ONCE per chunk (it was read up to three times). A load failure marks
+    // the chunk's leads failed, as it always has.
+    let fullSet = opts.attributeSet || null;
+    if (!fullSet) {
+        try {
+            fullSet = await loadAttributes(null, clientId);
+        } catch (attrErr) {
+            await logErrorWithStackTrace(attrErr, {
+                runId: runId || 'UNKNOWN',
+                clientId: clientId,
+                context: `Failed to load attributes for client ${clientId || 'unknown'}`,
+                loggerName: 'BATCH-SCORER',
+                operation: 'loadAttributes',
+            });
+            log.error(`Failed to load attributes for client ${clientId || 'unknown'}: ${attrErr.message}`);
+            await alertAdmin("Attribute Loading Failed (batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${attrErr.message}`);
+            const failedUpdates = records.map(rec => ({ id: rec.id, fields: { "Scoring Status": "Failed – Attribute Load Error", "Date Scored": new Date().toISOString(), "AI Profile Assessment": `Attribute Load Error: ${attrErr.message}` } }));
+            if (persist && failedUpdates.length > 0 && clientBase) {
+                for (let i = 0; i < failedUpdates.length; i += 10) {
+                    await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for attribute load failed leads: ${e.message}`));
+                }
+            }
+            return { processed: records.length, successful: 0, failed: records.length, tokensUsed: 0 };
+        }
+    }
+
+    // Campaign-scoped attributes (services/campaignScope.js): one model call must use one set, so a
+    // chunk holding leads from different Linked Helper campaigns is scored campaign by campaign.
+    // A client with no scoped attribute never gets here - their chunk is scored exactly as before.
+    if (!opts.grouped && campaignScope.hasScopes(fullSet)) {
+        const groups = new Map();
+        for (const rec of records) {
+            const key = campaignScope.campaignIdOfRecord(rec);
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(rec);
+        }
+        const totals = { processed: 0, successful: 0, failed: 0, tokensUsed: 0, perLead: [] };
+        for (const [campaignId, group] of groups) {
+            const one = await scoreChunk(group, clientId, clientBase, runId, persist, { ...opts, attributeSet: fullSet, campaignId, grouped: true });
+            totals.processed += one.processed || 0;
+            totals.successful += one.successful || 0;
+            totals.failed += one.failed || 0;
+            totals.tokensUsed += one.tokensUsed || 0;
+            if (Array.isArray(one.perLead)) totals.perLead.push(...one.perLead);
+        }
+        return totals;
+    }
+    const attrs = campaignScope.forCampaign(fullSet, opts.grouped ? opts.campaignId : null);
 
     const scorable = [];
     const airtableUpdatesForSkipped = [];
@@ -393,7 +450,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
     log.info(`Attempting to score ${scorable.length} leads with ${providerLabel}`);
 
     // MULTI-TENANT: Pass clientId to buildPrompt to load client-specific attributes
-    const systemPromptInstructions = await buildPrompt(log, clientId);
+    const systemPromptInstructions = await buildPrompt(log, clientId, attrs);
     const slimmedLeadsForChunk = scorable.map(({ profile }) => slimLead(profile));
     const leadsDataForUserPrompt = JSON.stringify({ leads: slimmedLeadsForChunk });
     const generationPromptForGemini = `Score the following ${scorable.length} leads based on the criteria and JSON schema defined in the system instructions. The leads are: ${leadsDataForUserPrompt}`;
@@ -416,8 +473,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
     // text, usage and finish reason in the Gemini shape so the parsing below is provider-agnostic.
     async function callScoringModelOnce() {
         if (isClaudeScoring()) {
-            const { positives, negatives } = await loadAttributes(null, clientId);
-            return callClaudeForScoring({ systemPrompt: systemPromptInstructions, userPrompt: generationPromptForGemini, timeoutMs: GEMINI_TIMEOUT_MS, positives, negatives });
+            return callClaudeForScoring({ systemPrompt: systemPromptInstructions, userPrompt: generationPromptForGemini, timeoutMs: GEMINI_TIMEOUT_MS, positives: attrs.positives, negatives: attrs.negatives });
         }
         const modelInstanceForRequest = BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
             model: BATCH_SCORER_GEMINI_MODEL_ID,
@@ -515,7 +571,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         log.warn(`${reason} - re-scoring the ${scorable.length} leads of this chunk one at a time`);
         const totals = { processed: records.length, successful: 0, failed: 0, tokensUsed: usageMetadataForBatch.totalTokenCount || 0, perLead: [] };
         for (const item of scorable) {
-            const one = await scoreChunk([item.rec], clientId, clientBase, runId, persist);
+            const one = await scoreChunk([item.rec], clientId, clientBase, runId, persist, { ...opts, attributeSet: fullSet });
             totals.successful += one.successful || 0;
             totals.failed += one.failed || 0;
             totals.tokensUsed += one.tokensUsed || 0;
@@ -694,31 +750,9 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
         }
     }
 
-    let positives, negatives;
-    try {
-        const attrs = await loadAttributes(null, clientId);
-        positives = attrs.positives;
-        negatives = attrs.negatives;
-    } catch (attrErr) {
-        await logErrorWithStackTrace(attrErr, {
-            runId: runId || 'UNKNOWN',
-            clientId: clientId,
-            context: `Failed to load attributes for client ${clientId || 'unknown'}`,
-            loggerName: 'BATCH-SCORER',
-            operation: 'loadAttributes',
-        });
-        
-        log.error(`Failed to load attributes for client ${clientId || 'unknown'}: ${attrErr.message}`);
-        await alertAdmin("Attribute Loading Failed (batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${attrErr.message}`);
-        // Mark all leads as failed due to attribute loading error
-        const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Attribute Load Error", "Date Scored": new Date().toISOString(), "AI Profile Assessment": `Attribute Load Error: ${attrErr.message}` } }));
-        if (persist && failedUpdates.length > 0 && clientBase) {
-            for (let i = 0; i < failedUpdates.length; i += 10) {
-                await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for attribute load failed leads: ${e.message}`));
-            }
-        }
-        return { processed: records.length, successful: 0, failed: records.length, tokensUsed: 0 };
-    }
+    // The same narrowed set the prompt was built from - so the total possible (computeFinalScore)
+    // counts only the attributes that apply to this chunk's campaign.
+    const { positives, negatives } = attrs;
 
     const airtableResultUpdates = [];
     const perLead = []; // per-lead results returned to callers (esp. preview mode): {recordId,newScore,status}
@@ -1379,11 +1413,12 @@ if (require.main === module) {
 //   persist:true  => commit — writes new scores back (same as the cron path).
 // Uses the same scorer (Gemini, or Claude when SCORING_PROVIDER=claude) + the client's current attributes (scoreChunk reloads them).
 // Caller supplies dependencies from config/geminiClient.js ({ vertexAIClient, geminiModelId }).
-async function scoreRecordsNow({ records, clientId, clientBase, dependencies, persist = false, runId = 'RESCORE', onProgress = null }) {
+async function scoreRecordsNow({ records, clientId, clientBase, dependencies, persist = false, runId = 'RESCORE', onProgress = null, attributeSet = null }) {
     if (!dependencies || !dependencies.vertexAIClient || !dependencies.geminiModelId) {
         throw new Error('scoreRecordsNow: dependencies.vertexAIClient and .geminiModelId are required');
     }
     if (!clientBase) throw new Error('scoreRecordsNow: clientBase is required');
+    if (attributeSet && persist) throw new Error('scoreRecordsNow: a draft attribute set is preview-only - it is never written to leads');
     // Set the module-level Gemini client/model exactly as run() does.
     BATCH_SCORER_VERTEX_AI_CLIENT = dependencies.vertexAIClient;
     BATCH_SCORER_GEMINI_MODEL_ID = dependencies.geminiModelId;
@@ -1393,7 +1428,8 @@ async function scoreRecordsNow({ records, clientId, clientBase, dependencies, pe
     let tokensUsed = 0, successful = 0, failed = 0;
     for (let i = 0; i < recs.length; i += CHUNK_SIZE) {
         const chunk = recs.slice(i, i + CHUNK_SIZE);
-        const res = await scoreChunk(chunk, clientId, clientBase, runId, persist);
+        // attributeSet: a what-if draft (Re-score test on unsaved attributes) - never with persist.
+        const res = await scoreChunk(chunk, clientId, clientBase, runId, persist, attributeSet ? { attributeSet } : {});
         tokensUsed += res.tokensUsed || 0;
         successful += res.successful || 0;
         failed += res.failed || 0;

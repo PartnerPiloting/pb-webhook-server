@@ -410,15 +410,34 @@ def campaign_state(account_id, data_dir=None):
                 paused_campaigns.append({"id": int(cid), "name": str(name or "")[:80], "waiting": int(n),
                                          "last_invite_at": own_last})
             campaigns = campaign_numbers(con, invite_actions)
+            everything = all_campaigns(con)
         finally:
             con.close()
         return {"first_action_at": first, "last_invite_at": last,
                 "waiting_running": waiting[0], "waiting_paused": waiting[1],
                 "last_invite_attempt_at": attempt, "failed_invites_recent": int(failed or 0),
-                "paused_campaigns": paused_campaigns, "campaigns": campaigns}
+                "paused_campaigns": paused_campaigns, "campaigns": campaigns,
+                "all_campaigns": everything}
     except Exception as e:
         print(f"campaign state unreadable (non-fatal): {e}")
         return {}
+
+
+def all_campaigns(con):
+    """Every campaign that is not archived - id, name, paused - with no activity filter.
+
+    WHY (Guy, 23 Oct 2026): a scoring attribute can be tagged to a campaign, and the picker must
+    offer a campaign the moment it is created, not once it has sent someone (campaign_numbers
+    leaves out a campaign with nobody waiting and nothing sent). The server keeps this list
+    (services/lhCampaignList.js). Best-effort: its own failure costs only this list.
+    """
+    try:
+        return [{"id": int(cid), "name": str(name or "")[:80], "paused": bool(paused)}
+                for cid, name, paused in con.execute(
+                    "SELECT id, name, is_paused FROM campaigns WHERE is_archived = 0 ORDER BY id LIMIT 100")]
+    except Exception as e:
+        print(f"campaign list unreadable (non-fatal): {e}")
+        return None
 
 
 def campaign_numbers(con, invite_actions):

@@ -41,8 +41,9 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
         throw new Error("Gemini client/model dependencies not available for single scoring.");
     }
 
-    // MULTI-TENANT: Pass clientId to buildPrompt to load client-specific attributes
-    const systemInstructionText = await buildPrompt(logger, clientId);
+    // The set to score with: the caller's (narrowed to the lead's campaign) or the client's saved set.
+    const attrs = (dependencies && dependencies.attributeSet) || await loadAttributes(null, clientId);
+    const systemInstructionText = await buildPrompt(logger, clientId, attrs);
     const userLeadData = slimLead(fullLead);
     const userPromptContent = `Score the following single lead based on the criteria and JSON schema provided in the system instructions. The lead is: ${JSON.stringify(userLeadData, null, 2)}`;
 
@@ -65,8 +66,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
     // parsing below consumes: { rawResponseText, usageMetadata, finishReason, safetyRatings }.
     async function callScoringModelOnce() {
         if (isClaudeScoring()) {
-            const { positives, negatives } = await loadAttributes(null, clientId);
-            return callClaudeForScoring({ systemPrompt: systemInstructionText, userPrompt: userPromptContent, timeoutMs: GEMINI_TIMEOUT_MS, positives, negatives });
+            return callClaudeForScoring({ systemPrompt: systemInstructionText, userPrompt: userPromptContent, timeoutMs: GEMINI_TIMEOUT_MS, positives: attrs.positives, negatives: attrs.negatives });
         }
         const modelInstanceForRequest = vertexAIClient.getGenerativeModel({
             model: geminiModelId,
@@ -225,7 +225,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
     // each attribute's maxPoints) so the caller's computeFinalScore + breakdown see Gemini-scale
     // numbers. Done here, not in the caller, so every single-lead consumer gets it.
     if (isClaudeScoring() && parsedResult && parsedResult.positive_scores && typeof parsedResult.positive_scores === 'object') {
-        const { positives } = await loadAttributes(null, clientId);
+        const { positives } = attrs;
         parsedResult._rawPositiveScores = { ...parsedResult.positive_scores };
         parsedResult.positive_scores = scaleClaudePositiveScores(parsedResult.positive_scores, positives);
     }

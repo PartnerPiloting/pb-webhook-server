@@ -24,7 +24,7 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
 // The method, handed to the model with the tools. Guy's settled view (5 Oct 2026, Dean's rebuild).
 const METHOD =
-  ' HOW A GOOD SET IS BUILT: the score now decides the ORDER the client follows up new connections, not who gets a connection request - so (1) no minimums: set min_to_qualify 0, because a lead under a minimum scores 0 overall and loses its place; keep disqualifying negatives for people the client would genuinely never message. (2) Weight by what matters most: the final score is points awarded / points possible, so the attribute that defines their ideal person needs the biggest share of the points. A client\'s own weighting (e.g. "30% health alignment") maps straight onto max_points. (3) Few broad attributes beat many narrow ones - a long list of the client\'s ideas becomes the SIGNALS inside 4-6 main attributes. Nice-to-haves become bonus rows (bonus=true counts 25% in the total possible). (4) Every positive row gets: instructions (what to look for, strongest signals first) ending in score bands headed "Score bands" that cover the WHOLE range with a plain description per band; examples (3-4 short made-up profiles with the score each should get); signals (words and phrases to scan for, local terms included). (5) The scorer sees ONLY the profile headline, About section (often cut short) and job history - never posts or activity - so judge things like curiosity from how people describe their work and career moves, and don\'t lean on post-based signals. (6) The purpose row is the client\'s own statement - whose business this is, who they want to find and why, what a valuable conversation looks like, plus any guiding principles. It must NOT contain scoring mechanics (disqualifier check, formula, score bands): the scoring workflow is fixed in code and added after the purpose automatically, and a purpose that includes it is refused. The client can also edit the purpose themselves at the top of Settings > Profile Scoring Attributes in their portal. (7) Fixed slots: repurpose existing rows and switch unwanted ones off (active=false); you cannot add or delete rows.';
+  ' HOW A GOOD SET IS BUILT: the score now decides the ORDER the client follows up new connections, not who gets a connection request - so (1) no minimums: set min_to_qualify 0, because a lead under a minimum scores 0 overall and loses its place; keep disqualifying negatives for people the client would genuinely never message. (2) Weight by what matters most: the final score is points awarded / points possible, so the attribute that defines their ideal person needs the biggest share of the points. A client\'s own weighting (e.g. "30% health alignment") maps straight onto max_points. (3) Few broad attributes beat many narrow ones - a long list of the client\'s ideas becomes the SIGNALS inside 4-6 main attributes. Nice-to-haves become bonus rows (bonus=true counts 25% in the total possible). (4) Every positive row gets: instructions (what to look for, strongest signals first) ending in score bands headed "Score bands" that cover the WHOLE range with a plain description per band; examples (3-4 short made-up profiles with the score each should get); signals (words and phrases to scan for, local terms included). (5) The scorer sees ONLY the profile headline, About section (often cut short) and job history - never posts or activity - so judge things like curiosity from how people describe their work and career moves, and don\'t lean on post-based signals. (6) The purpose row is the client\'s own statement - whose business this is, who they want to find and why, what a valuable conversation looks like, plus any guiding principles. It must NOT contain scoring mechanics (disqualifier check, formula, score bands): the scoring workflow is fixed in code and added after the purpose automatically, and a purpose that includes it is refused. The client can also edit the purpose themselves at the top of Settings > Profile Scoring Attributes in their portal. (7) Fixed slots: repurpose existing rows and switch unwanted ones off (active=false); you cannot add or delete rows. (8) CAMPAIGNS: when the client reaches two different audiences through different Linked Helper campaigns (e.g. two businesses), an attribute can count for some campaigns only - campaign_scope "only" + campaign_ids, or "except" + campaign_ids; "all" (the default) for everything else. A lead is scored only on the attributes that apply to its campaign, so its total possible is its own. Keep the shared attributes on all campaigns and scope only what is specific to one audience; every audience must keep at least one main attribute. Leads with no campaign (added by hand or the extension) get "all" and "except" rows only. Use the campaign NUMBERS wingguy_scoring_get lists - never guess one from a name. Clients with one campaign never need this - do not raise it with them. (9) WHAT-IF: wingguy_scoring_test can score a sample with a draft (the same purpose/rows a proposal takes) WITHOUT saving it - offer that before committing a change the client is unsure about.';
 
 async function clientBase(tenant) {
   const clientService = require('./clientService');
@@ -33,11 +33,20 @@ async function clientBase(tenant) {
   return { client, baseId: client.airtableBaseId, base: clientService.getClientBase(client.airtableBaseId) };
 }
 
-function rowBlock(r, full) {
+async function campaignsFor(tenant, base) {
+  try {
+    return (await require('./lhCampaignList').listCampaigns(tenant, { base })).campaigns;
+  } catch (_) {
+    return [];
+  }
+}
+
+function rowBlock(r, full, namesById = {}) {
   const kind = r.category.toLowerCase() === 'positive'
     ? `${r.bonus ? 'bonus, ' : ''}max ${r.maxPoints}${r.minToQualify ? `, min ${r.minToQualify}` : ''}`
     : (r.disqualifying ? 'disqualifying (score set to 0)' : `penalty ${r.penalty}`);
-  const head = `${r.id} - ${r.heading} [${r.category}, ${r.active ? 'ON' : 'off'}, ${kind}]`;
+  const scope = r.campaignScope && r.campaignScope !== 'all' ? `, ${require('./campaignScope').describeScope({ mode: r.campaignScope, ids: r.campaignIds }, namesById)}` : '';
+  const head = `${r.id} - ${r.heading} [${r.category}, ${r.active ? 'ON' : 'off'}, ${kind}${scope}]`;
   if (!full) return `${head}\n  ${core.shortText(r.instructions, 160)}`;
   return [
     head,
@@ -55,24 +64,31 @@ async function runGet(args = {}, tenant = TENANT) {
   const c = await clientBase(tenant);
   if (c.error) return { text: c.error, isError: true };
   const { rows } = await core.readTable(c.base);
+  const campaigns = await campaignsFor(tenant, c.base);
+  const names = require('./lhCampaignList').namesById(campaigns);
   const full = args.detail === 'full';
   const purpose = rows.find(core.isPurpose);
   const scoring = rows.filter(core.isScoring);
+  const live = campaigns.filter((x) => x.live);
   const out = [
     `SCORING ATTRIBUTES for ${tenant} - ${scoring.length} scoring rows (fixed slots).`,
     '',
-    core.describeSet(rows),
+    core.describeSet(rows, names),
     '',
     `PURPOSE (the client\'s own statement - the AI reads this first, then the fixed scoring workflow, then the rows):\n${purpose ? (purpose.instructions.trim() ? (full ? purpose.instructions : core.shortText(purpose.instructions, 400)) : '(empty - the scorer runs on the workflow and attributes alone; worth filling in)') : '(no purpose row)'}`,
     '',
     'ROWS:',
-    ...scoring.map((r) => rowBlock(r, full)),
+    ...scoring.map((r) => rowBlock(r, full, names)),
+    '',
+    live.length > 1
+      ? `LINKED HELPER CAMPAIGNS (for campaign_ids - use the number): ${live.map((x) => `#${x.id} "${x.name}"${x.paused ? ' (paused)' : ''}`).join(', ')}`
+      : `LINKED HELPER CAMPAIGNS: ${live.length ? `one (#${live[0].id} "${live[0].name}")` : 'none known'} - campaign scope is not needed.`,
   ];
   if (!full) out.push('', 'For the complete text of every row (needed before drafting a rebuild), call again with detail="full".');
   return { text: out.join('\n') };
 }
 
-function proposalText(check, fp) {
+function proposalText(check, fp, namesById = {}) {
   const lines = [];
   const byRow = new Map();
   for (const ch of check.changes) {
@@ -90,7 +106,7 @@ function proposalText(check, fp) {
       }
     }
   }
-  lines.push('', 'THE SET AFTER THIS CHANGE:', core.describeSet(check.after));
+  lines.push('', 'THE SET AFTER THIS CHANGE:', core.describeSet(check.after, namesById));
   if (check.warnings.length) lines.push('', 'WARNINGS:', ...check.warnings.map((w) => `- ${w}`));
   lines.push('', `fingerprint=${fp}`);
   lines.push('Show this to the human - the full new text, not a summary - and get an explicit yes. Then call wingguy_scoring_commit with the SAME purpose and rows plus this fingerprint. A backup of the current rows is saved automatically before anything is written.');
@@ -101,10 +117,11 @@ async function runPropose(args = {}, tenant = TENANT) {
   const c = await clientBase(tenant);
   if (c.error) return { text: c.error, isError: true };
   const { rows } = await core.readTable(c.base);
-  const check = core.checkProposal(rows, args);
+  const campaigns = await campaignsFor(tenant, c.base);
+  const check = core.checkProposal(rows, args, { campaigns });
   if (check.errors.length) return { text: `The proposal can't be used as it stands:\n${check.errors.map((e) => `- ${e}`).join('\n')}`, isError: true };
   if (!check.changes.length) return { text: 'Nothing in this proposal differs from what is already in the table - there is nothing to write.' };
-  return { text: proposalText(check, core.fingerprint(rows)) };
+  return { text: proposalText(check, core.fingerprint(rows), require('./lhCampaignList').namesById(campaigns)) };
 }
 
 async function runCommit(args = {}, tenant = TENANT) {
@@ -115,7 +132,8 @@ async function runCommit(args = {}, tenant = TENANT) {
   if (!args.fingerprint || String(args.fingerprint).trim() !== fp) {
     return { text: 'Refused: the attributes have changed since that proposal (or no fingerprint was given). Run wingguy_scoring_propose again and show the human the fresh result.', isError: true };
   }
-  const check = core.checkProposal(rows, args);
+  const campaigns = await campaignsFor(tenant, c.base);
+  const check = core.checkProposal(rows, args, { campaigns });
   if (check.errors.length) return { text: `Refused:\n${check.errors.map((e) => `- ${e}`).join('\n')}`, isError: true };
   if (!check.changes.length) return { text: 'Nothing to write - the table already matches.' };
 
@@ -129,14 +147,15 @@ async function runCommit(args = {}, tenant = TENANT) {
     return { text: `Not written: the backup could not be saved (${e.message}), and a change is never made without one.`, isError: true };
   }
 
-  await core.writeRows(c.base, core.buildWrites(changed, kinds));
+  await core.writeRows(c.base, core.buildWrites(changed, kinds, require('./lhCampaignList').namesById(campaigns)));
   try { require('../attributeLoader').clearAttributeCache(); } catch (_) { /* cache clears itself within 10 min */ }
+  try { require('./rescoreRunner').forgetBaseline(tenant); } catch (_) { /* in-memory only */ }
 
   return {
     text: [
       `Written: ${changed.length} row${changed.length === 1 ? '' : 's'} updated. Backup #${backup.id} holds the previous version (wingguy_scoring_revert puts it back).`,
       '',
-      core.describeSet(check.after),
+      core.describeSet(check.after, require('./lhCampaignList').namesById(campaigns)),
       '',
       'New leads are scored with this from now on. Leads already scored keep their old score until rescored. Next step: offer wingguy_scoring_test to rescore a sample of their existing leads and see who comes out on top - before re-scoring everyone in the portal.',
     ].join('\n'),
@@ -166,9 +185,16 @@ async function runRevert(args = {}, tenant = TENANT) {
   } catch (e) {
     return { text: `Not restored: the current rows could not be backed up first (${e.message}).`, isError: true };
   }
-  const toWrite = bk.rows.filter((r) => restoreIds.has(r.recordId) && !missing.includes(r));
+  // Putting back a row whose campaign scope differs from what is there now has to write the scope too
+  // (buildWrites leaves it out otherwise, for bases without the fields).
+  const toWrite = bk.rows.filter((r) => restoreIds.has(r.recordId) && !missing.includes(r)).map((r) => {
+    const now = current.find((x) => x.recordId === r.recordId);
+    const scopeOf = (x) => JSON.stringify([x && x.campaignIds && x.campaignIds.length ? x.campaignScope : 'all', (x && x.campaignIds) || []]);
+    return now && scopeOf(now) !== scopeOf(r) ? { ...r, scopeTouched: true } : r;
+  });
   await core.writeRows(c.base, core.buildWrites(toWrite, kinds));
   try { require('../attributeLoader').clearAttributeCache(); } catch (_) { /* clears itself */ }
+  try { require('./rescoreRunner').forgetBaseline(tenant); } catch (_) { /* in-memory only */ }
   const after = rows.map((r) => toWrite.find((x) => x.recordId === r.recordId) || r);
   return {
     text: [
@@ -183,20 +209,25 @@ function testResultText(job) {
   const r = job.result;
   const rows = (r.rows || []).filter((x) => typeof x.new === 'number');
   const byNew = [...rows].sort((a, b) => b.new - a.new);
-  const lines = [
+  const lines = r.draft ? [
+    `WHAT-IF COMPLETE - ${r.count} existing leads scored with the DRAFT attributes. The draft is NOT saved, and no score was saved.`,
+  ] : [
     `TEST COMPLETE - ${r.count} existing leads rescored with the current attributes. Nothing was saved; their stored scores are unchanged.`,
     `Moved up: ${r.summary.movedUp}, moved down: ${r.summary.movedDown} (compared with their stored scores).`,
   ];
   if (r.comparedToPreviousTest && r.summary.vsPreviousTest) {
     const v = r.summary.vsPreviousTest;
-    lines.push(`Compared with the previous test on the same leads: ${v.movedUp} up, ${v.movedDown} down, ${v.unchanged} unchanged - that difference is purely the attribute change.`);
+    lines.push(r.draft
+      ? `Compared with the SAVED attributes on the same leads: ${v.movedUp} up, ${v.movedDown} down, ${v.unchanged} unchanged - that difference is purely the draft.`
+      : `Compared with the previous test on the same leads: ${v.movedUp} up, ${v.movedDown} down, ${v.unchanged} unchanged - that difference is purely the attribute change.`);
   }
   lines.push('', 'TOP OF THE ORDER NOW (new score, stored score in brackets):');
   for (const x of byNew.slice(0, 15)) lines.push(`  ${Math.round(x.new)} - ${x.name}${typeof x.old === 'number' ? ` (was ${Math.round(x.old)})` : ''}`);
   lines.push('', 'BOTTOM OF THE ORDER:');
   for (const x of byNew.slice(-5)) lines.push(`  ${Math.round(x.new)} - ${x.name}${typeof x.old === 'number' ? ` (was ${Math.round(x.old)})` : ''}`);
   lines.push('', `Credits left: ${r.credits.available}.`);
-  lines.push('Ask the human whether the top of the order looks like the people they most want to talk to. If not, adjust the attributes (propose -> commit) and test again - the same sample is used, so the next test shows exactly what the change did. When they are happy, applying it to all their leads is "Re-score & apply" in Settings in their portal.');
+  if (r.draft) lines.push('Ask the human whether this order is better than what they have now. If yes, the same purpose/rows go to wingguy_scoring_propose then commit (nothing is saved until then). If not, change the draft and run the what-if again - it is compared with the saved attributes on the same leads each time.');
+  else lines.push('Ask the human whether the top of the order looks like the people they most want to talk to. If not, adjust the attributes (propose -> commit) and test again - the same sample is used, so the next test shows exactly what the change did. When they are happy, applying it to all their leads is "Re-score & apply" in Settings in their portal.');
   return lines.join('\n');
 }
 
@@ -215,9 +246,23 @@ async function runTest(args = {}, tenant = TENANT) {
     return { text: why, isError: true };
   }
   const size = Math.max(5, Math.min(runner.SAMPLE_MAX, parseInt(args.size, 10) || runner.SAMPLE_DEFAULT));
-  const out = await runner.startRun(r, { mode: 'preview', scope: 'sample', size });
+  // What-if: a draft (the same purpose/rows a proposal takes), scored without being saved.
+  let attributeSet = null;
+  const isDraft = (typeof args.purpose === 'string' && args.purpose.trim()) || (Array.isArray(args.rows) && args.rows.length);
+  if (isDraft) {
+    const { rows } = await core.readTable(r.base);
+    const check = core.checkProposal(rows, args, { campaigns: await campaignsFor(tenant, r.base) });
+    if (check.errors.length) return { text: `The draft can't be tested as it stands:\n${check.errors.map((e) => `- ${e}`).join('\n')}`, isError: true };
+    if (!check.changes.length) return { text: 'That draft is the same as the saved attributes - run the test without a draft instead.' };
+    const loader = require('../attributeLoader');
+    attributeSet = loader.buildAttributeSet(loader.rowsAsRecords(check.after));
+  }
+  const out = await runner.startRun(r, { mode: 'preview', scope: 'sample', size, attributeSet });
   if (out.empty) return { text: 'There are no scored leads yet to test against.' };
-  if (out.insufficient) return { text: `Not enough credits for a ${out.needed}-lead test (${out.available} left). Try a smaller size.`, isError: true };
+  if (out.insufficient) return { text: `Not enough credits for this test - it needs ${out.needed} (${out.available} left). Try a smaller size.`, isError: true };
+  if (attributeSet) {
+    return { text: `What-if started: ${out.total} of their existing leads, scored with the DRAFT${out.creditsNeeded > out.total ? ' (and first with the saved attributes, so the two can be compared - that uses the sample twice)' : ''}. Nothing is saved - not the draft, not any score. ${out.creditsNeeded} credits. Call wingguy_scoring_test again with job_id="${out.jobId}" in a few minutes for the result.` };
+  }
   return { text: `Test started: rescoring ${out.total} of their existing leads (a spread from low to high scores) with the current attributes. Nothing is saved. It takes a few minutes - call wingguy_scoring_test again with job_id="${out.jobId}" to get the result.` };
 }
 
@@ -237,6 +282,8 @@ const rowZod = z.object({
   instructions: z.string().optional().describe('What to look for, ending in "Score bands" covering the whole range.'),
   examples: z.string().optional().describe('3-4 short made-up profiles with the score each should get.'),
   signals: z.string().optional().describe('Words and phrases to scan the profile for.'),
+  campaign_scope: z.enum(['all', 'only', 'except']).optional().describe('Which Linked Helper campaigns the row counts for: "all" (default), "only" the listed ones, or all "except" the listed ones.'),
+  campaign_ids: z.array(z.number()).optional().describe('The Linked Helper campaign NUMBERS for "only" / "except", as wingguy_scoring_get lists them.'),
 });
 const rowJson = {
   type: 'object',
@@ -252,6 +299,8 @@ const rowJson = {
     instructions: { type: 'string', description: 'What to look for, ending in "Score bands" covering the whole range.' },
     examples: { type: 'string', description: '3-4 short made-up profiles with the score each should get.' },
     signals: { type: 'string', description: 'Words and phrases to scan the profile for.' },
+    campaign_scope: { type: 'string', enum: ['all', 'only', 'except'], description: 'Which Linked Helper campaigns the row counts for: "all" (default), "only" the listed ones, or all "except" the listed ones.' },
+    campaign_ids: { type: 'array', items: { type: 'number' }, description: 'The Linked Helper campaign NUMBERS for "only" / "except", as wingguy_scoring_get lists them.' },
   },
   required: ['id'],
 };
@@ -295,16 +344,18 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_scoring_test',
-    description: '"Test on sample" from chat: rescores a spread of the client\'s EXISTING leads with the CURRENT attributes and shows the new order - who comes out on top and bottom - WITHOUT saving any score. Use after a commit, or whenever the client asks "is my scoring right?". Starting returns a job_id; call again with that job_id after a minute or two for the result. Costs credits (1 per lead) from their Re-score allowance. Running the same test again after a change shows exactly what the change did. Applying new scores to all leads stays in the portal ("Re-score & apply").',
+    description: '"Test on sample" from chat: rescores a spread of the client\'s EXISTING leads and shows the new order - who comes out on top and bottom - WITHOUT saving any score. Two ways: (1) no purpose/rows = the CURRENT saved attributes (after a commit, or "is my scoring right?"); (2) WHAT-IF - pass purpose and/or rows exactly as for wingguy_scoring_propose, and the sample is scored with that DRAFT while the saved attributes stay untouched ("what if I changed X?", "try it before I save"); the result is compared with the saved attributes on the same leads, so it shows purely what the draft would do. Starting returns a job_id; call again with that job_id after a minute or two for the result. Costs credits (1 per lead) from their Re-score allowance - a what-if with no earlier test on the same sample scores it twice. Applying new scores to all leads stays in the portal ("Re-score & apply").',
     zodSchema: {
       size: z.number().optional().describe('How many leads to test (default 50, max 100).'),
       job_id: z.string().optional().describe('To fetch a running or finished test\'s result.'),
+      ...setZod,
     },
     jsonSchema: {
       type: 'object',
       properties: {
         size: { type: 'number', description: 'How many leads to test (default 50, max 100).' },
         job_id: { type: 'string', description: 'To fetch a running or finished test\'s result.' },
+        ...setJson,
       },
       required: [],
     },
