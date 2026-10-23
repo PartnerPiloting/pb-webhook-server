@@ -108,9 +108,11 @@ function TodayInner() {
     return () => { alive = false; clearInterval(tick); };
   }, [hasQueue, clientId]);
 
-  // The campaign picker (23 Oct 2026): shown only when the queue says the client runs 2+ Linked
-  // Helper campaigns. One choice for the whole page; Reconnect is never filtered.
-  const campaigns = Array.isArray(queue?.campaigns) && queue.campaigns.length > 1 ? queue.campaigns : null;
+  // The campaign picker (23 Oct 2026): only for a client running 2+ Linked Helper campaigns (the
+  // queue says so). Its choices are the campaigns the people on this page actually came from - the
+  // campaign that sent them to Wingguy, not always the connect campaign. One choice for the whole
+  // page; Reconnect is never filtered.
+  const runsSeveral = Array.isArray(queue?.campaigns) && queue.campaigns.length > 1;
   const [campaignFilter, setCampaignFilterState] = useState(() => {
     try { const v = window.localStorage.getItem('wg-today-campaign'); return v === null ? 'all' : (v === 'all' || v === 'none' ? v : Number(v)); } catch (_) { return 'all'; }
   });
@@ -121,15 +123,22 @@ function TodayInner() {
   // A remembered campaign that is no longer live falls back to All.
   const activeFilter = !campaigns ? 'all'
     : (campaignFilter === 'all' || campaignFilter === 'none' || campaigns.some((c) => c.id === campaignFilter)) ? campaignFilter : 'all';
-  const [welcomeTally, setWelcomeTally] = useState({});
-  const pickerCounts = useMemo(() => {
-    const out = { ...welcomeTally };
+  const [welcomeTally, setWelcomeTally] = useState({ counts: {}, names: {} });
+  const { pickerCounts, campaigns } = useMemo(() => {
+    const counts = { ...(welcomeTally.counts || {}) };
+    const names = { ...(welcomeTally.names || {}) };
+    for (const c of (queue?.campaigns || [])) if (c.name) names[c.id] = c.name;
     for (const it of (queue?.items || [])) {
       const key = it.campaignId === null || it.campaignId === undefined ? 'none' : it.campaignId;
-      out[key] = (out[key] || 0) + 1;
+      counts[key] = (counts[key] || 0) + 1;
+      if (it.campaignId && it.campaignName && !names[it.campaignId]) names[it.campaignId] = it.campaignName;
     }
-    return out;
-  }, [welcomeTally, queue]);
+    const ids = Object.keys(counts).filter((k) => k !== 'none').map(Number).sort((a, b) => counts[b] - counts[a] || a - b);
+    const list = ids.map((id) => ({ id, name: names[id] || '' }));
+    // Worth a picker only when the page holds people from 2+ places.
+    const places = ids.length + (counts.none ? 1 : 0);
+    return { pickerCounts: counts, campaigns: runsSeveral && places > 1 ? list : null };
+  }, [welcomeTally, queue, runsSeveral]);
 
   const [counts, setCounts] = useState({});
   const countOwed = useCallback((n) => setCounts((c) => (c.owed === n ? c : { ...c, owed: n })), []);

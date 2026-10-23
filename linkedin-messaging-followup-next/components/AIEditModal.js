@@ -714,6 +714,9 @@ Examples:
                                 : [...(fieldValues.campaignIds || []), c.id].sort((a, b) => a - b))}
                             />
                             {c.name || `Campaign #${c.id}`}
+                            <span className="text-xs text-gray-500">
+                              {c.leads ? `- ${c.leads} recent lead${c.leads === 1 ? '' : 's'} came in from it` : '- no leads have come in from it yet'}
+                            </span>
                             {c.paused && c.live && <span className="text-xs text-gray-500">(paused)</span>}
                             {!c.live && <span className="text-xs text-amber-700">(no longer in Linked Helper - untick it)</span>}
                           </label>

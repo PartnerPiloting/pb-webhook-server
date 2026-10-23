@@ -4674,7 +4674,7 @@ router.post("/api/attributes/:id/save", async (req, res) => {
     const scopeTouched = updatedData.campaignScope !== undefined || updatedData.campaignIds !== undefined;
     let campaigns = [];
     if (scopeTouched) {
-      try { campaigns = (await require('../services/lhCampaignList').listCampaigns(clientId, { base: clientBase })).campaigns; } catch (_) { /* names only */ }
+      try { campaigns = (await require('../services/lhCampaignList').listCampaigns(clientId, { base: clientBase, withLeads: true })).campaigns; } catch (_) { /* names only */ }
     }
     const check = core.checkProposal(rows, { rows: [core.portalProposal(row, updatedData)] }, scopeTouched ? { campaigns } : {});
     if (check.errors.length) {
@@ -4865,7 +4865,10 @@ router.get("/api/attributes", async (req, res) => {
     // when there is more than one. Never fails the page.
     let campaigns = [];
     try {
-      campaigns = (await require("../services/lhCampaignList").listCampaigns(clientId, { base: clientBase })).campaigns;
+      // withLeads: the picker shows how many recent leads each campaign brought in - the campaign on a
+      // lead is the one that SENT it to Wingguy, which is not always the connect campaign (Sam Noble's
+      // leads arrive from his "Visit 2nd level Contacts" campaign, 23 Oct 2026).
+      campaigns = (await require("../services/lhCampaignList").listCampaigns(clientId, { base: clientBase, withLeads: true })).campaigns;
     } catch (e) {
       logger.warn(`campaign list not read: ${e.message}`);
     }

@@ -147,7 +147,8 @@ module.exports = function mountThanksForConnecting(app, base) {
       aiScore: r.get(LEAD_FIELDS.AI_SCORE) ?? null,
       thanksStatus: normalizeStatus(r.get(THANKS_STATUS_FIELD)),
       // The Linked Helper campaign that sent them - for the campaign picker on Today (23 Oct 2026)
-      campaignId: require('../services/campaignScope').campaignIdOfRecord(r)
+      campaignId: require('../services/campaignScope').campaignIdOfRecord(r),
+      campaignName: require('../services/wingguyRulesSource').lhCampaignNameOf({ rawProfileData: r.get('Raw Profile Data') })
     };
   }
 

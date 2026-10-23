@@ -35,7 +35,7 @@ async function clientBase(tenant) {
 
 async function campaignsFor(tenant, base) {
   try {
-    return (await require('./lhCampaignList').listCampaigns(tenant, { base })).campaigns;
+    return (await require('./lhCampaignList').listCampaigns(tenant, { base, withLeads: true })).campaigns;
   } catch (_) {
     return [];
   }
@@ -81,7 +81,7 @@ async function runGet(args = {}, tenant = TENANT) {
     ...scoring.map((r) => rowBlock(r, full, names)),
     '',
     live.length > 1
-      ? `LINKED HELPER CAMPAIGNS (for campaign_ids - use the number): ${live.map((x) => `#${x.id} "${x.name}"${x.paused ? ' (paused)' : ''}`).join(', ')}`
+      ? `LINKED HELPER CAMPAIGNS (for campaign_ids - use the number): ${live.map((x) => `#${x.id} "${x.name}"${x.paused ? ' (paused)' : ''} - ${x.leads || 0} recent leads came in from it`).join('; ')}. A lead's campaign is the one that SENT it to Wingguy - often a profile-visiting campaign rather than the connect campaign - so scope attributes to the campaigns leads actually come in from, and check with the client which audience each one is.`
       : `LINKED HELPER CAMPAIGNS: ${live.length ? `one (#${live[0].id} "${live[0].name}")` : 'none known'} - campaign scope is not needed.`,
   ];
   if (!full) out.push('', 'For the complete text of every row (needed before drafting a rebuild), call again with detail="full".');

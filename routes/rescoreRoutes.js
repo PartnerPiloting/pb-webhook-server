@@ -80,7 +80,7 @@ module.exports = function mountRescore(app) {
       const row = rows.find((x) => x.recordId === recordId);
       if (!row || !core.isScoring(row)) return res.status(404).json({ ok: false, error: 'That attribute was not found in your scoring table.' });
       let campaigns = [];
-      try { campaigns = (await require('../services/lhCampaignList').listCampaigns(r.clientId, { base: r.base })).campaigns; } catch (_) { /* warnings only */ }
+      try { campaigns = (await require('../services/lhCampaignList').listCampaigns(r.clientId, { base: r.base, withLeads: true })).campaigns; } catch (_) { /* warnings only */ }
       const check = core.checkProposal(rows, { rows: [core.portalProposal(row, data || {})] }, { campaigns });
       if (check.errors.length) return res.status(400).json({ ok: false, error: check.errors[0] });
       if (!check.changes.length) return res.status(400).json({ ok: false, error: 'Nothing is different from what is saved - change something first, or use Test on sample.' });

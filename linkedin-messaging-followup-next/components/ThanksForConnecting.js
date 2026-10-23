@@ -145,7 +145,12 @@ export default function ThanksForConnecting({ embedded = false, onCount = null, 
     : items.filter((it) => !it.thanksStatus && matchesCampaign(it, campaignFilter)).length;
   useEffect(() => { if (onCount && !loading) onCount(shownOutstanding); }, [onCount, loading, shownOutstanding]);
   useEffect(() => {
-    if (onCampaignTally && !loading) onCampaignTally(tallyCampaigns(items.filter((it) => !it.thanksStatus)));
+    if (onCampaignTally && !loading) {
+      const waiting = items.filter((it) => !it.thanksStatus);
+      const names = {};
+      for (const it of waiting) if (it.campaignId && it.campaignName) names[it.campaignId] = it.campaignName;
+      onCampaignTally({ counts: tallyCampaigns(waiting), names });
+    }
   }, [onCampaignTally, loading, items]);
 
   // Apply a status. In Outstanding view the row leaves the queue (optimistic remove + undo).

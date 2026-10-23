@@ -123,6 +123,8 @@ module.exports = function mountWingguyFollowups(app) {
         const lhList = require('../services/lhCampaignList');
         const live = (await lhList.listCampaigns(clientId)).campaigns.filter((c) => c.live);
         if (live.length > 1) {
+          // Names for the picker. The rows say which campaign each person came from (the one that sent
+          // them to Wingguy), which the screen uses to build its choices.
           campaigns = live.map((c) => ({ id: c.id, name: c.name, paused: c.paused }));
           const clientService = require('../services/clientService');
           const client = await clientService.getClientById(clientId);

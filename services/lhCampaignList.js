@@ -193,12 +193,20 @@ async function attachLeadCampaigns(base, items = []) {
         filterByFormula: `OR(${slice.map((id) => `RECORD_ID()='${id}'`).join(',')})`,
         pageSize: 100,
       }).all();
-      for (const r of recs) byRec.set(r.id, campaignScope.campaignIdOfRecord(r));
+      for (const r of recs) {
+        const raw = r.get('Raw Profile Data');
+        byRec.set(r.id, { id: campaignScope.campaignIdOf(raw), name: require('./wingguyRulesSource').lhCampaignNameOf({ rawProfileData: raw }) });
+      }
     } catch (e) {
       log.warn(`lh-campaign-list: campaigns for queue items not read: ${e.message}`);
     }
   }
-  for (const it of items) if (it) it.campaignId = byRec.get(it.recId) ?? null;
+  for (const it of items) {
+    if (!it) continue;
+    const hit = byRec.get(it.recId);
+    it.campaignId = hit ? hit.id : null;
+    it.campaignName = hit && hit.id ? hit.name || '' : '';
+  }
   return items;
 }
 
