@@ -135,6 +135,52 @@ function stubBase({ record = null, matches = [] } = {}) {
     } finally { clientService.getClientBase = origBase; clientService.getClientById = origById; }
   }
 
+  // ── 6. LinkedIn URL (2026-10-23, Steve Brossman): filed, cleaned, duplicate refused ──
+  console.log('updateLeadFacts — LinkedIn URL:');
+  {
+    const base = stubBase({ record: { id: 'rec1', fields: { 'First Name': 'Steve' } }, matches: [] });
+    const orig = clientService.getClientBase;
+    clientService.getClientBase = () => base.table;
+    try {
+      const r = await wingguyLeads.updateLeadFacts('baseX', 'rec1', { linkedinUrl: 'linkedin.com/in/stevebrossman?utm_source=share' });
+      await acheck('filed with https and no tracking query', () => {
+        assert.ok(r.ok && r.changed, JSON.stringify(r));
+        assert.deepStrictEqual(r.changes[0], { field: 'LinkedIn Profile URL', from: '', to: 'https://linkedin.com/in/stevebrossman' });
+        assert.deepStrictEqual(Object.keys(base._updates[0].fields), ['LinkedIn Profile URL']);
+      });
+      const bad = await wingguyLeads.updateLeadFacts('baseX', 'rec1', { linkedinUrl: 'https://example.com/steve' });
+      await acheck('non-LinkedIn URL refused', () => assert.ok(!bad.ok && /LinkedIn profile URL/.test(bad.error)));
+    } finally { clientService.getClientBase = orig; }
+  }
+  {
+    const other = { id: 'recOther', fields: { 'First Name': 'Steve', 'Last Name': 'Twin', 'LinkedIn Profile URL': 'https://www.linkedin.com/in/stevebrossman/' } };
+    const base = stubBase({ record: { id: 'rec1', fields: {} }, matches: [other] });
+    const orig = clientService.getClientBase;
+    clientService.getClientBase = () => base.table;
+    try {
+      const r = await wingguyLeads.updateLeadFacts('baseX', 'rec1', { linkedinUrl: 'https://www.linkedin.com/in/stevebrossman' });
+      await acheck('profile already on another lead = refused, nothing written', () => {
+        assert.ok(!r.ok && /another lead \(Steve Twin\)/.test(r.error), JSON.stringify(r));
+        assert.strictEqual(base._updates.length, 0);
+      });
+    } finally { clientService.getClientBase = orig; }
+  }
+  {
+    const rec = { id: 'recA', fields: { 'First Name': 'Steve', 'Last Name': 'Brossman' } };
+    const base = stubBase({ record: rec, matches: [rec] });
+    const origBase = clientService.getClientBase;
+    const origById = clientService.getClientById;
+    clientService.getClientBase = () => base.table;
+    clientService.getClientById = async () => ({ clientId: 'Guy-Wilson', airtableBaseId: 'baseX' });
+    try {
+      const r = await runUpdateLead({ lead_name: 'Steve Brossman', new_linkedin_url: 'https://www.linkedin.com/in/stevebrossman/' });
+      await acheck('runUpdateLead accepts new_linkedin_url alone and reports it', () => {
+        assert.ok(!r.isError, r.text);
+        assert.ok(/LinkedIn Profile URL: \(was empty\) → "https:\/\/www\.linkedin\.com\/in\/stevebrossman\/"/.test(r.text), r.text);
+      });
+    } finally { clientService.getClientBase = origBase; clientService.getClientById = origById; }
+  }
+
   console.log(failures ? `\n${failures} FAILED` : '\nAll passed');
   process.exit(failures ? 1 : 0);
 })();

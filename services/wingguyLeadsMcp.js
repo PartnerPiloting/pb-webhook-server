@@ -137,7 +137,7 @@ async function findOneLead(base, { lookupUrl = '', lookupEmail = '', lookupName 
   return { rec };
 }
 
-// Correct a lead's contact facts (Location / Email / Phone) on their EXISTING record — the update
+// Correct a lead's contact facts (Location / Email / Phone / LinkedIn URL) on their EXISTING record — the update
 // companion to runCreateLead (Guy, 2026-08-20, after Dean Hobin's blank location left the booking
 // tools guessing his timezone). Finds the lead (LinkedIn slug strongest, then exact email, then
 // name substring with disambiguation — same lookup family as wingguy_set_reconnect), then runs the
@@ -156,8 +156,9 @@ async function runUpdateLead(args = {}, tenant = TENANT) {
   const loc = String(args.location || '').trim();
   const mail = String(args.email || '').trim();
   const tel = String(args.phone || '').trim();
-  if (!loc && !mail && !tel) {
-    return { text: 'Error: nothing to update — pass a location, email and/or phone.', isError: true };
+  const newUrl = String(args.new_linkedin_url || '').trim();
+  if (!loc && !mail && !tel && !newUrl) {
+    return { text: 'Error: nothing to update — pass a location, email, phone and/or new_linkedin_url.', isError: true };
   }
 
   const client = await clientService.getClientById(tenant);
@@ -172,7 +173,7 @@ async function runUpdateLead(args = {}, tenant = TENANT) {
   if (found.reply) return found.reply;
   const rec = found.rec;
 
-  const r = await wingguyLeads.updateLeadFacts(airtableBaseId, rec.id, { location: loc, email: mail, phone: tel, confirmOddShape: !!args.confirm_odd_shape });
+  const r = await wingguyLeads.updateLeadFacts(airtableBaseId, rec.id, { location: loc, email: mail, phone: tel, linkedinUrl: newUrl, confirmOddShape: !!args.confirm_odd_shape });
   if (!r || !r.ok) return { text: `Error: ${(r && r.error) || 'the lead could not be updated.'}`, isError: true };
 
   const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
@@ -315,7 +316,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_update_lead',
     description:
-      'Correct a lead\'s CONTACT FACTS on their existing CRM record — location, email and/or phone — the moment a truer value surfaces ("I\'m based in Sydney", a better email given in a thread, a phone number from a call). Pass ONLY the fields you\'re correcting; each OVERWRITES the record, and the reply reports every change old → new — ALWAYS relay that to the coach so a wrong write is caught on the spot. Never write a guess: only values the lead or coach actually stated. Location matters more than it looks — it drives the lead-timezone maths when offering meeting times. Changing the email is safe: the old primary is automatically preserved under Alt Emails, so replies and invites from it still match. Fields can\'t be blanked from here. Find the lead by linkedin_url (surest), lead_email, or lead_name. This tool is ONLY for these three facts — dates and flags have their own tools (wingguy_set_reconnect, wingguy_cease_followups), and someone not in the CRM yet needs wingguy_create_lead.',
+      'Correct a lead\'s CONTACT FACTS on their existing CRM record — location, email, phone and/or LinkedIn profile URL — the moment a truer value surfaces ("I\'m based in Sydney", a better email given in a thread, a phone number from a call, their LinkedIn profile once you\'ve found it). To SAVE a LinkedIn URL on the record use new_linkedin_url (linkedin_url is only for LOOKING THE LEAD UP); it is refused if another lead already holds that profile (a duplicate to merge, not an edit). Pass ONLY the fields you\'re correcting; each OVERWRITES the record, and the reply reports every change old → new — ALWAYS relay that to the coach so a wrong write is caught on the spot. Never write a guess: only values the lead or coach actually stated. Location matters more than it looks — it drives the lead-timezone maths when offering meeting times. Changing the email is safe: the old primary is automatically preserved under Alt Emails, so replies and invites from it still match. Fields can\'t be blanked from here. Find the lead by linkedin_url (surest), lead_email, or lead_name. This tool is ONLY for these four facts — dates and flags have their own tools (wingguy_set_reconnect, wingguy_cease_followups), and someone not in the CRM yet needs wingguy_create_lead.',
     zodSchema: {
       lead_name: z.string().optional().describe('The lead\'s name (or part of it) — must match exactly one person, or you\'ll get a list to disambiguate.'),
       lead_email: z.string().optional().describe('The lead\'s CURRENT email on record — exact match, the surest lookup after the LinkedIn URL.'),
@@ -323,6 +324,7 @@ const TOOL_DEFS = [
       location: z.string().optional().describe('Their corrected location, as specific as known (e.g. "Sydney, New South Wales" — city + state beats city alone for timezone maths).'),
       email: z.string().optional().describe('Their corrected email — becomes the primary; the old primary is kept under Alt Emails automatically.'),
       phone: z.string().optional().describe('Their corrected phone number.'),
+      new_linkedin_url: z.string().optional().describe('Their LinkedIn profile URL (linkedin.com/in/...) to SAVE on the record — adds it when missing, replaces a wrong one.'),
       confirm_odd_shape: z.boolean().optional().describe('Set true ONLY after the tool refused the email because text looked glued to its front (e.g. "iscraig.carolan@") AND the coach has explicitly confirmed that exact address. Normally omit.'),
     },
     jsonSchema: {
@@ -334,6 +336,7 @@ const TOOL_DEFS = [
         location: { type: 'string', description: 'Their corrected location, as specific as known (e.g. "Sydney, New South Wales" — city + state beats city alone for timezone maths).' },
         email: { type: 'string', description: 'Their corrected email — becomes the primary; the old primary is kept under Alt Emails automatically.' },
         phone: { type: 'string', description: 'Their corrected phone number.' },
+        new_linkedin_url: { type: 'string', description: 'Their LinkedIn profile URL (linkedin.com/in/...) to SAVE on the record — adds it when missing, replaces a wrong one.' },
         confirm_odd_shape: { type: 'boolean', description: 'Set true ONLY after the tool refused the email because text looked glued to its front (e.g. "iscraig.carolan@") AND the coach has explicitly confirmed that exact address. Normally omit.' },
       },
       required: [],

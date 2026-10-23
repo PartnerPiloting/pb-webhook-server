@@ -223,24 +223,34 @@ async function updateLeadContact(airtableBaseId, leadRecordId, { email = '', pho
 
 // Correct a lead's CONTACT FACTS on an existing record — the "the lead just told us something
 // truer" write (Guy, 2026-08-20, after Dean Hobin's missing location). Deliberately a short
-// WHITELIST — Location, Email, Phone — never a general edit pen:
+// WHITELIST — Location, Email, Phone, LinkedIn URL — never a general edit pen:
 //   LOCATION — plain overwrite; it's what feeds the lead-timezone maths when offering times.
 //   EMAIL    — same preservation rule as updateLeadEmails: the OLD primary moves into {Alt Emails}
 //              (never lost), so the invite matcher and inbound self-healer keep finding them.
 //   PHONE    — plain overwrite (a human-stated correction beats the scraped value).
+//   LINKEDIN — the profile URL (Guy, 2026-10-23, after Steve Brossman's link couldn't be filed).
+//              Must be a real linkedin.com/in/ URL; tracking junk (?query/#hash) is stripped. Refused
+//              if ANOTHER lead already holds that profile — that's a duplicate to merge, not an edit.
 // Unlike updateLeadContact (fill-if-empty enrichment), this OVERWRITES — it exists for the moment
 // a value the lead or coach actually stated beats what's on the record. Empty/omitted params leave
 // fields untouched; there is deliberately NO way to blank a field from here.
 // Returns { ok, changed, changes: [{field, from, to}], notes: [] } or { ok:false, error }.
-async function updateLeadFacts(airtableBaseId, leadRecordId, { location = '', email = '', phone = '', confirmOddShape = false } = {}) {
+async function updateLeadFacts(airtableBaseId, leadRecordId, { location = '', email = '', phone = '', linkedinUrl = '', confirmOddShape = false } = {}) {
   if (!airtableBaseId) return { ok: false, error: 'no CRM base for this client' };
   if (!leadRecordId) return { ok: false, error: 'no lead record to update' };
 
   const loc = String(location || '').trim();
   const mail = String(email || '').trim().toLowerCase();
   const tel = String(phone || '').trim();
-  if (!loc && !mail && !tel) return { ok: false, error: 'nothing to update — pass a location, email and/or phone' };
+  const rawUrl = String(linkedinUrl || '').trim();
+  if (!loc && !mail && !tel && !rawUrl) return { ok: false, error: 'nothing to update — pass a location, email, phone and/or LinkedIn URL' };
   if (mail && !EMAIL_SHAPE.test(mail)) return { ok: false, error: `"${email}" doesn't look like a valid email address` };
+  let url = '';
+  if (rawUrl) {
+    if (!/linkedin\.com\/in\/[^/?#\s]+/i.test(rawUrl)) return { ok: false, error: `"${linkedinUrl}" doesn't look like a LinkedIn profile URL (linkedin.com/in/...)` };
+    url = rawUrl.replace(/[?#].*$/, '');
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  }
 
   const base = clientService.getClientBase(airtableBaseId);
   if (!base) return { ok: false, error: 'CRM base unavailable' };
@@ -260,6 +270,16 @@ async function updateLeadFacts(airtableBaseId, leadRecordId, { location = '', em
   if (tel && tel !== currentPhone) {
     fields['Phone'] = tel;
     changes.push({ field: 'Phone', from: currentPhone, to: tel });
+  }
+  const currentUrl = String(f['LinkedIn Profile URL'] || '').trim();
+  if (url && canonicalLinkedinSlug(url) !== canonicalLinkedinSlug(currentUrl)) {
+    const holder = await findLeadRecord(base, { linkedinUrl: url });
+    if (holder && holder.id !== leadRecordId) {
+      const name = `${holder.fields['First Name'] || ''} ${holder.fields['Last Name'] || ''}`.trim() || holder.id;
+      return { ok: false, error: `that LinkedIn profile is already on another lead (${name}) — likely a duplicate record; ask Guy to merge them rather than filing it twice` };
+    }
+    fields['LinkedIn Profile URL'] = url;
+    changes.push({ field: 'LinkedIn Profile URL', from: currentUrl, to: url });
   }
   const currentPrimary = String(f['Email'] || '').trim();
   if (mail && mail !== currentPrimary.toLowerCase() && !confirmOddShape) {
