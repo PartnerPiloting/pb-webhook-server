@@ -635,7 +635,7 @@ function composeEmail({ client, opening: openingText, body, unsubscribeUrl, base
   const isPiece = kind ? PIECE_KINDS.has(kind) : !!body.title;
   if (isPiece && body.title) parts.push(`<p style="margin-top:22px"><strong>${esc(body.title)}</strong></p>`);
   parts.push(body.bodyHtml || '');
-  if (thought && thought.text) parts.push(`<p><strong>A thought for the week:</strong> ${esc(thought.text)}</p>`);
+  if (thought && thought.text) parts.push(briefs.quoteHtml(thought.text, { label: 'A thought for the week' }));
   if (firstWeekly) parts.push(`<p>${esc(FIRST_WEEKLY_NOTE)}</p>`);
   parts.push('<p>Cheers,<br>Guy</p>');
   parts.push(`<p style="margin-top:28px;font-size:12px;color:#888">Rather not get these weekly emails? <a href="${esc(unsubscribeUrl || '#')}" style="color:#888">Unsubscribe</a></p>`);
@@ -712,11 +712,13 @@ async function deepen({ pick, body, brief, client, facts, factLinesNow = [], wee
   } else if (!pick.what && pick.rule === 'waiting-for-invitations' && facts && facts.group === 'running') {
     notFit = 'no invitation has gone out yet, so the welcome and the opening run cannot start';
   }
-  const tips = !pick.what && pick.rule === 'weekly-tips';
-  if (tips) notFit = 'in onboarding - the weekly tips email their note asks for';
+  const steered = !pick.what && pick.rule === 'steered';
+  const tips = !pick.what && (pick.rule === 'weekly-tips' || steered);
+  if (steered) notFit = 'written to your direction for this week';
+  else if (tips) notFit = 'in onboarding - the weekly email their note asks for';
   if (notFit && llmFor('custom')) {
     try {
-      const c = await b.draftCustomEmail(llmFor('custom'), { client, brief, notFit, firstWeekly, tips, note: (facts && facts.noteText) || '', pastTips, arrives: week, nextSessionAt: (facts && facts.nextSessionAt) || null });
+      const c = await b.draftCustomEmail(llmFor('custom'), { client, brief, notFit, firstWeekly, tips, note: (facts && facts.noteText) || '', pastTips, arrives: week, nextSessionAt: (facts && facts.nextSessionAt) || null, direction: steered && facts && facts.pin ? facts.pin.note || '' : '' });
       if (!c.subject || !c.paragraphs.length) out.customDeclined = c.why || 'nothing true and useful to say this week';
       else {
         out.pick = {
@@ -851,7 +853,7 @@ async function buildPlan(coachClientId, opts = {}) {
         body = await buildBody(pick, { coach, client, week, firstEmail, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
       }
       if (brief) {
-        const lastWeek = !pick.what && pick.rule === 'weekly-tips' ? await planStore.planFor(planStore.addWeeks(week, -1), client.clientId).catch(() => null) : null;
+        const lastWeek = !pick.what && (pick.rule === 'weekly-tips' || pick.rule === 'steered') ? await planStore.planFor(planStore.addWeeks(week, -1), client.clientId).catch(() => null) : null;
         deep = await deepen({ pick, body, brief, client, facts, factLinesNow: liveLines, week, firstWeekly, pastTips: [...plannedTipFrom(lastWeek), ...pastTipsFrom(record)], llmFor, at });
         pick = deep.pick;
         body = deep.body;
@@ -1215,7 +1217,7 @@ async function sendApproved(coachClientId, week, deps = {}) {
       }
     }
     const firstWeekly = isFirstWeekly(await ts.touchesFor(row.clientId, { limit: 500 }));
-    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template, congrats: row.pick.body.congrats }, unsubscribeUrl, kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
+    const html = composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template, congrats: row.pick.body.congrats }, unsubscribeUrl, kind: row.pick.what.kind, firstWeekly: firstWeekly && !ownWordsPin(row.pick), thought: row.pick.thought || null });
     const to = lower(client.clientEmailAddress);
     const res = await mailer.sendSeriesEmail({ to, subject: row.subject, html, unsubscribeUrl, preheader: row.opening ? row.opening.slice(0, 120) : undefined, tag: `client-touch-${row.pick.what.kind}` });
     if (!res.ok) {
@@ -1633,7 +1635,8 @@ async function clientEmailFull(coachClientId, query, opts = {}) {
   lines.push(`STATUS: ${STATUS_WORDS[row.status] || row.status}`);
   lines.push(`WHY THIS EMAIL: ${pick.reason || '-'}`);
   if (row.status === 'held' && row.hold) lines.push(`HELD BECAUSE: ${(row.hold.changed || [row.hold.reason]).join('; ')}`);
-  if (pick.what && pick.what.kind === 'custom') lines.push('WRITTEN FOR THEM - nothing on the approved shelf fitted, so read it closely.');
+  if (pick.what && pick.what.kind === 'custom') lines.push(pick.replaces && pick.replaces.rule === 'steered' ? 'WRITTEN TO YOUR DIRECTION - read it closely.' : 'WRITTEN FOR THEM - nothing on the approved shelf fitted, so read it closely.');
+  lines.push(`YOUR NOTE ON THEM: ${client.touchNote ? client.touchNote.replace(/\s*\n\s*/g, ' / ') : '(empty - add background with action=background)'}`);
   if (firstThingsOpen(pick)) {
     const ft = pick.firstThings;
     lines.push('', `SEND A PERSONAL NOTE FIRST - you owe them: ${(ft.items || []).map((o) => o.what).join('; ')}. The weekly email waits until you send it (or dismiss the flag).`);
@@ -1653,7 +1656,10 @@ async function clientEmailFull(coachClientId, query, opts = {}) {
     const b = pick.brief;
     lines.push('', 'BRIEF:');
     if (typeof b === 'string') lines.push(b);
-    else for (const [k, v] of Object.entries(b)) lines.push(`  ${k}: ${Array.isArray(v) ? v.join('; ') : typeof v === 'object' ? JSON.stringify(v) : v}`);
+    else {
+      const said = (x) => (x && typeof x === 'object' ? x.what || x.text || x.summary || JSON.stringify(x) : x);
+      for (const [k, v] of Object.entries(b)) lines.push(`  ${k}: ${Array.isArray(v) ? v.map(said).join('; ') : typeof v === 'object' ? JSON.stringify(v) : v}`);
+    }
   }
   lines.push('', formatOutlook(client.clientName, outlook).split('\n').filter((l) => !/ - weekly emails$/.test(l)).join('\n'));
   return { ...base, row, text: lines.join('\n') };
@@ -1770,7 +1776,7 @@ async function previewFor(week, clientId) {
   if (!client) return null;
   const { unsubscribeUrlFor } = require('./clientUnsubscribe');
   const firstWeekly = isFirstWeekly(await touchStore.touchesFor(clientId, { limit: 500 }));
-  return composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml: row.bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template, congrats: row.pick.body.congrats }, unsubscribeUrl: unsubscribeUrlFor(client) || '#', kind: row.pick.what.kind, firstWeekly, thought: row.pick.thought || null });
+  return composeEmail({ client, opening: row.opening, body: { title: row.pick.body.title, dek: row.pick.body.dek, bodyHtml: row.bodyHtml, qs: row.pick.body.qs, template: row.pick.body.template, congrats: row.pick.body.congrats }, unsubscribeUrl: unsubscribeUrlFor(client) || '#', kind: row.pick.what.kind, firstWeekly: firstWeekly && !ownWordsPin(row.pick), thought: row.pick.thought || null });
 }
 
 module.exports = {

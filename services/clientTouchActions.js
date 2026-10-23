@@ -43,8 +43,8 @@ async function resolveClient(coachClientId, query, deps = {}) {
 
 /** Paragraphs of Guy's words -> HTML. Blank line between paragraphs; single line breaks kept. */
 function wordsToHtml(text) {
-  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return clean(text).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('\n');
+  // A paragraph starting "> " is a quote in a highlighted box (credit on a "- " line under it).
+  return require('./clientTouchBrief').paragraphsHtml(clean(text).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean));
 }
 
 /** An approved piece by slug or title (approximate match). Returns the listPieces() entry or null. */
@@ -198,6 +198,49 @@ async function pin(coachClientId, clientId, { week, piece, title, text } = {}, d
   return { ok: true, said: `Pinned: "${p.title}" goes to them on ${dayLabel(w)} (it shows when that Monday's plan builds; you still approve it).` };
 }
 
+/**
+ * Guy's direction for one client's email on one Monday ("this week, tell Dean what I'm doing with my
+ * own outreach - the idea, not the search"). The planner rewrites that email from it, with everything
+ * on record; it waits for his approval again. ongoing = it also goes on their note, for every week.
+ */
+async function steer(coachClientId, clientId, { week, text, ongoing = false } = {}, deps = {}) {
+  const ps = deps.planStore || planStore;
+  const cs = deps.clientService || clientService;
+  const words = clean(text);
+  if (!words) return { ok: false, said: 'What should their email be about? Put your direction in text.' };
+  const w = weekOrDefault(week);
+  const { row } = await rowFor(w, clientId, ps);
+  if (row && row.status === 'sent') return { ok: false, said: `Their ${dayLabel(w)} email has already gone.` };
+  await ps.setPin({ clientId, weekOf: w, kind: 'steer', key: `steer:${w}`, title: 'Your direction', note: words });
+  if (row) await ps.setPlanStatus(w, clientId, 'proposed', { hold: null });
+  const lines = [];
+  if (ongoing) {
+    const client = await cs.getClientById(clientId);
+    const r = client ? await cs.updateTouchNote(client.id, appendNote(client.touchNote, words)) : { success: false };
+    lines.push(r.success ? 'It is also on their note now, so it shapes every week from here.' : 'It could not go on their note - say it again as background.');
+  }
+  const build = deps.buildPlan || require('./clientTouchPlanner').buildPlan;
+  const plan = await build(coachClientId, { weekOf: w, clientIds: [clientId], force: true });
+  const fresh = plan.rows[0] || null;
+  const made = fresh && fresh.pick && fresh.pick.what;
+  lines.unshift(made
+    ? `Rewritten: their ${dayLabel(w)} email now follows your direction - "${fresh.subject || fresh.pick.what.title}". It is waiting for your approval.`
+    : `Your direction is set for ${dayLabel(w)}, but no email came out of it${fresh && fresh.pick && fresh.pick.customDeclined ? ` (${fresh.pick.customDeclined})` : ''}. Try saying it another way, or write it yourself with swap.`);
+  return { ok: true, row: fresh, said: lines.join(' ') };
+}
+
+/** Background on a client that shapes every weekly email from now on - a dated line on their note. */
+async function addBackground(coachClientId, clientId, { text } = {}, deps = {}) {
+  const cs = deps.clientService || clientService;
+  const words = clean(text);
+  if (!words) return { ok: false, said: 'What should I add? Put it in text.' };
+  const client = await cs.getClientById(clientId);
+  if (!client || client.coach !== coachClientId) return { ok: false, said: 'Not one of your clients.' };
+  const r = await cs.updateTouchNote(client.id, appendNote(client.touchNote, words));
+  if (!r.success) return { ok: false, said: `Could not save it: ${r.error || 'unknown error'}` };
+  return { ok: true, said: `Added to ${client.clientName}'s note - every weekly email reads it from the next build: "${words}"` };
+}
+
 async function setThought(coachClientId, clientId, { week, piece, why } = {}, deps = {}) {
   const ps = deps.planStore || planStore;
   const w = weekOrDefault(week);
@@ -246,4 +289,4 @@ function appendNote(existing, line) {
   return `${base ? `${base}\n` : ''}${today}: ${line}`;
 }
 
-module.exports = { approveBlocked, firstThings, approve, edit, swap, skip, pin, setThought, fileWhyNot, appendNote, resolveClient, findPiece, wordsToHtml, weekOrDefault, dayLabel };
+module.exports = { approveBlocked, firstThings, approve, edit, swap, skip, pin, steer, addBackground, setThought, fileWhyNot, appendNote, resolveClient, findPiece, wordsToHtml, weekOrDefault, dayLabel };

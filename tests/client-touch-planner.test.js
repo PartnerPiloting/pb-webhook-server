@@ -147,7 +147,7 @@ const routes = require('../routes/clientTouchRoutes');
   });
   await check('a non-piece email carries "A thought for the week:" before the sign-off', () => {
     const html = planner.composeEmail({ client: { clientName: 'Sam Noble' }, opening: 'Next step.', kind: 'setup', body: { title: 'Connect your calendar', bodyHtml: '<p>One small thing.</p>' }, unsubscribeUrl: '#', thought: { slug: 'reason-to-follow-up', text: "Goodwill doesn't sustain a relationship. Motion does." } });
-    assert.ok(html.includes('<strong>A thought for the week:</strong> Goodwill'));
+    assert.ok(/<blockquote style="[^"]*"><div[^>]*><strong>A thought for the week<\/strong><\/div><div[^>]*>Goodwill/.test(html), 'the thought sits in the highlighted box');
     assert.ok(html.indexOf('A thought for the week') < html.indexOf('Cheers,<br>Guy'));
     assert.ok(!html.includes('<strong>Connect your calendar</strong>'), 'a setup step is part of the note, not a titled piece');
   });

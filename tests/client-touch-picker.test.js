@@ -124,6 +124,13 @@ const run = (facts, record = []) => picker.pickFor(facts, SHELF, record, { now: 
     assert.strictEqual(r.what, null); assert.strictEqual(r.rule, 'onboarding');
     assert.ok(!/week without a session/.test(r.reason));
   });
+  await check("Guy's direction for the week wins over the onboarding rule and the opening run - but never over leaving someone out", () => {
+    const pin = { kind: 'steer', key: 'steer:2026-10-26', note: 'tell him about my own outreach' };
+    const a = run(running({ group: 'onboarding', lastInviteSent: null, pin }));
+    assert.strictEqual(a.what, null); assert.strictEqual(a.rule, 'steered'); assert.match(a.reason, /tell him about my own outreach/);
+    assert.strictEqual(run(running({ pin })).rule, 'steered');
+    assert.ok(run(running({ pin, unsubscribed: true })).leftOut, 'unsubscribed still wins');
+  });
   await check('Dean: onboarding, "weekly tips" in the note -> a tips email (written at build), a pin still wins', () => {
     const base = { group: 'onboarding', lastInviteSent: null, sessionBooked: true, weeklyTips: true };
     const r = run(running(base));

@@ -475,12 +475,15 @@ ${QUALITY_BAR.body.join('\n\n')}
 (Why it works: ${QUALITY_BAR.why}.)
 Return ONE JSON object: {"subject": "short, specific to them, no brand name", "paragraphs": ["..."], "why": "one line for Guy: what in their world this speaks to"}. If there is genuinely nothing true and useful to say this week, return {"subject": "", "paragraphs": [], "why": "the reason"}.`;
 
-const TIPS_SYSTEM = `You write this week's tips email from Guy Wilson - a network-building coach (I Know A Guy) - to one of his clients who is still getting set up. Guy asked for it: on top of their weekly call, they love a practical hint each week. Guy reads it closely before anything is sent.
-- ONE tip, ready to use today, for finding or warming up the right people on LinkedIn in THEIR market (read it from the brief and Guy's note): a Boolean search string to paste into LinkedIn search (quotes for phrases, OR / AND / NOT, brackets - on a paragraph of its own), a search filter worth adding, a way into the connections they already have, a profile touch, a kind of post or comment that starts conversations.
-- Never repeat a tip from PAST TIPS - a different angle or a different slice of their market each week.
-- Short: two to four short paragraphs, under 130 words in all. Say what to do, then in one line why it finds the right people.
+const TIPS_SYSTEM = `You write this week's weekly email from Guy Wilson - a network-building coach (I Know A Guy) - to one of his clients who is still getting set up. Guy asked for it: on top of their weekly call, they get one useful idea each week. Guy reads it closely before anything is sent.
+- WHAT IT IS ABOUT: GUY'S DIRECTION FOR THIS WEEK when there is one - follow it first, it beats everything below. Otherwise what GUY'S NOTE ON THEM says these emails are for (for example time management and inspiration from the personal development classics), and never what the note rules out. Only when neither says: ONE practical LinkedIn tip for finding or warming up the right people in their market.
+- ONE idea, not a list. From a book: name the book and author, and quote at most one short line (under 15 words) as a quote block, then say it in Guy's own words and why it matters to them now. A LinkedIn tip: something ready to use today (a Boolean search string on a paragraph of its own).
+- A QUOTE BLOCK is a paragraph that starts with "> "; put the credit on its last line after "- " (for example "> The line.\n- Author, Book"). At most one per email - it is shown in a highlighted box.
+- Never repeat PAST TIPS - a different idea or angle each week.
+- Short: two to four short paragraphs plus any quote, under 140 words in all.
 - An offer, not homework: no tasks, no "let me know". At most "if you like, we can try it together" - only when NEXT SESSION is after the day the email ARRIVES, and never name a date that will already be past.
 - What a search will bring up is a suggestion ("should bring up"), never a promise. Name a city or region only when TRUE NOW or Guy's note gives it.
+- When Guy's direction talks about what HE is doing himself (his own outreach, a project), describe the idea and the kind of people, never the exact search or message - so his and the client's outreach never land on the same people with the same words.
 - Everything you say about them must be true in TRUE NOW. Respect NEVER SAY and HOW TO WRITE. What has not happened yet is not mentioned.
 - Do not deal with what Guy owes them - a separate personal note handles that.
 - Begin with the substance (no greeting) and stop before any sign-off: the system adds "Hi <name>,", a thought for the week, and "Cheers, Guy".
@@ -491,11 +494,12 @@ Return ONE JSON object: {"subject": "short, says what the tip is, no brand name"
  * This week's email written for them: in place of a piece that does not fit (notFit), or - tips set -
  * the weekly tips email Guy asked for (pastTips = what they have already had, so no tip repeats).
  */
-async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips = false, note = '', pastTips = [], arrives = null, nextSessionAt = null }) {
+async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips = false, note = '', pastTips = [], arrives = null, nextSessionAt = null, direction = '' }) {
   const user = [
     `CLIENT: ${client.clientName}${client.clientFirstName ? ` (first name ${client.clientFirstName})` : ''}.`,
     tips ? '' : `WHY NOTHING ON THE SHELF FITS: ${notFit}`,
     tips && arrives ? `THE EMAIL ARRIVES: Monday ${arrives}, 8am Brisbane. NEXT SESSION: ${nextSessionAt ? String(nextSessionAt).slice(0, 16).replace('T', ' ') : 'none booked'}.` : '',
+    tips && direction ? `GUY'S DIRECTION FOR THIS WEEK (follow it first): ${direction}` : '',
     tips && note ? `GUY'S NOTE ON THEM: ${note}` : '',
     tips && arr(pastTips).length ? ['PAST TIPS (never repeat one):', ...arr(pastTips).map((t) => `- ${t}`)].join('\n') : '',
     firstWeekly ? 'This is the FIRST weekly email they will ever get from Guy (a one-line note about the weekly emails is added after it).' : '',
@@ -511,10 +515,34 @@ async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips 
   return { subject: str(j.subject), paragraphs, why: str(j.why) };
 }
 
-/** Paragraphs -> the email's body HTML (escaped). Pure. */
+/**
+ * One quote in a highlighted box (Guy, 23 Oct 2026: "have it stand out"). Inline styles only - email
+ * clients drop <style>. `label` sits above it ("A thought for the week"), `credit` under it. Pure.
+ */
+const QUOTE_STYLE = 'margin:20px 0;padding:14px 18px;border-left:4px solid #2b6cb0;background:#eef5fb;border-radius:4px';
+function quoteHtml(text, { credit = '', label = '' } = {}) {
+  const esc = (x) => String(x).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  return `<blockquote style="${QUOTE_STYLE}">${label ? `<div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#2b6cb0;margin-bottom:6px"><strong>${esc(label)}</strong></div>` : ''}<div style="font-size:17px;line-height:1.5;font-style:italic;color:#1a3550">${esc(text)}</div>${credit ? `<div style="margin-top:8px;font-size:13px;color:#555">${esc(credit)}</div>` : ''}</blockquote>`;
+}
+
+/** A paragraph starting "> " is a quote: lines after the first "- " line are its credit. Returns { text, credit } or null. Pure. */
+function asQuote(paragraph) {
+  const p = String(paragraph || '').trim();
+  if (!p.startsWith('>')) return null;
+  const lines = p.split('\n').map((l) => l.replace(/^>\s?/, '').trim()).filter(Boolean);
+  const at = lines.findIndex((l, i) => i > 0 && /^-\s+/.test(l));
+  const text = (at > 0 ? lines.slice(0, at) : lines).join(' ').trim();
+  const credit = at > 0 ? lines.slice(at).join(' ').replace(/^-\s+/, '').trim() : '';
+  return text ? { text, credit } : null;
+}
+
+/** Paragraphs -> the email's body HTML (escaped; a "> " paragraph becomes the quote box). Pure. */
 function paragraphsHtml(paragraphs) {
   const esc = (x) => String(x).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-  return arr(paragraphs).map((p) => `<p>${esc(p)}</p>`).join('\n');
+  return arr(paragraphs).map((p) => {
+    const q = asQuote(p);
+    return q ? quoteHtml(q.text, { credit: q.credit }) : `<p>${esc(p).replace(/\n/g, '<br>')}</p>`;
+  }).join('\n');
 }
 
 /** Plain text of body HTML (for the guard and the fit read). Pure. */
@@ -600,6 +628,8 @@ module.exports = {
   draftOwedNote,
   judgeFit,
   draftCustomEmail,
+  quoteHtml,
+  asQuote,
   checkClaims,
   // pure, tested
   basisFor,

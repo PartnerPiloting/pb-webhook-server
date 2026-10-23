@@ -365,6 +365,9 @@ function pickFor(facts, shelf, record, opts = {}) {
   const week = emailsThisWeek(rows, now);
   if (week.length >= MAX_PER_WEEK) return nothing('limit', `already ${week.length} this week - two is the most`);
 
+  // Guy's direction for this week (actions.steer): the planner writes the email from it (planner deepen).
+  if (facts.pin && facts.pin.kind === 'steer') return nothing('steered', `your direction for this week: ${facts.pin.note || ''}`.trim());
+
   // B. During onboarding: only setup steps and event-set-off emails, at most one a week.
   if (facts.group === 'onboarding') {
     if (week.length >= 1) return nothing('onboarding', 'in onboarding and one email has gone this week - the session is the touch');

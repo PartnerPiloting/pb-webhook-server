@@ -76,6 +76,12 @@ written for them at build - ONE ready-to-use LinkedIn tip for their market (a Bo
 string, a filter, a way into connections they already have), never repeating a past one, plus the
 usual thought for the week. It is a CUSTOM email: fact-guarded, never sent by veto, Guy approves it.
 
+**What these emails are about follows the note** (23 Oct, Dean): the note says the topic (Dean: time management and inspiration from the books - NOT Boolean searches); a LinkedIn tip only when the note says nothing. A book idea names the book, quotes one short line in the quote box, then says it in Guy's words.
+
+**Guy steers a client, week by week** (23 Oct, "we'll be going in every week, looking at Dean, changing things"): in chat, wingguy_weekly_emails action=steer with his direction ("this week, tell Dean what I'm doing with my own outreach - the idea, not the search") stores a steer pin for that Monday; the picker returns rule steered (after the never-send checks, before everything else) and the build writes the email to it, with the note and the brief; ongoing=true also adds it to the note. action=background adds a dated line to the Touch Note; show prints the note. When Guy shares his own outreach, the email gives the idea and the kind of people, never the exact search or message, so his and the client's outreach never meet the same people with the same words.
+
+**Quote box:** a paragraph starting "> " (credit on a "- " line) in Guy's own text or a written email is shown in a highlighted box; the thought for the week always sits in that box. A pinned email in Guy's own words goes as written - no drafted opening, no one-time "from now on" note.
+
 **The opening run starts the week the client's first invitations actually go out** - the
 record's "Last Invite Sent" fills in. That is when the plumbing turns into real conversations.
 Not "the machine says IDLE" - a paused campaign also says IDLE (Steve, 19 Oct). Guy can start it

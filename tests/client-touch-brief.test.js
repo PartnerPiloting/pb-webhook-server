@@ -31,7 +31,7 @@ function fakeLlm(answers = {}) {
       create: async (params) => {
         const s = params.system || '';
         const kind = /digest ONE recorded call/.test(s) ? 'digest' : /keep the working brief/.test(s) ? 'brief' : /personal email from Guy Wilson/.test(s) ? 'note'
-          : /Decide whether it FITS/.test(s) ? 'fit' : /nothing on his approved shelf fits/.test(s) ? 'custom' : /this week's tips email/.test(s) ? 'tips' : /List every FACTUAL claim/.test(s) ? 'guard' : 'other';
+          : /Decide whether it FITS/.test(s) ? 'fit' : /nothing on his approved shelf fits/.test(s) ? 'custom' : /this week's weekly email/.test(s) ? 'tips' : /List every FACTUAL claim/.test(s) ? 'guard' : 'other';
         calls.push({ kind, model: params.model, user: params.messages[0].content });
         const a = typeof answers[kind] === 'function' ? answers[kind](params) : answers[kind];
         return { content: [{ type: 'text', text: JSON.stringify(a || {}) }], usage: { input_tokens: 1000, output_tokens: 200 } };
@@ -259,7 +259,7 @@ const BRIEF_ANSWER = {
     const tipsPick = { what: null, rule: 'weekly-tips', reason: 'in onboarding - a weekly tips email' };
     const out = await planner.deepen({ pick: tipsPick, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'onboarding', noteText: 'weekly tips' }, week: '2026-11-02', pastTips: ['A search to try: "healthy ageing" AND dietitian'], llmFor, at: AT });
     assert.strictEqual(out.pick.what.kind, 'custom'); assert.strictEqual(out.pick.replaces.rule, 'weekly-tips');
-    assert.match(out.pick.reason, /^CUSTOM - in onboarding - the weekly tips email/);
+    assert.match(out.pick.reason, /^CUSTOM - in onboarding - the weekly email their note asks for/);
     const call = llm.calls.find((c) => c.kind === 'tips');
     assert.ok(call, 'the tips prompt was used'); assert.ok(!llm.calls.some((c) => c.kind === 'custom'));
     assert.match(call.user, /PAST TIPS \(never repeat one\):\n- A search to try/);
@@ -282,6 +282,24 @@ const BRIEF_ANSWER = {
     assert.strictEqual(planner.ownWordsPin({ rule: 'pinned', what: { kind: 'one-off', key: 'custom:a-search-to-try' } }), true);
     assert.strictEqual(planner.ownWordsPin({ rule: 'pinned', what: { kind: 'one-pager', key: 'begin' } }), false);
     assert.strictEqual(planner.ownWordsPin({ rule: 'setup-step', what: { kind: 'one-off', key: 'custom:x' } }), false);
+  });
+  await check("Guy's direction for the week: the email is written to it (it beats the note) and the row says so", async () => {
+    const { llm, llmFor } = deps({ ...ANSWERS, tips: { subject: 'What I am trying myself', paragraphs: ['> The key is not to prioritize what is on your schedule.\n- Stephen Covey', 'I am reaching out to people leaving corporate.'], why: 'his direction' } });
+    const direction = "tell him about my own outreach to people leaving corporate - the idea, not the search";
+    const out = await planner.deepen({ pick: { what: null, rule: 'steered', reason: 'your direction' }, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'running', noteText: 'weekly tips - time management', pin: { kind: 'steer', note: direction } }, week: '2026-10-26', llmFor, at: AT });
+    assert.strictEqual(out.pick.what.kind, 'custom'); assert.strictEqual(out.pick.replaces.rule, 'steered');
+    assert.match(out.pick.reason, /^CUSTOM - written to your direction/);
+    const call = llm.calls.find((c) => c.kind === 'tips');
+    assert.ok(call.user.includes(`GUY'S DIRECTION FOR THIS WEEK (follow it first): ${direction}`));
+    assert.match(out.body.bodyHtml, /<blockquote style="[^"]*border-left:4px solid[^"]*"><div[^>]*>The key is not to prioritize what is on your schedule\.<\/div><div[^>]*>Stephen Covey<\/div><\/blockquote>/);
+    assert.match(out.body.bodyHtml, /<p>I am reaching out to people leaving corporate\.<\/p>/);
+  });
+  await check('a "> " paragraph is a quote box with its credit; anything else stays a plain, escaped paragraph', () => {
+    assert.deepStrictEqual(briefs.asQuote('> Schedule your priorities.\n- Stephen Covey, The 7 Habits'), { text: 'Schedule your priorities.', credit: 'Stephen Covey, The 7 Habits' });
+    assert.deepStrictEqual(briefs.asQuote('> Just a line'), { text: 'Just a line', credit: '' });
+    assert.strictEqual(briefs.asQuote('Plain - with a dash'), null);
+    const html = briefs.paragraphsHtml(['> <b>x</b>', 'a < b']);
+    assert.ok(html.includes('&lt;b&gt;x&lt;/b&gt;') && html.includes('<p>a &lt; b</p>'));
   });
   await check('nothing true to say -> no custom email, and the row says why', async () => {
     const out = await planner.deepen({ pick: nothingPick, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'running' }, week: '2026-11-02', llmFor: deps({ ...ANSWERS, custom: { subject: '', paragraphs: [], why: 'too little on record' } }).llmFor, at: AT });
@@ -347,7 +365,7 @@ const BRIEF_ANSWER = {
     assert.strictEqual(out.sent, 1);
     const html = mailer.sent[0].html;
     assert.match(html, /Hi Ash,/); assert.match(html, /Well done on the Masters\./); assert.ok(!/<strong>1,200/.test(html));
-    assert.match(html, /A thought for the week:<\/strong> Motion keeps people connected\./); assert.match(html, /from now on I'll send you a short email most weeks/);
+    assert.match(html, /A thought for the week<\/strong><\/div><div[^>]*>Motion keeps people connected\.<\/div><\/blockquote>/); assert.match(html, /from now on I'll send you a short email most weeks/);
     assert.strictEqual(touch.recorded[0].kind, 'custom'); assert.match(touch.recorded[0].meta.body, /Well done on the Masters/);
   });
   await check('a personal note still owed -> the weekly email is HELD, even if approved', async () => {
