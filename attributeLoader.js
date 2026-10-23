@@ -2,6 +2,7 @@
 
 require("dotenv").config();
 const { createLogger } = require('./utils/contextLogger');
+const campaignScope = require('./services/campaignScope');
 
 // Import multi-tenant Airtable client functions
 const { getClientBase } = require('./config/airtableClient.js');
@@ -23,6 +24,101 @@ function clean(text = "") {
 /* ---------- simple cache (10-min TTL) - Multi-tenant aware --------------------------- */
 let cache = {}; // Changed to object to support per-client caching
 let cacheUntil = 0;
+
+/* ----------------------------------------------------------------
+    buildAttributeSet – Airtable-style rows (anything with .get(field))
+    -> { preamble, positives, negatives, scopes }. The one place a set
+    is built, so a what-if test on draft rows (rowsAsRecords below)
+    gets exactly what the scorer would read from the table.
+    scopes = { attributeId: {mode, ids} } for campaign-scoped rows only
+    (services/campaignScope.js); it never goes into the prompt.
+----------------------------------------------------------------- */
+function buildAttributeSet(rows, logger = null) {
+    const positives = {};
+    const negatives = {};
+    const scopes    = {};
+    let   preamble  = "";
+
+    rows.forEach(r => {
+      const id    = String(r.get("Attribute Id") || "").trim();
+      const cat   = String(r.get("Category")     || "").toLowerCase();
+      const label = String(r.get("Heading")      || "").trim();
+      const isActive = !!r.get("Active"); // Convert to boolean: unchecked = false, checked = true
+
+      if (!id) return;
+
+      // Skip inactive attributes (unless they're PREAMBLE/meta)
+      if (!isActive && id !== "PREAMBLE" && cat !== "meta") {
+        if (logger) logger.debug('loadAttributes', `Skipping inactive attribute ${id}`);
+        return;
+      }
+
+      if (id === "PREAMBLE" || cat === "meta") {
+        preamble = r.get("Instructions") ? String(r.get("Instructions")) : "";
+        return;
+      }
+
+      // Score bands stay in: they are what calibrates the AI. (A May 2025 token trim stripped text
+      // after "Scoring Range" here, which cut the opening band off every seeded row.)
+      const instructions = clean(r.get("Instructions") || "");
+
+      const common = {
+        label,
+        instructions,
+        examples : clean(r.get("Examples") || ""),
+        signals  : clean(r.get("Signals")  || "")
+      };
+
+      if (!common.examples) delete common.examples;
+
+      if (cat === "positive") {
+        positives[id] = {
+          ...common,
+          maxPoints : Number(r.get("Max Points")     || 0),
+          minQualify: Number(r.get("Min To Qualify") || 0),
+          bonusPoints: !!r.get("Bonus Points")
+        };
+      } else if (cat === "negative") {
+        const penalty = Number(r.get("Penalty") || 0);
+        negatives[id] = {
+          ...common,
+          penalty       : penalty <= 0 ? penalty : -penalty,
+          disqualifying: !!r.get("Disqualifying")
+        };
+      } else {
+        return;
+      }
+
+      const scope = campaignScope.scopeFromCells(r.get("Campaign Scope"), r.get("Scope Campaigns"));
+      if (campaignScope.isScoped(scope)) scopes[id] = scope;
+    });
+
+    return { preamble, positives, negatives, scopes };
+}
+
+/* Normalized rows (services/scoringAttributes.js normalize / checkProposal().after) -> objects
+   with .get(field) in the table's own field names, for buildAttributeSet. */
+function rowsAsRecords(rows = []) {
+  return rows.map(r => {
+    const fields = {
+      "Attribute Id": r.id,
+      "Category": r.category,
+      "Heading": r.heading,
+      "Active": r.active,
+      "Instructions": r.instructions,
+      "Examples": r.examples,
+      "Signals": r.signals,
+      "Max Points": r.maxPoints,
+      "Min To Qualify": r.minToQualify,
+      "Bonus Points": r.bonus,
+      "Penalty": r.penalty,
+      "Disqualifying": r.disqualifying,
+      "Campaign Scope": r.campaignScope && r.campaignScope !== 'all' ? r.campaignScope : null,
+      "Scope Campaigns": Array.isArray(r.campaignIds) ? r.campaignIds.join('\n') : null,
+    };
+    return { get: (f) => fields[f] };
+  });
+}
 
 /* ----------------------------------------------------------------
     loadAttributes – fetches Airtable rows (or fallback) and builds
@@ -66,61 +162,9 @@ async function loadAttributes(logger = null, clientId = null) {
   try {
     logger.debug( `Fetching attributes from Airtable table: ${TABLE_NAME}`);
     const rows = await attributeBase(TABLE_NAME).select().all(); // Uses the client-specific base
-    const positives = {};
-    const negatives = {};
-    let   preamble  = "";
+    const result = buildAttributeSet(rows, logger);
+    const { positives, negatives } = result;
 
-    rows.forEach(r => {
-      const id    = String(r.get("Attribute Id") || "").trim();
-      const cat   = String(r.get("Category")     || "").toLowerCase(); 
-      const label = String(r.get("Heading")      || "").trim();
-      const isActive = !!r.get("Active"); // Convert to boolean: unchecked = false, checked = true
-
-      if (!id) return;
-      
-      // Skip inactive attributes (unless they're PREAMBLE/meta)
-      if (!isActive && id !== "PREAMBLE" && cat !== "meta") {
-        logger.debug('loadAttributes', `Skipping inactive attribute ${id}`);
-        return;
-      } 
-
-      if (id === "PREAMBLE" || cat === "meta") {
-        preamble = r.get("Instructions") ? String(r.get("Instructions")) : "";
-        return; 
-      }
-
-      // Score bands stay in: they are what calibrates the AI. (A May 2025 token trim stripped text
-      // after "Scoring Range" here, which cut the opening band off every seeded row.)
-      const instructions = clean(r.get("Instructions") || "");
-
-      const common = {
-        label,
-        instructions,
-        examples : clean(r.get("Examples") || ""),
-        signals  : clean(r.get("Signals")  || "")
-      };
-
-      if (!common.examples) delete common.examples;
-
-      if (cat === "positive") {
-        positives[id] = {
-          ...common,
-          maxPoints : Number(r.get("Max Points")     || 0),
-          minQualify: Number(r.get("Min To Qualify") || 0),
-          bonusPoints: !!r.get("Bonus Points")
-        };
-      } else if (cat === "negative") {
-        const penalty = Number(r.get("Penalty") || 0);
-        negatives[id] = {
-          ...common,
-          penalty       : penalty <= 0 ? penalty : -penalty, 
-          disqualifying: !!r.get("Disqualifying")
-        };
-      }
-    });
-
-    const result = { preamble, positives, negatives };
-    
     // Store in client-specific cache
     if (!cache) cache = {};
     cache[cacheKey] = result;
@@ -417,8 +461,10 @@ function clearAttributeCache() {
   cacheUntil = 0;
 }
 
-module.exports = { 
-  loadAttributes, 
+module.exports = {
+  loadAttributes,
+  buildAttributeSet,
+  rowsAsRecords,
   clearAttributeCache,
   loadAttributeForEditing, 
   loadAttributeForEditingWithClientBase,

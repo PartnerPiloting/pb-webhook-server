@@ -66,6 +66,36 @@ module.exports = function mountRescore(app) {
     }
   });
 
+  // POST /whatif   body: { recordId, data, size }  (23 Oct 2026, Sam Noble)
+  // "What if I changed this attribute?" - the Edit Attribute form's UNSAVED values, applied over the
+  // saved set and scored on a sample. Nothing is saved: not the attribute, not a score. Same job
+  // polling as /run; the result is compared with the saved attributes on the same leads.
+  router.post('/whatif', async (req, res) => {
+    try {
+      const r = await resolve(req);
+      if (r.error) return res.status(r.code).json({ ok: false, error: r.error });
+      const { recordId, data, size } = req.body || {};
+      const core = require('../services/scoringAttributes');
+      const { rows } = await core.readTable(r.base);
+      const row = rows.find((x) => x.recordId === recordId);
+      if (!row || !core.isScoring(row)) return res.status(404).json({ ok: false, error: 'That attribute was not found in your scoring table.' });
+      let campaigns = [];
+      try { campaigns = (await require('../services/lhCampaignList').listCampaigns(r.clientId, { base: r.base, withLeads: true })).campaigns; } catch (_) { /* warnings only */ }
+      const check = core.checkProposal(rows, { rows: [core.portalProposal(row, data || {})] }, { campaigns });
+      if (check.errors.length) return res.status(400).json({ ok: false, error: check.errors[0] });
+      if (!check.changes.length) return res.status(400).json({ ok: false, error: 'Nothing is different from what is saved - change something first, or use Test on sample.' });
+      const loader = require('../attributeLoader');
+      const attributeSet = loader.buildAttributeSet(loader.rowsAsRecords(check.after));
+      const out = await runner.startRun(r, { mode: 'preview', scope: 'sample', size, attributeSet });
+      if (out.empty) return res.json({ ok: true, jobId: null, total: 0, done: true, result: out.result });
+      if (out.insufficient) return res.status(402).json({ ok: false, error: 'Not enough credits', needed: out.needed, available: out.available });
+      res.json({ ok: true, jobId: out.jobId, total: out.total, creditsNeeded: out.creditsNeeded, draft: true });
+    } catch (e) {
+      logger.error('rescore/whatif error', e.message, e.stack);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   // GET /run/status?jobId=...  -> progress + final result when done
   router.get('/run/status', (req, res) => {
     const job = runner.getJob(req.query.jobId);

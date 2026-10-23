@@ -108,6 +108,38 @@ function TodayInner() {
     return () => { alive = false; clearInterval(tick); };
   }, [hasQueue, clientId]);
 
+  // The campaign picker (23 Oct 2026): only for a client running 2+ Linked Helper campaigns (the
+  // queue says so). Its choices are the campaigns the people on this page actually came from - the
+  // campaign that sent them to Wingguy, not always the connect campaign. One choice for the whole
+  // page; Reconnect is never filtered.
+  const runsSeveral = Array.isArray(queue?.campaigns) && queue.campaigns.length > 1;
+  const [campaignFilter, setCampaignFilterState] = useState(() => {
+    try { const v = window.localStorage.getItem('wg-today-campaign'); return v === null ? 'all' : (v === 'all' || v === 'none' ? v : Number(v)); } catch (_) { return 'all'; }
+  });
+  const setCampaignFilter = (v) => {
+    setCampaignFilterState(v);
+    try { window.localStorage.setItem('wg-today-campaign', String(v)); } catch (_) { /* per-viewer convenience only */ }
+  };
+  // A remembered campaign that is no longer live falls back to All.
+  const activeFilter = !campaigns ? 'all'
+    : (campaignFilter === 'all' || campaignFilter === 'none' || campaigns.some((c) => c.id === campaignFilter)) ? campaignFilter : 'all';
+  const [welcomeTally, setWelcomeTally] = useState({ counts: {}, names: {} });
+  const { pickerCounts, campaigns } = useMemo(() => {
+    const counts = { ...(welcomeTally.counts || {}) };
+    const names = { ...(welcomeTally.names || {}) };
+    for (const c of (queue?.campaigns || [])) if (c.name) names[c.id] = c.name;
+    for (const it of (queue?.items || [])) {
+      const key = it.campaignId === null || it.campaignId === undefined ? 'none' : it.campaignId;
+      counts[key] = (counts[key] || 0) + 1;
+      if (it.campaignId && it.campaignName && !names[it.campaignId]) names[it.campaignId] = it.campaignName;
+    }
+    const ids = Object.keys(counts).filter((k) => k !== 'none').map(Number).sort((a, b) => counts[b] - counts[a] || a - b);
+    const list = ids.map((id) => ({ id, name: names[id] || '' }));
+    // Worth a picker only when the page holds people from 2+ places.
+    const places = ids.length + (counts.none ? 1 : 0);
+    return { pickerCounts: counts, campaigns: runsSeveral && places > 1 ? list : null };
+  }, [welcomeTally, queue, runsSeveral]);
+
   const [counts, setCounts] = useState({});
   const countOwed = useCallback((n) => setCounts((c) => (c.owed === n ? c : { ...c, owed: n })), []);
   const countWelcome = useCallback((n) => setCounts((c) => (c.welcome === n ? c : { ...c, welcome: n })), []);
@@ -139,6 +171,27 @@ function TodayInner() {
         <HelpButton area="followups" className="ml-1" title="Help: Today" />
       </div>
 
+      {campaigns && (
+        <div className="flex items-center gap-2 flex-wrap text-sm">
+          <label htmlFor="today-campaign" className="text-gray-600">Show</label>
+          <select
+            id="today-campaign"
+            className="border rounded px-2 py-1 bg-white"
+            value={String(activeFilter)}
+            onChange={(e) => { const v = e.target.value; setCampaignFilter(v === 'all' || v === 'none' ? v : Number(v)); }}
+          >
+            <option value="all">All campaigns</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                {c.name || `Campaign #${c.id}`}{pickerCounts[c.id] ? ` (${pickerCounts[c.id]})` : ''}
+              </option>
+            ))}
+            <option value="none">Added another way{pickerCounts.none ? ` (${pickerCounts.none})` : ''}</option>
+          </select>
+          {activeFilter !== 'all' && <span className="text-gray-500">Reconnect always shows everyone.</span>}
+        </div>
+      )}
+
       {order.length === 0 && (
         <div className="bg-white border rounded-lg p-6 text-center text-gray-600">
           Nothing is switched on for this page yet. Your leads are under <Link className="text-blue-700 hover:underline" href={`/leads?${qs}`}>Leads</Link>.
@@ -147,19 +200,19 @@ function TodayInner() {
 
       {hasWelcome && (
         <Section id="welcome" title="New connections to welcome" blurb="Accepted recently, best fit first" count={counts.welcome} open={open.has('welcome')} onToggle={() => toggle('welcome')}>
-          <ThanksForConnecting embedded onCount={countWelcome} />
+          <ThanksForConnecting embedded onCount={countWelcome} campaignFilter={activeFilter} onCampaignTally={setWelcomeTally} />
         </Section>
       )}
 
       {hasQueue && (
         <Section id="owed" title="Waiting on you" blurb="They wrote last - it's your turn" count={counts.owed} open={open.has('owed')} onToggle={() => toggle('owed')}>
-          <FollowUpsQueue section="owed" preloaded={queue} preloadError={queueError} onCount={countOwed} />
+          <FollowUpsQueue section="owed" preloaded={queue} preloadError={queueError} onCount={countOwed} campaignFilter={activeFilter} />
         </Section>
       )}
 
       {hasQueue && (
         <Section id="quiet" title="Worth picking up again" blurb="Good conversations that went quiet" count={counts.quiet} open={open.has('quiet')} onToggle={() => toggle('quiet')}>
-          <FollowUpsQueue section="quiet" preloaded={queue} preloadError={queueError} onCount={countQuiet} />
+          <FollowUpsQueue section="quiet" preloaded={queue} preloadError={queueError} onCount={countQuiet} campaignFilter={activeFilter} />
         </Section>
       )}
 

@@ -805,6 +805,26 @@
             "icon": "check",
             "color": "greenBright"
           }
+        },
+        {
+          "name": "Campaign Scope",
+          "type": "singleSelect",
+          "description": "Which Linked Helper campaigns this attribute counts for (services/campaignScope.js). Blank = all campaigns. \"Only these campaigns\" / \"All except these campaigns\" + the campaigns in Scope Campaigns. A lead is scored only on the attributes that apply to its campaign. Added 2026-10-23 (Sam Noble: Barclayss vs Find Me First).",
+          "options": {
+            "choices": [
+              {
+                "name": "Only these campaigns"
+              },
+              {
+                "name": "All except these campaigns"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Scope Campaigns",
+          "type": "multilineText",
+          "description": "The Linked Helper campaigns for Campaign Scope, one per line, each starting with its Linked Helper campaign NUMBER (\"6 - Barclayss - Reach out\"). Only the number counts - the name is for reading. Blank when Campaign Scope is blank. Added 2026-10-23."
         }
       ]
     }

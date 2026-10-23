@@ -468,6 +468,22 @@ const MASTER_FIELDS = [
   }
 ];
 
+// Fields to ensure on every client Scoring Attributes table AND the template's (2026-10-23).
+const ATTRIBUTES_TABLE = 'Scoring Attributes';
+const ATTRIBUTES_FIELDS = [
+  {
+    name: 'Campaign Scope',
+    type: 'singleSelect',
+    description: "Which Linked Helper campaigns this attribute counts for (services/campaignScope.js). Blank = all campaigns. \"Only these campaigns\" / \"All except these campaigns\" + the campaigns in Scope Campaigns. A lead is scored only on the attributes that apply to its campaign. Added 2026-10-23 (Sam Noble: Barclayss vs Find Me First).",
+    options: { choices: [{ name: 'Only these campaigns' }, { name: 'All except these campaigns' }] }
+  },
+  {
+    name: 'Scope Campaigns',
+    type: 'multilineText',
+    description: "The Linked Helper campaigns for Campaign Scope, one per line, each starting with its Linked Helper campaign NUMBER (\"6 - Barclayss - Reach out\"). Only the number counts - the name is for reading. Blank when Campaign Scope is blank. Added 2026-10-23."
+  }
+];
+
 // Fields to ensure on the master base's Referrals table (services/referralService.js).
 // `linkedTable` names a table in the same base; ensureFields resolves it to linkedTableId at run time.
 const REFERRALS_TABLE = 'Referrals';
@@ -672,6 +688,7 @@ async function run() {
     console.log(`Found ${clients.length} client base(s)${filterClientId ? ` matching "${filterClientId}"` : ''}.`);
     for (const c of clients) {
       await ensureFields(`client: ${c.clientId}`, c.baseId, LEADS_TABLE, LEADS_FIELDS, dryRun);
+      await ensureFields(`client: ${c.clientId}`, c.baseId, ATTRIBUTES_TABLE, ATTRIBUTES_FIELDS, dryRun);
     }
   }
 
@@ -680,6 +697,7 @@ async function run() {
     // already said above
   } else if (!skipTemplate) {
     await ensureFields('CLIENT TEMPLATE', TEMPLATE_BASE_ID, LEADS_TABLE, LEADS_FIELDS, dryRun);
+    await ensureFields('CLIENT TEMPLATE', TEMPLATE_BASE_ID, ATTRIBUTES_TABLE, ATTRIBUTES_FIELDS, dryRun);
   } else {
     console.log('\n(skipping template — --skip-template)');
   }

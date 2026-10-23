@@ -116,6 +116,23 @@ module.exports = function mountWingguyFollowups(app) {
         draftUrl: (it.draftState === 'ready' || it.draftState === 'wg-angle') ? draftUrl(clientId, it.name) : null,
         builtAt: it.builtAt || null,
       }));
+      // The campaign picker on Today (23 Oct 2026): only a client running 2+ Linked Helper
+      // campaigns gets the list and a campaignId on each row - nobody else pays for the read.
+      let campaigns = null;
+      try {
+        const lhList = require('../services/lhCampaignList');
+        const live = (await lhList.listCampaigns(clientId)).campaigns.filter((c) => c.live);
+        if (live.length > 1) {
+          // Names for the picker. The rows say which campaign each person came from (the one that sent
+          // them to Wingguy), which the screen uses to build its choices.
+          campaigns = live.map((c) => ({ id: c.id, name: c.name, paused: c.paused }));
+          const clientService = require('../services/clientService');
+          const client = await clientService.getClientById(clientId);
+          if (client && client.airtableBaseId) await lhList.attachLeadCampaigns(clientService.getClientBase(client.airtableBaseId), items);
+        }
+      } catch (e) {
+        logger.warn(`followupsScreen: campaign picker data not read for ${clientId}: ${e?.message || e}`);
+      }
       // Tell the screen when Claude-prepared parts (overnight brief, stories,
       // drafts) can't run for this client: no stored key + no managed plan =
       // blocked by the one-door rule, never billed to the platform key. Without
@@ -161,6 +178,8 @@ module.exports = function mountWingguyFollowups(app) {
         fleetAlerts: q.fleetAlerts || [],
         // The Reconnect list (services/reconnectQueue.js) - null when the client's switch is off.
         reconnect: q.reconnect || null,
+        // [{id, name, paused}] when the client runs 2+ campaigns, else null (no picker).
+        campaigns,
       });
     } catch (e) {
       logger.error(`followupsScreen: queue error for ${clientId}: ${e?.message || e}`);

@@ -28,6 +28,7 @@
 // Without `section` this is the standalone /followups screen, unchanged.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { matchesCampaign } from '../utils/campaignFilter';
 import HelpButton from './HelpButton';
 import ReconnectSection from './ReconnectSection';
 import DisconnectSection from './DisconnectSection';
@@ -483,7 +484,9 @@ function ParkPopover({ recommended, onPick, onClose }) {
   );
 }
 
-export default function FollowUpsQueue({ section = null, preloaded = null, preloadError = null, onCount = null } = {}) {
+// `campaignFilter` (2026-10-23): the Today campaign picker. Reconnect rows came from old
+// conversations, not a campaign, so the picker never hides them.
+export default function FollowUpsQueue({ section = null, preloaded = null, preloadError = null, onCount = null, campaignFilter = 'all' } = {}) {
   const clientId = useMemo(() => buildClientId(), []);
   const managed = !!section; // a Today section: the page owns the fetch, this renders its slice
   const [items, setItems] = useState([]);
@@ -548,7 +551,8 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
   }, [managed, preloaded, preloadError, applyData]);
 
   // The rows this instance owns: everything standalone, one side of the court as a section.
-  const mine = useMemo(() => (section ? items.filter((it) => sectionOf(it) === section) : items), [items, section]);
+  const mine = useMemo(() => (section ? items.filter((it) => sectionOf(it) === section) : items)
+    .filter((it) => matchesCampaign(it, campaignFilter)), [items, section, campaignFilter]);
 
   // Tell the Today page how many are here (its folded header shows the number before it is opened).
   useEffect(() => {
