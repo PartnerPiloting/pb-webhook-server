@@ -1549,7 +1549,7 @@ async function clientEmails(coachClientId, query, opts = {}) {
     planStore.planFor(week, client.clientId), touchStore.touchesFor(client.clientId, { limit: 500 }), pinsAheadOf(week),
   ]);
   const outlook = outlookFor(row, record, content.listPieces(), { week, pinsAhead });
-  return { client: { clientId: client.clientId, clientName: client.clientName }, week, outlook, text: formatOutlook(client.clientName, outlook) };
+  return { client: { clientId: client.clientId, clientName: client.clientName, touchNote: client.touchNote || '' }, week, outlook, text: formatOutlook(client.clientName, outlook) };
 }
 
 // ---------------------------------------------------------------------------------------------
