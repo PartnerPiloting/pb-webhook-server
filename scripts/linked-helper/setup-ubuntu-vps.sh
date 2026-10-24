@@ -403,9 +403,10 @@ else
   echo "         The provider's own daily snapshot still covers machine loss."
 fi
 
-echo "== nightly maintenance reboot 03:00 local =="
+echo "== nightly maintenance reboot 03:00 local (skipped while a collect or the backup runs) =="
+install -m 755 "$SRC_DIR/lh-nightly-reboot.sh" /usr/local/bin/lh-nightly-reboot.sh
 cat > /etc/cron.d/lh-nightly-reboot <<'EOF'
-0 3 * * * root /sbin/shutdown -r +1 "Linked Helper nightly maintenance reboot"
+0 3 * * * root /usr/local/bin/lh-nightly-reboot.sh
 EOF
 
 echo

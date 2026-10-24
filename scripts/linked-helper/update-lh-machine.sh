@@ -13,6 +13,7 @@
 #   2. x11vnc -noprimary - copy and paste needs it (only selecting text must not count as a copy).
 #   3. The current watchdog (lh-watchdog.py) - lh-browser-access.sh does not replace it.
 #   4. Mozilla's Firefox instead of the Snap (lh-firefox.sh) - so "Sign in with Google" works.
+#   5. The nightly backup and reboot that wait for a collect instead of cutting it short.
 #
 # The screen connection restarts, so anyone looking sees a few seconds of "Reconnecting".
 # Linked Helper itself keeps running. NEVER run it while a client is on a call on that machine.
@@ -55,6 +56,13 @@ fi
 
 echo "== 4. Firefox =="
 LH_USER="$LH_USER" bash "$SRC_DIR/lh-firefox.sh"
+
+echo "== 5. nightly backup + reboot (leave a collect alone) =="
+# Only replace the backup where one is installed - a machine without Drive credentials has none.
+[ -f /etc/cron.d/lh-nightly-backup ] && install -m 755 "$SRC_DIR/lh-nightly-backup.sh" /usr/local/bin/lh-nightly-backup.sh
+install -m 755 "$SRC_DIR/lh-nightly-reboot.sh" /usr/local/bin/lh-nightly-reboot.sh
+echo "0 3 * * * root /usr/local/bin/lh-nightly-reboot.sh" > /etc/cron.d/lh-nightly-reboot
+echo "installed"
 
 echo
 echo "DONE - $(hostname): page $(grep -o "PAGE_VERSION = '[0-9][^']*'" /usr/local/share/lh-browser/index.html | head -1)"

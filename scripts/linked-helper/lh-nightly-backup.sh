@@ -32,6 +32,25 @@ LANDED=""
 
 say "=== backup start ==="
 
+# Never cut a collect short (24 Oct 2026). A collect - people pulled in from a search - runs for
+# hours with Linked Helper open, and this job closes Linked Helper. So wait for it to finish,
+# checking every 5 min for up to COLLECT_WAIT_MIN. Still collecting after that: no backup tonight
+# (the backup watcher only complains after 2 days) - the collect matters more than one copy.
+# The instance window title reads "... | Collecting... | ..." while one runs.
+collecting(){ sudo -u "${LH_USER:-lh}" DISPLAY=:0 wmctrl -l 2>/dev/null | grep 'Instance #' | grep -qE '\|[[:space:]]*Collecting'; }
+COLLECT_WAIT_MIN="${COLLECT_WAIT_MIN:-240}"
+WAITED=0
+while collecting; do
+  if [ "$WAITED" -ge "$COLLECT_WAIT_MIN" ]; then
+    say "still collecting after ${WAITED} min - NO BACKUP TONIGHT, Linked Helper left alone"
+    exit 0
+  fi
+  [ "$WAITED" -eq 0 ] && say "a collect is running - waiting for it to finish"
+  sleep 300
+  WAITED=$((WAITED + 5))
+done
+[ "$WAITED" -gt 0 ] && say "collect finished after ~${WAITED} min - carrying on"
+
 # Hold the watchdog off for the duration. It starts Linked Helper whenever it
 # sees no instance window, and this job now keeps LH down for ~2.5 min (the
 # export) rather than the ~15 s it used to - comfortably inside the watchdog's

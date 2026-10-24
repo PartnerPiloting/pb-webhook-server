@@ -157,6 +157,10 @@ def parse_title(t):
         state = "RUNNING"
     elif re.search(r"\|\s*Idle\s*\|", t):
         state = "IDLE"
+    elif re.search(r"\|\s*Collecting", t):
+        # A collect (people from a search) is running. Nothing here touches it - only IDLE is
+        # pressed - but name it, so the status line says so instead of UNKNOWN (24 Oct 2026).
+        state = "COLLECTING"
     else:
         state = "UNKNOWN"
     return {"state": state, "linkedin": linkedin_state(t),
