@@ -542,6 +542,8 @@ async function holdReason(row, ctx, deps = {}) {
     const mp = deps.mailProvider || require('./mailProvider');
     const self = ctx.selfEmails;
     for (const p of row.to) {
+      // An email to Guy himself: every email he sends would "match" - nothing to check.
+      if (self.has(String(p.email || '').trim().toLowerCase())) continue;
       try {
         const r = await mp.findMessages(ctx.coach, { anyEmail: p.email, receivedAfter: Math.floor(row.createdAt / 1000), limit: 10 });
         const mine = (r.messages || []).find((m) => {

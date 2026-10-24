@@ -243,6 +243,8 @@ function deps(extra = {}) {
     assert.match(why, /you emailed Rick Wong yourself since scheduling \("Quick one"\)/);
     const ours = await q.holdReason(row, { ...ctx, ourSubjects: new Set(['quick one']) }, { ...deps(), mailProvider: { findMessages: async () => ({ ok: true, ...mine }) } });
     assert.strictEqual(ours, null);
+    const toSelf = await q.holdReason({ ...row, to: [{ email: 'GuyRalphWilson@gmail.com' }] }, ctx, { ...deps(), mailProvider: { findMessages: async () => ({ ok: true, ...mine }) } });
+    assert.strictEqual(toSelf, null, 'an email to Guy himself is never held for "you emailed them"');
   });
   await check('a weekly email to a client who unsubscribed -> held', async () => {
     const d = deps({ clientService: { ...deps().clientService, getClientById: async (id) => ({ ...CLIENTS.find((c) => c.clientId === id), emailUnsubscribed: true }) } });
