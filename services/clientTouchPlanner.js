@@ -39,10 +39,15 @@ const logger = createLogger({ runId: 'PLANNER', clientId: 'SYSTEM', operation: '
 
 const DAY = 86400000;
 const TICK_MS = 15 * 60 * 1000;
-// Monday morning, Brisbane: approved emails go at SEND_HOUR; then the NEXT Monday's plan is built
-// at BUILD_HOUR (after the send, so this morning's sends are in the record it reads).
-const SEND_HOUR = Number(process.env.CLIENT_TOUCH_SEND_HOUR) || 8;
-const BUILD_HOUR = Math.max(Number(process.env.CLIENT_TOUCH_BUILD_HOUR) || 9, SEND_HOUR + 1);
+// The sending day (planStore.SEND_DAY - Wednesday since 24 Oct 2026, was Monday), Brisbane:
+// approved emails go at SEND_HOUR - 11am Brisbane = 9am Perth, midday Sydney in daylight saving - then
+// the NEXT week's plan is built at BUILD_HOUR (after the send, so today's sends are in the record).
+const SEND_HOUR = Number(process.env.CLIENT_TOUCH_SEND_HOUR) || 11;
+const BUILD_HOUR = Math.max(Number(process.env.CLIENT_TOUCH_BUILD_HOUR) || 12, SEND_HOUR + 1);
+const SEND_DAY = planStore.SEND_DAY;
+const SEND_DAY_NAME = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][SEND_DAY];
+const SEND_DAY_SHORT = SEND_DAY_NAME.slice(0, 3);
+const hourLabel = (h) => (h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`);
 const BRISBANE_OFFSET_HOURS = 10; // UTC+10, no daylight saving
 const EMAIL_KINDS = new Set(['one-pager', 'habit', 'setup', 'one-off', 'call', 'custom']);
 const BRAND = 'I Know A Guy';
@@ -76,10 +81,10 @@ function sendEnabled() {
   return lower(process.env.CLIENT_TOUCH_SEND_ENABLED || 'on') !== 'off';
 }
 
-/** The sending moment for a plan week: that Monday at SEND_HOUR, Brisbane. */
+/** The sending moment for a plan week: its sending day at SEND_HOUR, Brisbane. */
 function sendAt(week, hour = SEND_HOUR) {
   const [y, m, d] = String(week).split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d, hour - BRISBANE_OFFSET_HOURS));
+  return new Date(Date.UTC(y, m - 1, d + SEND_DAY, hour - BRISBANE_OFFSET_HOURS));
 }
 
 function brisbaneNow(now = new Date()) {
@@ -429,7 +434,7 @@ const CALL_NEAR_DAYS = 14;   // prefer times within a fortnight of the earliest 
 /** The earliest moment a call can be offered for a plan week: 00:00 Brisbane on the Tuesday after the send. */
 function callNotBefore(week) {
   const [y, m, d] = String(week).split('-').map(Number);
-  return Date.UTC(y, m - 1, d + 1, -BRISBANE_OFFSET_HOURS);
+  return Date.UTC(y, m - 1, d + SEND_DAY + 1, -BRISBANE_OFFSET_HOURS);
 }
 
 /**
@@ -718,7 +723,7 @@ async function deepen({ pick, body, brief, client, facts, factLinesNow = [], wee
   else if (tips) notFit = 'in onboarding - the weekly email their note asks for';
   if (notFit && llmFor('custom')) {
     try {
-      const c = await b.draftCustomEmail(llmFor('custom'), { client, brief, notFit, firstWeekly, tips, note: (facts && facts.noteText) || '', pastTips, arrives: week, nextSessionAt: (facts && facts.nextSessionAt) || null, direction: steered && facts && facts.pin ? facts.pin.note || '' : '' });
+      const c = await b.draftCustomEmail(llmFor('custom'), { client, brief, notFit, firstWeekly, tips, note: (facts && facts.noteText) || '', pastTips, arrives: `${dayLabel(week)}, ${hourLabel(SEND_HOUR)} Brisbane`, nextSessionAt: (facts && facts.nextSessionAt) || null, direction: steered && facts && facts.pin ? facts.pin.note || '' : '' });
       if (!c.subject || !c.paragraphs.length) out.customDeclined = c.why || 'nothing true and useful to say this week';
       else {
         out.pick = {
@@ -1248,6 +1253,7 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => (
 /** "Monday 2 Nov" for a plan week. */
 function dayLabel(week) {
   const d = new Date(`${week}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + SEND_DAY);
   return Number.isNaN(d.getTime()) ? String(week) : new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'short' }).format(d);
 }
 
@@ -1361,7 +1367,7 @@ async function tick(deps = {}) {
   const ps = deps.planStore || planStore;
   const thisWeek = planStore.weekOf(deps.now || new Date());
   const ran = [];
-  if (nowB.weekday !== 'Mon') return { ran: false };
+  if (nowB.weekday !== SEND_DAY_SHORT) return { ran: false };
   if (nowB.hour >= SEND_HOUR && mondaySendOn() && await ps.claimWeekly('monday-send', thisWeek)) {
     logger.info(`Monday send for ${thisWeek} - approved only, each re-checked on fresh facts`);
     const res = await (deps.mondaySend || mondaySend)(coachClientId, thisWeek, deps);
@@ -1394,7 +1400,7 @@ function startClientTouchPlanner() {
   };
   intervalHandle = setInterval(run, TICK_MS);
   setTimeout(run, 3 * 60 * 1000);
-  logger.info(`client-touch-planner: starting (Mondays Brisbane: approved emails go at ${SEND_HOUR}:00${mondaySendOn() ? '' : ' - OFF via CLIENT_TOUCH_MONDAY_SEND'}, next week built at ${BUILD_HOUR}:00; send-with-veto ${autosendOn() ? 'ON' : 'OFF - Guy approves every email'})`);
+  logger.info(`client-touch-planner: starting (${SEND_DAY_NAME}s Brisbane: approved emails go at ${SEND_HOUR}:00${mondaySendOn() ? '' : ' - OFF via CLIENT_TOUCH_MONDAY_SEND'}, next week built at ${BUILD_HOUR}:00; send-with-veto ${autosendOn() ? 'ON' : 'OFF - Guy approves every email'})`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1484,10 +1490,10 @@ function formatOutlook(name, o) {
   if (o.alreadyHad.length > 40) lines.push(`  ...and ${o.alreadyHad.length - 40} older`);
   lines.push('');
   const t = o.thisMonday;
-  if (!t) lines.push('THIS MONDAY: no plan built for this client yet (press Build on the Monday emails panel).');
+  if (!t) lines.push('THIS WEEK: no plan built for this client yet (ask to build it).');
   else {
     const status = { proposed: 'waiting for your approval', approved: 'approved', edited: 'approved (your words)', skipped: 'skipped', sent: 'sent', failed: 'send failed', nothing: 'nothing that week', 'left-out': 'left out', held: 'HELD - something changed, keep or swap?', lapsed: 'not approved in time, not sent' }[t.status] || t.status;
-    lines.push(`THIS MONDAY (${dayLabel(t.weekOf)}) - ${status}:`);
+    lines.push(`THIS WEEK (${dayLabel(t.weekOf)}) - ${status}:`);
     lines.push(t.what ? `  ${t.what.title} (${KIND_LABEL[t.what.kind] || t.what.kind}${t.form === 'short' ? ', short' : ''})` : '  nothing');
     if (t.reason) lines.push(`  why: ${t.reason}`);
     if (t.firstThings && t.firstThings.status === 'open') {
@@ -1583,7 +1589,7 @@ function formatWeek(weekOf, rows, { sendHour = SEND_HOUR } = {}) {
   const groups = [
     ['WAITING FOR YOU', (r) => r.status === 'proposed' && r.pick && r.pick.what],
     ['HELD - needs your call', (r) => r.status === 'held'],
-    ['APPROVED - goes Monday 8am after a fresh check', (r) => ['approved', 'edited'].includes(r.status)],
+    [`APPROVED - goes ${SEND_DAY_NAME} ${hourLabel(SEND_HOUR)} after a fresh check`, (r) => ['approved', 'edited'].includes(r.status)],
     ['SENT', (r) => r.status === 'sent'],
     ['FAILED', (r) => r.status === 'failed'],
     ['SKIPPED', (r) => r.status === 'skipped'],
@@ -1591,7 +1597,7 @@ function formatWeek(weekOf, rows, { sendHour = SEND_HOUR } = {}) {
     ['QUIET THIS WEEK', (r) => r.status === 'nothing'],
     ['LEFT OUT', (r) => r.status === 'left-out'],
   ];
-  const lines = [`Weekly emails for ${dayLabel(weekOf)} (they go at ${sendHour}am that Monday - approved ones only)`, ''];
+  const lines = [`Weekly emails for ${dayLabel(weekOf)} (they go at ${hourLabel(sendHour)} Brisbane that ${SEND_DAY_NAME} - approved ones only)`, ''];
   for (const [label, test] of groups) {
     const hit = rows.filter(test);
     if (!hit.length) continue;
@@ -1604,7 +1610,7 @@ function formatWeek(weekOf, rows, { sendHour = SEND_HOUR } = {}) {
     }
     lines.push('');
   }
-  if (!rows.length) lines.push('No plan for that Monday yet. It builds itself the Monday before at 9am, or ask to build it.');
+  if (!rows.length) lines.push(`No plan for that week yet. It builds itself on the ${SEND_DAY_NAME} before, after that day's send, or ask to build it.`);
   return lines.join('\n').trim();
 }
 
@@ -1627,7 +1633,7 @@ async function clientEmailFull(coachClientId, query, opts = {}) {
   const row = await planStore.planFor(week, client.clientId);
   const lines = [`${client.clientName} - ${dayLabel(week)}`, ''];
   if (!row) {
-    lines.push('No plan row for them that Monday yet - it builds itself the Monday before at 9am.');
+    lines.push(`No plan row for them that week yet - it builds itself on the ${SEND_DAY_NAME} before.`);
     lines.push('', formatOutlook(client.clientName, outlook).split('\n').filter((l) => !/ - weekly emails$/.test(l)).join('\n'));
     return { ...base, text: lines.join('\n') };
   }
@@ -1651,7 +1657,7 @@ async function clientEmailFull(coachClientId, query, opts = {}) {
     if (html) {
       lines.push('', '--- THE EMAIL, EXACTLY AS IT WOULD GO ---', `Subject: ${row.subject || '(none)'}`, '', emailAsText(html), '--- END ---');
     }
-  } else lines.push('', 'Nothing goes to them that Monday.');
+  } else lines.push('', 'Nothing goes to them that week.');
   if (pick.brief) {
     const b = pick.brief;
     lines.push('', 'BRIEF:');
@@ -1850,4 +1856,6 @@ module.exports = {
   previewText,
   BUILD_HOUR,
   SEND_HOUR,
+  SEND_DAY_NAME,
+  hourLabel,
 };

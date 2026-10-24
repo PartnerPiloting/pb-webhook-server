@@ -63,6 +63,26 @@ on the day of sending (not only on Monday), and the Monday screen lists everyone
 nothing. A client who is still paying but has gone quiet (not logging in, campaign stalled) KEEPS
 getting their weekly email - that drift is exactly what it's for - and may get "time for a call".
 
+## Sending day and scheduled sends (24 Oct 2026)
+
+**Wednesday, not Monday.** Guy: on Monday morning people are dealing with their own priorities after the
+weekend - midweek gets read. Approved planner emails now go at 11am Brisbane on the WEDNESDAY of the plan week
+(9am Perth, midday Sydney); the next week builds straight after (BUILD_HOUR). The plan week is still named by
+its Monday date everywhere (planStore.weekOf); `planStore.SEND_DAY` (env CLIENT_TOUCH_SEND_DAY, 0=Mon, default 2)
+and `sendDate(week)` turn it into the sending day, and every label Guy reads shows the sending day.
+
+**Guy sends them himself.** His way since 24 Oct: review each email in chat, then either "push" (a draft in his
+Drafts - then skip the week's row and add a background line saying what went) or "schedule"
+(`wingguy_schedule_email`, services/scheduledEmails.js): it sends from HIS OWN mailbox at 9:30am in the
+recipient's time zone - weekly emails Wednesday, introductions Tuesday (spaced: nobody gets two in a week),
+anything else the next weekday - skips the week's planner row, and once sent writes the touch record and a
+line on the client's note. Just before it goes it is HELD (not sent) if sending is off on the server (staging:
+CLIENT_TOUCH_SEND_ENABLED=off covers it too), the address no longer takes mail, the client unsubscribed or is
+no longer active, the two people were introduced by another email meanwhile, or Guy wrote to them himself
+since. `wingguy_scheduled_emails`: list / cancel / move / send_now / away (from, until) / back. AWAY: introductions
+wait for the first Tuesday after he is back; weekly emails still go - ideas and inspiration only, no asks that
+need Guy. A summary reaches Guy at 5pm Brisbane on any day something went, was held or got a reply.
+
 ## Who gets what, when
 
 **During onboarding** (the client board's onboarding group - until Guy marks them Graduated):

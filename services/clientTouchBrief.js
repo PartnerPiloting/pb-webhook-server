@@ -498,7 +498,7 @@ async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips 
   const user = [
     `CLIENT: ${client.clientName}${client.clientFirstName ? ` (first name ${client.clientFirstName})` : ''}.`,
     tips ? '' : `WHY NOTHING ON THE SHELF FITS: ${notFit}`,
-    tips && arrives ? `THE EMAIL ARRIVES: Monday ${arrives}, 8am Brisbane. NEXT SESSION: ${nextSessionAt ? String(nextSessionAt).slice(0, 16).replace('T', ' ') : 'none booked'}.` : '',
+    tips && arrives ? `THE EMAIL ARRIVES: ${arrives}. NEXT SESSION: ${nextSessionAt ? String(nextSessionAt).slice(0, 16).replace('T', ' ') : 'none booked'}.` : '',
     tips && direction ? `GUY'S DIRECTION FOR THIS WEEK (follow it first): ${direction}` : '',
     tips && note ? `GUY'S NOTE ON THEM: ${note}` : '',
     tips && arr(pastTips).length ? ['PAST TIPS (never repeat one):', ...arr(pastTips).map((t) => `- ${t}`)].join('\n') : '',

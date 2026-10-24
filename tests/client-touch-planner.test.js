@@ -262,16 +262,20 @@ const routes = require('../routes/clientTouchRoutes');
 
   console.log('a week ahead');
   const planStore = require('../services/clientTouchPlanStore');
-  await check('the plan Guy works on: before 8am on a Monday it is today; from 8am Monday all week it is the Monday after', () => {
-    assert.strictEqual(planStore.planningWeek(new Date('2026-10-25T21:59:00Z')), '2026-10-26'); // Mon 7:59am Brisbane
-    assert.strictEqual(planStore.planningWeek(new Date('2026-10-25T22:00:00Z')), '2026-11-02'); // Mon 8:00am
-    assert.strictEqual(planStore.planningWeek(new Date('2026-10-22T03:00:00Z')), '2026-10-26'); // Thursday
-    assert.strictEqual(planStore.planningWeek(new Date('2026-11-01T10:00:00Z')), '2026-11-02'); // Sunday 8pm
+  await check('the plan Guy works on: up to the Wednesday send it is this week; from 11am Wednesday it is the week after', () => {
+    assert.strictEqual(planStore.SEND_DAY, 2, 'Wednesday');
+    assert.strictEqual(planStore.planningWeek(new Date('2026-10-25T23:30:00Z'), 11), '2026-10-26'); // Mon 9:30am Brisbane
+    assert.strictEqual(planStore.planningWeek(new Date('2026-10-28T00:59:00Z'), 11), '2026-10-26'); // Wed 10:59am
+    assert.strictEqual(planStore.planningWeek(new Date('2026-10-28T01:00:00Z'), 11), '2026-11-02'); // Wed 11:00am
+    assert.strictEqual(planStore.planningWeek(new Date('2026-10-22T03:00:00Z'), 11), '2026-10-26'); // Thursday before
+    assert.strictEqual(planStore.planningWeek(new Date('2026-11-01T10:00:00Z'), 11), '2026-11-02'); // Sunday 8pm
+    assert.strictEqual(planStore.sendDate('2026-10-26'), '2026-10-28');
     assert.strictEqual(planStore.addWeeks('2026-10-26', 1), '2026-11-02');
     assert.strictEqual(planStore.addWeeks('2026-11-02', -1), '2026-10-26');
   });
-  await check('the sending moment is that Monday at 8am Brisbane', () => {
-    assert.strictEqual(planner.sendAt('2026-11-02').toISOString(), '2026-11-01T22:00:00.000Z');
+  await check('the sending moment is that week\'s Wednesday at 11am Brisbane (9am Perth, midday Sydney)', () => {
+    assert.strictEqual(planner.sendAt('2026-11-02').toISOString(), '2026-11-04T01:00:00.000Z');
+    assert.strictEqual(planner.SEND_HOUR, 11); assert.strictEqual(planner.SEND_DAY_NAME, 'Wednesday');
   });
   await check("the planner's own weekly emails never make a week 'not this week' - only Guy's own touches do", () => {
     const t = planner.lastTouches([
@@ -371,25 +375,25 @@ const routes = require('../routes/clientTouchRoutes');
     assert.strictEqual(out.sent, 1); assert.strictEqual(out.lapsed, 1); assert.strictEqual(emails.length, 1);
     assert.match(emails[0].s, /1 went, 0 held, 1 not approved/);
   });
-  await check('the tick: Monday 8am sends THIS Monday; 9am builds NEXT Monday; other days nothing; each claimed once', async () => {
+  await check('the tick: Wednesday 11am sends THIS week; midday builds NEXT week; other days nothing; each claimed once', async () => {
     const claims = new Set(); const calls = [];
     const ps = { claimWeekly: async (k, w) => { const id = `${k}:${w}`; if (claims.has(id)) return false; claims.add(id); return true; } };
-    const deps = (hour, weekday = 'Mon') => ({ now: new Date('2026-10-25T23:30:00Z'), brisbaneNow: { hour, weekday }, planStore: ps,
+    const deps = (hour, weekday = 'Wed') => ({ now: new Date('2026-10-27T23:30:00Z'), brisbaneNow: { hour, weekday }, planStore: ps,
       mondaySend: async (c, w) => { calls.push(`send ${w}`); return { sent: 0 }; },
       buildPlan: async (c, o) => { calls.push(`build ${o.weekOf}`); return { weekOf: o.weekOf, rows: [] }; },
       sendAlertEmail: async () => {} });
-    assert.strictEqual((await planner.tick(deps(7))).ran, false);
-    assert.strictEqual((await planner.tick(deps(8))).ran, 'send');
-    assert.strictEqual((await planner.tick(deps(9))).ran, 'build');
     assert.strictEqual((await planner.tick(deps(10))).ran, false);
-    assert.strictEqual((await planner.tick(deps(9, 'Tue'))).ran, false);
+    assert.strictEqual((await planner.tick(deps(11))).ran, 'send');
+    assert.strictEqual((await planner.tick(deps(12))).ran, 'build');
+    assert.strictEqual((await planner.tick(deps(13))).ran, false);
+    assert.strictEqual((await planner.tick(deps(12, 'Mon'))).ran, false, 'Monday is no longer a sending day');
     assert.deepStrictEqual(calls, ['send 2026-10-26', 'build 2026-11-02']);
   });
-  await check('CLIENT_TOUCH_MONDAY_SEND=off stops the Monday send (the build still runs)', async () => {
+  await check('CLIENT_TOUCH_MONDAY_SEND=off stops the weekly send (the build still runs)', async () => {
     process.env.CLIENT_TOUCH_MONDAY_SEND = 'off';
     const calls = [];
     const ps = { claimWeekly: async () => true };
-    const out = await planner.tick({ now: new Date('2026-10-25T23:30:00Z'), brisbaneNow: { hour: 9, weekday: 'Mon' }, planStore: ps,
+    const out = await planner.tick({ now: new Date('2026-10-27T23:30:00Z'), brisbaneNow: { hour: 12, weekday: 'Wed' }, planStore: ps,
       mondaySend: async () => { calls.push('send'); return {}; }, buildPlan: async (c, o) => { calls.push('build'); return { weekOf: o.weekOf, rows: [] }; }, sendAlertEmail: async () => {} });
     delete process.env.CLIENT_TOUCH_MONDAY_SEND;
     assert.deepStrictEqual(calls, ['build']); assert.strictEqual(out.ran, 'build');
@@ -501,18 +505,18 @@ const routes = require('../routes/clientTouchRoutes');
   console.log('an offer of times for a call - chosen for the day it arrives');
   const slot = (iso) => ({ time: iso });
   const day = (date, times, over = {}) => ({ date, freeSlots: times.map(slot), ...over });
-  await check('call times start no earlier than the Tuesday after the sending Monday (Brisbane)', () => {
-    assert.strictEqual(new Date(planner.callNotBefore('2026-10-26')).toISOString(), '2026-10-26T14:00:00.000Z'); // Tue 27 Oct 00:00 Brisbane
+  await check('call times start no earlier than the Thursday after the sending Wednesday (Brisbane)', () => {
+    assert.strictEqual(new Date(planner.callNotBefore('2026-10-26')).toISOString(), '2026-10-28T14:00:00.000Z'); // Thu 29 Oct 00:00 Brisbane
     const filtered = { days: [
       day('2026-10-23', ['2026-10-23T00:00:00Z']),   // Fri before - built-time day, must not be offered
-      day('2026-10-26', ['2026-10-26T00:00:00Z']),   // the sending Monday itself - too soon
-      day('2026-10-27', ['2026-10-27T00:00:00Z', '2026-10-27T01:00:00Z']),
-      day('2026-10-28', ['2026-10-28T03:00:00Z'], { busyDay: true }),
-      day('2026-10-29', ['2026-10-29T04:00:00Z']),
-      day('2026-10-30', ['2026-10-30T05:00:00Z']),
+      day('2026-10-28', ['2026-10-28T00:00:00Z']),   // the sending Wednesday itself - too soon
+      day('2026-10-29', ['2026-10-29T00:00:00Z', '2026-10-29T01:00:00Z']),
+      day('2026-10-30', ['2026-10-30T03:00:00Z'], { busyDay: true }),
+      day('2026-11-02', ['2026-11-02T04:00:00Z']),
+      day('2026-11-03', ['2026-11-03T05:00:00Z']),
     ] };
     const picked = planner.pickCallSlots(filtered, planner.callNotBefore('2026-10-26'));
-    assert.deepStrictEqual(picked.map((s) => s.time), ['2026-10-27T00:00:00Z', '2026-10-29T04:00:00Z', '2026-10-30T05:00:00Z']); // one a day, light days first
+    assert.deepStrictEqual(picked.map((s) => s.time), ['2026-10-29T00:00:00Z', '2026-11-02T04:00:00Z', '2026-11-03T05:00:00Z']); // one a day, light days first
     assert.ok(picked.every((s) => s.label));
     assert.deepStrictEqual(planner.pickCallSlots({ days: [] }, 0), []);
   });
@@ -521,10 +525,10 @@ const routes = require('../routes/clientTouchRoutes');
     assert.ok(html.includes('<li>Tue 27 October, 10:00 am</li>')); assert.ok(!/calendly|tidycal|book/i.test(html));
     assert.ok(planner.callOfferHtml([]).includes('add two or three by hand'));
   });
-  await check('the built body keeps the slots on the row; nothing before the Tuesday after the send', async () => {
+  await check('the built body keeps the slots on the row; nothing before the day after the send', async () => {
     const filtered = { days: [day('2026-10-23', ['2026-10-23T00:00:00Z']), day('2026-10-28', ['2026-10-28T00:00:00Z'])] };
-    const b = await planner.callOfferBody({ clientId: 'Guy-Wilson' }, { clientId: 'H' }, { week: '2099-10-26' }, { callAvailability: async () => ({ filtered: { days: [day('2099-10-26', ['2099-10-26T00:00:00Z']), day('2099-10-28', ['2099-10-28T00:00:00Z'])] }, tz: 'Australia/Brisbane' }) });
-    assert.deepStrictEqual(b.slots.map((s) => s.time), ['2099-10-28T00:00:00Z']); assert.strictEqual(b.slotsFound, 1);
+    const b = await planner.callOfferBody({ clientId: 'Guy-Wilson' }, { clientId: 'H' }, { week: '2099-10-26' }, { callAvailability: async () => ({ filtered: { days: [day('2099-10-28', ['2099-10-28T00:00:00Z']), day('2099-10-30', ['2099-10-30T00:00:00Z'])] }, tz: 'Australia/Brisbane' }) });
+    assert.deepStrictEqual(b.slots.map((s) => s.time), ['2099-10-30T00:00:00Z']); assert.strictEqual(b.slotsFound, 1);
     void filtered;
   });
   const callRow = (slots) => ({ clientId: 'Steve-Nelson', status: 'approved', subject: 'Time for a catch-up', opening: 'Hello.', bodyHtml: '<p>old times</p>', facts: facts(), pick: { what: { kind: 'call', key: 'check-in', title: 'Time for a call' }, form: 'one-off', rule: 'time-for-a-call', reason: 'r', body: { title: 'Time for a catch-up', dek: '', slots } } });
@@ -605,7 +609,7 @@ const routes = require('../routes/clientTouchRoutes');
     assert.strictEqual(o.likelyNext[0].weekOf, '2026-11-02');
     assert.ok(o.likelyNext.every((n) => !n.what || n.what.key !== orientation.what.key));
     const text = planner.formatOutlook('Steve Nelson', o);
-    assert.ok(text.includes('ALREADY HAD (2')); assert.ok(text.includes('THIS MONDAY (Monday 26 Oct) - waiting for your approval'));
+    assert.ok(text.includes('ALREADY HAD (2')); assert.ok(text.includes('THIS WEEK (Wednesday 28 Oct) - waiting for your approval'));
     assert.ok(text.includes('LIKELY NEXT - provisional')); assert.ok(!/[–—]/.test(text));
   });
   await check('a skipped Monday is not counted as sent in "likely next"; a held one shows what changed', () => {
@@ -633,7 +637,7 @@ const routes = require('../routes/clientTouchRoutes');
       assert.ok(/show me Steve's emails/.test(def.description));
       const ok = await def.run({ client: 'steve' }, 'Guy-Wilson');
       assert.ok(!ok.isError, ok.text);
-      assert.ok(ok.text.startsWith('Steve Nelson - Monday'), ok.text.slice(0, 80)); assert.ok(ok.text.includes('ALREADY HAD')); assert.ok(ok.text.includes('LIKELY NEXT'));
+      assert.ok(ok.text.startsWith('Steve Nelson - Wednesday'), ok.text.slice(0, 80)); assert.ok(ok.text.includes('ALREADY HAD')); assert.ok(ok.text.includes('LIKELY NEXT'));
       assert.ok(ok.text.includes('wingguy_weekly_emails'));
       const other = await def.run({ client: 'Other Person' }, 'Guy-Wilson');
       assert.strictEqual(other.isError, true);
@@ -663,7 +667,7 @@ const routes = require('../routes/clientTouchRoutes');
   await check('approve says exactly what changed and when it goes; a quiet week cannot be approved', async () => {
     const st = fakeStore([reviewRow(), { clientId: 'Q', status: 'nothing', pick: { what: null, reason: 'quiet' } }]);
     const a = await actions.approve('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26' }, { planStore: st });
-    assert.ok(a.ok); assert.match(a.said, /^Approved: "Make the important urgent" for Monday 26 Oct\. It goes at 8am/);
+    assert.ok(a.ok); assert.match(a.said, /^Approved: "Make the important urgent" for Wednesday 28 Oct\. It goes at 11am Brisbane that Wednesday/);
     const q = await actions.approve('Guy-Wilson', 'Q', { week: '2026-10-26' }, { planStore: st });
     assert.strictEqual(q.ok, false); assert.match(q.said, /quiet week/);
   });
@@ -690,14 +694,14 @@ const routes = require('../routes/clientTouchRoutes');
   await check('skip says nothing goes, files the why-not, and can hold them until a date', async () => {
     const rows = [reviewRow()]; const st = fakeStore(rows);
     const sk = await actions.skip('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', whyNot: 'too soon for this one', home: 'choice', until: '2026-11-16' }, { planStore: st });
-    assert.ok(sk.ok); assert.match(sk.said, /Skipped: nothing goes to them on Monday 26 Oct \("Make the important urgent" will not be sent\)\. Nothing more until 2026-11-16\./);
+    assert.ok(sk.ok); assert.match(sk.said, /Skipped: nothing goes to them on Wednesday 28 Oct \("Make the important urgent" will not be sent\)\. Nothing more until 2026-11-16\./);
     assert.match(sk.said, /noted - it goes to docs\/CLIENT-TOUCH-PLANNER\.md/);
     assert.strictEqual(rows[0].status, 'skipped');
   });
-  await check('pin defaults to the Monday after; thought can be changed or removed', async () => {
+  await check('pin defaults to the week after; thought can be changed or removed', async () => {
     const st = fakeStore([reviewRow()]);
     const pn = await actions.pin('Guy-Wilson', 'Rick-Wong', { piece: 'nodes' }, { planStore: st });
-    assert.ok(pn.ok); assert.match(pn.said, /^Pinned: "Building nodes" goes to them on Monday/);
+    assert.ok(pn.ok); assert.match(pn.said, /^Pinned: "Building nodes" goes to them on Wednesday/);
     const th = await actions.setThought('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', piece: 'reason-to-follow-up' }, { planStore: st });
     assert.ok(th.ok); assert.match(th.said, /Goodwill doesn't sustain a relationship/);
     const none = await actions.setThought('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', piece: 'none' }, { planStore: st });
@@ -711,8 +715,8 @@ const routes = require('../routes/clientTouchRoutes');
       { clientName: 'Steve Nelson', status: 'nothing', pick: { reason: 'in onboarding' } },
       { clientName: 'Paul Salvage', status: 'left-out', pick: { reason: 'not an active client' } },
     ]);
-    assert.ok(text.startsWith('Weekly emails for Monday 26 Oct'));
-    for (const s of ['WAITING FOR YOU (1):', '  - Rick Wong - Make the important urgent (campaign low)', 'HELD - needs your call (1):', 'invitations started 21 Aug', 'APPROVED - goes Monday 8am', 'QUIET THIS WEEK (1):', 'LEFT OUT (1):']) assert.ok(text.includes(s), s);
+    assert.ok(text.startsWith('Weekly emails for Wednesday 28 Oct'));
+    for (const s of ['WAITING FOR YOU (1):', '  - Rick Wong - Make the important urgent (campaign low)', 'HELD - needs your call (1):', 'invitations started 21 Aug', 'APPROVED - goes Wednesday 11am', 'QUIET THIS WEEK (1):', 'LEFT OUT (1):']) assert.ok(text.includes(s), s);
   });
   await check('the email reads as plain text - greeting, bold title, list items, sign-off', () => {
     const t = planner.emailAsText('<html><head><title>X</title></head><body><p>Hi Rick,</p><p><strong>Title</strong></p><ul><li>Thu 10am</li></ul><p>Cheers,<br>Guy</p></body></html>');

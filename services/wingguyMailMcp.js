@@ -472,21 +472,27 @@ async function stampFollowUpForDraft({ coach, recipients, now = new Date() }) {
 // Executor — returns { text, isError? }
 // ---------------------------------------------------------------------------
 
-async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply_to_message_id, resend_ok } = {}, tenant = TENANT) {
+/**
+ * The checks every outbound email goes through before it reaches the mailbox - a draft now, or a
+ * scheduled send later (services/scheduledEmails.js): house dashes, recipients, the coach's mailbox,
+ * asset placeholders resolved, retired links refused, leftover placeholders refused, and the
+ * asset-usage gate. Returns { error } (the tool's reply text) or the prepared email.
+ */
+async function prepareOutbound({ to, subject, html_body, resend_ok } = {}, tenant = TENANT) {
   // House-style guard: strip em/en dashes to a spaced hyphen at the door, before
   // anything downstream reads the text. See normaliseDashes above for the why.
   subject = normaliseDashes(subject);
   html_body = normaliseDashes(html_body);
   const recipients = mailProvider.toParticipants(to);
-  if (!recipients.length) return { text: 'Error: at least one "to" recipient ({email, name}) is required.', isError: true };
-  if (!String(subject || '').trim()) return { text: 'Error: subject is required.', isError: true };
-  if (!String(html_body || '').trim()) return { text: 'Error: html_body is required (the draft body, as HTML).', isError: true };
+  if (!recipients.length) return { error: 'Error: at least one "to" recipient ({email, name}) is required.' };
+  if (!String(subject || '').trim()) return { error: 'Error: subject is required.' };
+  if (!String(html_body || '').trim()) return { error: 'Error: html_body is required (the draft body, as HTML).' };
 
   const clientService = require('./clientService');
   const coach = await clientService.getClientById(tenant);
-  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
+  if (!coach) return { error: `Server config error: coach client "${tenant}" not found.` };
   if (!require('./mailProvider').hasMailbox(coach)) {
-    return { text: `No mailbox connection on file for "${tenant}" — connect their mail (Unipile account, or a Nylas grant with mail scope) before drafting.`, isError: true };
+    return { error: `No mailbox connection on file for "${tenant}" — connect their mail (Unipile account, or a Nylas grant with mail scope) before drafting.` };
   }
 
   // --- Asset pass: resolve {{asset:key}} tokens, spot library links, enforce the usage gate ---
@@ -502,33 +508,30 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
   if (dead.length) {
     const lines = dead.map((d) => `- ${d.url}  (retired as "${d.assetKey}")`);
     return {
-      text:
+      error:
         `Draft NOT created — the body carries a RETIRED link:\n${lines.join('\n')}\n` +
         `Retired means dead: that address must not go to anyone again. Check wingguy_assets for the ` +
         `current link and use that instead (or its {{asset:key}} token). If the link really is live ` +
         `again, un-retire it with wingguy_assets first — this door will not take it while it is retired.`,
-      isError: true,
     };
   }
   if (detected.unresolved.length) {
     const known = assetRows.filter((a) => a.status !== 'retired' && a.url).map((a) => a.asset_key);
     return {
-      text:
+      error:
         `Draft NOT created — unknown {{asset:...}} placeholder(s): ${detected.unresolved.join(', ')}.\n` +
         (known.length ? `This tenant's asset library has: ${known.join(', ')}.` : 'This tenant\'s asset library is empty (or the store is unreachable) — add the asset with wingguy_assets, or paste the URL directly.'),
-      isError: true,
     };
   }
   const leftovers = findLeftoverPlaceholders(detected.html);
   if (leftovers.length) {
     return {
-      text:
+      error:
         `Draft NOT created — unresolved placeholder(s) in the body: ${leftovers.join(', ')}.\n` +
         `This tool resolves {{asset:key}} tokens only. Other {{placeholders}} (like {{signoff}}) are ` +
         `substituted into rule text before drafting — a body reaching this door must contain only real ` +
         `words. Replace each placeholder with its actual value (wingguy_variables lists this tenant's ` +
         `values) and call again.`,
-      isError: true,
     };
   }
   const leadEmails = recipients.map((r) => r.email.toLowerCase());
@@ -538,19 +541,78 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
       if (prior.length) {
         const lines = prior.map((p) => `- ${p.asset_key} → ${p.lead_email} (${p.times}×, last ${new Date(p.last_sent_at).toISOString().slice(0, 10)})`);
         return {
-          text:
+          error:
             `Draft NOT created — the asset-usage gate: these asset(s) have ALREADY gone to this lead:\n${lines.join('\n')}\n` +
             `Either drop the repeated link from the draft, or (if re-sending is deliberate — e.g. they asked for it again) call wingguy_create_draft again with resend_ok: true.`,
-          isError: true,
         };
       }
     } catch (e) {
       console.warn(`[wingguyMailMcp] asset gate check failed (drafting continues ungated): ${e.message}`);
     }
   }
+  return { coach, recipients, subject: String(subject).trim(), html: detected.html, detected, leadEmails, store };
+}
+
+/**
+ * What happens once an email has reached the mailbox (a draft made, or a scheduled email sent):
+ * the asset ledger, the follow-up stamp and the introduction log. Best-effort throughout - the
+ * email exists, so a logging miss returns a warning line, never a failure. Returns the lines.
+ */
+async function finishOutbound({ tenant, prepared, cc, result }) {
+  const { coach, recipients, subject, html, detected, leadEmails, store } = prepared;
+  // --- Ledger write ---
+  let ledgerLine = '';
+  if (detected.assetKeys.length) {
+    if (store) {
+      try {
+        await store.recordAssetSends({
+          tenantId: tenant, leadEmails, assetKeys: detected.assetKeys,
+          draftId: result.draftId || result.messageId || null, threadId: result.threadId, subject,
+        });
+        ledgerLine = `Asset ledger: logged ${detected.assetKeys.join(', ')} → ${leadEmails.join(', ')} (wingguy_lead_history shows a lead's full record).\n`;
+      } catch (e) {
+        ledgerLine = `⚠ Asset ledger write FAILED (${e.message}) — the email exists but ${detected.assetKeys.join(', ')} was not recorded.\n`;
+      }
+    } else {
+      ledgerLine = `⚠ Asset(s) ${detected.assetKeys.join(', ')} detected but no database configured — nothing recorded in the ledger.\n`;
+    }
+  }
+
+  // --- Follow-up stamp: the queue no longer waits on the track@ BCC round-trip ---
+  // To recipients only — a Cc'd third party isn't who the email is FOR, and the Bcc is the tracker.
+  let followUpLine = '';
+  try {
+    const stampRes = await stampFollowUpForDraft({ coach, recipients });
+    if (stampRes.stamped.length) followUpLine = `Follow-up queued: ${stampRes.stamped.join(', ')} (14 days).\n`;
+    if (stampRes.failed.length) followUpLine += `⚠ Follow-up date NOT stamped for ${stampRes.failed.join(', ')} — they won't surface in the queue on their own.\n`;
+  } catch (e) {
+    followUpLine = `⚠ Follow-up stamp skipped (${e.message}) — the email is fine, but the queue won't pick this lead up unless the BCC lands.\n`;
+  }
+
+  // --- Introduction log: an email introducing one of the coach's clients to someone becomes a
+  // Referrals row, marked made once the send shows up (services/wingguyIntroductions.js).
+  let introLine = '';
+  try {
+    introLine = await require('./wingguyIntroductions').logIntroductionDraft({
+      tenant, coach,
+      recipients: [...recipients, ...mailProvider.toParticipants(cc)],
+      subject, text: htmlToText(html), threadId: result.threadId,
+      selfEmails: coachOwnEmails(coach),
+    });
+  } catch (e) {
+    introLine = `⚠ This looks like an introduction but it was NOT logged (${e.message}) - log it with wingguy_referrals action=log direction="From Guy".\n`;
+  }
+  return { ledgerLine, followUpLine, introLine };
+}
+
+async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply_to_message_id, resend_ok } = {}, tenant = TENANT) {
+  const prepared = await prepareOutbound({ to, subject, html_body, resend_ok }, tenant);
+  if (prepared.error) return { text: prepared.error, isError: true };
+  const { coach, recipients, detected, leadEmails, store } = prepared;
+  subject = prepared.subject;
 
   const result = await mailProvider.createDraft(coach, {
-    subject: String(subject).trim(),
+    subject,
     html: detected.html,
     to: recipients,
     cc,
@@ -570,7 +632,7 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
         draftId: result.draftId,
         threadId: result.threadId,
         toEmail: leadEmails[0],
-        subject: String(subject).trim(),
+        subject,
         generated: htmlToText(detected.html),
       });
     } catch (e) {
@@ -578,48 +640,7 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     }
   }
 
-  // --- Ledger write (best-effort: the draft exists; a logging failure must not fail the tool) ---
-  let ledgerLine = '';
-  if (detected.assetKeys.length) {
-    if (store) {
-      try {
-        await store.recordAssetSends({
-          tenantId: tenant, leadEmails, assetKeys: detected.assetKeys,
-          draftId: result.draftId, threadId: result.threadId, subject: String(subject).trim(),
-        });
-        ledgerLine = `Asset ledger: logged ${detected.assetKeys.join(', ')} → ${leadEmails.join(', ')} (wingguy_lead_history shows a lead's full record).\n`;
-      } catch (e) {
-        ledgerLine = `⚠ Asset ledger write FAILED (${e.message}) — the draft exists but ${detected.assetKeys.join(', ')} was not recorded.\n`;
-      }
-    } else {
-      ledgerLine = `⚠ Asset(s) ${detected.assetKeys.join(', ')} detected but no database configured — nothing recorded in the ledger.\n`;
-    }
-  }
-
-  // --- Follow-up stamp (best-effort): the queue no longer waits on the track@ BCC round-trip ---
-  // To recipients only — a Cc'd third party isn't who the email is FOR, and the Bcc is the tracker.
-  let followUpLine = '';
-  try {
-    const stampRes = await stampFollowUpForDraft({ coach, recipients });
-    if (stampRes.stamped.length) followUpLine = `Follow-up queued: ${stampRes.stamped.join(', ')} (14 days).\n`;
-    if (stampRes.failed.length) followUpLine += `⚠ Follow-up date NOT stamped for ${stampRes.failed.join(', ')} — they won't surface in the queue on their own.\n`;
-  } catch (e) {
-    followUpLine = `⚠ Follow-up stamp skipped (${e.message}) — the draft is fine, but the queue won't pick this lead up unless the BCC lands.\n`;
-  }
-
-  // --- Introduction log (best-effort): a draft introducing one of the coach's clients to someone
-  // becomes a Referrals row, marked made once the send shows up (services/wingguyIntroductions.js).
-  let introLine = '';
-  try {
-    introLine = await require('./wingguyIntroductions').logIntroductionDraft({
-      tenant, coach,
-      recipients: [...recipients, ...mailProvider.toParticipants(cc)],
-      subject, text: htmlToText(detected.html), threadId: result.threadId,
-      selfEmails: coachOwnEmails(coach),
-    });
-  } catch (e) {
-    introLine = `⚠ This looks like an introduction but it was NOT logged (${e.message}) - log it with wingguy_referrals action=log direction="From Guy".\n`;
-  }
+  const { ledgerLine, followUpLine, introLine } = await finishOutbound({ tenant, prepared, cc, result });
 
   const toStr = recipients.map((r) => r.email).join(', ');
   const bccStr = mailProvider.toParticipants(bcc).map((r) => r.email).join(', ');
@@ -638,7 +659,7 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
       ledgerLine +
       followUpLine +
       introLine +
-      `To: ${toStr}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${String(subject).trim()}\n` +
+      `To: ${toStr}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${subject}\n` +
       `It is sitting in the Drafts folder of the email account connected to Wingguy (Outlook, Gmail, whichever was linked - not necessarily Gmail). Open it there, give it a final read, and send. Links are stored exactly as written.`,
   };
 }
@@ -1364,6 +1385,42 @@ async function runPrepareBrief(_args = {}, tenant = TENANT) {
   return { text: 'Preparation started in the background (~2-3 minutes: sweep → read each top thread → triage → pre-write the reply drafts into the mailbox). Serve wingguy_followup_brief shortly — do NOT make the human wait on this call.' };
 }
 
+
+// ---------------------------------------------------------------------------
+// Scheduled sends (coach-only, Guy 24 Oct 2026) - services/scheduledEmails.js
+// ---------------------------------------------------------------------------
+
+/** Scheduling sends for real, so it is the coach's alone - a client's Claude still makes drafts. */
+async function coachGate(tenant) {
+  const all = await require('./clientService').getAllClients();
+  return (all || []).some((c) => c.coach && c.coach === tenant);
+}
+
+async function runScheduleEmail(args = {}, tenant = TENANT) {
+  if (!(await coachGate(tenant))) return { text: 'Scheduling is coach-only. Use wingguy_create_draft - the draft lands in your Drafts folder to send yourself.', isError: true };
+  const r = await require('./scheduledEmails').schedule(tenant, args);
+  return r.ok ? { text: r.text } : { text: r.text, isError: true };
+}
+
+async function runScheduledEmails(args = {}, tenant = TENANT) {
+  if (!(await coachGate(tenant))) return { text: 'The scheduled queue is coach-only.', isError: true };
+  const q = require('./scheduledEmails');
+  const action = String(args.action || 'list').trim().toLowerCase();
+  const id = Number(args.id);
+  const needId = () => (!Number.isInteger(id) || id <= 0 ? { text: 'Which one? Pass id (the #number from the list).', isError: true } : null);
+  let r;
+  switch (action) {
+    case 'list': return { text: await q.listText(tenant) };
+    case 'cancel': { const e = needId(); if (e) return e; r = await q.cancel(tenant, id); break; }
+    case 'move': { const e = needId(); if (e) return e; r = await q.move(tenant, id, args.send_at); break; }
+    case 'send_now': { const e = needId(); if (e) return e; r = await q.sendNow(tenant, id); break; }
+    case 'away': r = await q.setAway(tenant, args.from, args.until); break;
+    case 'back': r = await q.clearAway(tenant); break;
+    default: return { text: `Unknown action "${action}". Use list, cancel, move, send_now, away or back.`, isError: true };
+  }
+  return r.ok ? { text: r.text } : { text: r.text, isError: true };
+}
+
 // ---------------------------------------------------------------------------
 // Definition — one source of truth for name/description/schema
 // ---------------------------------------------------------------------------
@@ -1406,6 +1463,66 @@ const TOOL_DEFS = [
       required: ['to', 'subject', 'html_body'],
     },
     run: runCreateDraft,
+  },
+  {
+    name: 'wingguy_schedule_email',
+    description:
+      'COACH-ONLY. SEND an email from the coach\'s own mailbox at a set time, instead of leaving a draft. Use it when the coach says "schedule it" (or "schedule a bunch" while away) for an email they have ALREADY READ IN THIS CHAT - a weekly client email, an introduction, any email. Never schedule anything the coach has not seen and agreed in chat; when unsure, make a draft (wingguy_create_draft). Same checks as a draft at scheduling time (asset placeholders, retired links, the asset-usage gate, dashes) and again just before it goes. WHEN, if send_at is not given, in the RECIPIENT\'s time zone (their client record, else the coach\'s), never a weekend: kind=weekly -> Wednesday 9:30am; kind=intro -> Tuesday 9:30am, moved on a week at a time so nobody gets two introductions in one week; kind=email -> the next weekday 9:30am. While the coach is AWAY (wingguy_scheduled_emails action=away), introductions wait for their return and weekly emails should be ideas and inspiration only - no call offers, nothing that needs the coach to reply. A weekly email (pass client) skips that client\'s planned weekly email for the same week, and once sent it goes on their touch record and their note (note = the line to add; default: subject + a summary). An introduction is logged in Referrals once it goes, like a draft. Just before sending it is HELD, not sent, if: sending is off on this server, the address no longer takes mail, a weekly-email client unsubscribed or is no longer active, the two people were introduced by another email meanwhile, or the coach emailed the person himself since scheduling. Replies say when it goes (their time and the coach\'s) - tell the coach that, plainly.',
+    zodSchema: {
+      to: z.array(z.object({ email: z.string(), name: z.string().optional() })).describe(RECIP_DESC),
+      subject: z.string().describe('The email subject line.'),
+      html_body: z.string().describe('The full email body as HTML - exactly what was agreed in chat.'),
+      cc: z.array(z.object({ email: z.string(), name: z.string().optional() })).optional().describe('Optional Cc recipients (an introduction: the second person).'),
+      bcc: z.array(z.object({ email: z.string(), name: z.string().optional() })).optional().describe('Optional Bcc recipients {email, name} - e.g. the tracking address.'),
+      reply_to_message_id: z.string().optional().describe(REPLY_ID_DESC),
+      resend_ok: z.boolean().optional().describe(RESEND_OK_DESC),
+      kind: z.enum(['weekly', 'intro', 'email']).optional().describe('weekly (a client\'s weekly email - pass client) | intro (two people introduced) | email (anything else). Worked out from the email when left out.'),
+      client: z.string().optional().describe('weekly: the client it is for (name or id).'),
+      send_at: z.string().optional().describe('Optional time: a date "2026-11-03" (9:30am their time), a local time "2026-11-03T10:00" (the recipient\'s zone), or a full ISO time. Leave out for the default slot.'),
+      note: z.string().optional().describe('weekly: the line added to the client\'s note once it goes (what they got, what not to repeat).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        to: { ...{ type: 'array', items: { type: 'object', properties: { email: { type: 'string' }, name: { type: 'string' } }, required: ['email'] } }, description: RECIP_DESC },
+        subject: { type: 'string', description: 'The email subject line.' },
+        html_body: { type: 'string', description: 'The full email body as HTML - exactly what was agreed in chat.' },
+        cc: { ...{ type: 'array', items: { type: 'object', properties: { email: { type: 'string' }, name: { type: 'string' } }, required: ['email'] } }, description: 'Optional Cc recipients (an introduction: the second person).' },
+        bcc: { ...{ type: 'array', items: { type: 'object', properties: { email: { type: 'string' }, name: { type: 'string' } }, required: ['email'] } }, description: 'Optional Bcc recipients - e.g. the tracking address.' },
+        reply_to_message_id: { type: 'string', description: REPLY_ID_DESC },
+        resend_ok: { type: 'boolean', description: RESEND_OK_DESC },
+        kind: { type: 'string', enum: ['weekly', 'intro', 'email'], description: 'weekly | intro | email' },
+        client: { type: 'string', description: 'weekly: the client it is for (name or id).' },
+        send_at: { type: 'string', description: 'Optional: "2026-11-03", "2026-11-03T10:00" or a full ISO time.' },
+        note: { type: 'string', description: 'weekly: the line added to the client\'s note once it goes.' },
+      },
+      required: ['to', 'subject', 'html_body'],
+    },
+    run: runScheduleEmail,
+  },
+  {
+    name: 'wingguy_scheduled_emails',
+    description:
+      'COACH-ONLY. The queue of emails scheduled with wingguy_schedule_email - "what\'s scheduled?", "move Rick\'s to Thursday", "cancel #12", "send the held one anyway", "I\'m away from 15 Nov to 6 Dec", "I\'m back". action=list (default): held ones first (with why), then what is scheduled (Brisbane times), then what went in the last 7 days. cancel (id) - it will not go. move (id + send_at) - a new time, checked again before it goes. send_now (id) - send it now; use for a HELD one only after the coach has read why it was held and says go. away (from + until, YYYY-MM-DD, the last day away) - introductions wait until the first Tuesday after; weekly emails still go; a daily summary still reaches the coach. back - away off. A summary email reaches the coach at 5pm Brisbane on any day something went, was held or got a reply.',
+    zodSchema: {
+      action: z.enum(['list', 'cancel', 'move', 'send_now', 'away', 'back']).optional().describe('list (default) | cancel | move | send_now | away | back'),
+      id: z.number().optional().describe('cancel / move / send_now: the #number from the list'),
+      send_at: z.string().optional().describe('move: "2026-11-03", "2026-11-03T10:00" (their time) or a full ISO time'),
+      from: z.string().optional().describe('away: first day away, YYYY-MM-DD'),
+      until: z.string().optional().describe('away: last day away, YYYY-MM-DD'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'cancel', 'move', 'send_now', 'away', 'back'] },
+        id: { type: 'number', description: 'the #number from the list' },
+        send_at: { type: 'string', description: 'move: the new time' },
+        from: { type: 'string', description: 'away: first day away, YYYY-MM-DD' },
+        until: { type: 'string', description: 'away: last day away, YYYY-MM-DD' },
+      },
+      required: [],
+    },
+    run: runScheduledEmails,
   },
   {
     name: 'wingguy_find_message',
@@ -2350,4 +2467,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker, introChecksNote };
+module.exports = { prepareOutbound, finishOutbound, registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker, introChecksNote };

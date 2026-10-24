@@ -17,10 +17,17 @@ const clean = (s) => String(s == null ? '' : s).replace(DASHES, '-').trim();
 /** "Monday 26 Oct" for a plan week. */
 function dayLabel(week) {
   const d = new Date(`${week}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + planStore.SEND_DAY);
   return Number.isNaN(d.getTime()) ? String(week) : new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'short' }).format(d);
 }
 
-/** The Monday Guy is working towards (or the one asked for). */
+/** "11am Brisbane that Wednesday" - when an approved email goes. */
+function sendWhen() {
+  const p = require('./clientTouchPlanner');
+  return `${p.hourLabel(p.SEND_HOUR)} Brisbane that ${p.SEND_DAY_NAME}`;
+}
+
+/** The week Guy is working towards (or the one asked for). */
 function weekOrDefault(week) {
   const w = String(week || '').trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(w)) return w;
@@ -62,7 +69,7 @@ function findPiece(query, pieces = require('./onePagerContent').listPieces()) {
 /** A row that exists and still has an email to act on. */
 async function rowFor(week, clientId, ps = planStore) {
   const row = await ps.planFor(week, clientId);
-  if (!row) return { error: `There is no plan row for them for ${dayLabel(week)} yet - it builds on the Monday before, or ask to build it.` };
+  if (!row) return { error: `There is no plan row for them for ${dayLabel(week)} yet - it builds the week before, or ask to build it.` };
   if (row.status === 'sent') return { error: `Their ${dayLabel(week)} email has already gone.` };
   return { row };
 }
@@ -93,7 +100,7 @@ async function approve(coachClientId, clientId, { week, override = false } = {},
     await ps.setPlanPickField(w, clientId, 'guard', { ...row.pick.guard, overriddenAt: new Date().toISOString() });
   }
   const out = await ps.setPlanStatus(w, clientId, 'approved', { hold: null });
-  return { ok: true, row: out, said: `Approved${override ? ' (anyway - you checked the fact guard)' : ''}: "${titleOf(row)}" for ${dayLabel(w)}. It goes at 8am that Monday after a fresh check that nothing has changed.` };
+  return { ok: true, row: out, said: `Approved${override ? ' (anyway - you checked the fact guard)' : ''}: "${titleOf(row)}" for ${dayLabel(w)}. It goes at ${sendWhen()} after a fresh check that nothing has changed.` };
 }
 
 /** "Send a personal note first": Guy sent it himself (action 'sent', with what he sent) or it is not needed ('dismiss'). */
@@ -136,7 +143,7 @@ async function edit(coachClientId, clientId, { week, opening, subject, body, con
   const blocked = approveBlocked(after);
   if (blocked) return { ok: true, approved: false, blocked, row: after, said: `Changed ${changed.join(', ')} of "${titleOf(row)}" for ${dayLabel(w)}, in your words - but NOT approved yet. ${blocked}` };
   const out = await ps.setPlanStatus(w, clientId, 'edited', { hold: null });
-  return { ok: true, approved: true, guard, row: out, said: `Changed ${changed.join(', ')} of "${titleOf(row)}" for ${dayLabel(w)}, in your words - and approved it. It goes at 8am that Monday after a fresh check.` };
+  return { ok: true, approved: true, guard, row: out, said: `Changed ${changed.join(', ')} of "${titleOf(row)}" for ${dayLabel(w)}, in your words - and approved it. It goes at ${sendWhen()} after a fresh check.` };
 }
 
 /**
@@ -195,7 +202,7 @@ async function pin(coachClientId, clientId, { week, piece, title, text } = {}, d
     p = { kind: found.labels && found.labels.kind === 'habit' ? 'habit' : 'one-pager', key: found.slug, title: found.title };
   }
   await ps.setPin({ clientId, weekOf: w, ...p });
-  return { ok: true, said: `Pinned: "${p.title}" goes to them on ${dayLabel(w)} (it shows when that Monday's plan builds; you still approve it).` };
+  return { ok: true, said: `Pinned: "${p.title}" goes to them on ${dayLabel(w)} (it shows when that week's plan builds; you still approve it).` };
 }
 
 /**

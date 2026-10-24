@@ -269,7 +269,7 @@ const BRIEF_ANSWER = {
   await check('weekly tips: the drafter is told the day it arrives and the next session (no "on the 26th" in a 2 Nov email)', async () => {
     const { llm, llmFor } = deps({ ...ANSWERS, tips: { subject: 'S', paragraphs: ['p'], why: 'w' } });
     await planner.deepen({ pick: { what: null, rule: 'weekly-tips', reason: 'r' }, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'onboarding', noteText: 'weekly tips', nextSessionAt: '2026-10-26T05:00:00.000Z' }, week: '2026-11-02', llmFor, at: AT });
-    assert.match(llm.calls.find((c) => c.kind === 'tips').user, /THE EMAIL ARRIVES: Monday 2026-11-02, 8am Brisbane\. NEXT SESSION: 2026-10-26 05:00\./);
+    assert.match(llm.calls.find((c) => c.kind === 'tips').user, /THE EMAIL ARRIVES: Wednesday 4 Nov, 11am Brisbane\. NEXT SESSION: 2026-10-26 05:00\./);
   });
   await check("last week's email still waiting for its Monday counts as a past tip; a sent or empty one does not", () => {
     const row = { status: 'approved', subject: 'A search to try', bodyHtml: '<p>Paste this:</p>\n<p>("healthy ageing")</p>', sentAt: null };

@@ -29,6 +29,20 @@ let schemaEnsured = false;
 const STATUSES = ['proposed', 'approved', 'edited', 'skipped', 'sent', 'failed', 'nothing', 'left-out', 'held', 'lapsed'];
 const FEEDBACK_HOMES = ['body', 'choice', 'person', 'openings'];
 
+/**
+ * The sending day, counted from the plan week's Monday (0 = Monday ... 4 = Friday). Wednesday since
+ * 24 Oct 2026 (Guy: Monday morning people are dealing with their own priorities after the weekend -
+ * midweek gets read). The plan week is still identified by its Monday date everywhere.
+ */
+const SEND_DAY = (() => { const n = Number(process.env.CLIENT_TOUCH_SEND_DAY); return Number.isInteger(n) && n >= 0 && n <= 4 ? n : 2; })();
+
+/** 'YYYY-MM-DD' of the sending day of a plan week. */
+function sendDate(week) {
+  const d = new Date(`${week}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + SEND_DAY);
+  return d.toISOString().slice(0, 10);
+}
+
 function getPool() {
   if (pool) return pool;
   const url = (process.env.DATABASE_URL || '').trim();
@@ -184,15 +198,16 @@ function addWeeks(week, n) {
 }
 
 /**
- * The Monday Guy is working towards - the next sending morning that has not happened yet. Before
- * the send hour on a Monday that is today; from then on it is the Monday after (the plan is built
- * a week ahead, so Guy can chip away at it all week).
+ * The week Guy is working towards (named by its Monday) - the next sending day that has not
+ * happened yet. Before the send hour on the sending day (or earlier that week) it is this week;
+ * from then on it is the week after (the plan is built a week ahead, so Guy can chip away at it).
  */
-function planningWeek(now = new Date(), sendHour = 8, timeZone = 'Australia/Brisbane') {
+function planningWeek(now = new Date(), sendHour = 8, timeZone = 'Australia/Brisbane', sendDay = SEND_DAY) {
   const parts = new Intl.DateTimeFormat('en-AU', { timeZone, hour: '2-digit', hour12: false, weekday: 'short' }).formatToParts(new Date(now));
   const get = (t) => (parts.find((p) => p.type === t) || {}).value;
   const thisWeek = weekOf(now, timeZone);
-  return get('weekday') === 'Mon' && Number(get('hour')) < sendHour ? thisWeek : addWeeks(thisWeek, 1);
+  const day = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 }[get('weekday')];
+  return day < sendDay || (day === sendDay && Number(get('hour')) < sendHour) ? thisWeek : addWeeks(thisWeek, 1);
 }
 
 /** Where a "why not" belongs (the Tuning-by-approval table). Pure; `home` must be one of FEEDBACK_HOMES. */
@@ -518,6 +533,8 @@ module.exports = {
   weekOf,
   addWeeks,
   planningWeek,
+  sendDate,
+  SEND_DAY,
   feedbackHome,
   upsertPlan,
   plansFor,

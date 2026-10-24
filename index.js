@@ -2022,6 +2022,16 @@ try {
     moduleLogger.error('index.js: Error starting client touch planner', e.message, e.stack);
 }
 
+// Scheduled sends from the coach's own mailbox (services/scheduledEmails.js): only what the coach
+// scheduled in chat, re-checked just before it goes. SCHEDULED_SEND_ENABLED=off (or
+// CLIENT_TOUCH_SEND_ENABLED=off, as on staging) holds everything; SCHEDULED_SEND_TICK=off stops it.
+try {
+    const { startScheduledEmails } = require('./services/scheduledEmails.js');
+    startScheduledEmails();
+} catch (e) {
+    moduleLogger.error('index.js: Error starting scheduled emails', e.message, e.stack);
+}
+
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {

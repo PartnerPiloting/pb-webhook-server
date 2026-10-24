@@ -554,4 +554,70 @@ async function getDraftViaUnipile(coach, draftId) {
   return { ok: true, draft: r.message };
 }
 
-module.exports = { createDraft, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider, hasMailbox, mailParties };
+/**
+ * SEND an email from the coach's own mailbox, now. Only the scheduled-send queue calls this
+ * (services/scheduledEmails.js, Guy 24 Oct 2026: "schedule it" instead of "put it in my Drafts") -
+ * every other door makes a draft and the human presses send. Same shape and same undeliverable
+ * guard as createDraft.
+ * @returns {Promise<{ok:boolean, messageId?:string, threadId?:string, error?:string, provider:string}>}
+ */
+async function sendMessage(coach, details = {}) {
+  const { undeliverableAddresses, describeUndeliverable } = require('../utils/emailDeliverable');
+  const badRecipients = await undeliverableAddresses([].concat(details.to || [], details.cc || [], details.bcc || []));
+  if (badRecipients.length) return { ok: false, error: describeUndeliverable(badRecipients), provider: activeMailProvider(coach) };
+  const to = toParticipants(details.to);
+  if (!to.length) return { ok: false, error: 'at least one "to" recipient is required', provider: activeMailProvider(coach) };
+  const subject = String(details.subject || '').trim();
+  if (!subject) return { ok: false, error: 'subject is required', provider: activeMailProvider(coach) };
+  if (activeMailProvider(coach) === 'unipile') return sendViaUnipile(coach, { ...details, subject });
+
+  const { apiKey, grantId, apiUri } = nylasConfig(coach);
+  if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach', provider: 'nylas' };
+  const body = { subject, body: details.html || '', to };
+  const cc = toParticipants(details.cc); if (cc.length) body.cc = cc;
+  const bcc = toParticipants(details.bcc); if (bcc.length) body.bcc = bcc;
+  if (details.replyToMessageId) body.reply_to_message_id = String(details.replyToMessageId).trim();
+  let res;
+  try {
+    res = await fetch(`${apiUri}/v3/grants/${grantId}/messages/send`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) { return { ok: false, error: `nylas request failed: ${e.message}`, provider: 'nylas' }; }
+  const text = await res.text();
+  if (!res.ok) {
+    log.warn(`[mailProvider] nylas send failed HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, error: `nylas HTTP ${res.status}: ${text.slice(0, 200)}`, provider: 'nylas' };
+  }
+  let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+  const d = json.data || json;
+  return { ok: true, messageId: d.id || null, threadId: d.thread_id || null, provider: 'nylas' };
+}
+
+// Unipile's send endpoint takes multipart form fields; the recipient lists go as JSON text.
+async function sendViaUnipile(coach, details = {}) {
+  const { apiKey, base, accountId } = unipileMailEnv(coach);
+  if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured', provider: 'unipile' };
+  const form = new FormData();
+  form.append('account_id', accountId);
+  form.append('subject', details.subject);
+  form.append('body', details.html || '');
+  form.append('to', JSON.stringify(toUnipileParties(details.to)));
+  const cc = toUnipileParties(details.cc); if (cc.length) form.append('cc', JSON.stringify(cc));
+  const bcc = toUnipileParties(details.bcc); if (bcc.length) form.append('bcc', JSON.stringify(bcc));
+  if (details.replyToMessageId) form.append('reply_to', String(details.replyToMessageId).trim());
+  let res;
+  try {
+    res = await fetch(`${base}/emails`, { method: 'POST', headers: unipileMailHeaders(apiKey), body: form });
+  } catch (e) { return { ok: false, error: `unipile request failed: ${e.message}`, provider: 'unipile' }; }
+  const text = await res.text();
+  if (!res.ok) {
+    log.warn(`[mailProvider] unipile send HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, error: `unipile HTTP ${res.status}: ${text.slice(0, 200)}`, provider: 'unipile' };
+  }
+  let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+  return { ok: true, messageId: json.tracking_id || json.id || (json.data && json.data.id) || null, threadId: null, provider: 'unipile' };
+}
+
+module.exports = { createDraft, sendMessage, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider, hasMailbox, mailParties };
