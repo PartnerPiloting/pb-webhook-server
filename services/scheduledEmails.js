@@ -14,6 +14,8 @@
 //   CHECK  just before it goes: sending switched on here, the address still takes mail, a client
 //          still subscribed, two people not already introduced by another email, and Guy has not
 //          written to them himself since he scheduled it. Anything that fails is HELD, not sent.
+//   OK     an email Claude wrote that Guy has not read yet goes in as 'awaiting' (needs your OK):
+//          it never sends until he approves it - on the portal's Scheduled page or in chat.
 //   AFTER  the same bookkeeping as a draft (asset ledger, follow-up stamp, introduction log), and
 //          for a weekly email the client's touch record and a dated line on their note, so the
 //          weekly planner knows what they have had.
@@ -243,10 +245,10 @@ function rowOut(r) {
 async function insertRow(e) {
   return withDb(async (c) => {
     const r = await c.query(
-      `INSERT INTO scheduled_emails (tenant_id, kind, to_json, cc_json, bcc_json, subject, html, reply_to_message_id, resend_ok, client_id, parties, note, send_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      `INSERT INTO scheduled_emails (tenant_id, kind, to_json, cc_json, bcc_json, subject, html, reply_to_message_id, resend_ok, client_id, parties, note, send_at, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [e.tenantId, e.kind, JSON.stringify(e.to || []), JSON.stringify(e.cc || []), JSON.stringify(e.bcc || []), e.subject, e.html,
-        e.replyToMessageId || null, !!e.resendOk, e.clientId || null, (e.parties || []).join(',') || null, e.note || null, new Date(e.sendAt)],
+        e.replyToMessageId || null, !!e.resendOk, e.clientId || null, (e.parties || []).join(',') || null, e.note || null, new Date(e.sendAt), e.status || 'scheduled'],
     );
     return rowOut(r.rows[0]);
   }, null);
@@ -272,7 +274,7 @@ async function getRow(tenantId, id) {
 async function updateRow(id, fields) {
   const cols = Object.keys(fields);
   if (!cols.length) return null;
-  const map = { status: 'status', holdReason: 'hold_reason', result: 'result', messageId: 'message_id', sendAt: 'send_at', sentAt: 'sent_at' };
+  const map = { status: 'status', holdReason: 'hold_reason', result: 'result', messageId: 'message_id', sendAt: 'send_at', sentAt: 'sent_at', subject: 'subject', html: 'html' };
   const sets = cols.map((k, i) => `${map[k]} = $${i + 2}`);
   const vals = cols.map((k) => (k === 'sendAt' || k === 'sentAt') && fields[k] ? new Date(fields[k]) : fields[k]);
   return withDb(async (c) => rowOut((await c.query(`UPDATE scheduled_emails SET ${sets.join(', ')}, updated_at = now() WHERE id = $1 RETURNING *`, [id, ...vals])).rows[0]), null);
@@ -312,7 +314,7 @@ async function getAway(tenantId) {
 async function introWeeks(tenantId, emails, nowMs) {
   const out = new Map(emails.map((e) => [e, new Set()]));
   const add = (e, ms) => { if (out.has(e)) out.get(e).add(weekKey(ms)); };
-  const queued = await listRows(tenantId, { statuses: ['scheduled', 'held', 'sending', 'sent'] });
+  const queued = await listRows(tenantId, { statuses: ['awaiting', 'scheduled', 'held', 'sending', 'sent'] });
   for (const r of queued) if (r.kind === 'intro') for (const e of r.parties) add(e, r.sentAt || r.sendAt);
   const watch = await withDb(async (c) => {
     try {
@@ -414,6 +416,7 @@ async function schedule(tenantId, args = {}, deps = {}) {
     tenantId, kind, to, cc, bcc: toParticipants(args.bcc), subject: prepared.subject, html: args.html_body,
     replyToMessageId: args.reply_to_message_id || null, resendOk: !!args.resend_ok,
     clientId: client ? client.clientId : null, parties: kind === 'intro' ? people : [], note: args.note || null, sendAt: at,
+    status: args.needs_ok ? 'awaiting' : 'scheduled',
   });
   if (!row) return { ok: false, text: 'NOT scheduled - the database is not reachable here. Make it a draft instead.' };
 
@@ -432,8 +435,9 @@ async function schedule(tenantId, args = {}, deps = {}) {
 
   return {
     ok: true, row,
-    text: `Scheduled #${row.id}: "${row.subject}" to ${to.map((r) => r.name || r.email).join(', ')}${cc.length ? ` and ${cc.map((r) => r.name || r.email).join(', ')}` : ''} - goes ${goesLabel(row.sendAt, zones)}, from your own mailbox.` +
+    text: `${row.status === 'awaiting' ? 'Queued for your OK' : 'Scheduled'} #${row.id}: "${row.subject}" to ${to.map((r) => r.name || r.email).join(', ')}${cc.length ? ` and ${cc.map((r) => r.name || r.email).join(', ')}` : ''} - goes ${goesLabel(row.sendAt, zones)}, from your own mailbox.` +
       (notes.length ? `\n${notes.join('\n')}` : '') +
+      (row.status === 'awaiting' ? '\nIt will NOT go until you approve it - on the Scheduled page in your portal, or say "approve #' + row.id + '".' : '') +
       '\nIt is checked again just before it goes. "What\'s scheduled?" lists the queue; anything can be moved or cancelled until it goes.',
   };
 }
@@ -448,13 +452,15 @@ function lineFor(r) {
 }
 
 async function listText(tenantId, nowMs = Date.now()) {
-  const rows = await listRows(tenantId, { statuses: ['scheduled', 'held', 'failed', 'sent'], sinceMs: nowMs - 7 * DAY });
+  const rows = await listRows(tenantId, { statuses: ['awaiting', 'scheduled', 'held', 'failed', 'sent'], sinceMs: nowMs - 7 * DAY });
+  const waiting = rows.filter((r) => r.status === 'awaiting');
   const away = await getAway(tenantId);
   const held = rows.filter((r) => r.status === 'held' || r.status === 'failed');
   const queued = rows.filter((r) => r.status === 'scheduled');
   const sent = rows.filter((r) => r.status === 'sent');
   const out = [];
   if (away) out.push(`AWAY: ${away.from} to ${away.until} - introductions wait for your return; weekly emails still go.`, '');
+  if (waiting.length) { out.push(`NEEDS YOUR OK - will not go until you approve (${waiting.length}):`); waiting.forEach((r) => out.push(`  ${lineFor(r)}`)); out.push(''); }
   out.push(held.length ? `HELD - need you (${held.length}):` : 'Nothing held.');
   held.forEach((r) => out.push(`  ${lineFor(r)}`));
   out.push('', queued.length ? `SCHEDULED (${queued.length}, Brisbane times):` : 'Nothing scheduled.');
@@ -466,7 +472,7 @@ async function listText(tenantId, nowMs = Date.now()) {
 async function cancel(tenantId, id) {
   const r = await getRow(tenantId, id);
   if (!r) return { ok: false, text: `No scheduled email #${id}.` };
-  if (!['scheduled', 'held', 'failed'].includes(r.status)) return { ok: false, text: `#${id} is ${r.status} - too late to cancel.` };
+  if (!['awaiting', 'scheduled', 'held', 'failed'].includes(r.status)) return { ok: false, text: `#${id} is ${r.status} - too late to cancel.` };
   await updateRow(id, { status: 'cancelled' });
   return { ok: true, text: `Cancelled #${id} "${r.subject}" - it will not go.${r.kind === 'weekly' ? ' Their planned weekly email for that week stays skipped; un-skip it in the weekly review if you want it back.' : ''}` };
 }
@@ -474,24 +480,105 @@ async function cancel(tenantId, id) {
 async function move(tenantId, id, when, deps = {}) {
   const r = await getRow(tenantId, id);
   if (!r) return { ok: false, text: `No scheduled email #${id}.` };
-  if (!['scheduled', 'held', 'failed'].includes(r.status)) return { ok: false, text: `#${id} is ${r.status} - too late to move.` };
+  if (!['awaiting', 'scheduled', 'held', 'failed'].includes(r.status)) return { ok: false, text: `#${id} is ${r.status} - too late to move.` };
   const byEmail = await clientsByEmail(tenantId, deps);
   const zones = [...new Set([...r.to, ...r.cc].map((p) => (byEmail.get(p.email.toLowerCase()) || {}).timezone).filter(Boolean))];
   const at = parseWhen(when, zones.length ? zones : [COACH_TZ]);
   if (at === null) return { ok: false, text: `Could not read "${when}". Use a date (2026-11-03), a local time (2026-11-03T10:00) or a full ISO time.` };
   if (at < (deps.now || Date.now())) return { ok: false, text: 'That time has already passed.' };
-  await updateRow(id, { sendAt: at, status: 'scheduled', holdReason: null });
-  return { ok: true, text: `Moved #${id} "${r.subject}" - now goes ${whenLabel(at)} (Brisbane), checked again just before.` };
+  const waiting = r.status === 'awaiting';
+  await updateRow(id, { sendAt: at, status: waiting ? 'awaiting' : 'scheduled', holdReason: null });
+  return { ok: true, text: `Moved #${id} "${r.subject}" - now ${waiting ? 'set for' : 'goes'} ${whenLabel(at)} (Brisbane)${waiting ? ', still waiting for your OK' : ', checked again just before'}.` };
 }
 
 /** Send a held (or scheduled) one now - Guy has looked at why it was held and says go. */
 async function sendNow(tenantId, id, deps = {}) {
   const r = await getRow(tenantId, id);
   if (!r) return { ok: false, text: `No scheduled email #${id}.` };
-  if (!['scheduled', 'held', 'failed'].includes(r.status)) return { ok: false, text: `#${id} is ${r.status}.` };
+  if (!['awaiting', 'scheduled', 'held', 'failed'].includes(r.status)) return { ok: false, text: `#${id} is ${r.status}.` };
   await updateRow(id, { status: 'sending', holdReason: null });
   const out = await deliver({ ...r, status: 'sending' }, { ...deps, skipChecks: true });
   return { ok: out.status === 'sent', text: out.status === 'sent' ? `Sent #${id} "${r.subject}" now.\n${out.result || ''}`.trim() : `#${id} did not go: ${out.result || out.holdReason}` };
+}
+
+/** Guy has read it and says go: 'awaiting' -> 'scheduled' (it goes at its time, or at once if that has passed). */
+async function approve(tenantId, id) {
+  const r = await getRow(tenantId, id);
+  if (!r) return { ok: false, text: `No scheduled email #${id}.` };
+  if (r.status !== 'awaiting') return { ok: false, text: `#${id} is ${r.status}, not waiting for your OK.` };
+  await updateRow(id, { status: 'scheduled' });
+  const late = r.sendAt < Date.now();
+  return { ok: true, text: `Approved #${id} "${r.subject}" - ${late ? 'its time has passed, so it goes within 5 minutes' : `it goes ${whenLabel(r.sendAt)} (Brisbane)`}, checked again just before.` };
+}
+
+/** Guy's own words for the subject and/or body - checked exactly as at scheduling. */
+async function editEmail(tenantId, id, { subject, html_body } = {}, deps = {}) {
+  const r = await getRow(tenantId, id);
+  if (!r) return { ok: false, text: `No scheduled email #${id}.` };
+  if (!['awaiting', 'scheduled', 'held', 'failed'].includes(r.status)) return { ok: false, text: `#${id} is ${r.status} - too late to change.` };
+  const newSubject = subject !== undefined && String(subject).trim() ? String(subject).trim() : r.subject;
+  const newHtml = html_body !== undefined && String(html_body).trim() ? String(html_body) : r.html;
+  if (newSubject === r.subject && newHtml === r.html) return { ok: false, text: 'Nothing changed - give a new subject or body.' };
+  const mail = deps.mail || require('./wingguyMailMcp');
+  const prepared = await mail.prepareOutbound({ to: r.to, subject: newSubject, html_body: newHtml, resend_ok: r.resendOk }, tenantId);
+  if (prepared.error) return { ok: false, text: prepared.error.replace(/^Draft NOT created/, 'NOT changed') };
+  await updateRow(id, { subject: prepared.subject, html: newHtml });
+  const what = [newSubject !== r.subject ? 'the subject' : '', newHtml !== r.html ? 'the body' : ''].filter(Boolean).join(' and ');
+  return { ok: true, text: `Changed ${what} of #${id} "${prepared.subject}"${r.status === 'awaiting' ? ' - still waiting for your OK' : ''}.` };
+}
+
+/** One email in full, as it will arrive (asset links resolved), plus where it stands. */
+async function preview(tenantId, id, deps = {}) {
+  const r = await getRow(tenantId, id);
+  if (!r) return null;
+  let html = r.html;
+  try {
+    const mail = deps.mail || require('./wingguyMailMcp');
+    const prepared = await mail.prepareOutbound({ to: r.to, subject: r.subject, html_body: r.html, resend_ok: true }, tenantId);
+    if (!prepared.error) html = prepared.html;
+  } catch (_) { /* show it as stored */ }
+  return { row: r, html };
+}
+
+/** An email's HTML as text that keeps its shape: paragraphs, list bullets, links with their address. Pure. */
+function asReadableText(html) {
+  return String(html || '')
+    .replace(/<\/(p|div|li|blockquote|tr|h\d)>/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+    .replace(/[ \t]+/g, ' ').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function showText(tenantId, id, deps = {}) {
+  const p = await preview(tenantId, id, deps);
+  if (!p) return { ok: false, text: `No scheduled email #${id}.` };
+  const mail = deps.mail || require('./wingguyMailMcp');
+  const r = p.row;
+  const status = { awaiting: 'NEEDS YOUR OK - will not go until you approve it', scheduled: 'scheduled', held: `HELD: ${r.holdReason}`, failed: `FAILED: ${r.result}`, sent: 'sent', cancelled: 'cancelled', sending: 'sending now' }[r.status] || r.status;
+  const who = (l) => l.map((x) => (x.name ? `${x.name} <${x.email}>` : x.email)).join(', ');
+  void mail;
+  const text = asReadableText(p.html);
+  return {
+    ok: true,
+    text: [`#${r.id} ${r.kind} - ${status}`, `${r.status === 'sent' ? 'Sent' : 'Goes'}: ${whenLabel(r.sentAt || r.sendAt)} (Brisbane)`, `To: ${who(r.to)}${r.cc.length ? ` · Cc: ${who(r.cc)}` : ''}`, `Subject: ${r.subject}`, '', '--- THE EMAIL ---', text.trim(), '--- END ---'].join('\n'),
+  };
+}
+
+/** The queue for the portal page: newest needs first, each with what Guy needs to act on it. */
+async function forPage(tenantId, nowMs = Date.now()) {
+  const rows = await listRows(tenantId, { statuses: ['awaiting', 'held', 'failed', 'scheduled', 'sent'], sinceMs: nowMs - 14 * DAY });
+  const order = { awaiting: 0, held: 1, failed: 1, scheduled: 2, sent: 3 };
+  return rows
+    .sort((a, b) => order[a.status] - order[b.status] || (a.status === 'sent' ? (b.sentAt || 0) - (a.sentAt || 0) : a.sendAt - b.sendAt))
+    .map((r) => ({
+      id: r.id, kind: r.kind, status: r.status, subject: r.subject, clientId: r.clientId,
+      to: r.to, cc: r.cc, sendAt: new Date(r.sendAt).toISOString(), sentAt: r.sentAt ? new Date(r.sentAt).toISOString() : null,
+      when: whenLabel(r.sentAt || r.sendAt), holdReason: r.holdReason, result: r.result,
+    }));
 }
 
 async function setAway(tenantId, from, until) {
@@ -690,7 +777,7 @@ module.exports = {
   // time (pure)
   localParts, zonedToUtc, nextSlot, weekKey, defaultSendAt, parseWhen, spaceIntroduction, inAway, afterAway, whenLabel, asksForGuy,
   // queue
-  schedule, listText, cancel, move, sendNow, setAway, clearAway, getAway,
+  schedule, listText, cancel, move, sendNow, approve, editEmail, preview, showText, forPage, setAway, clearAway, getAway,
   // engine
   tick, deliver, holdReason, sendSummary, startScheduledEmails, sendSwitchOn,
   // store (tests)

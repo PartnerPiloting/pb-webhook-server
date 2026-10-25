@@ -1887,6 +1887,14 @@ try {
     moduleLogger.error("index.js: Error mounting extension dist routes", e.message, e.stack);
 }
 
+// The coach's Scheduled page (routes/scheduledEmailRoutes.js) - emails queued to send from his mailbox.
+try {
+    app.use('/api/scheduled-emails', require('./routes/scheduledEmailRoutes.js'));
+    moduleLogger.info("index.js: Scheduled email routes mounted at /api/scheduled-emails");
+} catch(e) {
+    moduleLogger.error("index.js: Error mounting scheduled email routes", e.message, e.stack);
+}
+
 // Guy's Monday screen - the weekly client touch planner on the client board
 // (routes/clientTouchRoutes.js, docs/CLIENT-TOUCH-PLANNER.md). Mounted BEFORE the board so
 // /touch-plan is not swallowed by the board's /:clientId/detail.

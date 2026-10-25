@@ -1411,12 +1411,15 @@ async function runScheduledEmails(args = {}, tenant = TENANT) {
   let r;
   switch (action) {
     case 'list': return { text: await q.listText(tenant) };
+    case 'show': { const e = needId(); if (e) return e; r = await q.showText(tenant, id); break; }
+    case 'approve': { const e = needId(); if (e) return e; r = await q.approve(tenant, id); break; }
+    case 'edit': { const e = needId(); if (e) return e; r = await q.editEmail(tenant, id, { subject: args.subject, html_body: args.html_body }); break; }
     case 'cancel': { const e = needId(); if (e) return e; r = await q.cancel(tenant, id); break; }
     case 'move': { const e = needId(); if (e) return e; r = await q.move(tenant, id, args.send_at); break; }
     case 'send_now': { const e = needId(); if (e) return e; r = await q.sendNow(tenant, id); break; }
     case 'away': r = await q.setAway(tenant, args.from, args.until); break;
     case 'back': r = await q.clearAway(tenant); break;
-    default: return { text: `Unknown action "${action}". Use list, cancel, move, send_now, away or back.`, isError: true };
+    default: return { text: `Unknown action "${action}". Use list, show, approve, edit, cancel, move, send_now, away or back.`, isError: true };
   }
   return r.ok ? { text: r.text } : { text: r.text, isError: true };
 }
@@ -1480,6 +1483,7 @@ const TOOL_DEFS = [
       client: z.string().optional().describe('weekly: the client it is for (name or id).'),
       send_at: z.string().optional().describe('Optional time: a date "2026-11-03" (9:30am their time), a local time "2026-11-03T10:00" (the recipient\'s zone), or a full ISO time. Leave out for the default slot.'),
       note: z.string().optional().describe('weekly: the line added to the client\'s note once it goes (what they got, what not to repeat).'),
+      needs_ok: z.boolean().optional().describe('true = an email the coach has NOT read yet (Claude wrote it for him to review): it waits as NEEDS YOUR OK and never sends until he approves it on the portal\'s Scheduled page or in chat.'),
     },
     jsonSchema: {
       type: 'object',
@@ -1495,6 +1499,7 @@ const TOOL_DEFS = [
         client: { type: 'string', description: 'weekly: the client it is for (name or id).' },
         send_at: { type: 'string', description: 'Optional: "2026-11-03", "2026-11-03T10:00" or a full ISO time.' },
         note: { type: 'string', description: 'weekly: the line added to the client\'s note once it goes.' },
+        needs_ok: { type: 'boolean', description: 'true = the coach has not read it yet: it waits for his OK and never sends until approved.' },
       },
       required: ['to', 'subject', 'html_body'],
     },
@@ -1503,9 +1508,11 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_scheduled_emails',
     description:
-      'COACH-ONLY. The queue of emails scheduled with wingguy_schedule_email - "what\'s scheduled?", "move Rick\'s to Thursday", "cancel #12", "send the held one anyway", "I\'m away from 15 Nov to 6 Dec", "I\'m back". action=list (default): held ones first (with why), then what is scheduled (Brisbane times), then what went in the last 7 days. cancel (id) - it will not go. move (id + send_at) - a new time, checked again before it goes. send_now (id) - send it now; use for a HELD one only after the coach has read why it was held and says go. away (from + until, YYYY-MM-DD, the last day away) - introductions wait until the first Tuesday after; weekly emails still go; a daily summary still reaches the coach. back - away off. A summary email reaches the coach at 5pm Brisbane on any day something went, was held or got a reply.',
+      'COACH-ONLY. The queue of emails scheduled with wingguy_schedule_email - "what\'s scheduled?", "move Rick\'s to Thursday", "cancel #12", "send the held one anyway", "I\'m away from 15 Nov to 6 Dec", "I\'m back". action=list (default): NEEDS YOUR OK first, then held ones (with why), then what is scheduled (Brisbane times), then what went in the last 7 days. show (id) - one email in full, as it will arrive. approve (id) - a NEEDS YOUR OK one may now go at its time; only when the coach says so. edit (id + subject and/or html_body) - his own words, checked like a draft. The coach also sees and manages all of this on the Scheduled page of his portal. cancel (id) - it will not go. move (id + send_at) - a new time, checked again before it goes. send_now (id) - send it now; use for a HELD one only after the coach has read why it was held and says go. away (from + until, YYYY-MM-DD, the last day away) - introductions wait until the first Tuesday after; weekly emails still go; a daily summary still reaches the coach. back - away off. A summary email reaches the coach at 5pm Brisbane on any day something went, was held or got a reply.',
     zodSchema: {
-      action: z.enum(['list', 'cancel', 'move', 'send_now', 'away', 'back']).optional().describe('list (default) | cancel | move | send_now | away | back'),
+      action: z.enum(['list', 'show', 'approve', 'edit', 'cancel', 'move', 'send_now', 'away', 'back']).optional().describe('list (default) | show | approve | edit | cancel | move | send_now | away | back'),
+      subject: z.string().optional().describe('edit: the new subject'),
+      html_body: z.string().optional().describe('edit: the new body, as HTML'),
       id: z.number().optional().describe('cancel / move / send_now: the #number from the list'),
       send_at: z.string().optional().describe('move: "2026-11-03", "2026-11-03T10:00" (their time) or a full ISO time'),
       from: z.string().optional().describe('away: first day away, YYYY-MM-DD'),
@@ -1514,7 +1521,9 @@ const TOOL_DEFS = [
     jsonSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'cancel', 'move', 'send_now', 'away', 'back'] },
+        action: { type: 'string', enum: ['list', 'show', 'approve', 'edit', 'cancel', 'move', 'send_now', 'away', 'back'] },
+        subject: { type: 'string', description: 'edit: the new subject' },
+        html_body: { type: 'string', description: 'edit: the new body, as HTML' },
         id: { type: 'number', description: 'the #number from the list' },
         send_at: { type: 'string', description: 'move: the new time' },
         from: { type: 'string', description: 'away: first day away, YYYY-MM-DD' },

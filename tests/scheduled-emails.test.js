@@ -36,7 +36,7 @@ function fakePool({ introWatch = [] } = {}) {
     async query(sql, p = []) {
       const s = sql.replace(/\s+/g, ' ').trim();
       if (s.startsWith('INSERT INTO scheduled_emails')) {
-        const r = { id: nextId++, tenant_id: p[0], kind: p[1], to_json: JSON.parse(p[2]), cc_json: JSON.parse(p[3]), bcc_json: JSON.parse(p[4]), subject: p[5], html: p[6], reply_to_message_id: p[7], resend_ok: p[8], client_id: p[9], parties: p[10], note: p[11], send_at: p[12], status: 'scheduled', hold_reason: null, result: null, message_id: null, created_at: new Date(NOW), sent_at: null };
+        const r = { id: nextId++, tenant_id: p[0], kind: p[1], to_json: JSON.parse(p[2]), cc_json: JSON.parse(p[3]), bcc_json: JSON.parse(p[4]), subject: p[5], html: p[6], reply_to_message_id: p[7], resend_ok: p[8], client_id: p[9], parties: p[10], note: p[11], send_at: p[12], status: p[13] || 'scheduled', hold_reason: null, result: null, message_id: null, created_at: new Date(NOW), sent_at: null };
         rows.push(r);
         return { rows: [out(r)] };
       }
@@ -250,6 +250,40 @@ function deps(extra = {}) {
     const d = deps({ clientService: { ...deps().clientService, getClientById: async (id) => ({ ...CLIENTS.find((c) => c.clientId === id), emailUnsubscribed: true }) } });
     const why = await q.holdReason({ kind: 'weekly', clientId: 'Dean-Hobin', to: [], parties: [] }, { coach: null }, d);
     assert.match(why, /Dean Hobin has unsubscribed/);
+  });
+  console.log('needs your OK, show, edit');
+  await check('one Claude wrote for Guy waits for his OK: never sent when due, moving it keeps it waiting, approve lets it go', async () => {
+    const pool = fakePool();
+    q.__setTestPool(pool);
+    const d = deps();
+    const r = await q.schedule('Guy-Wilson', { to: [{ email: 'rwong@salesxceleration.com', name: 'Rick Wong' }], subject: 'Givers', html_body: '<p>Idea.</p>', client: 'Rick', needs_ok: true }, d);
+    assert.ok(r.ok, r.text);
+    assert.strictEqual(r.row.status, 'awaiting');
+    assert.match(r.text, /^Queued for your OK #\d+/); assert.match(r.text, /will NOT go until you approve it/);
+    const due = r.row.sendAt + 60000;
+    assert.deepStrictEqual(await q.tick({ ...d, now: due, sendAlertEmail: async () => {} }), [], 'not sent while waiting');
+    assert.match(await q.listText('Guy-Wilson', NOW), /NEEDS YOUR OK - will not go until you approve \(1\)/);
+    const m = await q.move('Guy-Wilson', r.row.id, '2026-10-29', d);
+    assert.match(m.text, /still waiting for your OK/);
+    assert.strictEqual((await q.getRow('Guy-Wilson', r.row.id)).status, 'awaiting');
+    const a = await q.approve('Guy-Wilson', r.row.id);
+    assert.ok(a.ok, a.text);
+    assert.strictEqual((await q.getRow('Guy-Wilson', r.row.id)).status, 'scheduled');
+    assert.strictEqual((await q.approve('Guy-Wilson', r.row.id)).ok, false, 'already approved');
+  });
+  await check('edit takes Guy\'s words, checked like a draft; show prints it with paragraphs and links kept', async () => {
+    q.__setTestPool(fakePool());
+    const d = deps();
+    const r = await q.schedule('Guy-Wilson', { to: [{ email: 'dean@timeandfocus.com.au', name: 'Dean Hobin' }], subject: 'Old', html_body: '<p>One.</p>', client: 'Dean' }, d);
+    const e = await q.editEmail('Guy-Wilson', r.row.id, { subject: 'New subject', html_body: '<p>First line.</p><p>See <a href="https://example.org/x">this</a>.</p><ul><li>a point</li></ul>' }, d);
+    assert.ok(e.ok, e.text); assert.match(e.text, /Changed the subject and the body/);
+    assert.strictEqual((await q.editEmail('Guy-Wilson', r.row.id, {}, d)).ok, false, 'nothing given');
+    const s = await q.showText('Guy-Wilson', r.row.id, d);
+    assert.ok(s.ok);
+    assert.match(s.text, /Subject: New subject/);
+    assert.match(s.text, /First line\.\n\nSee this \(https:\/\/example\.org\/x\)\.\n\n- a point/);
+    const page = await q.forPage('Guy-Wilson', NOW);
+    assert.strictEqual(page[0].subject, 'New subject'); assert.strictEqual(page[0].status, 'scheduled');
   });
   await check('cancel stops it; move to a time already gone is refused', async () => {
     q.__setTestPool(fakePool());

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId, buildAuthUrl } from '../utils/clientUtils.js';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, CreditCardIcon, SparklesIcon, HandRaisedIcon, SunIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, CreditCardIcon, SparklesIcon, HandRaisedIcon, SunIcon, ClockIcon } from '@heroicons/react/24/outline';
 import ClientCodeEntry from './ClientCodeEntry';
 
 // Lazy-load the help panel to keep initial bundle lean
@@ -309,6 +309,18 @@ const Layout = ({ children }) => {
                 >
                   <CogIcon className="h-5 w-5" />
                   <span className="hidden sm:inline">Settings</span>
+                </Link>
+              )}
+
+              {/* Scheduled - emails queued to send from Guy's own mailbox (coach only) */}
+              {getCurrentClientId() === 'Guy-Wilson' && (
+                <Link
+                  href={buildAuthUrl('/scheduled')}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
+                  title="Scheduled emails - see, approve, change or cancel what goes from your mailbox"
+                >
+                  <ClockIcon className="h-5 w-5" />
+                  <span className="hidden sm:inline">Scheduled</span>
                 </Link>
               )}
 
