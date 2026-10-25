@@ -312,6 +312,15 @@ const BRIEF_ANSWER = {
     const menu = library.menuFor({ record: [{ kind: 'custom', meta: { idea: beth.id } }], pastTips: ['Adam Grant'], seed: 'c|w', size: 40 });
     assert.ok(!menu.some((i) => i.id === beth.id || i.id === 'book-give-and-take'));
   });
+  await check('a Mindset Mastery edition they got on the list counts as had (its Gmail id, or its subject as the key)', () => {
+    const mm = library.ideas().filter((i) => i.source === 'mindset-mastery');
+    const [a, b] = mm;
+    const had = library.hadIds({ record: [
+      { kind: 'mindset', key: 'Mindset Mastery: something else', meta: { gmailMessageId: a.id.slice(3) } },
+      { kind: 'mindset', key: `Mindset Mastery: ${b.title}`, meta: {} },
+    ] });
+    assert.ok(had.has(a.id), 'by Gmail id'); assert.ok(had.has(b.id), 'by subject');
+  });
   await check('the menu mixes the three sources, best-rated first within each, and differs between clients', () => {
     const m = library.menuFor({ seed: 'a|2026-11-02', size: 6 });
     assert.strictEqual(m.length, 6);

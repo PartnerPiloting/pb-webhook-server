@@ -55,8 +55,12 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').r
 /** The ids this client has had: idea ids on their touches, and any idea whose title shows up in what they were sent. Pure. */
 function hadIds({ record = [], pastTips = [] } = {}, all = ideas()) {
   const had = new Set();
-  for (const r of record || []) if (r && r.meta && r.meta.idea) had.add(r.meta.idea);
-  const text = norm([...(pastTips || []), ...(record || []).map((r) => (r && r.meta ? `${r.meta.subject || ''} ${r.meta.body || ''}` : ''))].join(' \n '));
+  for (const r of record || []) {
+    if (r && r.meta && r.meta.idea) had.add(r.meta.idea);
+    // A Mindset Mastery edition they got on the list (kind 'mindset', backfilled from the Gmail send).
+    if (r && r.meta && r.meta.gmailMessageId) had.add(`mm-${r.meta.gmailMessageId}`);
+  }
+  const text = norm([...(pastTips || []), ...(record || []).map((r) => (r ? `${r.key || ''} ${r.meta ? `${r.meta.subject || ''} ${r.meta.body || ''}` : ''}` : ''))].join(' \n '));
   if (text) for (const i of all) if (i.match.some((m) => norm(m).length >= 6 && text.includes(norm(m)))) had.add(i.id);
   return had;
 }
