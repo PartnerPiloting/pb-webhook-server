@@ -476,7 +476,8 @@ ${QUALITY_BAR.body.join('\n\n')}
 Return ONE JSON object: {"subject": "short, specific to them, no brand name", "paragraphs": ["..."], "why": "one line for Guy: what in their world this speaks to"}. If there is genuinely nothing true and useful to say this week, return {"subject": "", "paragraphs": [], "why": "the reason"}.`;
 
 const TIPS_SYSTEM = `You write this week's weekly email from Guy Wilson - a network-building coach (I Know A Guy) - to one of his clients who is still getting set up. Guy asked for it: on top of their weekly call, they get one useful idea each week. Guy reads it closely before anything is sent.
-- WHAT IT IS ABOUT: GUY'S DIRECTION FOR THIS WEEK when there is one - follow it first, it beats everything below. Otherwise what GUY'S NOTE ON THEM says these emails are for (for example time management and inspiration from the personal development classics), and never what the note rules out. Only when neither says: ONE practical LinkedIn tip for finding or warming up the right people in their market.
+- WHAT IT IS ABOUT: GUY'S DIRECTION FOR THIS WEEK when there is one - follow it first, it beats everything below. Otherwise what GUY'S NOTE ON THEM says these emails are for (for example time management and inspiration from the personal development classics), and never what the note rules out. When neither says: one idea from THE IDEA LIBRARY below. Only with no library: ONE practical LinkedIn tip for finding or warming up the right people in their market.
+- THE IDEA LIBRARY: when there is one and nothing in Guy's direction or note says otherwise, take the ONE idea from it that suits them best right now, and give its id in "idea". The library only lists ideas they have not had. A book: as below. One of BETH BERGHAN'S EMAILS: retell the idea in Guy's words (never her wording), and end the email with a one-line P.S. crediting "my friend Beth Berghan". One of GUY'S OWN MINDSET MASTERY NOTES: it is Guy's own thinking - say it as his, no quote block and no credit.
 - ONE idea, not a list. From a book: name the book and author, and quote at most one short line (under 15 words) as a quote block, then say it in Guy's own words and why it matters to them now. A LinkedIn tip: something ready to use today (a Boolean search string on a paragraph of its own).
 - A QUOTE BLOCK is a paragraph that starts with "> "; put the credit on its last line after "- " (for example "> The line.\n- Author, Book"). At most one per email - it is shown in a highlighted box.
 - Never repeat PAST TIPS - a different idea or angle each week.
@@ -488,13 +489,13 @@ const TIPS_SYSTEM = `You write this week's weekly email from Guy Wilson - a netw
 - Do not deal with what Guy owes them - a separate personal note handles that.
 - Begin with the substance (no greeting) and stop before any sign-off: the system adds "Hi <name>,", a thought for the week, and "Cheers, Guy".
 - ${STYLE}
-Return ONE JSON object: {"subject": "short, says what the tip is, no brand name", "paragraphs": ["..."], "why": "one line for Guy: why this tip for them now"}. If there is genuinely nothing true and useful to say, return {"subject": "", "paragraphs": [], "why": "the reason"}.`;
+Return ONE JSON object: {"subject": "short, says what the tip is, no brand name", "paragraphs": ["..."], "idea": "the library id you used, or empty when the idea is not from the library", "watch": true or false - true only when the idea has a talk and a short watch would really suit this client this week (not for skimmers, not every week), "why": "one line for Guy: why this tip for them now"}. If there is genuinely nothing true and useful to say, return {"subject": "", "paragraphs": [], "why": "the reason"}.`;
 
 /**
  * This week's email written for them: in place of a piece that does not fit (notFit), or - tips set -
  * the weekly tips email Guy asked for (pastTips = what they have already had, so no tip repeats).
  */
-async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips = false, note = '', pastTips = [], arrives = null, nextSessionAt = null, direction = '' }) {
+async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips = false, note = '', pastTips = [], arrives = null, nextSessionAt = null, direction = '', library = [] }) {
   const user = [
     `CLIENT: ${client.clientName}${client.clientFirstName ? ` (first name ${client.clientFirstName})` : ''}.`,
     tips ? '' : `WHY NOTHING ON THE SHELF FITS: ${notFit}`,
@@ -502,6 +503,7 @@ async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips 
     tips && direction ? `GUY'S DIRECTION FOR THIS WEEK (follow it first): ${direction}` : '',
     tips && note ? `GUY'S NOTE ON THEM: ${note}` : '',
     tips && arr(pastTips).length ? ['PAST TIPS (never repeat one):', ...arr(pastTips).map((t) => `- ${t}`)].join('\n') : '',
+    tips && arr(library).length ? ['THE IDEA LIBRARY (ideas they have not had - pick one, give its id):', ...arr(library)].join('\n') : '',
     firstWeekly ? 'This is the FIRST weekly email they will ever get from Guy (a one-line note about the weekly emails is added after it).' : '',
     '', 'TRUE NOW:', ...arr(brief.trueNow).map((t) => `- ${t}`),
     '', 'WINS:', ...arr(brief.wins).map((w) => `- ${w.what}${w.date ? ` (${w.date})` : ''}`),
@@ -512,7 +514,7 @@ async function draftCustomEmail(llm, { client, brief, notFit, firstWeekly, tips 
   ].filter((x) => x !== '').join('\n');
   const j = await ask(llm, { system: tips ? TIPS_SYSTEM : CUSTOM_SYSTEM, user, effort: 'medium' });
   const paragraphs = arr(j.paragraphs).map((p) => dash(String(p).trim())).filter(Boolean);
-  return { subject: str(j.subject), paragraphs, why: str(j.why) };
+  return { subject: str(j.subject), paragraphs, why: str(j.why), idea: str(j.idea), watch: j.watch === true };
 }
 
 /**

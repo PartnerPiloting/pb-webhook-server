@@ -236,7 +236,8 @@
       "messageId": "19f07c186956ba48",
       "idea": "Being curious about other people builds connection faster than trying to impress them.",
       "fit": 5,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19f07c186956ba48"
     },
     {
       "date": "2026-06-19",
@@ -244,7 +245,8 @@
       "messageId": "19edfbbab24eb0b4",
       "idea": "Experienced people shrink around AI by judging themselves on old rules. Their judgement still matters.",
       "fit": 2,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19edfbbab24eb0b4"
     },
     {
       "date": "2026-06-13",
@@ -252,7 +254,8 @@
       "messageId": "19ebf3f461f370f3",
       "idea": "Too many open loops make a busy day feel empty. Close a few to feel real progress.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19ebf3f461f370f3"
     },
     {
       "date": "2026-05-16",
@@ -260,7 +263,8 @@
       "messageId": "1a0acfabc2b37192",
       "idea": "Boring basics, repeated without negotiating with yourself, give results you can rely on.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-1a0acfabc2b37192"
     },
     {
       "date": "2026-05-09",
@@ -268,7 +272,8 @@
       "messageId": "19e0aa6cbb0b1630",
       "idea": "Motivation is a mood that comes and goes. Momentum from small started actions keeps you moving.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19e0aa6cbb0b1630"
     },
     {
       "date": "2026-05-02",
@@ -276,7 +281,8 @@
       "messageId": "19de6104da45a86e",
       "idea": "Being reliable and low-fuss can make you invisible unless you also speak up about your value.",
       "fit": 4,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19de6104da45a86e"
     },
     {
       "date": "2026-04-04",
@@ -284,7 +290,8 @@
       "messageId": "19d55f1a3bc6efd2",
       "idea": "Experiences compound like money, so make meaningful memories now rather than later.",
       "fit": 2,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19d55f1a3bc6efd2"
     },
     {
       "date": "2026-01-24",
@@ -292,7 +299,8 @@
       "messageId": "19beef22b508c3ac",
       "idea": "Passion usually grows from skill and mastery rather than coming first.",
       "fit": 2,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19beef22b508c3ac"
     },
     {
       "date": "2026-01-08",
@@ -300,7 +308,8 @@
       "messageId": "19b9f9fab22c1a1d",
       "idea": "Pick the one goal that matters and let the rest of the noise go.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19b9f9fab22c1a1d"
     },
     {
       "date": "2025-12-12",
@@ -308,7 +317,8 @@
       "messageId": "19b1493f720cd3bc",
       "idea": "Really listening is a bold move. People trust and remember the person who truly heard them.",
       "fit": 5,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19b1493f720cd3bc"
     },
     {
       "date": "2025-12-04",
@@ -316,7 +326,8 @@
       "messageId": "19aeb4a03e5161b6",
       "idea": "Flip an autopilot routine on purpose to get fresh thinking and different results.",
       "fit": 2,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19aeb4a03e5161b6"
     },
     {
       "date": "2025-11-21",
@@ -324,7 +335,8 @@
       "messageId": "19aa51a54c13b272",
       "idea": "Swap going round in circles about a problem for one small concrete next step.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19aa51a54c13b272"
     },
     {
       "date": "2025-11-14",
@@ -332,7 +344,8 @@
       "messageId": "19a8003007a2754c",
       "idea": "You can't sell yourself well, but people in genuine relationships with you will do it for you.",
       "fit": 5,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19a8003007a2754c"
     },
     {
       "date": "2025-11-07",
@@ -340,7 +353,8 @@
       "messageId": "19a5c338b355191e",
       "idea": "Take the lesson from a finished conversation, then stop replaying it in your head.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19a5c338b355191e"
     },
     {
       "date": "2025-10-30",
@@ -348,7 +362,8 @@
       "messageId": "19a36d71fc30a269",
       "idea": "You can't force people to take ownership. You invite it with trust, clarity and space.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19a36d71fc30a269"
     },
     {
       "date": "2025-10-23",
@@ -356,7 +371,8 @@
       "messageId": "19a12aae16bedf3e",
       "idea": "Small habits through the day keep your energy steady instead of crashing.",
       "fit": 2,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19a12aae16bedf3e"
     },
     {
       "date": "2025-10-17",
@@ -364,7 +380,8 @@
       "messageId": "199ef9ff1ef93838",
       "idea": "Lessons most of us learn the hard way, passed on so others can skip the pain.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-199ef9ff1ef93838"
     },
     {
       "date": "2025-10-09",
@@ -372,7 +389,8 @@
       "messageId": "199cabb3df00b1f1",
       "idea": "Have the tricky conversation early, before it grows into a tough one.",
       "fit": 4,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-199cabb3df00b1f1"
     },
     {
       "date": "2025-09-26",
@@ -380,7 +398,8 @@
       "messageId": "199883733f4f34bd",
       "idea": "Stop trying to control what other people do. Put your energy into how you respond.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-199883733f4f34bd"
     },
     {
       "date": "2025-09-19",
@@ -388,7 +407,8 @@
       "messageId": "1995fc5ac402bf31",
       "idea": "Guard blocks of distraction-free time for the work that really moves things.",
       "fit": 2,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-1995fc5ac402bf31"
     },
     {
       "date": "2025-09-13",
@@ -396,7 +416,8 @@
       "messageId": "19941203435cbd39",
       "idea": "A deliberate morning routine sets the tone for everything that follows.",
       "fit": 2,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19941203435cbd39"
     },
     {
       "date": "2025-09-04",
@@ -404,7 +425,8 @@
       "messageId": "1991679b16d11e03",
       "idea": "Spend your energy on what you can influence, not on what you can't.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-1991679b16d11e03"
     },
     {
       "date": "2025-08-29",
@@ -412,7 +434,8 @@
       "messageId": "198f44be1da4532d",
       "idea": "Reinvent yourself and stay visible before change forces your hand.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-198f44be1da4532d"
     },
     {
       "date": "2025-08-22",
@@ -420,7 +443,8 @@
       "messageId": "198cf1bb1991ef6f",
       "idea": "Doing one more rep, call or attempt past where you'd stop adds up to real growth.",
       "fit": 4,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-198cf1bb1991ef6f"
     },
     {
       "date": "2025-08-15",
@@ -428,7 +452,8 @@
       "messageId": "198ab7385c9dfb01",
       "idea": "Persuasion follows learnable principles like reciprocity, liking and social proof.",
       "fit": 4,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-198ab7385c9dfb01"
     },
     {
       "date": "2025-08-07",
@@ -436,7 +461,8 @@
       "messageId": "19886d8184b0dd58",
       "idea": "Getting older can't be avoided, but growing old in your outlook is optional.",
       "fit": 2,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-19886d8184b0dd58"
     },
     {
       "date": "2025-07-31",
@@ -444,7 +470,8 @@
       "messageId": "198627fce10541c0",
       "idea": "Question the rules you inherited and never chose. Many no longer serve you.",
       "fit": 2,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-198627fce10541c0"
     },
     {
       "date": "2025-07-17",
@@ -452,7 +479,8 @@
       "messageId": "1981aa5bed8b995d",
       "idea": "Respect takes years to build and one careless moment to lose.",
       "fit": 4,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-1981aa5bed8b995d"
     },
     {
       "date": "2025-07-04",
@@ -460,7 +488,8 @@
       "messageId": "197d34a498bffe75",
       "idea": "When trust is high, everything moves faster and costs less.",
       "fit": 5,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-197d34a498bffe75"
     },
     {
       "date": "2025-06-26",
@@ -468,7 +497,8 @@
       "messageId": "197ae8d3be2faa86",
       "idea": "Choose the few things that matter most and do them well, or others will choose for you.",
       "fit": 3,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-197ae8d3be2faa86"
     },
     {
       "date": "2025-06-20",
@@ -476,7 +506,8 @@
       "messageId": "1978b566806d82e5",
       "idea": "Generous givers who protect themselves from takers end up most successful.",
       "fit": 5,
-      "source": "mindset-mastery"
+      "source": "mindset-mastery",
+      "id": "mm-1978b566806d82e5"
     }
   ],
   "beth": [
@@ -489,8 +520,9 @@
       "fit": 5,
       "theme": "trust",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19e4c203cf1dcce6"
     },
     {
       "date": "2026-09-27",
@@ -501,8 +533,9 @@
       "fit": 5,
       "theme": "visibility",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1a0e1e12f8d007a3"
     },
     {
       "date": "2025-08-01",
@@ -513,8 +546,9 @@
       "fit": 5,
       "theme": "trust",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1986404fecdd7848"
     },
     {
       "date": "2025-08-29",
@@ -525,8 +559,9 @@
       "fit": 5,
       "theme": "relationships",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-198f441142b6b5f2"
     },
     {
       "date": "2024-12-06",
@@ -537,8 +572,9 @@
       "fit": 5,
       "theme": "relationships",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1939a701316bbc6e"
     },
     {
       "date": "2026-08-23",
@@ -549,8 +585,9 @@
       "fit": 5,
       "theme": "courage",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1a02da2a1d88a7f7"
     },
     {
       "date": "2025-12-26",
@@ -561,8 +598,9 @@
       "fit": 5,
       "theme": "trust",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19b5907877651a23"
     },
     {
       "date": "2025-06-06",
@@ -573,8 +611,9 @@
       "fit": 5,
       "theme": "trust",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-197439d2dc64a263"
     },
     {
       "date": "2023-02-10",
@@ -585,8 +624,9 @@
       "fit": 5,
       "theme": "relationships",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-18639d233cb2bfb3"
     },
     {
       "date": "2025-07-18",
@@ -597,8 +637,9 @@
       "fit": 5,
       "theme": "follow-up",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "good",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1981bda5aaca001f"
     },
     {
       "date": "2023-06-02",
@@ -609,8 +650,9 @@
       "fit": 5,
       "theme": "follow-up",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1887aac8e17379ee"
     },
     {
       "date": "2026-08-16",
@@ -621,8 +663,9 @@
       "fit": 4,
       "theme": "visibility",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1a00995fb5116490"
     },
     {
       "date": "2023-03-10",
@@ -633,8 +676,9 @@
       "fit": 4,
       "theme": "relationships",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-186c9dae4b8b5e11"
     },
     {
       "date": "2026-05-03",
@@ -645,8 +689,9 @@
       "fit": 4,
       "theme": "listening",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19decda54362f0f9"
     },
     {
       "date": "2026-04-09",
@@ -657,8 +702,9 @@
       "fit": 4,
       "theme": "listening",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "good",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19d73d4d98e7652c"
     },
     {
       "date": "2025-02-21",
@@ -669,8 +715,9 @@
       "fit": 4,
       "theme": "listening",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19526d43a1e2fd41"
     },
     {
       "date": "2023-12-15",
@@ -681,8 +728,9 @@
       "fit": 4,
       "theme": "visibility",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-18c6be66599a2702"
     },
     {
       "date": "2026-07-09",
@@ -693,8 +741,9 @@
       "fit": 4,
       "theme": "mindset",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19f48777dfdd557c"
     },
     {
       "date": "2026-06-18",
@@ -705,8 +754,9 @@
       "fit": 4,
       "theme": "courage",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19edc51fc22f9ae3"
     },
     {
       "date": "2025-02-28",
@@ -717,8 +767,9 @@
       "fit": 4,
       "theme": "relationships",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "good",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1954ae10bd53fa6f"
     },
     {
       "date": "2025-04-18",
@@ -729,8 +780,9 @@
       "fit": 4,
       "theme": "courage",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "good",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-196473794301adae"
     },
     {
       "date": "2026-08-27",
@@ -741,8 +793,9 @@
       "fit": 4,
       "theme": "courage",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "good",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1a044cf19a7ed6d2"
     },
     {
       "date": "2026-10-08",
@@ -753,8 +806,9 @@
       "fit": 4,
       "theme": "visibility",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "skip",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1a11d1a2dfca1eb8"
     },
     {
       "date": "2026-07-02",
@@ -765,8 +819,9 @@
       "fit": 4,
       "theme": "follow-up",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19f246af34e39458"
     },
     {
       "date": "2025-12-12",
@@ -777,8 +832,9 @@
       "fit": 4,
       "theme": "relationships",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "good",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19b10ee6940e096b"
     },
     {
       "date": "2025-11-07",
@@ -789,8 +845,9 @@
       "fit": 4,
       "theme": "generosity",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19a5caff91a55104"
     },
     {
       "date": "2022-07-22",
@@ -801,8 +858,9 @@
       "fit": 4,
       "theme": "relationships",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "skip",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-182248a91090d081"
     },
     {
       "date": "2020-12-11",
@@ -813,8 +871,9 @@
       "fit": 4,
       "theme": "relationships",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1764f1bed39c4c1a"
     },
     {
       "date": "2026-09-06",
@@ -825,8 +884,9 @@
       "fit": 4,
       "theme": "resilience",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1a075bb83bcb08f2"
     },
     {
       "date": "2026-06-11",
@@ -837,8 +897,9 @@
       "fit": 4,
       "theme": "mindset",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19eb845708d1b691"
     },
     {
       "date": "2026-06-28",
@@ -849,8 +910,9 @@
       "fit": 3,
       "theme": "habits",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19f0d3e5fbf97ff7"
     },
     {
       "date": "2025-11-14",
@@ -861,8 +923,9 @@
       "fit": 3,
       "theme": "trust",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "skip",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19a80bc651c19830"
     },
     {
       "date": "2026-08-06",
@@ -873,8 +936,9 @@
       "fit": 3,
       "theme": "time",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "good",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19fd8a9a4f72826f"
     },
     {
       "date": "2026-02-06",
@@ -885,8 +949,9 @@
       "fit": 3,
       "theme": "courage",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19c30e4b17a413c1"
     },
     {
       "date": "2026-01-30",
@@ -897,8 +962,9 @@
       "fit": 3,
       "theme": "time",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19c0cd807bc7c65e"
     },
     {
       "date": "2026-06-25",
@@ -909,8 +975,9 @@
       "fit": 3,
       "theme": "habits",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19f005e8596a72e3"
     },
     {
       "date": "2025-12-05",
@@ -921,8 +988,9 @@
       "fit": 3,
       "theme": "visibility",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19aece207ff172a9"
     },
     {
       "date": "2022-08-05",
@@ -933,8 +1001,9 @@
       "fit": 3,
       "theme": "courage",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-1826cae8f4ebb3d2"
     },
     {
       "date": "2026-04-16",
@@ -945,8 +1014,9 @@
       "fit": 3,
       "theme": "courage",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-19d97e163d3240ea"
     },
     {
       "date": "2024-01-19",
@@ -957,8 +1027,10 @@
       "fit": 3,
       "theme": "mindset",
       "source": "beth",
-      "rating": null,
-      "credit": "my friend Beth Berghan"
+      "rating": "best",
+      "credit": "my friend Beth Berghan",
+      "id": "beth-18d201cde5c46f3f"
     }
-  ]
+  ],
+  "ratedAt": "2026-10-25"
 }

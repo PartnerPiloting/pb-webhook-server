@@ -676,10 +676,13 @@ async function deliver(row, deps = {}) {
     try {
       const ts = deps.touchStore || require('./clientTouchStore');
       const ps = deps.planStore || require('./clientTouchPlanStore');
+      // The idea this week's planner email carried (the library), so next week's menu leaves it out.
+      const plan = await Promise.resolve(ps.planFor ? ps.planFor(ps.weekOf(new Date(sentAt)), row.clientId) : null).catch(() => null);
+      const idea = plan && plan.pick && plan.pick.idea ? plan.pick.idea.id : null;
       await ts.record({
         clientId: row.clientId, kind: 'custom', key: `scheduled:${row.id}`, form: 'one-off', sentAt: new Date(sentAt),
         reason: 'Guy scheduled his own weekly email', source: 'planner', recipient: row.to[0].email,
-        meta: { weekOf: ps.weekOf(new Date(sentAt)), subject: row.subject, body: mail.htmlToText(prepared.html).slice(0, 4000), via: 'scheduled' },
+        meta: { weekOf: ps.weekOf(new Date(sentAt)), subject: row.subject, body: mail.htmlToText(prepared.html).slice(0, 4000), via: 'scheduled', ...(idea ? { idea } : {}) },
       });
     } catch (e) { extra.push(`⚠ touch record not written (${e.message})`); }
     try {

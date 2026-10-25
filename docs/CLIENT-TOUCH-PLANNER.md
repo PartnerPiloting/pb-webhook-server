@@ -161,6 +161,34 @@ sorted into one of three kinds:
 **One idea per email.** A link only when the depth already exists (the playbook, another piece),
 at most one per email, and never as a way to squeeze in a second idea.
 
+### The idea library - where the weekly idea emails get their idea (25 Oct 2026)
+
+`content/inspiration-library.json`, read by `services/inspirationLibrary.js`. Three sources, all used:
+19 books (Guy kept every one; each has its idea, how it fits clients, and a short talk by the author,
+checked and stored in the asset library as `talk_*`), Guy's own Mindset Mastery editions (fit 3 and up),
+and Beth Berghan's best 40 emails, which Guy rated on a page (30 Best, 7 Good, 3 Skip - Skip and
+unrated never go).
+
+How it is used, for the idea email (the `weekly-tips` and `steered` rules):
+
+- The planner gives the drafter a **menu of six** ideas this client has not had - best-rated first,
+  taken in turn from books, Mindset Mastery and Beth so it is never all one source, in a different
+  order for each client. Guy's direction for the week and his note on the client still come first.
+- The drafter picks one and says which (`idea`). It is kept on the row (`pick.idea`) and on the touch
+  when the email goes (`meta.idea` - planner sends, and scheduled weekly sends copy it from that week's
+  row), so it never comes round again for that client.
+- **"Already had"** also reads what they were sent: a book's title or author, or Beth's subject, in an
+  earlier email counts. Over-cautious on purpose (a Stephen Covey email rules out both Coveys).
+- A book: one short quote in the box with its credit. Beth: retold in Guy's words, P.S. credit to
+  "my friend Beth Berghan". Mindset Mastery: Guy's own thinking - no quote box, no credit.
+- **Watch line:** only when the drafter says a short watch suits this client this week, the idea has
+  a talk, and the asset is active - then "Watch: <talk> (N min)" goes under the idea. A retired or
+  missing asset means no line, never a dead link.
+
+To change what goes: re-rate on the page (https://claude.ai/artifact/UHykFNCGyjptQFmpX5miY7), then copy
+the ratings into the JSON; add or drop an idea in the JSON. `node tests/client-touch-brief.test.js`
+covers the menu, the "already had" check and the Watch line.
+
 ## Monthly inner-circle connections (Guy, 22 Oct - to build after the deep client brief)
 
 Once a month every graduated client gets ONE person in the inner circle to reach out to, chosen for

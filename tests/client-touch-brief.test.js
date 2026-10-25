@@ -294,6 +294,51 @@ const BRIEF_ANSWER = {
     assert.match(out.body.bodyHtml, /<blockquote style="[^"]*border-left:4px solid[^"]*"><div[^>]*>The key is not to prioritize what is on your schedule\.<\/div><div[^>]*>Stephen Covey<\/div><\/blockquote>/);
     assert.match(out.body.bodyHtml, /<p>I am reaching out to people leaving corporate\.<\/p>/);
   });
+  console.log('the idea library');
+  const library = require('../services/inspirationLibrary');
+  await check('the library: ids unique, Skip and unrated Beth never offered, weak Mindset Mastery fits left out', () => {
+    const lib = library.load();
+    const all = library.ideas();
+    assert.strictEqual(new Set(all.map((i) => i.id)).size, all.length);
+    for (const b of lib.beth.filter((x) => x.rating === 'skip' || !x.rating)) assert.ok(!all.some((i) => i.id === b.id), `${b.subject} must not be offered`);
+    for (const m of lib.mindsetMastery.filter((x) => x.fit < 3)) assert.ok(!all.some((i) => i.id === m.id));
+    assert.strictEqual(all.filter((i) => i.source === 'book').length, lib.books.length);
+  });
+  await check('the menu leaves out what they had - an idea id on a touch, or a book named in what they were sent', () => {
+    const all = library.ideas();
+    const beth = all.find((i) => i.source === 'beth');
+    const had = library.hadIds({ record: [{ kind: 'custom', meta: { idea: beth.id, subject: 's', body: 'b' } }], pastTips: ['A thought from Adam Grant on givers and takers'] });
+    assert.ok(had.has(beth.id)); assert.ok(had.has('book-give-and-take'));
+    const menu = library.menuFor({ record: [{ kind: 'custom', meta: { idea: beth.id } }], pastTips: ['Adam Grant'], seed: 'c|w', size: 40 });
+    assert.ok(!menu.some((i) => i.id === beth.id || i.id === 'book-give-and-take'));
+  });
+  await check('the menu mixes the three sources, best-rated first within each, and differs between clients', () => {
+    const m = library.menuFor({ seed: 'a|2026-11-02', size: 6 });
+    assert.strictEqual(m.length, 6);
+    assert.deepStrictEqual(new Set(m.map((i) => i.source)), new Set(['book', 'beth', 'mindset-mastery']));
+    assert.ok(m.slice(0, 3).every((i) => i.rank === 0), 'the first round is all best-rated');
+    const other = library.menuFor({ seed: 'b|2026-11-02', size: 6 });
+    assert.notDeepStrictEqual(m.map((i) => i.id), other.map((i) => i.id));
+  });
+  await check('the tips drafter gets the menu; the idea it used rides on the row; Watch only with a live asset', async () => {
+    const menu = library.menuFor({ seed: `${CLIENT.clientId}|2026-11-02` });
+    const withTalk = library.ideas().find((i) => i.link && i.link.asset);
+    const fakeLib = { menuFor: () => [withTalk, ...menu], menuLines: library.menuLines };
+    const { llm, llmFor } = deps({ ...ANSWERS, tips: { subject: 'Who, not how', paragraphs: ['Ask who can help.'], idea: withTalk.id, watch: true, why: 'fits' } });
+    const assets = [{ asset_key: withTalk.link.asset, url: 'https://example.com/talk', status: 'active' }];
+    const tipsPick = { what: null, rule: 'weekly-tips', reason: 'r' };
+    const args = { pick: tipsPick, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'onboarding', noteText: 'weekly tips' }, week: '2026-11-02', llmFor, at: AT };
+    const out = await planner.deepen(args, { library: fakeLib, assets });
+    assert.match(llm.calls.find((c) => c.kind === 'tips').user, new RegExp(`THE IDEA LIBRARY[^\\n]*\\n- \\[${withTalk.id}\\]`));
+    assert.deepStrictEqual(out.pick.idea, { id: withTalk.id, source: withTalk.source, title: withTalk.title, watch: true });
+    assert.ok(out.body.bodyHtml.includes('<p>Watch: <a href="https://example.com/talk">'));
+    const retired = await planner.deepen(args, { library: fakeLib, assets: [{ ...assets[0], status: 'retired' }] });
+    assert.ok(!retired.body.bodyHtml.includes('Watch:')); assert.strictEqual(retired.pick.idea.watch, false);
+    const { llmFor: lf2 } = deps({ ...ANSWERS, tips: { subject: 'S', paragraphs: ['p'], idea: 'not-on-the-menu', watch: true, why: 'w' } });
+    const made = await planner.deepen({ ...args, llmFor: lf2 }, { library: fakeLib, assets });
+    assert.strictEqual(made.pick.idea, undefined, 'an id that was not offered is not recorded'); assert.ok(!made.body.bodyHtml.includes('Watch:'));
+  });
+
   await check('a "> " paragraph is a quote box with its credit; anything else stays a plain, escaped paragraph', () => {
     assert.deepStrictEqual(briefs.asQuote('> Schedule your priorities.\n- Stephen Covey, The 7 Habits'), { text: 'Schedule your priorities.', credit: 'Stephen Covey, The 7 Habits' });
     assert.deepStrictEqual(briefs.asQuote('> Just a line'), { text: 'Just a line', credit: '' });
