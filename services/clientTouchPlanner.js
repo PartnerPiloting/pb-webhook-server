@@ -641,7 +641,7 @@ function composeEmail({ client, opening: openingText, body, unsubscribeUrl, base
   const isPiece = kind ? PIECE_KINDS.has(kind) : !!body.title;
   if (isPiece && body.title) parts.push(`<p style="margin-top:22px"><strong>${esc(body.title)}</strong></p>`);
   parts.push(body.bodyHtml || '');
-  if (thought && thought.text) parts.push(briefs.quoteHtml(thought.text, { label: 'A thought for the week' }));
+  if (thought && thought.text) parts.push(briefs.quoteHtml(thought.text, { label: 'A thought for the week', credit: thought.credit || '' }));
   if (firstWeekly) parts.push(`<p>${esc(FIRST_WEEKLY_NOTE)}</p>`);
   parts.push('<p>Cheers,<br>Guy</p>');
   parts.push(`<p style="margin-top:28px;font-size:12px;color:#888">Rather not get these weekly emails? <a href="${esc(unsubscribeUrl || '#')}" style="color:#888">Unsubscribe</a></p>`);
@@ -689,6 +689,14 @@ function guardText({ pick, opening, bodyHtml }) {
  * Returns { pick, body, firstThings, customDeclined }. Throws only BudgetError.
  * deps.briefs for tests; llmFor(purpose) -> a metered llm or null.
  */
+// The weekly IDEA slots (Guy, 26 Oct 2026: "make every client's weekly email take its idea from the
+// library"): a mindset piece, a re-send, nothing left on the shelf, or nothing yet because no invitation
+// has gone out - each becomes this week's idea email, written for them from the library. The emails set
+// off by something (the welcome, an event, a call problem, a stuck stop, a call offer, a setup step) and
+// the method run stay as they are, and carry a library idea as their thought for the week.
+const LIBRARY_SLOTS = new Set(['mindset-rhythm', 'reinforce', 'nothing-left', 'waiting-for-invitations']);
+const ideaSlot = (pick) => !!pick && (pick.rule === 'weekly-tips' || pick.rule === 'steered' || LIBRARY_SLOTS.has(pick.rule));
+
 async function deepen({ pick, body, brief, client, facts, factLinesNow = [], week, firstWeekly = false, pastTips = [], record = [], llmFor = () => null, at = Date.now() }, deps = {}) {
   const b = deps.briefs || briefs;
   const out = { pick, body, firstThings: null, customDeclined: null };
@@ -709,19 +717,18 @@ async function deepen({ pick, body, brief, client, facts, factLinesNow = [], wee
   }
 
   let notFit = null;
-  if (pick.what && PIECE_KINDS.has(pick.what.kind) && pick.rule !== 'pinned' && body && !body.error && llmFor('fit')) {
+  if (pick.what && PIECE_KINDS.has(pick.what.kind) && pick.rule !== 'pinned' && !LIBRARY_SLOTS.has(pick.rule) && body && !body.error && llmFor('fit')) {
     try {
       const text = [body.template === 'first-email' ? FIRST_EMAIL.congrats : '', briefs.htmlText(body.bodyHtml)].filter(Boolean).join('\n');
       const fit = await b.judgeFit(llmFor('fit'), { client, brief, piece: { title: body.title, text } });
       if (!fit.fits) notFit = `"${body.title}" - ${fit.why || 'it does not fit where they are'}`;
     } catch (e) { budget(e); logger.warn(`fit check for ${client.clientId} skipped: ${e.message}`); }
-  } else if (!pick.what && pick.rule === 'waiting-for-invitations' && facts && facts.group === 'running') {
-    notFit = 'no invitation has gone out yet, so the welcome and the opening run cannot start';
   }
   const steered = !pick.what && pick.rule === 'steered';
-  const tips = !pick.what && (pick.rule === 'weekly-tips' || steered);
+  const tips = steered || (!pick.what && pick.rule === 'weekly-tips') || LIBRARY_SLOTS.has(pick.rule);
   if (steered) notFit = 'written to your direction for this week';
-  else if (tips) notFit = 'in onboarding - the weekly email their note asks for';
+  else if (pick.rule === 'weekly-tips') notFit = 'in onboarding - the weekly email their note asks for';
+  else if (tips) notFit = `this week's idea, from the library (in place of: ${pick.reason || pick.rule})`;
   // The idea library (Guy, 25 Oct 2026): a short menu of ideas they have not had, for the idea email.
   const lib = deps.library || library;
   let menu = [];
@@ -769,6 +776,13 @@ async function watchLink(idea, deps = {}) {
 function plannedTipFrom(row) {
   if (!row || row.sentAt || !row.subject || !['proposed', 'approved', 'held'].includes(row.status)) return [];
   return [`${row.subject}: ${briefs.htmlText(row.bodyHtml || '').replace(/\s+/g, ' ').slice(0, 300)}`];
+}
+
+/** The library idea an email carries - its body's, or its thought for the week's. Pure. */
+function ideaOf(pick) {
+  if (pick && pick.idea && pick.idea.id) return pick.idea.id;
+  if (pick && pick.thought && pick.thought.library) return pick.thought.slug;
+  return null;
 }
 
 /** A custom email Guy pinned in his own words: it goes as he wrote it, top to bottom. Pure. */
@@ -882,7 +896,7 @@ async function buildPlan(coachClientId, opts = {}) {
         body = await buildBody(pick, { coach, client, week, firstEmail, pin: pick.rule === 'pinned' ? (facts.pin || facts.pinForEveryone) : null });
       }
       if (brief) {
-        const lastWeek = !pick.what && (pick.rule === 'weekly-tips' || pick.rule === 'steered') ? await planStore.planFor(planStore.addWeeks(week, -1), client.clientId).catch(() => null) : null;
+        const lastWeek = ideaSlot(pick) ? await planStore.planFor(planStore.addWeeks(week, -1), client.clientId).catch(() => null) : null;
         deep = await deepen({ pick, body, brief, client, facts, factLinesNow: liveLines, week, firstWeekly, pastTips: [...plannedTipFrom(lastWeek), ...pastTipsFrom(record)], record, llmFor, at });
         pick = deep.pick;
         body = deep.body;
@@ -924,9 +938,12 @@ async function buildPlan(coachClientId, opts = {}) {
       // A thought for the week, when the body is not itself a one-pager piece - chosen from the
       // client's own world (their calls, emails and note), with a one-line why for Guy.
       let thought = null;
-      if (pick.what && !body.error && pick.what.kind !== 'one-pager') {
+      if (pick.what && !body.error && pick.what.kind !== 'one-pager' && !pick.idea) {
         const llm = opts.thoughtLlm !== undefined ? opts.thoughtLlm : llmFor('thought');
+        let libraryThoughts = [];
+        try { libraryThoughts = library.menuFor({ record, seed: `${client.clientId}|${week}|thought`, size: 8 }); } catch (e) { logger.warn(`idea library unread for ${client.clientId}: ${e.message}`); }
         thought = await require('./clientTouchThought').chooseThoughtForClient({
+          library: libraryThoughts,
           facts, shelf, client, record, material: material || { note: facts.noteText },
           exclude: [pick.what.key, ...(pick.replaces && pick.replaces.what ? [pick.replaces.what.key] : [])], now: at, seed: `${client.clientId}|${week}`, llm: opts.openings === false ? null : llm,
           pieceThisWeek: `${pick.what.title} (${pick.what.kind === 'call' ? 'an offer of times for a call' : pick.what.kind === 'custom' ? `an email written for them: ${briefs.htmlText(body.bodyHtml)}` : pick.what.kind})`, logger,
@@ -1259,7 +1276,7 @@ async function sendApproved(coachClientId, week, deps = {}) {
     await ts.record({
       clientId: row.clientId, kind, key: row.pick.what.key, form: row.pick.form, sentAt: new Date(),
       reason: row.pick.reason, source: 'planner', recipient: to,
-      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '', firstWeekly, ...(row.pick.thought ? { thought: row.pick.thought.slug } : {}), ...(row.pick.idea ? { idea: row.pick.idea.id } : {}), ...(offeredSlots ? { slots: offeredSlots.map((x) => x.time) } : {}), ...(kind === 'custom' ? { body: briefs.htmlText(bodyHtml).slice(0, 4000), replaces: row.pick.replaces || null } : {}), ...(kind === 'one-off' ? { body: briefs.htmlText(bodyHtml).slice(0, 4000) } : {}) },
+      meta: { weekOf: week, rule: row.pick.rule, subject: row.subject, mailgunId: res.id || null, opening: row.opening || '', firstWeekly, ...(row.pick.thought ? { thought: row.pick.thought.slug } : {}), ...(ideaOf(row.pick) ? { idea: ideaOf(row.pick) } : {}), ...(offeredSlots ? { slots: offeredSlots.map((x) => x.time) } : {}), ...(kind === 'custom' ? { body: briefs.htmlText(bodyHtml).slice(0, 4000), replaces: row.pick.replaces || null } : {}), ...(kind === 'one-off' ? { body: briefs.htmlText(bodyHtml).slice(0, 4000) } : {}) },
     });
     await ps.setPlanStatus(week, row.clientId, 'sent', { sentAt: new Date() });
     sent++;
@@ -1837,6 +1854,8 @@ module.exports = {
   // pure, tested
   stillAsBuilt,
   plannedTipFrom,
+  ideaOf,
+  ideaSlot,
   ownWordsPin,
   firstThingsOpen,
   guardText,

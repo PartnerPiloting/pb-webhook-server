@@ -185,6 +185,20 @@ How it is used, for the idea email (the `weekly-tips` and `steered` rules):
   a talk, and the asset is active - then "Watch: <talk> (N min)" goes under the idea. A retired or
   missing asset means no line, never a dead link.
 
+**Every client, from 26 Oct 2026** (Guy: "make every client's weekly email take its idea from the
+library"):
+
+- **The idea weeks become the library idea email** - the weeks the planner would have sent a mindset
+  piece (`mindset-rhythm`), a re-send (`reinforce`), nothing (`nothing-left`), or nothing yet because no
+  invitation has gone out (`waiting-for-invitations`). Written for that client from the brief, as above.
+  It carries no thought for the week - one idea per email.
+- **The emails set off by something stay as they are** - the welcome, an event (a campaign running low,
+  say), a call problem, a stuck stop, a promised next piece, a call offer, a setup step, the method run
+  (`next-in-order`) and Guy's pins. Where one of those carries a thought for the week, the thought is a
+  library idea in a line ("From <book>", "From my friend Beth Berghan", none for Guy's own notes), and it
+  counts as had.
+- Onboarding stays quiet unless the note asks for weekly tips (the session is the touch).
+
 To change what goes: re-rate on the page (https://claude.ai/artifact/UHykFNCGyjptQFmpX5miY7), then copy
 the ratings into the JSON; add or drop an idea in the JSON. `node tests/client-touch-brief.test.js`
 covers the menu, the "already had" check and the Watch line.

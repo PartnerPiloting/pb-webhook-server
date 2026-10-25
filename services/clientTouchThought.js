@@ -56,22 +56,27 @@ const t = (v) => { const x = v ? new Date(v).getTime() : NaN; return Number.isNa
  * The nuggets this client may get this week: every approved piece with a nugget, except this
  * week's body piece (in `exclude`) and the one they got as a thought last week. Pure.
  */
-function eligible(shelf, record, { nuggets = loadNuggets(), exclude = [], now = Date.now() } = {}) {
+function eligible(shelf, record, { nuggets = loadNuggets(), exclude = [], now = Date.now(), library = null } = {}) {
   const skip = new Set(exclude);
   const cutoff = now - LAST_WEEK_DAYS * DAY;
   for (const r of record || []) {
     const at = t(r.sent_at);
     if (at !== null && at >= cutoff && r.meta && r.meta.thought) skip.add(r.meta.thought);
   }
+  // The idea library (26 Oct 2026): when the planner offers ideas from it, the thought is one of those -
+  // the idea in a line, with where it comes from (none for Guy's own Mindset Mastery notes).
+  if (library && library.length) {
+    return library.filter((i) => !skip.has(i.id)).map((i) => ({ slug: i.id, title: i.title, text: i.idea, credit: i.source === 'book' ? `From ${i.title}` : i.source === 'beth' ? 'From my friend Beth Berghan' : '', library: true, labels: {} }));
+  }
   return (shelf || []).filter((p) => p && p.status === 'final' && nuggets[p.slug] && !skip.has(p.slug))
     .map((p) => ({ slug: p.slug, title: p.title, text: nuggets[p.slug], labels: p.labels || {} }));
 }
 
 /** The fallback choice from the labels: journey stop, then call problems, then a stable shuffle. Pure. */
-function chooseThought(facts, shelf, record, { nuggets = loadNuggets(), exclude = [], now = Date.now(), seed = '' } = {}) {
+function chooseThought(facts, shelf, record, { nuggets = loadNuggets(), exclude = [], now = Date.now(), seed = '', library = null } = {}) {
   const stop = facts && facts.stuckStop;
   const problems = new Set((facts && facts.callProblems) || []);
-  const ranked = eligible(shelf, record, { nuggets, exclude, now })
+  const ranked = eligible(shelf, record, { nuggets, exclude, now, library })
     .map((c) => {
       const stopHit = !!(stop && (c.labels.stops || []).includes(stop));
       const probHits = (c.labels.problems || []).filter((x) => problems.has(x)).length;
@@ -81,7 +86,7 @@ function chooseThought(facts, shelf, record, { nuggets = loadNuggets(), exclude 
   if (!ranked.length) return null;
   const { c, stopHit, score } = ranked[0];
   const why = stopHit ? `fits where they are up to (the "${stop}" stop)` : score ? 'fits a problem from a recent call' : 'chosen by rotation - no call or email material to choose from';
-  return { slug: c.slug, title: c.title, text: c.text, why, source: 'labels' };
+  return { slug: c.slug, title: c.title, text: c.text, why, source: 'labels', ...(c.library ? { library: true, credit: c.credit } : {}) };
 }
 
 /** The prompt for Claude's choice. Pure. */
@@ -116,7 +121,7 @@ function parseChoice(text, candidates) {
   const hit = candidates.find((c) => c.slug === String(j.slug || '').trim());
   if (!hit) throw new Error(`"${j.slug}" is not one of the thoughts offered`);
   const why = String(j.why || '').replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
-  return { slug: hit.slug, title: hit.title, text: hit.text, why: why || 'chosen for what is going on for them now', source: 'llm' };
+  return { slug: hit.slug, title: hit.title, text: hit.text, why: why || 'chosen for what is going on for them now', source: 'llm', ...(hit.library ? { library: true, credit: hit.credit } : {}) };
 }
 
 /**
@@ -124,8 +129,8 @@ function parseChoice(text, candidates) {
  * falls back to the labels (chooseThought). `material` = { meetings, emails, note } - the same the
  * opening drafter read. `llm` = an Anthropic client (or null).
  */
-async function chooseThoughtForClient({ facts, shelf, record, material = {}, client, exclude = [], now = Date.now(), seed = '', llm = null, pieceThisWeek = '', nuggets = loadNuggets(), logger = null }) {
-  const candidates = eligible(shelf, record, { nuggets, exclude, now });
+async function chooseThoughtForClient({ facts, shelf, record, material = {}, client, exclude = [], now = Date.now(), seed = '', llm = null, pieceThisWeek = '', nuggets = loadNuggets(), logger = null, library = null }) {
+  const candidates = eligible(shelf, record, { nuggets, exclude, now, library });
   if (!candidates.length) return null;
   const hasMaterial = (material.meetings && material.meetings.length) || (material.emails && material.emails.length) || (material.note && String(material.note).trim());
   if (llm && hasMaterial) {
@@ -145,7 +150,7 @@ async function chooseThoughtForClient({ facts, shelf, record, material = {}, cli
       if (logger) logger.warn(`thought choice for ${client && client.clientId} fell back to the labels: ${e.message}`);
     }
   }
-  return chooseThought(facts, shelf, record, { nuggets, exclude, now, seed });
+  return chooseThought(facts, shelf, record, { nuggets, exclude, now, seed, library });
 }
 
 module.exports = { chooseThought, chooseThoughtForClient, eligible, buildChoicePrompt, parseChoice, loadNuggets, plainText, LAST_WEEK_DAYS };

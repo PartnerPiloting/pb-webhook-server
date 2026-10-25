@@ -227,8 +227,8 @@ const BRIEF_ANSWER = {
     custom: { subject: '1,200 conversations you already have', paragraphs: ['Well done on the Masters.', 'Your history is in - every one already knows you.'], why: 'uses what he has' },
     fit: { fits: false, why: 'it assumes his campaign is running' },
   };
-  await check('Ashley\'s shape: owed something important + no invitations out -> a note first AND a custom email', async () => {
-    const { llmFor } = deps(ANSWERS);
+  await check('Ashley\'s shape: owed something important + no invitations out -> a note first AND this week\'s idea email', async () => {
+    const { llm, llmFor } = deps({ ...ANSWERS, tips: ANSWERS.custom });
     const out = await planner.deepen({ pick: nothingPick, body: null, brief, client: CLIENT, facts: { group: 'running' }, week: '2026-11-02', firstWeekly: true, llmFor, at: AT });
     assert.strictEqual(out.firstThings.status, 'open');
     assert.deepStrictEqual(out.firstThings.items.map((o) => o.id), ['account-mixup']);
@@ -236,7 +236,8 @@ const BRIEF_ANSWER = {
     assert.deepStrictEqual(out.firstThings.note.guyChecks, ['confirm the shared link is switched off']);
     assert.strictEqual(out.pick.what.kind, 'custom'); assert.strictEqual(out.pick.rule, 'custom');
     assert.strictEqual(out.pick.replaces.rule, 'waiting-for-invitations');
-    assert.match(out.pick.reason, /^CUSTOM - nothing on the shelf fits/);
+    assert.match(out.pick.reason, /^CUSTOM - this week's idea, from the library \(in place of: no invitation has gone out yet\)/);
+    assert.ok(llm.calls.some((c) => c.kind === 'tips') && !llm.calls.some((c) => c.kind === 'custom'), 'written as the idea email');
     assert.match(out.body.bodyHtml, /<p>Well done on the Masters\.<\/p>/);
   });
   await check('an approved piece that does not fit is replaced by a custom email; one that fits is left alone', async () => {
@@ -348,6 +349,32 @@ const BRIEF_ANSWER = {
     assert.strictEqual(made.pick.idea, undefined, 'an id that was not offered is not recorded'); assert.ok(!made.body.bodyHtml.includes('Watch:'));
   });
 
+  await check('every client: a mindset piece or a re-send week becomes the library idea email (no fit check); the method run does not', async () => {
+    for (const rule of ['mindset-rhythm', 'reinforce']) {
+      const { llm, llmFor } = deps({ ...ANSWERS, tips: { subject: 'Who, not how', paragraphs: ['Ask who.'], idea: '', why: 'w' } });
+      const piece = { what: { kind: 'one-pager', key: 'the-energy-you-bring', title: 'The energy you bring' }, rule, reason: 'every fourth one' };
+      const out = await planner.deepen({ pick: piece, body: { title: 'The energy you bring', bodyHtml: '<p>x</p>' }, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'running' }, week: '2026-11-02', llmFor, at: AT });
+      assert.strictEqual(out.pick.what.kind, 'custom', rule); assert.strictEqual(out.pick.replaces.what.key, 'the-energy-you-bring');
+      assert.ok(!llm.calls.some((c) => c.kind === 'fit'), 'no fit check on an idea slot');
+      assert.ok(planner.stillAsBuilt(piece, out.pick), 'the sending-morning check still lands on it');
+    }
+    const { llm, llmFor } = deps({ ...ANSWERS, fit: { fits: true, why: 'fine' } });
+    const run = { what: { kind: 'one-pager', key: 'begin', title: 'Begin' }, rule: 'next-in-order', reason: 'next' };
+    const kept = await planner.deepen({ pick: run, body: { title: 'Begin', bodyHtml: '<p>x</p>' }, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'running' }, week: '2026-11-02', llmFor, at: AT });
+    assert.strictEqual(kept.pick, run); assert.ok(!llm.calls.some((c) => c.kind === 'tips'));
+  });
+  await check('the thought for the week comes from the library, with where it is from; the idea it carries is recorded', async () => {
+    const thoughts = require('../services/clientTouchThought');
+    const lib = library.menuFor({ seed: 'x', size: 8 });
+    const t = await thoughts.chooseThoughtForClient({ facts: {}, shelf: [], record: [], client: CLIENT, library: lib, seed: 's' });
+    const hit = lib.find((i) => i.id === t.slug);
+    assert.ok(hit && t.library); assert.strictEqual(t.text, hit.idea);
+    assert.strictEqual(t.credit, hit.source === 'book' ? `From ${hit.title}` : hit.source === 'beth' ? 'From my friend Beth Berghan' : '');
+    assert.strictEqual(planner.ideaOf({ thought: t }), t.slug);
+    assert.strictEqual(planner.ideaOf({ idea: { id: 'book-grit' }, thought: t }), 'book-grit');
+    assert.strictEqual(planner.ideaOf({ thought: { slug: 'energy', text: 'x' } }), null, 'an old shelf nugget is not a library idea');
+  });
+
   await check('a "> " paragraph is a quote box with its credit; anything else stays a plain, escaped paragraph', () => {
     assert.deepStrictEqual(briefs.asQuote('> Schedule your priorities.\n- Stephen Covey, The 7 Habits'), { text: 'Schedule your priorities.', credit: 'Stephen Covey, The 7 Habits' });
     assert.deepStrictEqual(briefs.asQuote('> Just a line'), { text: 'Just a line', credit: '' });
@@ -356,7 +383,7 @@ const BRIEF_ANSWER = {
     assert.ok(html.includes('&lt;b&gt;x&lt;/b&gt;') && html.includes('<p>a &lt; b</p>'));
   });
   await check('nothing true to say -> no custom email, and the row says why', async () => {
-    const out = await planner.deepen({ pick: nothingPick, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'running' }, week: '2026-11-02', llmFor: deps({ ...ANSWERS, custom: { subject: '', paragraphs: [], why: 'too little on record' } }).llmFor, at: AT });
+    const out = await planner.deepen({ pick: nothingPick, body: null, brief: { ...brief, owed: [] }, client: CLIENT, facts: { group: 'running' }, week: '2026-11-02', llmFor: deps({ ...ANSWERS, tips: { subject: '', paragraphs: [], why: 'too little on record' } }).llmFor, at: AT });
     assert.strictEqual(out.pick, nothingPick); assert.strictEqual(out.customDeclined, 'too little on record');
   });
   await check('onboarding, "not this week" and left-out rows are never given a custom email', async () => {
