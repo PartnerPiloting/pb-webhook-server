@@ -1,0 +1,964 @@
+{
+  "_what": "The idea library for the weekly client emails (Guy, 25 Oct 2026). Every weekly email carries ONE idea from here, in Guy's words with a credit. Sources: books (all 19 kept by Guy), Guy's own Mindset Mastery editions, and a shortlist of Beth Berghan's emails (Guy rates each Best / Good / Skip on the rating page; Skip never goes). Links are asset-library keys ({{asset:key}}) - at most one optional Watch link per email, not every week. Never repeat an idea to a client who has had it (their Touch Note and touch record say what went).",
+  "ratingPage": "https://claude.ai/artifact/UHykFNCGyjptQFmpX5miY7",
+  "books": [
+    {
+      "id": "give-and-take",
+      "title": "Give and Take",
+      "author": "Adam Grant",
+      "idea": "Givers end up at the top - when they give to the right people and protect themselves from takers.",
+      "angle": "The heart of the good guys network.",
+      "link": {
+        "asset": "adam_grant_ted",
+        "talk": "Are you a giver or a taker?",
+        "minutes": 13
+      }
+    },
+    {
+      "id": "seven-habits",
+      "title": "The 7 Habits of Highly Effective People",
+      "author": "Stephen R. Covey",
+      "idea": "Begin with the end in mind; put first things first.",
+      "angle": "Plan backwards from the goal; make time for the important.",
+      "link": {
+        "asset": "talk_covey_big_rocks",
+        "talk": "Big Rocks",
+        "minutes": 4
+      },
+      "note": "FranklinCovey video; Covey himself may not be on screen"
+    },
+    {
+      "id": "atomic-habits",
+      "title": "Atomic Habits",
+      "author": "James Clear",
+      "idea": "Small daily systems beat big goals; every action is a vote for who you are becoming.",
+      "angle": "Make networking a daily habit, not a burst.",
+      "link": {
+        "asset": "talk_clear_goals_vs_systems",
+        "talk": "Goals Versus Systems",
+        "minutes": 5
+      }
+    },
+    {
+      "id": "essentialism",
+      "title": "Essentialism",
+      "author": "Greg McKeown",
+      "idea": "If you do not prioritise your life, someone else will.",
+      "angle": "Busy people protecting what matters.",
+      "link": {
+        "asset": "talk_mckeown_essentialism",
+        "talk": "Essentialism - The Disciplined Pursuit of Less",
+        "minutes": 5
+      }
+    },
+    {
+      "id": "how-to-win-friends",
+      "title": "How to Win Friends and Influence People",
+      "author": "Dale Carnegie",
+      "idea": "Be genuinely interested in others; let them talk about themselves.",
+      "angle": "Connection messages and first calls.",
+      "link": {
+        "asset": "talk_carnegie_interested_in_others",
+        "talk": "Become Genuinely Interested in Other People",
+        "minutes": 1
+      },
+      "note": "Very short (about a minute)"
+    },
+    {
+      "id": "never-eat-alone",
+      "title": "Never Eat Alone",
+      "author": "Keith Ferrazzi",
+      "idea": "Build relationships before you need them; generosity is the currency.",
+      "angle": "Almost a manual for the method.",
+      "link": {
+        "asset": "talk_ferrazzi_networking_advice",
+        "talk": "40 Years Of Networking Advice In 7 Minutes",
+        "minutes": 7
+      }
+    },
+    {
+      "id": "go-giver",
+      "title": "The Go-Giver",
+      "author": "Bob Burg and John David Mann",
+      "idea": "Your worth is how much more you give in value than you take in payment.",
+      "angle": "Warm, story-based; suits the inner circle.",
+      "link": {
+        "asset": "talk_burg_go_giver",
+        "talk": "A Quick and Really Fun Overview of The Go-Giver",
+        "minutes": 4
+      }
+    },
+    {
+      "id": "who-not-how",
+      "title": "Who Not How",
+      "author": "Dan Sullivan and Benjamin Hardy",
+      "idea": "Ask \"who can help?\" instead of \"how do I do this?\".",
+      "angle": "Pure I-know-a-guy thinking.",
+      "link": {
+        "asset": "talk_sullivan_who_not_how",
+        "talk": "Who Not How: The Formula for Achieving Bigger Goals",
+        "minutes": 3
+      }
+    },
+    {
+      "id": "slight-edge",
+      "title": "The Slight Edge",
+      "author": "Jeff Olson",
+      "idea": "Small, easy actions done daily compound - and are easy not to do.",
+      "angle": "Network 21 classic; consistency.",
+      "link": {
+        "asset": "talk_olson_slight_edge",
+        "talk": "The Slight Edge Book Overview",
+        "minutes": 9
+      },
+      "note": "Channel named Jeff Olson - not proven to be his own"
+    },
+    {
+      "id": "compound-effect",
+      "title": "The Compound Effect",
+      "author": "Darren Hardy",
+      "idea": "Small smart choices, plus consistency, plus time, make the big result.",
+      "angle": "Consistency with the Today page.",
+      "link": {
+        "asset": "talk_hardy_compound_effect",
+        "talk": "Darren Hardy Intro of The Compound Effect",
+        "minutes": 3
+      },
+      "note": "Lighter on the idea itself"
+    },
+    {
+      "id": "eat-that-frog",
+      "title": "Eat That Frog",
+      "author": "Brian Tracy",
+      "idea": "Do your most important task first, before the day takes over.",
+      "angle": "Time management for the busy ones.",
+      "link": {
+        "asset": "talk_tracy_eat_that_frog",
+        "talk": "Eat That Frog & The ABCDE Method",
+        "minutes": 5
+      }
+    },
+    {
+      "id": "influence",
+      "title": "Influence",
+      "author": "Robert Cialdini",
+      "idea": "Reciprocity, liking and social proof drive people to say yes.",
+      "angle": "Why giving first and introductions work.",
+      "link": {
+        "asset": "talk_cialdini_science_of_persuasion",
+        "talk": "Science Of Persuasion",
+        "minutes": 12
+      }
+    },
+    {
+      "id": "think-and-grow-rich",
+      "title": "Think and Grow Rich",
+      "author": "Napoleon Hill",
+      "idea": "The mastermind: minds working together beat one alone.",
+      "angle": "The inner circle as a mastermind.",
+      "link": null,
+      "note": "No official short talk - idea only"
+    },
+    {
+      "id": "start-with-why",
+      "title": "Start with Why",
+      "author": "Simon Sinek",
+      "idea": "People do not buy what you do, they buy why you do it.",
+      "angle": "Positioning, for clients who struggle with it.",
+      "link": {
+        "asset": "talk_sinek_start_with_why",
+        "talk": "How great leaders inspire action",
+        "minutes": 18
+      }
+    },
+    {
+      "id": "mindset",
+      "title": "Mindset",
+      "author": "Carol Dweck",
+      "idea": "Abilities grow with effort; setbacks are learning, not verdicts.",
+      "angle": "Clients new to the tech who feel behind.",
+      "link": {
+        "asset": "talk_dweck_growth_mindset",
+        "talk": "The power of believing that you can improve",
+        "minutes": 10
+      }
+    },
+    {
+      "id": "grit",
+      "title": "Grit",
+      "author": "Angela Duckworth",
+      "idea": "Passion plus persistence beats talent.",
+      "angle": "The patience curve - results take weeks.",
+      "link": {
+        "asset": "talk_duckworth_grit",
+        "talk": "Grit: The power of passion and perseverance",
+        "minutes": 6
+      }
+    },
+    {
+      "id": "speed-of-trust",
+      "title": "The Speed of Trust",
+      "author": "Stephen M.R. Covey",
+      "idea": "Trust is a skill that makes everything faster and cheaper.",
+      "angle": "Referrals run on trust.",
+      "link": {
+        "asset": "talk_covey_jr_speed_of_trust",
+        "talk": "The Speed of Trust",
+        "minutes": 5
+      }
+    },
+    {
+      "id": "deep-work",
+      "title": "Deep Work",
+      "author": "Cal Newport",
+      "idea": "Focused, uninterrupted time produces the work that matters.",
+      "angle": "Protecting a networking slot.",
+      "link": {
+        "asset": "talk_newport_deep_work",
+        "talk": "Core Idea: Deep Work",
+        "minutes": 17
+      }
+    },
+    {
+      "id": "super-connector",
+      "title": "Super Connector",
+      "author": "Scott Gerber and Ryan Paugh",
+      "idea": "Connectors create value by linking the right people, not by collecting contacts.",
+      "angle": "Roland and Sam are natural examples.",
+      "link": null,
+      "note": "No official short talk - idea only"
+    }
+  ],
+  "mindsetMastery": [
+    {
+      "date": "2026-06-27",
+      "subject": "Mindset Mastery: Interested beats interesting",
+      "messageId": "19f07c186956ba48",
+      "idea": "Being curious about other people builds connection faster than trying to impress them.",
+      "fit": 5,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2026-06-19",
+      "subject": "Mindset Mastery: You're measuring yourself against a world that's gone",
+      "messageId": "19edfbbab24eb0b4",
+      "idea": "Experienced people shrink around AI by judging themselves on old rules. Their judgement still matters.",
+      "fit": 2,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2026-06-13",
+      "subject": "Mindset Mastery: How many tabs do you have open?",
+      "messageId": "19ebf3f461f370f3",
+      "idea": "Too many open loops make a busy day feel empty. Close a few to feel real progress.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2026-05-16",
+      "subject": "Mindset Mastery: Consistency Isn't Sexy",
+      "messageId": "1a0acfabc2b37192",
+      "idea": "Boring basics, repeated without negotiating with yourself, give results you can rely on.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2026-05-09",
+      "subject": "Mindset Mastery: Do you need Motivation or Momentum?",
+      "messageId": "19e0aa6cbb0b1630",
+      "idea": "Motivation is a mood that comes and goes. Momentum from small started actions keeps you moving.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2026-05-02",
+      "subject": "Mindset Mastery: Easy To Work With, Or Easy To Overlook?",
+      "messageId": "19de6104da45a86e",
+      "idea": "Being reliable and low-fuss can make you invisible unless you also speak up about your value.",
+      "fit": 4,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2026-04-04",
+      "subject": "Mindset Mastery - Memory Dividends Don't Wait",
+      "messageId": "19d55f1a3bc6efd2",
+      "idea": "Experiences compound like money, so make meaningful memories now rather than later.",
+      "fit": 2,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2026-01-24",
+      "subject": "Mindset Mastery: Why \"Follow Your Passion\" Might Be Bad Advice",
+      "messageId": "19beef22b508c3ac",
+      "idea": "Passion usually grows from skill and mastery rather than coming first.",
+      "fit": 2,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2026-01-08",
+      "subject": "Mindset Mastery: Cut the Noise, Keep the Focus",
+      "messageId": "19b9f9fab22c1a1d",
+      "idea": "Pick the one goal that matters and let the rest of the noise go.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-12-12",
+      "subject": "Mindset Mastery: The Power of Really Listening",
+      "messageId": "19b1493f720cd3bc",
+      "idea": "Really listening is a bold move. People trust and remember the person who truly heard them.",
+      "fit": 5,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-12-04",
+      "subject": "Mindset Mastery: Do the Opposite",
+      "messageId": "19aeb4a03e5161b6",
+      "idea": "Flip an autopilot routine on purpose to get fresh thinking and different results.",
+      "fit": 2,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-11-21",
+      "subject": "Mindset Mastery: Stop Spinning - Start Solving",
+      "messageId": "19aa51a54c13b272",
+      "idea": "Swap going round in circles about a problem for one small concrete next step.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-11-14",
+      "subject": "Mindset Mastery: Let Others Sing Your Praises",
+      "messageId": "19a8003007a2754c",
+      "idea": "You can't sell yourself well, but people in genuine relationships with you will do it for you.",
+      "fit": 5,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-11-07",
+      "subject": "Mindset Mastery: Stop Replaying Conversations That Are Already Over",
+      "messageId": "19a5c338b355191e",
+      "idea": "Take the lesson from a finished conversation, then stop replaying it in your head.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-10-30",
+      "subject": "Mindset Mastery: Ownership Isn't Automatic",
+      "messageId": "19a36d71fc30a269",
+      "idea": "You can't force people to take ownership. You invite it with trust, clarity and space.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-10-23",
+      "subject": "Mindset Mastery: Micro-Habits for All-Day Energy",
+      "messageId": "19a12aae16bedf3e",
+      "idea": "Small habits through the day keep your energy steady instead of crashing.",
+      "fit": 2,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-10-17",
+      "subject": "Mindset Mastery: I wish someone had told me",
+      "messageId": "199ef9ff1ef93838",
+      "idea": "Lessons most of us learn the hard way, passed on so others can skip the pain.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-10-09",
+      "subject": "Mindset Mastery: Say It Sooner",
+      "messageId": "199cabb3df00b1f1",
+      "idea": "Have the tricky conversation early, before it grows into a tough one.",
+      "fit": 4,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-09-26",
+      "subject": "Mindset Mastery: Let Them",
+      "messageId": "199883733f4f34bd",
+      "idea": "Stop trying to control what other people do. Put your energy into how you respond.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-09-19",
+      "subject": "Mindset Mastery: Deep Work",
+      "messageId": "1995fc5ac402bf31",
+      "idea": "Guard blocks of distraction-free time for the work that really moves things.",
+      "fit": 2,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-09-13",
+      "subject": "Mindset Mastery: Win the Morning, Win the Day",
+      "messageId": "19941203435cbd39",
+      "idea": "A deliberate morning routine sets the tone for everything that follows.",
+      "fit": 2,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-09-04",
+      "subject": "Mindset Mastery: Control the Controllables",
+      "messageId": "1991679b16d11e03",
+      "idea": "Spend your energy on what you can influence, not on what you can't.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-08-29",
+      "subject": "Mindset Mastery: Don't Wait for a Restructure to Reinvent Yourself",
+      "messageId": "198f44be1da4532d",
+      "idea": "Reinvent yourself and stay visible before change forces your hand.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-08-22",
+      "subject": "Mindset Mastery: The Power of One More",
+      "messageId": "198cf1bb1991ef6f",
+      "idea": "Doing one more rep, call or attempt past where you'd stop adds up to real growth.",
+      "fit": 4,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-08-15",
+      "subject": "Mindset Mastery: The Psychology of Influence",
+      "messageId": "198ab7385c9dfb01",
+      "idea": "Persuasion follows learnable principles like reciprocity, liking and social proof.",
+      "fit": 4,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-08-07",
+      "subject": "Mindset Mastery: Age Is a State of Mind",
+      "messageId": "19886d8184b0dd58",
+      "idea": "Getting older can't be avoided, but growing old in your outlook is optional.",
+      "fit": 2,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-07-31",
+      "subject": "Mindset Mastery: Break the Brules",
+      "messageId": "198627fce10541c0",
+      "idea": "Question the rules you inherited and never chose. Many no longer serve you.",
+      "fit": 2,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-07-17",
+      "subject": "Mindset Mastery: Respect Is Hard Won (and Easily Lost)",
+      "messageId": "1981aa5bed8b995d",
+      "idea": "Respect takes years to build and one careless moment to lose.",
+      "fit": 4,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-07-04",
+      "subject": "Mindset Mastery: The Speed of Trust",
+      "messageId": "197d34a498bffe75",
+      "idea": "When trust is high, everything moves faster and costs less.",
+      "fit": 5,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-06-26",
+      "subject": "Mindset Mastery: Do Less, But Better",
+      "messageId": "197ae8d3be2faa86",
+      "idea": "Choose the few things that matter most and do them well, or others will choose for you.",
+      "fit": 3,
+      "source": "mindset-mastery"
+    },
+    {
+      "date": "2025-06-20",
+      "subject": "Mindset Mastery: Givers, Takers, and Matchers",
+      "messageId": "1978b566806d82e5",
+      "idea": "Generous givers who protect themselves from takers end up most successful.",
+      "fit": 5,
+      "source": "mindset-mastery"
+    }
+  ],
+  "beth": [
+    {
+      "date": "2026-05-21",
+      "subject": "Ever Considered That The Room Is Reading You Too?",
+      "messageId": "19e4c203cf1dcce6",
+      "idea": "People pick up your mood and energy before you say a word, and it sets the tone.",
+      "angle": "In a first coffee, the other person is quietly deciding whether you're safe to introduce. Your presence answers that.",
+      "fit": 5,
+      "theme": "trust",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-09-27",
+      "subject": "Ever Wondered Why They're Not Picking You?",
+      "messageId": "1a0e1e12f8d007a3",
+      "idea": "Being overlooked is often about how your message lands, not about what you can do.",
+      "angle": "People only refer you if they can explain what you do in one clear sentence.",
+      "fit": 5,
+      "theme": "visibility",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-08-01",
+      "subject": "Want to Build Trust Quickly? Start with These Two Phrases",
+      "messageId": "1986404fecdd7848",
+      "idea": "Two small phrases build trust fast: asking what the other person thinks, and admitting you could be wrong.",
+      "angle": "Asking for a contact's view makes the conversation shared, which makes them want to help you.",
+      "fit": 5,
+      "theme": "trust",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-08-29",
+      "subject": "Small Talk, Big Impact: 5 Ways to Connect Confidently",
+      "messageId": "198f441142b6b5f2",
+      "idea": "Small talk done well isn't small. It's how connection starts, and you don't need to be loud.",
+      "angle": "Every referral relationship starts with a few easy minutes of chat. Get good at them.",
+      "fit": 5,
+      "theme": "relationships",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2024-12-06",
+      "subject": "Timeless Strategies for Networking Like a Pro",
+      "messageId": "1939a701316bbc6e",
+      "idea": "Confident connections with peers, clients and leaders come from simple, repeatable networking habits.",
+      "angle": "Networking is a learnable routine, not a personality type.",
+      "fit": 5,
+      "theme": "relationships",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-08-23",
+      "subject": "What If He Hadn't Asked?",
+      "messageId": "1a02da2a1d88a7f7",
+      "idea": "Two tied Olympic high jumpers shared gold because one simply asked if they could.",
+      "angle": "The introduction you want often isn't offered until you have the courage to ask for it.",
+      "fit": 5,
+      "theme": "courage",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-12-26",
+      "subject": "Your Reputation's Talking. Are You Listening?",
+      "messageId": "19b5907877651a23",
+      "idea": "Your reputation is what people say when you're not there, and it's set by how you act on hard days.",
+      "angle": "A referral is your reputation spoken out loud by someone else. Act like it.",
+      "fit": 5,
+      "theme": "trust",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-06-06",
+      "subject": "Why Admitting You Don't Have the Answer Can Be a Power Move",
+      "messageId": "197439d2dc64a263",
+      "idea": "Saying you don't know is a strength, not a weakness. It builds credibility.",
+      "angle": "'I don't know, but I know a guy' is the most trusted sentence in a referral network.",
+      "fit": 5,
+      "theme": "trust",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2023-02-10",
+      "subject": "Are You Missing The Connection That Comes From Deep, Valuable Conversations?",
+      "messageId": "18639d233cb2bfb3",
+      "idea": "Move past weather-and-health chat to conversations that really matter to both people.",
+      "angle": "Deeper conversations turn contacts into people who know you well enough to vouch for you.",
+      "fit": 5,
+      "theme": "relationships",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-07-18",
+      "subject": "Feel Disconnected At Home and At Work? These Habits Might Be Why",
+      "messageId": "1981bda5aaca001f",
+      "idea": "Connection rarely ends with a fight. It fades quietly through small habits of neglect.",
+      "angle": "Networks die from silence, not conflict. Regular light touches keep them alive.",
+      "fit": 5,
+      "theme": "follow-up",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2023-06-02",
+      "subject": "Scheduling Is The Answer To Finding Harmony In Work And Play",
+      "messageId": "1887aac8e17379ee",
+      "idea": "'Let's definitely catch up' means nothing until it's in the calendar. Your calendar shows your real priorities.",
+      "angle": "Turn every 'we should catch up' into a booked time on the spot.",
+      "fit": 5,
+      "theme": "follow-up",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-08-16",
+      "subject": "If performance was enough, you'd already be further ahead",
+      "messageId": "1a00995fb5116490",
+      "idea": "Good work alone isn't enough. Image and exposure decide who gets opportunities too.",
+      "angle": "Your network is your exposure. Capable people stay stuck when too few people know their work.",
+      "fit": 4,
+      "theme": "visibility",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2023-03-10",
+      "subject": "Some People Excel At Real Friendship And Some Don't - Which One Are You?",
+      "messageId": "186c9dae4b8b5e11",
+      "idea": "Online likes are not friendship. Real relationships need effort, presence and showing up.",
+      "angle": "A thousand connections are worth less than a dozen people who would pick up the phone for you.",
+      "fit": 4,
+      "theme": "relationships",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-05-03",
+      "subject": "Your Time",
+      "messageId": "19decda54362f0f9",
+      "idea": "Rushing past people and giving them scraps of attention costs more than it saves.",
+      "angle": "Full, unhurried attention is the cheapest way to be remembered warmly.",
+      "fit": 4,
+      "theme": "listening",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-04-09",
+      "subject": "It's Not The Phone. It's Actually You",
+      "messageId": "19d73d4d98e7652c",
+      "idea": "When someone checks their phone mid-chat, it's often a sign the conversation lost them, not the phone's fault.",
+      "angle": "Keep conversations about the other person and they'll stay with you.",
+      "fit": 4,
+      "theme": "listening",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-02-21",
+      "subject": "Asking Better Questions Is The Answer",
+      "messageId": "19526d43a1e2fd41",
+      "idea": "A well-chosen question sparks more insight and connection than any clever statement.",
+      "angle": "Good questions in a first meeting tell you who they could help, and who could help them.",
+      "fit": 4,
+      "theme": "listening",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2023-12-15",
+      "subject": "The Hidden Impact: Rethinking Habits for a More Visible Success",
+      "messageId": "18c6be66599a2702",
+      "idea": "Capable people feel undervalued because quiet habits keep their contribution invisible.",
+      "angle": "If nobody can see your work, nobody can recommend it. Small visibility habits fix that.",
+      "fit": 4,
+      "theme": "visibility",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-07-09",
+      "subject": "You Don't Need More Confidence. You Need Evidence.",
+      "messageId": "19f48777dfdd557c",
+      "idea": "Confidence comes from looking at what you've already achieved, not from waiting to feel ready.",
+      "angle": "Keep a list of your wins and you'll ask for introductions without flinching.",
+      "fit": 4,
+      "theme": "mindset",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-06-18",
+      "subject": "Stop Treating Discomfort Like a Red Flag.",
+      "messageId": "19edc51fc22f9ae3",
+      "idea": "The awkward, clunky feeling of something new is usually growth, not a warning to stop.",
+      "angle": "The first few networking conversations feel awkward. That's normal, so push through it.",
+      "fit": 4,
+      "theme": "courage",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-02-28",
+      "subject": "Correcting with Compassion: How to Maintain Relationships When You Disagree",
+      "messageId": "1954ae10bd53fa6f",
+      "idea": "You can disagree with or correct someone without damaging the relationship.",
+      "angle": "Long-term referral partners will disagree sometimes. Handle it so the bond survives.",
+      "fit": 4,
+      "theme": "relationships",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-04-18",
+      "subject": "The Bold Move That Fuels Your Growth and Builds Leadership Intelligence",
+      "messageId": "196473794301adae",
+      "idea": "Asking for feedback feels awkward but is one of the fastest ways to grow.",
+      "angle": "Ask happy clients how they'd describe you. That's the exact wording your referrers should use.",
+      "fit": 4,
+      "theme": "courage",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-08-27",
+      "subject": "You're Allowed To Want What You Want",
+      "messageId": "1a044cf19a7ed6d2",
+      "idea": "If you stay quiet about what you want, other people fill in the blanks for you.",
+      "angle": "Be specific about the introductions you want, or you'll get random ones or none.",
+      "fit": 4,
+      "theme": "courage",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-10-08",
+      "subject": "Stop Apologising for Taking Up Space",
+      "messageId": "1a11d1a2dfca1eb8",
+      "idea": "Needless apologies teach people to take you less seriously. Save sorry for real mistakes.",
+      "angle": "Drop 'sorry to bother you' from outreach. Reaching out is not an imposition.",
+      "fit": 4,
+      "theme": "visibility",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-07-02",
+      "subject": "If it mattered, you'd have done it by now",
+      "messageId": "19f246af34e39458",
+      "idea": "'Too busy' is often a cover for avoiding the thing that matters.",
+      "angle": "The follow-up you keep postponing is usually the one that counts most.",
+      "fit": 4,
+      "theme": "follow-up",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-12-12",
+      "subject": "Want To Be The Kind Of Leader That People Still Talk About?",
+      "messageId": "19b10ee6940e096b",
+      "idea": "People remember for decades how a leader made them feel, good or bad.",
+      "angle": "The people who still talk about you years later are your best source of referrals.",
+      "fit": 4,
+      "theme": "relationships",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-11-07",
+      "subject": "The Mirror Test: Are You Modelling What You're Asking For?",
+      "messageId": "19a5caff91a55104",
+      "idea": "Before asking others to change, check whether you're showing the behaviour you want.",
+      "angle": "If you want referrals, be the person who gives them first.",
+      "fit": 4,
+      "theme": "generosity",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2022-07-22",
+      "subject": "Why Making New Friends As An Adult Can Be Hard (And What To Do About It)",
+      "messageId": "182248a91090d081",
+      "idea": "Adult friendships don't happen by accident. They need deliberate effort and repeated contact.",
+      "angle": "Business relationships work the same way. Plan to see people again, or you won't.",
+      "fit": 4,
+      "theme": "relationships",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2020-12-11",
+      "subject": "You. Need. Connection.",
+      "messageId": "1764f1bed39c4c1a",
+      "idea": "Being curious about strangers' stories, like a rideshare driver's, builds real human connection.",
+      "angle": "Curiosity about everyone's story is how unexpected connections and referrals start.",
+      "fit": 4,
+      "theme": "relationships",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-09-06",
+      "subject": "You may be asking the wrong question",
+      "messageId": "1a075bb83bcb08f2",
+      "idea": "A lost season isn't failure but a step on the way. Reframe the question you're asking.",
+      "angle": "A coffee that led nowhere isn't failure. It's a seed that may come back later.",
+      "fit": 4,
+      "theme": "resilience",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-06-11",
+      "subject": "Time To Realise: You're Allowed to Outgrow Your Own Narrative.",
+      "messageId": "19eb845708d1b691",
+      "idea": "'I'm just not good at that' is often an old story, not a fact.",
+      "angle": "'I'm not a networker' is a story you can retire.",
+      "fit": 4,
+      "theme": "mindset",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-06-28",
+      "subject": "How You Start Matters",
+      "messageId": "19f0d3e5fbf97ff7",
+      "idea": "The energy and intention you bring at the start of the week shapes the whole week.",
+      "angle": "Start the week with one relationship-building action and the week follows.",
+      "fit": 3,
+      "theme": "habits",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-11-14",
+      "subject": "Nice Isn't Always Kind - And That's a Problem!",
+      "messageId": "19a80bc651c19830",
+      "idea": "Being nice avoids hard truths. Being kind tells people what they need to hear, with care.",
+      "angle": "Trusted advisers are kind rather than nice, and that's why people refer them.",
+      "fit": 3,
+      "theme": "trust",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-08-06",
+      "subject": "Stop Teaching People You're Always Free",
+      "messageId": "19fd8a9a4f72826f",
+      "idea": "Replying instantly every time trains people to expect it, and that becomes exhausting.",
+      "angle": "Protect time for relationship building instead of letting instant replies eat it.",
+      "fit": 3,
+      "theme": "time",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-02-06",
+      "subject": "Do You Realise That When You Say Nothing, You Are Still Saying Something",
+      "messageId": "19c30e4b17a413c1",
+      "idea": "Staying silent sends a message too, often agreement or not caring.",
+      "angle": "Silence after a meeting or an introduction says something. Fill it with a follow-up.",
+      "fit": 3,
+      "theme": "courage",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-01-30",
+      "subject": "If You're Already Tired It's Time To Edit Not Add",
+      "messageId": "19c0cd807bc7c65e",
+      "idea": "When you're worn out, cut things before you add anything new.",
+      "angle": "Drop low-value busywork to make room for the few relationships that matter.",
+      "fit": 3,
+      "theme": "time",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-06-25",
+      "subject": "Every Time You Let It Slide, You Set a Standard.",
+      "messageId": "19f005e8596a72e3",
+      "idea": "Each 'just this once' quietly becomes the standard you actually live by.",
+      "angle": "Skip your weekly outreach once and skipping becomes the habit.",
+      "fit": 3,
+      "theme": "habits",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2025-12-05",
+      "subject": "When Great Ideas Fall Flat (and What to Do About It)",
+      "messageId": "19aece207ff172a9",
+      "idea": "Good ideas get ignored when they're poorly delivered, then cheered when someone else says them.",
+      "angle": "How you pitch your value decides whether people repeat it to others.",
+      "fit": 3,
+      "theme": "visibility",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2022-08-05",
+      "subject": "Why Talking To Strangers May Be A Key Ingredient To A Joyful Day",
+      "messageId": "1826cae8f4ebb3d2",
+      "idea": "Brief chats with strangers lift your mood and rebuild everyday human connection.",
+      "angle": "Practising easy chats with strangers makes networking feel natural.",
+      "fit": 3,
+      "theme": "courage",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2026-04-16",
+      "subject": "The First No Is Always The Hardest",
+      "messageId": "19d97e163d3240ea",
+      "idea": "The first clean 'no' without over-justifying is the hardest. After that it gets easier.",
+      "angle": "Saying no to the wrong things frees time for the right relationships.",
+      "fit": 3,
+      "theme": "courage",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    },
+    {
+      "date": "2024-01-19",
+      "subject": "Beyond the Complaint Cycle: Navigating Unconscious Behaviours for Positive Impressions",
+      "messageId": "18d201cde5c46f3f",
+      "idea": "Habitual complaining drains people and quietly shapes how others see you.",
+      "angle": "Nobody refers a complainer. Positive energy makes you easy to recommend.",
+      "fit": 3,
+      "theme": "mindset",
+      "source": "beth",
+      "rating": null,
+      "credit": "my friend Beth Berghan"
+    }
+  ]
+}
