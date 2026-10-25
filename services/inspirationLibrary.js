@@ -31,7 +31,7 @@ function load(file = FILE) {
 function ideas(lib = load()) {
   const out = [];
   for (const b of lib.books || []) {
-    out.push({ id: `book-${b.id}`, source: 'book', title: `${b.title} by ${b.author}`, idea: b.idea, angle: b.angle, credit: `${b.author}, ${b.title}`, link: b.link || null, rank: BOOKS_FIRST.has(b.id) ? 0 : 1, match: [b.title, plainAuthor(b.author)] });
+    out.push({ id: `book-${b.id}`, source: 'book', title: `${b.title} by ${b.author}`, idea: b.idea, angle: b.angle, credit: `${b.author}, ${b.title}`, link: b.link || null, rank: BOOKS_FIRST.has(b.id) ? 0 : 1, match: [b.title, plainAuthor(b.author), ...(b.aka || [])] });
   }
   for (const m of lib.mindsetMastery || []) {
     if ((m.fit || 0) < 3) continue; // Guy's weaker fits for a networking email stay out
@@ -60,7 +60,7 @@ function hadIds({ record = [], pastTips = [] } = {}, all = ideas()) {
     // A Mindset Mastery edition they got on the list (kind 'mindset', backfilled from the Gmail send).
     if (r && r.meta && r.meta.gmailMessageId) had.add(`mm-${r.meta.gmailMessageId}`);
   }
-  const text = norm([...(pastTips || []), ...(record || []).map((r) => (r ? `${r.key || ''} ${r.meta ? `${r.meta.subject || ''} ${r.meta.body || ''}` : ''}` : ''))].join(' \n '));
+  const text = norm([...(pastTips || []), ...(record || []).map((r) => (r ? `${r.key || ''} ${r.meta ? `${r.meta.subject || ''} ${r.meta.body || ''}` : ''}` : ''))].join(' \n ')).replace(/\bmindset mastery\b/g, ' '); // the list's own name is not Dweck's book
   if (text) for (const i of all) if (i.match.some((m) => norm(m).length >= 6 && text.includes(norm(m)))) had.add(i.id);
   return had;
 }

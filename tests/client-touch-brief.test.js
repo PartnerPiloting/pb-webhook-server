@@ -321,6 +321,8 @@ const BRIEF_ANSWER = {
       { kind: 'mindset', key: `Mindset Mastery: ${b.title}`, meta: {} },
     ] });
     assert.ok(had.has(a.id), 'by Gmail id'); assert.ok(had.has(b.id), 'by subject');
+    assert.ok(!had.has('book-mindset'), 'the list being called Mindset Mastery does not rule out Dweck\'s Mindset');
+    assert.ok(library.hadIds({ record: [{ kind: 'mindset', key: 'Mindset Mastery: Givers, Takers, and Matchers', meta: {} }] }).has('book-give-and-take'), 'the Givers edition rules out Give and Take');
   });
   await check('the menu mixes the three sources, best-rated first within each, and differs between clients', () => {
     const m = library.menuFor({ seed: 'a|2026-11-02', size: 6 });
