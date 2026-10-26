@@ -518,13 +518,15 @@ async function addToList(tenantId, { leadRecId = null, email = '', name = '' } =
     email = email || rec.fields['Email'] || '';
     target = rec.fields['LinkedIn Profile URL'] ? { linkedin_url: rec.fields['LinkedIn Profile URL'] } : { lead_email: email || undefined };
   }
-  const t = await lm.runTagLead({ ...target, add_tags: LIST_TAG, remove_tags: UNSUB_TAG }, tenantId);
+  // Never undoes an unsubscribe: the list tag goes on, but anyone tagged unsubscribed is still left off every send.
+  const t = await lm.runTagLead({ ...target, add_tags: LIST_TAG }, tenantId);
   if (t && t.isError) return { ok: false, text: t.text };
   if (/More than one lead matches/i.test(String((t && t.text) || ''))) return { ok: false, text: t.text, ambiguous: true };
   const found = String(t.text || '').match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
   const addr = String(email || (found ? found[0] : '')).trim().toLowerCase();
   if (addr) await q("INSERT INTO list_members (tenant_id, email, lead_rec_id, source) VALUES ($1, $2, $3, 'weekly-button') ON CONFLICT DO NOTHING", [tenantId, addr, leadRecId]);
   const noEmail = !isEmail(addr);
+  if (/unsubscribed/i.test(String(t.text || ''))) return { ok: true, noEmail, text: `${name || addr} unsubscribed before, so they will NOT get the weekly email. If they have asked to come back, take the unsubscribed tag off their record.` };
   return { ok: true, noEmail, text: noEmail ? `${name || 'They'} are on the list, but there is no email address on their record yet - add one and they'll get the next edition.` : `${name || addr} will get the weekly email from the next edition - starting with the welcome.` };
 }
 
