@@ -320,6 +320,15 @@ async function reconnectAction(tenantId, key, action, { nowMs = Date.now(), clie
   return { ok: true, action, name, until };
 }
 
+/** One person on the Reconnect list: their lead record (if they are a lead) and name. */
+async function personFor(tenantId, key) {
+  const db = getPool();
+  if (!db || !String(key || '').trim()) return null;
+  await ensureSchema(db);
+  const r = await db.query('SELECT lead_rec_id, name FROM linkedin_people WHERE tenant_id = $1 AND person_key = $2', [tenantId, String(key).trim()]);
+  return r.rows[0] ? { leadRecId: r.rows[0].lead_rec_id || null, name: r.rows[0].name || '' } : null;
+}
+
 /** Is the optional disconnects extra switched on for this client? */
 function disconnectsOn(client) {
   return !!client && String(client.reconnect || '').trim() === 'Yes' && String(client.reconnectDisconnects || '').trim() === 'Yes';
@@ -333,7 +342,7 @@ function reconnectNote(rc) {
 }
 
 module.exports = {
-  buildReconnect, reconnectAction, reconnectNote, disconnectsOn,
+  buildReconnect, reconnectAction, personFor, reconnectNote, disconnectsOn,
   eligible, rank, pickPortion, splitOwnership, toItem, newestNoteMs, todayIn,
   ensureSchema, _setPool, _getPool: getPool, QUIET_DAYS, MORE_STEP, ENDING_CHIP,
 };

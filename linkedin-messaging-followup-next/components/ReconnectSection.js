@@ -25,9 +25,10 @@ const DONE_NOTE = {
   skip: 'skipped for 90 days',
   never: 'dropped - no timer will chase them again',
   disconnect: 'will be disconnected tonight - Undo is in the list below until then',
+  weekly: 'added to your weekly email (Network building, rethought)',
 };
 
-export default function ReconnectSection({ data, post, onReplace, onFlagged, onRemaining }) {
+export default function ReconnectSection({ data, post, onReplace, onFlagged, onRemaining, weekly = false }) {
   const [gone, setGone] = useState(() => new Set());   // keys actioned this session
   const [busy, setBusy] = useState(() => new Set());
   const [notice, setNotice] = useState(null);
@@ -45,12 +46,14 @@ export default function ReconnectSection({ data, post, onReplace, onFlagged, onR
     setError(null);
     setBusy((prev) => new Set(prev).add(it.key));
     try {
-      await post('/reconnect-action', { key: it.key, action });
+      const r = await post('/reconnect-action', { key: it.key, action });
       setGone((prev) => new Set(prev).add(it.key));
-      setNotice(`${it.name}: ${DONE_NOTE[action]}.`);
+      setNotice(action === 'weekly' && r && r.detail ? r.detail : `${it.name}: ${DONE_NOTE[action]}.`);
       if (action === 'disconnect' && onFlagged) onFlagged();
     } catch (e) {
-      setError(`Could not save that for ${it.name}. Nothing was changed.`);
+      let why = '';
+      try { why = JSON.parse(e.message).details || ''; } catch (_) { why = ''; }
+      setError(`Could not save that for ${it.name}. Nothing was changed.${why ? ` ${why}` : ''}`);
     } finally {
       setBusy((prev) => { const n = new Set(prev); n.delete(it.key); return n; });
     }
@@ -129,6 +132,7 @@ export default function ReconnectSection({ data, post, onReplace, onFlagged, onR
                   <div className="flex items-center gap-2 flex-wrap shrink-0">
                     <button className={BTN} disabled={isBusy} onClick={() => act(it, 'done')} title="You have written to them, or dealt with it">Done</button>
                     <button className={BTN} disabled={isBusy} onClick={() => act(it, 'skip')} title="Not now - back on the list in 90 days">Skip 90 days</button>
+                    {weekly && <button className={`${BTN} text-sky-800 border-sky-200 hover:bg-sky-50`} disabled={isBusy} onClick={() => act(it, 'weekly')} title="Add them to Network building, rethought - your weekly email - instead of writing to them now">Weekly</button>}
                     <button className={BTN} disabled={isBusy} onClick={() => act(it, 'never')} title="Same as Drop: never chase them again. A new message from them still shows up.">Never</button>
                     {/* Only for a client with the disconnects extra switched on. One click, no confirm box:
                         nothing reaches Linked Helper until tonight, and Undo sits in the list below until then. */}

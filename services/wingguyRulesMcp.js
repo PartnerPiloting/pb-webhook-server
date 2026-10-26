@@ -573,6 +573,43 @@ async function runClientEmails({ client, week } = {}, tenant = TENANT) {
 // full, and his verdicts. Every action says back exactly what changed. Nothing here sends anything:
 // approved emails go by themselves at 8am Monday, after a fresh check.
 // ---------------------------------------------------------------------------
+// "Network building, rethought" - the weekly email to Guy's list of prospects (services/listEditions.js,
+// designed with Guy 26 Oct 2026). One email a week for him to approve; it goes Wednesday from 9:30am.
+async function runListEdition(args = {}, tenant = TENANT) {
+  const le = require('./listEditions');
+  if (tenant !== (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim()) return { text: "This is the coach's own list - not available here.", isError: true };
+  const action = String(args.action || 'status').trim().toLowerCase();
+  const d = String(args.week || '').trim();
+  const sendDate = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : le.nextSendDate(Date.now());
+  try {
+    if (action === 'status') return { text: (await le.statusText(tenant)).text };
+    if (action === 'show') { const r = await le.showText(tenant, { sendDate }); return { text: r.text, isError: !!r.isError }; }
+    if (action === 'write') {
+      const r = await le.buildEdition(tenant, sendDate, { direction: args.text || '' });
+      if (!r.ok) return { text: r.text, isError: true };
+      return { text: `${r.built ? 'Written' : 'Already written'} - "${r.edition.title}".\n\n${(await le.showText(tenant, { sendDate })).text}` };
+    }
+    if (action === 'test') { const r = await le.testSend(tenant, { sendDate }); return { text: r.text, isError: !r.ok }; }
+    if (action === 'add') {
+      const r = await le.addToList(tenant, { email: args.email || '', name: args.name || '' });
+      return { text: r.text, isError: !r.ok };
+    }
+    const ed = await le.editionFor(tenant, sendDate);
+    if (!ed) return { text: 'Nothing written for that Wednesday yet - use action=write first.', isError: true };
+    let r;
+    if (action === 'approve') r = await le.approve(tenant, ed.id);
+    else if (action === 'hold') r = await le.hold(tenant, ed.id);
+    else if (action === 'edit') r = await le.edit(tenant, ed.id, { title: args.title, body: args.body });
+    else if (action === 'swap' || action === 'redraft') r = await le.swap(tenant, sendDate, { idea: action === 'swap' ? args.idea : null, direction: args.text || '' });
+    else return { text: 'action is one of: status, show, write, approve, edit, swap, redraft, hold, test, add', isError: true };
+    if (!r.ok) return { text: r.text, isError: true };
+    if (['swap', 'redraft', 'edit'].includes(action)) return { text: `${r.text}\n\n${(await le.showText(tenant, { sendDate })).text}` };
+    return { text: r.text };
+  } catch (e) {
+    return { text: `Error: ${e.message}`, isError: true };
+  }
+}
+
 async function runWeeklyEmails(args = {}, tenant = TENANT) {
   const planner = require('./clientTouchPlanner');
   const actions = require('./clientTouchActions');
@@ -582,7 +619,9 @@ async function runWeeklyEmails(args = {}, tenant = TENANT) {
   try {
     if (action === 'status') {
       const out = await planner.weekReview(tenant, week);
-      return { text: `${out.text}\n\nNext: go through the WAITING ones one at a time with action=show, client=<name>. For each, Guy decides: approve, edit, swap, skip, pin, or change the thought.` };
+      let list = '';
+      try { list = `${(await require('./listEditions').statusText(tenant)).text}\n(The list edition comes first: wingguy_list_edition action=show, then approve / edit / swap / hold.)\n\n`; } catch (_) { list = ''; }
+      return { text: `${list}${out.text}\n\nNext: go through the WAITING ones one at a time with action=show, client=<name>. For each, Guy decides: approve, edit, swap, skip, pin, or change the thought.` };
     }
     if (!args.client) return { text: 'Which client? Pass client (a name or id).', isError: true };
     const r = await actions.resolveClient(tenant, args.client);
@@ -1102,6 +1141,34 @@ const TOOL_DEFS = [
       },
     },
     run: runWeeklyEmails,
+  },
+  {
+    name: 'wingguy_list_edition',
+    description: 'Coach-only: "Network building, rethought" - Guy\'s weekly email to his LIST of prospects (the people tagged mindset mastery - the old Mindset Mastery list - plus anyone added with the Weekly button on the Today tab). NOT the client emails (those are wingguy_weekly_emails). ONE email a week, the same for everyone except the name; it goes Wednesday from 9:30am Brisbane, one email per person from guy@knowaguy.com.au with replies to Guy\'s inbox - but ONLY once Guy approves it. In "let\'s do this week\'s emails" it comes FIRST. THE WAY TO RUN IT: action=show prints the edition in full as a regular gets it, who it goes to (how many, how many first-timers, who is left off and why) and the next two ideas coming up; read it to Guy plainly, then do what he says: approve; edit (his own words: title and/or body, blank line between paragraphs - an edit counts as approved); swap (idea = another idea from the library by name, e.g. "Never Eat Alone" - it is rewritten and waits for approval); redraft (text = his direction for how it should be told); hold (nothing goes this week); write (write the edition now if it is not written yet); test (a test copy of each version to Guy only - the inbox-or-spam check); add (put someone on the list: email or name). Every edition tells ONE idea through network building, then a fixed closer inviting a reply, the sign-off and the unsubscribe line. A newcomer\'s first email is the fixed "What does better mean?" piece. Never approve, edit or swap anything Guy has not said to.',
+    zodSchema: {
+      action: z.enum(['status', 'show', 'write', 'approve', 'edit', 'swap', 'redraft', 'hold', 'test', 'add']).optional().describe('status (default) | show | write | approve | edit | swap | redraft | hold | test | add'),
+      week: z.string().optional().describe('YYYY-MM-DD of the Wednesday; default the coming one'),
+      title: z.string().optional().describe('edit: a new title (the subject is "Network building, rethought - <title>")'),
+      body: z.string().optional().describe('edit: Guy\'s words for the body - blank line between paragraphs'),
+      idea: z.string().optional().describe('swap: an idea from the library by name or id'),
+      text: z.string().optional().describe('redraft / write: Guy\'s direction for how this edition should be told'),
+      email: z.string().optional().describe('add: their email'),
+      name: z.string().optional().describe('add: their name, when there is no email to hand'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['status', 'show', 'write', 'approve', 'edit', 'swap', 'redraft', 'hold', 'test', 'add'], description: 'status (default) | show | write | approve | edit | swap | redraft | hold | test | add' },
+        week: { type: 'string', description: 'YYYY-MM-DD of the Wednesday; default the coming one' },
+        title: { type: 'string', description: 'edit: a new title' },
+        body: { type: 'string', description: 'edit: Guy\'s words for the body - blank line between paragraphs' },
+        idea: { type: 'string', description: 'swap: an idea from the library by name or id' },
+        text: { type: 'string', description: 'redraft / write: Guy\'s direction' },
+        email: { type: 'string', description: 'add: their email' },
+        name: { type: 'string', description: 'add: their name' },
+      },
+    },
+    run: runListEdition,
   },
   {
     name: 'wingguy_referrals',

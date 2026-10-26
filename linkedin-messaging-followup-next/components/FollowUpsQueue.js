@@ -488,6 +488,8 @@ function ParkPopover({ recommended, onPick, onClose }) {
 // conversations, not a campaign, so the picker never hides them.
 export default function FollowUpsQueue({ section = null, preloaded = null, preloadError = null, onCount = null, campaignFilter = 'all' } = {}) {
   const clientId = useMemo(() => buildClientId(), []);
+  // The Weekly button: only the coach has a weekly list (Network building, rethought).
+  const isCoach = clientId === 'Guy-Wilson';
   const managed = !!section; // a Today section: the page owns the fetch, this renders its slice
   const [items, setItems] = useState([]);
   const [hidden, setHidden] = useState({ counts: {}, items: [] });
@@ -582,9 +584,9 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
     setBusy((prev) => new Set(prev).add(key));
     setError(null);
     try {
-      await apiPost('/action', { name: it.name, email: it.email || undefined, src: it.src, action, ...(parkDate ? { parkDate } : {}) }, clientId);
+      const r = await apiPost('/action', { name: it.name, email: it.email || undefined, src: it.src, action, ...(parkDate ? { parkDate } : {}) }, clientId);
       removeRow(key);
-      setNotice(action === 'park' ? `${it.name} parked until ${formatDate(parkDate)}` : (action === 'drop' ? `${it.name} dropped — nothing sent, a new message from them still surfaces` : `${it.name} marked done`));
+      setNotice(action === 'weekly' ? ((r && r.detail) || `${it.name} added to your weekly email`) : action === 'park' ? `${it.name} parked until ${formatDate(parkDate)}` : (action === 'drop' ? `${it.name} dropped — nothing sent, a new message from them still surfaces` : `${it.name} marked done`));
       setTimeout(() => setNotice(null), 5000);
     } catch (e) {
       setError(`${action} failed for ${it.name}: ${e?.message || e}`);
@@ -732,7 +734,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
         {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>}
         {loading && <div className="text-gray-500 py-6 text-center">Checking your CRM, calendar and mailbox… {loadSecs}s</div>}
         {!loading && reconnect && (
-          <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} onRemaining={setReconnectLeft} />
+          <ReconnectSection weekly={isCoach} data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} onRemaining={setReconnectLeft} />
         )}
         {!loading && reconnect && (
           <DisconnectSection get={(path) => apiGet(path, clientId)} post={(path, body) => apiPost(path, body, clientId)} refreshKey={disconnectTick} />
@@ -942,6 +944,9 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
                           )}
                           <button className="px-3 py-1.5 rounded text-sm border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => doAction(it, 'done')} title="Handled — no change to the relationship">Done</button>
                           <button className="px-3 py-1.5 rounded text-sm border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => setParkFor(parkFor === key ? null : key)} title="Not now, definitely later — pick a date">Park</button>
+                          {isCoach && (
+                            <button className="px-3 py-1.5 rounded text-sm border bg-white text-sky-800 border-sky-200 hover:bg-sky-50" onClick={() => doAction(it, 'weekly')} title="Add them to Network building, rethought - your weekly email. It becomes your touch with them, so they come off this list; a reply brings them back.">Weekly</button>
+                          )}
                           <button
                             className={it.kind === 'drop'
                               ? 'px-3 py-1.5 rounded text-sm font-medium text-white bg-red-700 hover:bg-red-600'
@@ -992,7 +997,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
       {/* Reconnect: a separate, stacked list - see ReconnectSection.js. On Today it has its own
           box (section 'reconnect', above), so it shows here only on the standalone screen. */}
       {!loading && reconnect && !section && (
-        <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} />
+        <ReconnectSection weekly={isCoach} data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} />
       )}
 
       {/* Potential disconnects: the third stacked list - see DisconnectSection.js */}

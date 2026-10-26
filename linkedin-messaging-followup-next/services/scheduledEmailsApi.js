@@ -19,3 +19,13 @@ export const editScheduledEmail = (id, { subject, html }) => act(id, 'edit', { s
 export const moveScheduledEmail = (id, sendAt) => act(id, 'move', { sendAt });
 export const cancelScheduledEmail = (id) => act(id, 'cancel');
 export const sendScheduledEmailNow = (id) => act(id, 'send-now');
+
+// "Network building, rethought" - this week's email to the list (backend services/listEditions.js).
+const listAct = async (path, body = {}) => {
+  try { return (await axios.post(`${base()}/list/${path}`, body, opts(60000))).data; }
+  catch (e) { return (e.response && e.response.data) || { success: false, message: e.message }; }
+};
+export const approveListEdition = (id) => listAct(`${id}/approve`);
+export const holdListEdition = (id) => listAct(`${id}/hold`);
+export const editListEdition = (id, { title, body }) => listAct(`${id}/edit`, { title, body });
+export const testListEdition = () => listAct('test');

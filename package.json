@@ -51,6 +51,7 @@
     "test:client-touches": "node tests/client-touch-store.test.js && node tests/client-unsubscribe.test.js",
     "test:client-touch-planner": "node tests/client-touch-picker.test.js && node tests/client-touch-opening.test.js && node tests/client-touch-planner.test.js && node tests/client-touch-brief.test.js",
     "test:scheduled-emails": "node tests/scheduled-emails.test.js",
+    "test:list-editions": "node tests/list-editions.test.js",
     "test:lead-email-guards": "node tests/wingguy-extension-message-linebreaks.test.js && node tests/email-glued-prefix.test.js && node tests/booking-address-guard.test.js && node tests/bounce-watch.test.js",
     "diagnose:oauth": "node scripts/diagnose-google-oauth-scopes.js",
     "diagnose:oauth:harness": "node scripts/oauth-diagnostic-harness.js",

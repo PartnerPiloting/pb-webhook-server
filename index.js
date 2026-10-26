@@ -2040,6 +2040,15 @@ try {
     moduleLogger.error('index.js: Error starting scheduled emails', e.message, e.stack);
 }
 
+// "Network building, rethought" - the weekly email to Guy's list (services/listEditions.js): written
+// by the weekend, sent Wednesdays only once Guy approves it. LIST_EDITION_SEND=off (or the scheduled
+// send switches, as on staging) holds it; LIST_EDITION_TICK=off stops it.
+try {
+    require('./services/listEditions.js').startListEditions();
+} catch (e) {
+    moduleLogger.error('index.js: Error starting list editions', e.message, e.stack);
+}
+
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {

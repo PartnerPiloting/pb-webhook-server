@@ -12,10 +12,13 @@
 //   POST /:id/move         {sendAt} - an ISO time
 //   POST /:id/cancel       it will not go
 //   POST /:id/send-now     send it now (a held one only after Guy has read why)
+//   POST /list/:id/approve | hold | edit {title?, body?}   this week's list edition
+//   POST /list/test        a test copy of the list edition to Guy only
 
 const express = require('express');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const queue = require('../services/scheduledEmails');
+const list = require('../services/listEditions');
 
 const router = express.Router();
 const parseJson = express.json({ limit: '2mb' });
@@ -38,9 +41,18 @@ router.use(authenticateUserWithTestMode, coachOnly);
 
 router.get('/', wrap(async (req, res) => {
   const tenant = req.client.clientId;
-  const [emails, away] = await Promise.all([queue.forPage(tenant), queue.getAway(tenant)]);
-  res.json({ success: true, emails, away: away && away.from ? away : null });
+  const [emails, away, listEdition] = await Promise.all([
+    queue.forPage(tenant), queue.getAway(tenant),
+    list.forPage(tenant).catch((e) => ({ status: 'error', summary: e.message })),
+  ]);
+  res.json({ success: true, emails, away: away && away.from ? away : null, listEdition });
 }));
+
+// "Network building, rethought" - this week's email to Guy's list (services/listEditions.js).
+router.post('/list/:id/approve', wrap(async (req, res) => said(res, await list.approve(req.client.clientId, idOf(req)))));
+router.post('/list/:id/hold', wrap(async (req, res) => said(res, await list.hold(req.client.clientId, idOf(req)))));
+router.post('/list/:id/edit', parseJson, wrap(async (req, res) => said(res, await list.edit(req.client.clientId, idOf(req), { title: req.body && req.body.title, body: req.body && req.body.body }))));
+router.post('/list/test', wrap(async (req, res) => said(res, await list.testSend(req.client.clientId))));
 
 router.get('/:id', wrap(async (req, res) => {
   const p = await queue.preview(req.client.clientId, idOf(req));

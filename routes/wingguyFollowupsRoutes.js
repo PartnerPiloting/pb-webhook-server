@@ -296,7 +296,19 @@ module.exports = function mountWingguyFollowups(app) {
         return res.json({ ok: true, action: 'done' });
       }
 
-      return res.status(400).json({ error: 'invalid_action', allowed: ['drop', 'park', 'done'] });
+      if (action === 'weekly') {
+        // Onto "Network building, rethought" (services/listEditions.js, Guy 26 Oct 2026): the weekly
+        // email becomes the touch, so they come off the chase list too; a reply still surfaces them.
+        const list = require('../services/listEditions');
+        const r = await list.addToList(clientId, { email: email || '', name: name || '' });
+        if (!r.ok) return res.status(r.ambiguous ? 409 : 400).json({ error: r.ambiguous ? 'ambiguous_lead' : 'weekly_failed', details: r.text });
+        let backlogDone = null;
+        if (src !== 'today' && name) { try { backlogDone = await backlog.markItem(clientId, name, 'done'); } catch (_) { backlogDone = null; } }
+        if (src === 'today' || !backlogDone) await dismissed.dismiss(clientId, name || email);
+        return res.json({ ok: true, action: 'weekly', detail: r.text, noEmail: !!r.noEmail });
+      }
+
+      return res.status(400).json({ error: 'invalid_action', allowed: ['drop', 'park', 'done', 'weekly'] });
     } catch (e) {
       logger.error(`followupsScreen: action error for ${clientId}: ${e?.message || e}`);
       res.status(500).json({ error: 'action_failed', details: e?.message || String(e) });
@@ -311,6 +323,16 @@ module.exports = function mountWingguyFollowups(app) {
     if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
     const { key, action } = req.body || {};
     try {
+      if (action === 'weekly') {
+        // Onto the weekly list (services/listEditions.js), then off today's Reconnect list as done.
+        const rq = require('../services/reconnectQueue');
+        const who = await rq.personFor(clientId, key);
+        if (!who || !who.leadRecId) return res.status(400).json({ error: 'not_a_lead', details: 'They are not in your leads yet, so there is no email to send to.' });
+        const w = await require('../services/listEditions').addToList(clientId, { leadRecId: who.leadRecId, name: who.name });
+        if (!w.ok) return res.status(400).json({ error: 'weekly_failed', details: w.text });
+        const d = await rq.reconnectAction(clientId, key, 'done');
+        return res.json({ ...d, action: 'weekly', detail: w.text, noEmail: !!w.noEmail });
+      }
       const r = await require('../services/reconnectQueue').reconnectAction(clientId, key, action);
       if (!r.ok) return res.status(400).json({ error: r.error, allowed: ['done', 'skip', 'never', 'disconnect'] });
       return res.json(r);
