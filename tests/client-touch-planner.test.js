@@ -661,21 +661,49 @@ const routes = require('../routes/clientTouchRoutes');
       feedbackHome: planStore.feedbackHome,
       addFeedback: async () => ({ id: 1 }),
       addOpeningRule: async () => 1,
+      setPlanPickField: async (w, id, field, value) => { const r = rows.find((x) => x.clientId === id); r.pick = { ...(r.pick || {}), [field]: value }; },
+      sendDate: planStore.sendDate,
+    };
+  };
+  // Approving puts the email on the Scheduled page, from Guy's Gmail (26 Oct 2026) - faked here.
+  const schedDeps = (st) => {
+    const log = [];
+    let n = 40;
+    return {
+      log, planStore: st,
+      previewFor: async () => '<p>the email</p>',
+      clientService: { getClientById: async () => ({ clientName: 'Rick Wong', clientEmailAddress: 'rick@example.com' }) },
+      scheduled: {
+        schedule: async (t, args) => { n += 1; log.push(['schedule', args]); return { ok: true, row: { id: n }, text: `Scheduled #${n}` }; },
+        cancel: async (t, id) => { log.push(['cancel', id]); return { ok: true, text: `Cancelled #${id}` }; },
+      },
     };
   };
   const reviewRow = () => ({ clientId: 'Rick-Wong', status: 'proposed', subject: 'S', opening: 'O.', pick: { what: { kind: 'habit', key: 'make-the-important-urgent', title: 'Make the important urgent' }, reason: 'r', body: { title: 'T' } } });
   await check('approve says exactly what changed and when it goes; a quiet week cannot be approved', async () => {
     const st = fakeStore([reviewRow(), { clientId: 'Q', status: 'nothing', pick: { what: null, reason: 'quiet' } }]);
-    const a = await actions.approve('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26' }, { planStore: st });
-    assert.ok(a.ok); assert.match(a.said, /^Approved: "Make the important urgent" for Wednesday 28 Oct\. It goes at 11am Brisbane that Wednesday/);
-    const q = await actions.approve('Guy-Wilson', 'Q', { week: '2026-10-26' }, { planStore: st });
+    const d = schedDeps(st);
+    const a = await actions.approve('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26' }, d);
+    assert.ok(a.ok, a.said); assert.match(a.said, /^Approved: "Make the important urgent" for Wednesday 28 Oct\. It is on your Scheduled page as #41 and goes at 9:30am their time that Wednesday, from your own Gmail/);
+    const [what, args] = d.log[0];
+    assert.strictEqual(what, 'schedule'); assert.strictEqual(args.kind, 'weekly'); assert.strictEqual(args.send_at, '2026-10-28');
+    assert.deepStrictEqual(args.to, [{ email: 'rick@example.com', name: 'Rick Wong' }]);
+    assert.strictEqual(st.calls.find((c) => c[0] === 'status' && c[2] === 'scheduled')[3].whyNot, 'On the Scheduled page as #41');
+    const q = await actions.approve('Guy-Wilson', 'Q', { week: '2026-10-26' }, d);
     assert.strictEqual(q.ok, false); assert.match(q.said, /quiet week/);
   });
   await check("edit takes Guy's words for opening / subject / body (paragraphs kept) and counts as approved", async () => {
     const rows = [reviewRow()]; const st = fakeStore(rows);
-    const e = await actions.edit('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', opening: 'Good — to talk.', body: 'One.\n\nTwo <b>.' }, { planStore: st });
-    assert.ok(e.ok); assert.match(e.said, /Changed the opening, the body .* and approved it/);
-    assert.strictEqual(rows[0].status, 'edited'); assert.strictEqual(rows[0].opening, 'Good - to talk.');
+    const d = schedDeps(st);
+    const e = await actions.edit('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', opening: 'Good — to talk.', body: 'One.\n\nTwo <b>.' }, d);
+    assert.ok(e.ok); assert.match(e.said, /Changed the opening, the body .* and approved it\. It is on your Scheduled page as #41/);
+    assert.strictEqual(rows[0].status, 'scheduled');
+    const again = await actions.edit('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', subject: 'New subject' }, d);
+    assert.ok(again.ok); assert.deepStrictEqual(d.log.filter((x) => x[0] === 'cancel'), [['cancel', 41]], 'the earlier scheduled copy is cancelled first');
+    assert.strictEqual(rows[0].pick.scheduledId, 42);
+    const sk = await actions.skip('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26', whyNot: 'away' }, d);
+    assert.match(sk.said, /off your Scheduled page too/);
+    assert.deepStrictEqual(d.log.filter((x) => x[0] === 'cancel').map((x) => x[1]), [41, 42]); assert.strictEqual(rows[0].opening, 'Good - to talk.');
     assert.strictEqual(rows[0].bodyHtml, '<p>One.</p>\n<p>Two &lt;b&gt;.</p>');
     assert.strictEqual((await actions.edit('Guy-Wilson', 'Rick-Wong', { week: '2026-10-26' }, { planStore: st })).ok, false, 'nothing given');
   });

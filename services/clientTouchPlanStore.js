@@ -26,7 +26,7 @@ let schemaEnsured = false;
 
 // held   = approved, but the sending-morning re-check found something changed - Guy keeps or swaps
 // lapsed = never approved by the sending morning - it rolled off, nothing went
-const STATUSES = ['proposed', 'approved', 'edited', 'skipped', 'sent', 'failed', 'nothing', 'left-out', 'held', 'lapsed'];
+const STATUSES = ['proposed', 'approved', 'edited', 'scheduled', 'skipped', 'sent', 'failed', 'nothing', 'left-out', 'held', 'lapsed'];
 const FEEDBACK_HOMES = ['body', 'choice', 'person', 'openings'];
 
 /**

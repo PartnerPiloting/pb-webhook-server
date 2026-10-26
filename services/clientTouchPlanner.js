@@ -1533,7 +1533,7 @@ function formatOutlook(name, o) {
   const t = o.thisMonday;
   if (!t) lines.push('THIS WEEK: no plan built for this client yet (ask to build it).');
   else {
-    const status = { proposed: 'waiting for your approval', approved: 'approved', edited: 'approved (your words)', skipped: 'skipped', sent: 'sent', failed: 'send failed', nothing: 'nothing that week', 'left-out': 'left out', held: 'HELD - something changed, keep or swap?', lapsed: 'not approved in time, not sent' }[t.status] || t.status;
+    const status = { proposed: 'waiting for your approval', approved: 'approved', edited: 'approved (your words)', scheduled: 'approved - on your Scheduled page, from your Gmail', skipped: 'skipped', sent: 'sent', failed: 'send failed', nothing: 'nothing that week', 'left-out': 'left out', held: 'HELD - something changed, keep or swap?', lapsed: 'not approved in time, not sent' }[t.status] || t.status;
     lines.push(`THIS WEEK (${dayLabel(t.weekOf)}) - ${status}:`);
     lines.push(t.what ? `  ${t.what.title} (${KIND_LABEL[t.what.kind] || t.what.kind}${t.form === 'short' ? ', short' : ''})` : '  nothing');
     if (t.reason) lines.push(`  why: ${t.reason}`);
@@ -1621,7 +1621,7 @@ function emailAsText(html) {
 }
 
 const STATUS_WORDS = {
-  proposed: 'waiting for you', approved: 'approved', edited: 'approved (your words)', held: 'HELD', skipped: 'skipped',
+  proposed: 'waiting for you', approved: 'approved', edited: 'approved (your words)', scheduled: 'approved - on your Scheduled page', held: 'HELD', skipped: 'skipped',
   sent: 'sent', failed: 'send failed', lapsed: 'not approved in time', nothing: 'quiet', 'left-out': 'left out',
 };
 
@@ -1630,6 +1630,7 @@ function formatWeek(weekOf, rows, { sendHour = SEND_HOUR } = {}) {
   const groups = [
     ['WAITING FOR YOU', (r) => r.status === 'proposed' && r.pick && r.pick.what],
     ['HELD - needs your call', (r) => r.status === 'held'],
+    [`APPROVED - on your Scheduled page, going ${SEND_DAY_NAME} 9:30am their time from your Gmail`, (r) => r.status === 'scheduled'],
     [`APPROVED - goes ${SEND_DAY_NAME} ${hourLabel(SEND_HOUR)} after a fresh check`, (r) => ['approved', 'edited'].includes(r.status)],
     ['SENT', (r) => r.status === 'sent'],
     ['FAILED', (r) => r.status === 'failed'],
@@ -1769,7 +1770,7 @@ async function screenFor(coachClientId, week) {
     waitingImprovements: waiting,
     counts: {
       picks: rows.filter((r) => r.pick && r.pick.what).length,
-      approved: rows.filter((r) => ['approved', 'edited'].includes(r.status)).length,
+      approved: rows.filter((r) => ['approved', 'edited', 'scheduled'].includes(r.status)).length,
       sent: rows.filter((r) => r.status === 'sent').length,
       nothing: rows.filter((r) => r.status === 'nothing').length,
       leftOut: rows.filter((r) => r.status === 'left-out').length,

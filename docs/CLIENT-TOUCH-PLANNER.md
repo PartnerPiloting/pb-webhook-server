@@ -65,6 +65,15 @@ getting their weekly email - that drift is exactly what it's for - and may get "
 
 ## Sending day and scheduled sends (24 Oct 2026)
 
+**Since 26 Oct 2026: approving = scheduling from Guy's Gmail.** Guy: "I want to make it super clear so that I'm not
+confused." Approving a client's weekly email in the review (or editing it, which approves) puts it on the portal's
+Scheduled page (`services/scheduledEmails.js`): from his own Gmail, 9:30am in the client's time on the sending
+Wednesday, checked again just before it goes. The plan row's status becomes `scheduled` and `pick.scheduledId`
+holds the queue id. Edit, swap, skip or steer take the scheduled copy off first; changing the thought re-schedules
+it. So every client email going out is on that one page, next to the prospect list ("Network building, rethought",
+docs/LIST-EDITIONS.md), and nothing goes from the knowaguy address to a client any more. The planner's own
+Wednesday 11am send below still exists for any row left `approved` from before.
+
 **Wednesday, not Monday.** Guy: on Monday morning people are dealing with their own priorities after the
 weekend - midweek gets read. Approved planner emails now go at 11am Brisbane on the WEDNESDAY of the plan week
 (9am Perth, midday Sydney); the next week builds straight after (BUILD_HOUR). The plan week is still named by

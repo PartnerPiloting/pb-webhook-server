@@ -6,7 +6,10 @@
 // review happens in chat, not on a panel ("let me go through, approve, change, swap and skip the
 // weekly emails here in chat with you"). Every action says back, in plain words, exactly what changed.
 //
-// Nothing here sends anything. Sending stays the Monday 8am run (approved only, re-checked first).
+// Nothing here sends anything. Since 26 Oct 2026 approving (or editing, which approves) puts the email on
+// the Scheduled page: it goes from Guy's own Gmail, Wednesday 9:30am in the client's time, checked again just
+// before it goes (services/scheduledEmails.js). Guy: "I want to make it super clear so that I'm not
+// confused" - every client email that is going out is on that one page, and none goes any other way.
 
 const planStore = require('./clientTouchPlanStore');
 const clientService = require('./clientService');
@@ -21,10 +24,47 @@ function dayLabel(week) {
   return Number.isNaN(d.getTime()) ? String(week) : new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'short' }).format(d);
 }
 
-/** "11am Brisbane that Wednesday" - when an approved email goes. */
+/** When an approved email goes - from Guy's own Gmail, at 9:30am in the client's time that Wednesday. */
 function sendWhen() {
-  const p = require('./clientTouchPlanner');
-  return `${p.hourLabel(p.SEND_HOUR)} Brisbane that ${p.SEND_DAY_NAME}`;
+  return `9:30am their time that ${require('./clientTouchPlanner').SEND_DAY_NAME}, from your own Gmail`;
+}
+
+/**
+ * An approved row onto the Scheduled page (Guy, 26 Oct 2026): the email exactly as the review showed it,
+ * from his own Gmail, 9:30am their time on the sending Wednesday. Replaces any earlier scheduled copy
+ * of the same row. The row's status becomes 'scheduled' and remembers the queue id.
+ */
+async function scheduleApproved(coachClientId, clientId, w, deps = {}) {
+  const ps = deps.planStore || planStore;
+  const sched = deps.scheduled || require('./scheduledEmails');
+  const row = await ps.planFor(w, clientId);
+  await unschedule(coachClientId, row, deps, w);
+  const html = await (deps.previewFor || require('./clientTouchPlanner').previewFor)(w, clientId);
+  if (!html) return { ok: false, text: 'the email could not be put together' };
+  const client = await (deps.clientService || clientService).getClientById(clientId);
+  const to = client && client.clientEmailAddress;
+  if (!to) return { ok: false, text: 'there is no email address on their client record' };
+  const r = await sched.schedule(coachClientId, {
+    to: [{ email: to, name: client.clientName }], subject: row.subject || titleOf(row), html_body: html, kind: 'weekly', client: clientId,
+    send_at: (ps.sendDate || planStore.sendDate)(w), note: `Weekly email, approved in the weekly review: "${row.subject || titleOf(row)}"`,
+  });
+  if (!r.ok) return { ok: false, text: r.text };
+  await ps.setPlanStatus(w, clientId, 'scheduled', { whyNot: `On the Scheduled page as #${r.row.id}` });
+  if (ps.setPlanPickField) await ps.setPlanPickField(w, clientId, 'scheduledId', r.row.id);
+  return { ok: true, id: r.row.id, text: r.text };
+}
+
+/** Take a row's scheduled copy back off the Scheduled page (it is being changed, swapped or skipped). */
+async function unschedule(coachClientId, row, deps = {}, w = null) {
+  const id = row && row.pick && row.pick.scheduledId;
+  if (!id || row.status === 'sent') return null;
+  let out = null;
+  try { out = await (deps.scheduled || require('./scheduledEmails')).cancel(coachClientId, id); } catch (_) { out = null; }
+  // Forget it on the row too, so the same copy is never cancelled twice.
+  const ps = deps.planStore || planStore;
+  if (w && ps.setPlanPickField) { try { await ps.setPlanPickField(w, row.clientId, 'scheduledId', null); } catch (_) { /* best effort */ } }
+  if (row.pick) row.pick.scheduledId = null;
+  return out;
 }
 
 /** The week Guy is working towards (or the one asked for). */
@@ -99,8 +139,10 @@ async function approve(coachClientId, clientId, { week, override = false } = {},
   if (override && row.pick.guard && row.pick.guard.ok === false && ps.setPlanPickField) {
     await ps.setPlanPickField(w, clientId, 'guard', { ...row.pick.guard, overriddenAt: new Date().toISOString() });
   }
-  const out = await ps.setPlanStatus(w, clientId, 'approved', { hold: null });
-  return { ok: true, row: out, said: `Approved${override ? ' (anyway - you checked the fact guard)' : ''}: "${titleOf(row)}" for ${dayLabel(w)}. It goes at ${sendWhen()} after a fresh check that nothing has changed.` };
+  const s = await scheduleApproved(coachClientId, clientId, w, deps);
+  if (!s.ok) return { ok: false, said: `Not approved - it could not be put on the Scheduled page: ${s.text}` };
+  const out = await ps.planFor(w, clientId);
+  return { ok: true, row: out, said: `Approved${override ? ' (anyway - you checked the fact guard)' : ''}: "${titleOf(row)}" for ${dayLabel(w)}. It is on your Scheduled page as #${s.id} and goes at ${sendWhen()}, after a last check.` };
 }
 
 /** "Send a personal note first": Guy sent it himself (action 'sent', with what he sent) or it is not needed ('dismiss'). */
@@ -135,6 +177,7 @@ async function edit(coachClientId, clientId, { week, opening, subject, body, con
     changed.push('the body');
   }
   if (!changed.length) return { ok: false, said: 'Nothing to change - give the new opening, subject, body or Congratulations line.' };
+  await unschedule(coachClientId, row, deps, w);
   // His words are checked like the drafts were: the fact guard reads them again before approving.
   await ps.setPlanStatus(w, clientId, 'proposed', fields);
   let guard = null;
@@ -142,8 +185,10 @@ async function edit(coachClientId, clientId, { week, opening, subject, body, con
   const after = await ps.planFor(w, clientId);
   const blocked = approveBlocked(after);
   if (blocked) return { ok: true, approved: false, blocked, row: after, said: `Changed ${changed.join(', ')} of "${titleOf(row)}" for ${dayLabel(w)}, in your words - but NOT approved yet. ${blocked}` };
-  const out = await ps.setPlanStatus(w, clientId, 'edited', { hold: null });
-  return { ok: true, approved: true, guard, row: out, said: `Changed ${changed.join(', ')} of "${titleOf(row)}" for ${dayLabel(w)}, in your words - and approved it. It goes at ${sendWhen()} after a fresh check.` };
+  const s = await scheduleApproved(coachClientId, clientId, w, deps);
+  if (!s.ok) return { ok: true, approved: false, row: after, said: `Changed ${changed.join(', ')} of "${titleOf(row)}" for ${dayLabel(w)}, in your words - but it could not be put on the Scheduled page: ${s.text}` };
+  const out = await ps.planFor(w, clientId);
+  return { ok: true, approved: true, guard, row: out, said: `Changed ${changed.join(', ')} of "${titleOf(row)}" for ${dayLabel(w)}, in your words - and approved it. It is on your Scheduled page as #${s.id} and goes at ${sendWhen()}.` };
 }
 
 /**
@@ -165,6 +210,7 @@ async function swap(coachClientId, clientId, { week, piece, title, text } = {}, 
     pin = { kind: p.labels && p.labels.kind === 'habit' ? 'habit' : 'one-pager', key: p.slug, title: p.title };
   }
   await ps.setPin({ clientId, weekOf: w, ...pin });
+  await unschedule(coachClientId, row, deps, w);
   if (row) await ps.setPlanStatus(w, clientId, 'proposed', { hold: null });
   const build = deps.buildPlan || require('./clientTouchPlanner').buildPlan;
   const plan = await build(coachClientId, { weekOf: w, clientIds: [clientId], force: true });
@@ -180,6 +226,7 @@ async function skip(coachClientId, clientId, { week, whyNot, home, until } = {},
   const words = clean(whyNot);
   const lines = [`Skipped: nothing goes to them on ${dayLabel(w)}${row.pick && row.pick.what ? ` ("${titleOf(row)}" will not be sent)` : ''}.`];
   if (until && /^\d{4}-\d{2}-\d{2}$/.test(until)) { await ps.setSkip(clientId, until, words); lines.push(`Nothing more until ${until}.`); }
+  if (await unschedule(coachClientId, row, deps, w)) lines.push('It is off your Scheduled page too.');
   const out = await ps.setPlanStatus(w, clientId, 'skipped', { whyNot: words || null, whyNotHome: home || null });
   if (words && home) {
     const filed = await fileWhyNot(coachClientId, { weekOf: w, clientId, pieceKey: row.pick && row.pick.what ? row.pick.what.key : null, home, words }, deps);
@@ -219,6 +266,7 @@ async function steer(coachClientId, clientId, { week, text, ongoing = false } = 
   const { row } = await rowFor(w, clientId, ps);
   if (row && row.status === 'sent') return { ok: false, said: `Their ${dayLabel(w)} email has already gone.` };
   await ps.setPin({ clientId, weekOf: w, kind: 'steer', key: `steer:${w}`, title: 'Your direction', note: words });
+  await unschedule(coachClientId, row, deps, w);
   if (row) await ps.setPlanStatus(w, clientId, 'proposed', { hold: null });
   const lines = [];
   if (ongoing) {
@@ -255,7 +303,8 @@ async function setThought(coachClientId, clientId, { week, piece, why } = {}, de
   if (error) return { ok: false, said: error };
   if (!clean(piece) || /^(none|no thought|remove)$/i.test(clean(piece))) {
     await ps.setPlanThought(w, clientId, null);
-    return { ok: true, said: `No thought for the week in their ${dayLabel(w)} email.` };
+    const again = row.status === 'scheduled' ? await scheduleApproved(coachClientId, clientId, w, deps) : null;
+    return { ok: true, said: `No thought for the week in their ${dayLabel(w)} email.${again ? (again.ok ? ` The scheduled copy is updated (#${again.id}).` : ` ⚠ The scheduled copy could not be updated: ${again.text}`) : ''}` };
   }
   const thoughts = require('./clientTouchThought');
   const nuggets = thoughts.loadNuggets();
@@ -263,7 +312,8 @@ async function setThought(coachClientId, clientId, { week, piece, why } = {}, de
   if (!p || !nuggets[p.slug]) return { ok: false, said: `"${piece}" has no thought for the week. The thoughts come from: ${Object.keys(nuggets).join(', ')}.` };
   const thought = { slug: p.slug, title: p.title, text: nuggets[p.slug], why: clean(why) || 'your choice', source: 'guy' };
   await ps.setPlanThought(w, clientId, thought);
-  return { ok: true, said: `Thought for the week in their ${dayLabel(w)} email is now from "${p.title}": "${thought.text}"${row.status === 'approved' || row.status === 'edited' ? ' (still approved)' : ''}.` };
+  const again = row.status === 'scheduled' ? await scheduleApproved(coachClientId, clientId, w, deps) : null;
+  return { ok: true, said: `Thought for the week in their ${dayLabel(w)} email is now from "${p.title}": "${thought.text}"${again ? (again.ok ? ` - still approved, and the scheduled copy is updated (#${again.id})` : ` - ⚠ the scheduled copy could not be updated: ${again.text}`) : ''}.` };
 }
 
 /** Where a "why not" goes (the Tuning-by-approval table), applied at once where it can be. */
