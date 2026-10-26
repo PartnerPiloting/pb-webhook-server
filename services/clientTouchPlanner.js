@@ -1639,7 +1639,7 @@ function formatWeek(weekOf, rows, { sendHour = SEND_HOUR } = {}) {
     ['QUIET THIS WEEK', (r) => r.status === 'nothing'],
     ['LEFT OUT', (r) => r.status === 'left-out'],
   ];
-  const lines = [`Weekly emails for ${dayLabel(weekOf)} (they go at ${hourLabel(sendHour)} Brisbane that ${SEND_DAY_NAME} - approved ones only)`, ''];
+  const lines = [`Weekly emails for ${dayLabel(weekOf)} to your clients (approve one and it goes on your Scheduled page - from your own Gmail, 9:30am their time that ${SEND_DAY_NAME}; nothing unapproved goes)`, ''];
   for (const [label, test] of groups) {
     const hit = rows.filter(test);
     if (!hit.length) continue;
