@@ -9,6 +9,23 @@ set -u
 LOG=/var/log/lh-backup.log
 say(){ echo "$(date -Is) [reboot] $*" >> "$LOG"; }
 
+# Keep cloudflared (the client's web link) current, every night, even when the reboot is skipped.
+# Ubuntu's automatic updates never touch Cloudflare's own package source, so without this every
+# machine sat on the build it was made with - Cloudflare's "upgrade to 2026.10.2" notice on
+# 27 Oct 2026 found all nine behind. Only this one package and only its own source are refreshed.
+if [ -f /etc/apt/sources.list.d/cloudflared.list ]; then
+  before=$(cloudflared --version 2>/dev/null | awk '{print $3}')
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get -o DPkg::Lock::Timeout=300 -qq update -o Dir::Etc::sourcelist=sources.list.d/cloudflared.list \
+    -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0 >/dev/null 2>&1
+  apt-get -o DPkg::Lock::Timeout=300 install -y -qq --only-upgrade cloudflared >/dev/null 2>&1
+  after=$(cloudflared --version 2>/dev/null | awk '{print $3}')
+  if [ "$before" != "$after" ]; then
+    systemctl restart cloudflared
+    say "cloudflared $before -> $after"
+  fi
+fi
+
 if sudo -u "${LH_USER:-lh}" DISPLAY=:0 wmctrl -l 2>/dev/null | grep 'Instance #' | grep -qE '\|[[:space:]]*Collecting'; then
   say "a collect is running - no reboot tonight"
   exit 0
