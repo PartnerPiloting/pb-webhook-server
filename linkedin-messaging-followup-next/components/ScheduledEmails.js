@@ -27,7 +27,7 @@ const GROUPS = [
 const TONE = {
   amber: 'border-amber-300 bg-amber-50', red: 'border-red-300 bg-red-50', blue: 'border-blue-200 bg-white', gray: 'border-gray-200 bg-gray-50',
 };
-const KIND = { weekly: 'Weekly email', intro: 'Introduction', email: 'Email' };
+const KIND = { weekly: 'Client weekly email', intro: 'Introduction', email: 'One-off email' };
 
 const names = (list) => (list || []).map((p) => p.name || p.email).join(', ');
 
@@ -177,7 +177,7 @@ function ListEditionCard({ ed, onChanged }) {
     <div className={`border rounded-lg ${tone} mb-3 px-4 py-3`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-xs uppercase tracking-wide text-gray-500">To your list · everyone gets their own copy</div>
+          <div className="text-xs uppercase tracking-wide text-gray-500">To prospects · your list · everyone gets their own copy</div>
           <div className="font-medium text-gray-900">{ed.subject}</div>
           <div className="text-sm text-gray-600">{LIST_STATUS[ed.status] || ed.status}</div>
           {ed.why && <div className="text-xs text-gray-500 mt-1">Why this idea: {ed.why}</div>}
@@ -258,8 +258,8 @@ export default function ScheduledEmails() {
 
       {data && data.listEdition && (
         <section className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-800">Network building, rethought - your weekly email to the list</h3>
-          <p className="text-xs text-gray-500 mb-2">Sent from guy@knowaguy.com.au, replies to your inbox. Each person gets their own copy with their name; anyone new gets the "What does better mean?" piece first.</p>
+          <h3 className="text-sm font-semibold text-gray-800">To prospects - Network building, rethought</h3>
+          <p className="text-xs text-gray-500 mb-2">Sent from guy@knowaguy.com.au, replies to your inbox. Each person gets their own copy with their name; anyone new gets the "What does better mean?" piece first. Clients are never on this list.</p>
           <ListEditionCard ed={data.listEdition} onChanged={refresh} />
         </section>
       )}
@@ -269,7 +269,7 @@ export default function ScheduledEmails() {
         if (!items.length) return null;
         return (
           <section key={g.key} className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-800">{g.title} ({items.length})</h3>
+            <h3 className="text-sm font-semibold text-gray-800">{g.title} ({items.length}){data.listEdition ? ' - to clients and one-off people' : ''}</h3>
             {g.help && <p className="text-xs text-gray-500 mb-2">{g.help}</p>}
             {items.map((item) => <EmailCard key={item.id} item={item} tone={g.tone} onChanged={refresh} />)}
           </section>
