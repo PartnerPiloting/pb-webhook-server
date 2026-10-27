@@ -256,13 +256,13 @@ async function getMessage(coach, messageId) {
  * party thread is an introduction/group. That participant count is how the sweep avoids counting an
  * intro-thread message as a "reply owed". Direction is inferred without the coach's own address.
  * @param {object} coach client record (needs nylasGrantId)
- * @param {object} opts  { after: epoch SECONDS, max: hard cap on messages (default 5000), pageSize }
+ * @param {object} opts  { after: epoch SECONDS, before: epoch SECONDS (optional upper bound), max: hard cap on messages (default 5000), pageSize }
  * @returns {Promise<{ok:boolean, messages?:Array, truncated?:boolean, error?:string}>}
  */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function listRecent(coach, { after, max = 3000, pageSize = 50 } = {}) {
-  if (activeMailProvider(coach) === 'unipile') return listRecentViaUnipile(coach, { after, max, pageSize });
+async function listRecent(coach, { after, before, max = 3000, pageSize = 50 } = {}) {
+  if (activeMailProvider(coach) === 'unipile') return listRecentViaUnipile(coach, { after, before, max, pageSize });
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
 
@@ -276,6 +276,7 @@ async function listRecent(coach, { after, max = 3000, pageSize = 50 } = {}) {
     const params = new URLSearchParams();
     params.set('limit', String(per));
     if (after) params.set('received_after', String(Math.floor(Number(after))));
+    if (before) params.set('received_before', String(Math.floor(Number(before))));
     if (pageToken) params.set('page_token', pageToken);
     const u = `${apiUri}/v3/grants/${grantId}/messages?${params.toString()}`;
 
@@ -495,15 +496,16 @@ async function getMessageViaUnipile(coach, messageId) {
   };
 }
 
-async function listRecentViaUnipile(coach, { after, max = 3000, pageSize = 50 } = {}) {
+async function listRecentViaUnipile(coach, { after, before, max = 3000, pageSize = 50 } = {}) {
   const { apiKey, base, accountId } = unipileMailEnv(coach);
   if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured' };
   const per = Math.min(Math.max(parseInt(pageSize, 10) || 50, 1), 250);
   const afterISO = after ? new Date(Number(after) * 1000).toISOString() : undefined;
+  const beforeISO = before ? new Date(Number(before) * 1000).toISOString() : undefined;
   const out = [];
   let cursor = null; let truncated = false; let partialError = null;
   for (let guard = 0; guard < 120; guard++) {
-    const params = { limit: per, after: afterISO, cursor: cursor || undefined };
+    const params = { limit: per, after: afterISO, before: beforeISO, cursor: cursor || undefined };
     let json = null; let lastErr = null;
     for (let attempt = 0; attempt < 3 && json === null; attempt++) {
       if (attempt) await sleep(500 * attempt);

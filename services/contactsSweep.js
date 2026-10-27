@@ -167,7 +167,9 @@ async function sweepCommsLog(coach, { full = false } = {}) {
 const MAIL_TIMEOUT_MS = 120000;         // a nightly incremental read is one day of mail
 const MAIL_BACKFILL_TIMEOUT_MS = 600000; // a first run reads a year and is minutes, not seconds
 const MAIL_FIRST_RUN_DAYS = 365;
-const MAIL_MAX_MESSAGES = 3000;
+const MAIL_MAX_MESSAGES = 3000;          // per read - and a backfill is one read per slice
+const MAIL_SLICE_DAYS = 7;               // a backfill is filed a week at a time - Alex gets ~50 a day,
+                                         // so a month (~1,500) could outrun a whole night on its own
 
 /**
  * How long to let a mailbox read run. Pulled out so the decision can be tested in milliseconds
@@ -252,6 +254,19 @@ function messageToContacts(msg, { isSelf, isJunk } = {}) {
 }
 
 /**
+ * A backfill window cut into slices, OLDEST first. The last slice is open-ended (to: null) so
+ * mail that arrives while the sweep runs is still read. Pure, for tests.
+ */
+function backfillSlices(from, until, days = MAIL_SLICE_DAYS) {
+  const step = days * 24 * 3600 * 1000;
+  const out = [];
+  for (let t = from.getTime(); t < until.getTime(); t += step) out.push({ from: new Date(t), to: new Date(t + step) });
+  if (!out.length) out.push({ from, to: null });
+  out[out.length - 1].to = null;
+  return out;
+}
+
+/**
  * Feed 3: the mailbox - everyone this coach has actually corresponded with.
  *
  * This is the feed that matters most to clients: their leads bases are LinkedIn connections and
@@ -259,24 +274,27 @@ function messageToContacts(msg, { isSelf, isJunk } = {}) {
  * people they genuinely deal with. Reads through mailProvider, so Nylas, Unipile and Julian's
  * Zoho-over-IMAP all work without a word of provider code here.
  */
-async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN_DAYS, maxMessages = MAIL_MAX_MESSAGES, timeoutMs, mailProvider } = {}) {
+async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN_DAYS, maxMessages = MAIL_MAX_MESSAGES, sliceDays = MAIL_SLICE_DAYS, timeoutMs, mailProvider, store } = {}) {
   const mp = mailProvider || require('./mailProvider');
+  const cs = store || contactsStore;
   const tenant = coach && coach.clientId;
   if (!tenant) return { ok: false, error: 'coach.clientId required' };
   // The ONE mailbox gate (see project_wingguy_unipile_migration) - never the raw provider field.
   if (!mp.hasMailbox(coach)) return { ok: false, skipped: 'no mailbox connected' };
 
   const startedAt = new Date();
-  const state = await contactsStore.sweepState(tenant, 'mail');
+  const state = await cs.sweepState(tenant, 'mail');
+  // An unfinished backfill carries on from where the last night stopped, not from scratch.
+  const resuming = !full && !!state.resumeFrom;
   let since = null;
-  if (!full && state.lastRunAt) since = new Date(state.lastRunAt.getTime() - 24 * 3600 * 1000);
-  // No prior success (or a forced full) means a BACKFILL: a year of mail, not a day of it.
-  const backfill = !since;
+  if (resuming) since = new Date(state.resumeFrom.getTime() - 24 * 3600 * 1000);
+  else if (!full && state.lastRunAt) since = new Date(state.lastRunAt.getTime() - 24 * 3600 * 1000);
+  // No prior success (or a forced full, or an unfinished one) means a BACKFILL: a year of mail,
+  // not a day of it.
+  const backfill = !since || resuming;
   if (!since) since = new Date(Date.now() - firstRunDays * 24 * 3600 * 1000);
-  const afterEpochSeconds = Math.floor(since.getTime() / 1000);
   // Measured on Guy's mailbox: ~12 messages a second, so 3,000 is roughly four minutes. The
-  // nightly timeout would kill that and throw the whole backfill away - every message read,
-  // nothing filed. A backfill therefore gets ten minutes.
+  // nightly timeout would kill that, so a backfill gets ten minutes.
   //
   // BUT only its FIRST attempt. Julian's Zoho-over-IMAP cannot read a year of history at all,
   // and without this his feed would spend ten minutes failing every single night, turning a
@@ -288,14 +306,7 @@ async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN
   // on the nightly bound, so Sunday gives it the long fuse again (isWeeklyRetryNight).
   const triedAndFailed = !!state.lastErrorAt && !state.lastRunAt;
   const limitMs = mailTimeoutFor({ backfill, full, triedAndFailed, weeklyRetry: isWeeklyRetryNight(), override: timeoutMs });
-
-  let r;
-  try {
-    r = await withTimeout(mp.listRecent(coach, { after: afterEpochSeconds, max: maxMessages }), limitMs, `${tenant} mailbox read`);
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-  if (!r || !r.ok) return { ok: false, error: (r && r.error) || 'mailbox read failed' };
+  const deadline = Date.now() + limitMs;
 
   const { isJunkPendingEmail } = require('./pendingLeadFilter');
   // Every address that IS the coach: their record's address, plus whatever their own mailbox
@@ -310,25 +321,63 @@ async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN
   // pending-people list already judges them - one junk rule for the whole product.
   const isJunk = (e) => isJunkPendingEmail(e, coach);
 
-  const contacts = [];
-  for (const msg of (r.messages || [])) contacts.push(...messageToContacts(msg, { isSelf, isJunk }));
+  // A backfill is read a slice at a time, OLDEST first, and each slice is filed and stamped
+  // before the next is read. It used to be one read of the whole year, all or nothing: Alex
+  // Solti's mailbox reads too slowly to finish a year in ten minutes, so every attempt threw
+  // away everything it had read - "has never worked", forever (Sunday 25 Oct 2026). Now a night
+  // that runs out of time keeps what it filed, resume_from says where it stopped, and the next
+  // night carries on from there. A nightly incremental is a single open-ended slice.
+  const slices = backfill || full ? backfillSlices(since, startedAt, sliceDays) : [{ from: since, to: null }];
+  const toSec = (d) => Math.floor(d.getTime() / 1000);
+  let messages = 0; let contactsFiled = 0; let truncated = false; let partialError = null; let done = 0;
+  for (const slice of slices) {
+    const left = deadline - Date.now();
+    if (left <= 0) { partialError = 'out of time for tonight'; break; }
+    let r;
+    try {
+      r = await withTimeout(mp.listRecent(coach, { after: toSec(slice.from), before: slice.to ? toSec(slice.to) : undefined, max: maxMessages }), left, `${tenant} mailbox read`);
+    } catch (e) {
+      r = { ok: false, error: e.message };
+    }
+    if (!r || !r.ok) {
+      const error = (r && r.error) || 'mailbox read failed';
+      if (!done) return { ok: false, error };
+      partialError = error; break;
+    }
 
-  const w = await contactsStore.upsertContacts(tenant, contacts);
-  if (!w.ok) return { ok: false, error: w.error, messages: (r.messages || []).length };
-  // A partial read still stamps the sweep: the window it DID cover is now in the warehouse, and
-  // the next run's day of slack re-reads the overlap anyway.
-  await contactsStore.recordSweep(tenant, 'mail', {
-    rowsSeen: (r.messages || []).length,
-    at: startedAt,
-    note: `${backfill || full ? 'backfill' : 'incremental'} since ${since.toISOString().slice(0, 10)}${r.truncated ? ' (truncated)' : ''}${r.partialError ? ` (partial: ${String(r.partialError).slice(0, 80)})` : ''}`,
-  });
+    const contacts = [];
+    for (const msg of (r.messages || [])) contacts.push(...messageToContacts(msg, { isSelf, isJunk }));
+    const w = await cs.upsertContacts(tenant, contacts);
+    if (!w.ok) {
+      if (!done) return { ok: false, error: w.error, messages: (r.messages || []).length };
+      partialError = w.error; break;
+    }
+    messages += (r.messages || []).length;
+    contactsFiled += contacts.length;
+    truncated = truncated || !!r.truncated;
+    if (r.partialError) partialError = r.partialError;
+    done++;
+
+    // A partial read still stamps the sweep: the window it DID cover is now in the warehouse, and
+    // the next run's day of slack re-reads the overlap anyway. last_run_at is always a real
+    // success time (the staleness alert reads it); resume_from is the backfill's bookmark.
+    const finished = done === slices.length;
+    await cs.recordSweep(tenant, 'mail', {
+      rowsSeen: messages,
+      at: finished ? startedAt : new Date(),
+      resumeFrom: finished ? null : slice.to,
+      note: `${backfill || full ? 'backfill' : 'incremental'} since ${since.toISOString().slice(0, 10)}${finished ? '' : ` - filed to ${slice.to.toISOString().slice(0, 10)}, resumes next run`}${truncated ? ' (truncated)' : ''}${r.partialError ? ` (partial: ${String(r.partialError).slice(0, 80)})` : ''}`,
+    });
+  }
+
   return {
     ok: true,
-    messages: (r.messages || []).length,
-    contacts: contacts.length,
+    messages,
+    contacts: contactsFiled,
     mode: backfill || full ? 'backfill' : 'incremental',
-    truncated: !!r.truncated,
-    ...(r.partialError ? { partialError: String(r.partialError).slice(0, 120) } : {}),
+    truncated,
+    ...(slices.length > 1 ? { slices: `${done}/${slices.length}` } : {}),
+    ...(partialError ? { partialError: String(partialError).slice(0, 120) } : {}),
   };
 }
 
@@ -382,5 +431,5 @@ async function sweepAll({ full = false, onlyClientIds = null, clientService, ski
 
 module.exports = {
   sweepLeads, sweepCommsLog, sweepMailbox, sweepTenant, sweepAll,
-  leadToContacts, messageToContacts, nameFromEmail, splitAltEmails, fmtDay, withTimeout, mailTimeoutFor, isWeeklyRetryNight,
+  leadToContacts, messageToContacts, nameFromEmail, splitAltEmails, fmtDay, withTimeout, mailTimeoutFor, isWeeklyRetryNight, backfillSlices,
 };

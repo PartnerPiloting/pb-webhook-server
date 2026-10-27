@@ -8,7 +8,7 @@
  */
 const assert = require('assert');
 const { normaliseContact, rankMatches, cleanEmail, mergeContacts } = require('../services/contactsStore');
-const { leadToContacts, messageToContacts, nameFromEmail, withTimeout, sweepMailbox, mailTimeoutFor, isWeeklyRetryNight } = require('../services/contactsSweep');
+const { leadToContacts, messageToContacts, nameFromEmail, withTimeout, sweepMailbox, mailTimeoutFor, isWeeklyRetryNight, backfillSlices } = require('../services/contactsSweep');
 const { mailParties } = require('../services/mailProvider');
 const { shapeContact, firstPhone } = require('../routes/contactsIngestRoutes');
 const { runFindPerson, runContactsStatus, TOOL_DEFS, groupByPerson } = require('../services/wingguyContactsMcp');
@@ -277,15 +277,86 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
     const r = await sweepMailbox({ clientId: 'T1' }, {
       mailProvider: {
         hasMailbox: () => true,
-        listRecent: async (_c, o) => { askedAfter = o.after; await new Promise((res) => setTimeout(res, 60)); return { ok: true, messages: [] }; },
+        listRecent: async (_c, o) => { if (askedAfter === null) askedAfter = o.after; await new Promise((res) => setTimeout(res, 60)); return { ok: true, messages: [] }; },
       },
     });
     assert.strictEqual(r.ok, true, JSON.stringify(r));
     assert.strictEqual(r.mode, 'backfill');
-    // and it asked for a year of history, not a day
+    // and its first (oldest) slice starts a year back, not a day
     const daysBack = (Date.now() / 1000 - askedAfter) / 86400;
     assert.ok(daysBack > 360 && daysBack < 370, `asked for ${Math.round(daysBack)} days`);
   });
+  check('a backfill is cut into slices, oldest first, the last one open-ended', () => {
+    const from = new Date('2025-10-27T00:00:00Z'); const until = new Date('2026-10-27T00:00:00Z');
+    const sl = backfillSlices(from, until, 30);
+    assert.strictEqual(sl.length, 13);
+    assert.strictEqual(sl[0].from.toISOString(), from.toISOString());
+    for (let i = 1; i < sl.length; i++) assert.strictEqual(sl[i].from.getTime(), sl[i - 1].to.getTime());
+    assert.strictEqual(sl[sl.length - 1].to, null);
+    assert.strictEqual(backfillSlices(until, until, 30).length, 1); // empty window still reads once
+  });
+
+  // An in-memory sweeps row + warehouse, so the save-as-you-go behaviour is visible.
+  const fakeStore = (state = {}) => {
+    const st = { stamps: [], filed: 0, state: { lastRunAt: null, lastErrorAt: null, lastError: null, resumeFrom: null, ...state } };
+    st.sweepState = async () => st.state;
+    st.upsertContacts = async (_t, c) => { st.filed += c.length; return { ok: true }; };
+    st.recordSweep = async (_t, _s, o) => { st.stamps.push(o); return { ok: true }; };
+    return st;
+  };
+  const oneMsg = { ok: true, messages: [{ fromEmail: 'them@x.co', parties: [{ email: 'them@x.co', role: 'from' }], date: '2026-01-01T00:00:00Z' }] };
+
+  await acheck('ALEX: a backfill that runs out of time KEEPS what it filed and bookmarks where to resume', async () => {
+    const store = fakeStore();
+    let calls = 0;
+    const r = await sweepMailbox({ clientId: 'T1' }, {
+      store, timeoutMs: 150,
+      mailProvider: {
+        hasMailbox: () => true,
+        // three slices come back, the fourth hangs past tonight's budget
+        listRecent: async () => { calls++; if (calls > 3) return new Promise(() => {}); return oneMsg; },
+      },
+    });
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.ok(/^3\/\d+$/.test(r.slices), r.slices);
+    assert.ok(/timed out/.test(r.partialError), r.partialError);
+    assert.strictEqual(store.filed, 3);
+    assert.strictEqual(store.stamps.length, 3);
+    const last = store.stamps[2];
+    assert.ok(last.resumeFrom instanceof Date, 'bookmark set');
+    // last_run_at is a real success time, so the staleness alert sees a working feed
+    assert.ok(Date.now() - last.at.getTime() < 5000);
+  });
+
+  await acheck('the next night carries on from the bookmark, as a backfill, and clears it when done', async () => {
+    const bookmark = new Date(Date.now() - 45 * 24 * 3600 * 1000);
+    const store = fakeStore({ lastRunAt: new Date(), resumeFrom: bookmark });
+    const asked = [];
+    const r = await sweepMailbox({ clientId: 'T1' }, {
+      store,
+      mailProvider: { hasMailbox: () => true, listRecent: async (_c, o) => { asked.push(o); return oneMsg; } },
+    });
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.strictEqual(r.mode, 'backfill');
+    // starts a day before the bookmark (the usual slack), not a year back and not from last_run_at
+    assert.strictEqual(asked[0].after, Math.floor((bookmark.getTime() - 24 * 3600 * 1000) / 1000));
+    assert.strictEqual(asked[asked.length - 1].before, undefined);
+    assert.strictEqual(store.stamps[store.stamps.length - 1].resumeFrom, null);
+  });
+
+  await acheck('a nightly incremental is still ONE read and leaves no bookmark', async () => {
+    const store = fakeStore({ lastRunAt: new Date(Date.now() - 24 * 3600 * 1000) });
+    const asked = [];
+    const r = await sweepMailbox({ clientId: 'T1' }, {
+      store,
+      mailProvider: { hasMailbox: () => true, listRecent: async (_c, o) => { asked.push(o); return oneMsg; } },
+    });
+    assert.strictEqual(r.mode, 'incremental');
+    assert.strictEqual(asked.length, 1);
+    assert.strictEqual(asked[0].before, undefined);
+    assert.strictEqual(store.stamps[0].resumeFrom, null);
+  });
+
   await acheck('withTimeout passes a fast result straight through', async () => {
     assert.strictEqual(await withTimeout(Promise.resolve('done'), 1000, 'x'), 'done');
   });

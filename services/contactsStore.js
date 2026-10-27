@@ -70,6 +70,9 @@ async function ensureTable(client) {
   // rejected, the failure is swallowed, and the staleness alert stays silent about the very
   // tenant it exists to report (Julian's mail, 2026-09-15). Idempotent.
   await client.query(`ALTER TABLE wingguy_contacts_sweeps ALTER COLUMN last_run_at DROP NOT NULL;`);
+  // Where an unfinished mail backfill picks up next night (2026-10-27). NULL = caught up. Kept
+  // apart from last_run_at, which the staleness alert reads as "last success" and must stay recent.
+  await client.query(`ALTER TABLE wingguy_contacts_sweeps ADD COLUMN IF NOT EXISTS resume_from TIMESTAMPTZ;`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_name ON wingguy_contacts (coach_client_id, lower(name));`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_lead ON wingguy_contacts (coach_client_id, lead_record_id);`);
   await client.query(`
@@ -276,18 +279,18 @@ async function upsertContacts(coachClientId, contacts = []) {
   }
 }
 
-async function recordSweep(coachClientId, source, { rowsSeen = 0, note = '', at = new Date() } = {}) {
+async function recordSweep(coachClientId, source, { rowsSeen = 0, note = '', at = new Date(), resumeFrom = null } = {}) {
   const p = getPool();
   if (!p || !coachClientId || !source) return { ok: false };
   const client = await p.connect();
   try {
     await ensureTable(client);
     await client.query(
-      `INSERT INTO wingguy_contacts_sweeps (coach_client_id, source, last_run_at, rows_seen, note)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO wingguy_contacts_sweeps (coach_client_id, source, last_run_at, rows_seen, note, resume_from)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (coach_client_id, source) DO UPDATE SET last_run_at = EXCLUDED.last_run_at, rows_seen = EXCLUDED.rows_seen, note = EXCLUDED.note,
-         last_error_at = NULL, last_error = NULL`,
-      [coachClientId, source, at, rowsSeen, clip(note, 300) || null],
+         resume_from = EXCLUDED.resume_from, last_error_at = NULL, last_error = NULL`,
+      [coachClientId, source, at, rowsSeen, clip(note, 300) || null, resumeFrom],
     );
     return { ok: true };
   } catch (e) {
@@ -332,23 +335,24 @@ async function recordSweepFailure(coachClientId, source, error, { at = new Date(
  */
 async function sweepState(coachClientId, source) {
   const p = getPool();
-  if (!p || !coachClientId || !source) return { lastRunAt: null, lastErrorAt: null, lastError: null };
+  if (!p || !coachClientId || !source) return { lastRunAt: null, lastErrorAt: null, lastError: null, resumeFrom: null };
   const client = await p.connect();
   try {
     await ensureTable(client);
     const r = await client.query(
-      `SELECT last_run_at, last_error_at, last_error FROM wingguy_contacts_sweeps WHERE coach_client_id = $1 AND source = $2`,
+      `SELECT last_run_at, last_error_at, last_error, resume_from FROM wingguy_contacts_sweeps WHERE coach_client_id = $1 AND source = $2`,
       [coachClientId, source],
     );
     const row = r.rows[0];
-    if (!row) return { lastRunAt: null, lastErrorAt: null, lastError: null };
+    if (!row) return { lastRunAt: null, lastErrorAt: null, lastError: null, resumeFrom: null };
     return {
       lastRunAt: row.last_run_at ? new Date(row.last_run_at) : null,
       lastErrorAt: row.last_error_at ? new Date(row.last_error_at) : null,
       lastError: row.last_error || null,
+      resumeFrom: row.resume_from ? new Date(row.resume_from) : null,
     };
   } catch (e) {
-    return { lastRunAt: null, lastErrorAt: null, lastError: null };
+    return { lastRunAt: null, lastErrorAt: null, lastError: null, resumeFrom: null };
   } finally {
     client.release();
   }
