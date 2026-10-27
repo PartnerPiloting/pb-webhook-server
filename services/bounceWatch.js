@@ -201,9 +201,11 @@ async function sweepTenant(coach, { since, mailProvider, inbound, pool, send, no
         const textBody = bodyToText(html);
         const to = String(coach.clientEmailAddress || '').trim() || null;
         await send(subject, html, to, { text: textBody });
-        // Guy sees every bounce across the fleet too - it is how the next glued-address shape gets found.
+        // Guy gets a copy only when the address is a lead's - that is where a glued address or a
+        // mis-sent invite of ours shows up. A client's own mail to a dead address (Alex to his BNI
+        // chapter, 27 Oct 2026) is theirs to fix, and copying it to Guy was just noise.
         const admin = String(process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim().toLowerCase();
-        if (to && to.toLowerCase() !== admin) await send(`[${coach.clientId}] ${subject}`, html, null, { text: textBody });
+        if (lead && to && to.toLowerCase() !== admin) await send(`[${coach.clientId}] ${subject}`, html, null, { text: textBody });
         await pool.query(`UPDATE wingguy_bounce_alerts SET lead_record_id = $4, lead_name = $5 WHERE coach_client_id = $1 AND message_id = $2 AND address = $3`,
           [coach.clientId, String(m.id), address, lead ? lead.id : null, leadName || null]);
         alerted++;

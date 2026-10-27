@@ -138,6 +138,14 @@ function fakeWorld() {
     assert.strictEqual(r.tenants, 2, 'the tenant with no mailbox is skipped, the broken one is still tried');
     assert.strictEqual(r.failed, 0, 'a failed list is logged, not thrown');
   });
+  await acheck('7. a bounce to someone who is not a lead goes to the client only - no copy to Guy', async () => {
+    const w2 = fakeWorld();
+    w2.inbound.findLeadByEmail = async () => null;
+    const r = await bw.sweepBounces({ ...deps, pool: w2.pool, clientService: w2.clientService, mailProvider: w2.mailProvider, inbound: w2.inbound, sendEmail: w2.sendEmail });
+    assert.strictEqual(r.alerted, 1, 'still reported');
+    assert.strictEqual(w2.sent.filter((s) => s.to === 'guy@coach.com').length, 1, 'the client is told');
+    assert.strictEqual(w2.sent.filter((s) => s.to === null).length, 0, 'Guy is not copied');
+  });
 
   console.log(failures ? `\n${failures} FAILED` : '\nall passed');
   process.exit(failures ? 1 : 0);
