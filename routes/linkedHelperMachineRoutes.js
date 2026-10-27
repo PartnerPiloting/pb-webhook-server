@@ -201,7 +201,8 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   const campaign = lhCampaignWatch.campaignStep({
     report: campaignReport,
     client: {
-      trialWarningSent: client.trialWarningSent, quietCampaignAlerted: client.quietCampaignAlerted,
+      trialWarningSent: client.trialWarningSent, licenceBought: client.lhLicenceBought,
+      quietCampaignAlerted: client.quietCampaignAlerted,
       campaignPausedSince: client.campaignPausedSince, pausedCampaignAlerted: client.pausedCampaignAlerted,
     },
   });

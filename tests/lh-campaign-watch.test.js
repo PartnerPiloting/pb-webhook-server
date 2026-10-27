@@ -67,6 +67,12 @@ check('already warned - never again', () => {
   assert.equal(step(report({ first_action_at: daysAgo(11) }), { trialWarningSent: daysAgo(1) }).trialWarn, false);
 });
 
+check('licence already bought (Alex Solti, 27 Oct) - never warned, never stamped', () => {
+  const s = step(report({ first_action_at: daysAgo(10) }), { licenceBought: '2026-10-21' });
+  assert.equal(s.trialWarn, false);
+  assert.equal(s.fields[F.trialWarned], undefined);
+});
+
 check('trial long over (history imported, or bought months ago) - never warned', () => {
   assert.equal(step(report({ first_action_at: daysAgo(15) })).trialWarn, false);
   assert.equal(step(report({ first_action_at: '2020-11-03T05:19:24Z' })).trialWarn, false);

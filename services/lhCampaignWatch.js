@@ -10,8 +10,13 @@
  *    machine reports the first campaign action it ever recorded (lh-watchdog.py campaign_state).
  *    Five days before day 14, once, the coach is emailed - and the client too, once EMAIL_CLIENT
  *    is on - with the licence page. A machine whose first action is long past (history imported,
- *    or a licence bought long ago) is outside the window and never warned. A client who has
- *    already bought is told "ignore this": the machine cannot see a purchase.
+ *    or a licence bought long ago) is outside the window and never warned. The machine cannot see
+ *    a purchase (Linked Helper keeps the licence on its own servers; the local config is
+ *    encrypted), so a licence bought DURING the trial is recorded on the row as 'LH Licence
+ *    Bought', and a client with that date is never warned. WHY (27 Oct 2026): Alex Solti, Guy
+ *    McPhee and Matthew Bulat all bought on a call and still got "your trial ends Saturday" -
+ *    a false alarm about their campaign stopping. The client email still says "ignore this if
+ *    you've bought", for a purchase nobody has recorded yet.
  *
  * 2. CAMPAIGN GONE QUIET. No invitation sent for QUIET_DAYS, after one was sent within the last
  *    DORMANT_DAYS (a campaign that has been off for months is not "gone quiet" - that is a client
@@ -50,6 +55,7 @@
  * State on the client's master row (all written by the machine report route):
  *   'LH First Action', 'Last Invite Sent', 'Invites Waiting' - the facts, readable in Airtable
  *   'Trial Warning Sent', 'Quiet Campaign Alerted'           - once-per-episode stamps
+ *   'LH Licence Bought'                                      - set by hand (or /onboard): no trial warning
  *   'Campaign Paused Since', 'Paused Campaign Alerted'       - the paused episode: first seen, told
  *
  * Client emails: ON since 8 Oct 2026 (Guy approved the wording), coach copied, replies to the coach.
@@ -83,6 +89,7 @@ const FIELDS = {
   lastInvite: 'Last Invite Sent',
   waiting: 'Invites Waiting',
   trialWarned: 'Trial Warning Sent',
+  licenceBought: 'LH Licence Bought',
   quietAlerted: 'Quiet Campaign Alerted',
   pausedSince: 'Campaign Paused Since',
   pausedAlerted: 'Paused Campaign Alerted',
@@ -157,7 +164,7 @@ function pausedCampaignOf(report, now = Date.now()) {
  * report  - the machine's `campaign` block ({first_action_at, last_invite_at, waiting_running,
  *           waiting_paused, paused_campaigns}); absent on a machine still on the old watchdog ->
  *           nothing happens
- * client  - the stamps already on the row (trialWarningSent, quietCampaignAlerted,
+ * client  - the stamps already on the row (trialWarningSent, licenceBought, quietCampaignAlerted,
  *           campaignPausedSince, pausedCampaignAlerted)
  *
  * Returns { fields, trialWarn, quietAlert, quietRecovered, kind, pausedAlert, pausedRecovered, paused }
@@ -179,9 +186,10 @@ function campaignStep({ report, client = {}, now = Date.now() } = {}) {
   if (last !== null) out.fields[FIELDS.lastInvite] = iso(last);
   out.fields[FIELDS.waiting] = waitingRunning + waitingPaused;
 
-  // 1. Trial ending - once, inside the last WARN_DAYS_BEFORE days of the trial.
+  // 1. Trial ending - once, inside the last WARN_DAYS_BEFORE days of the trial, unless a licence
+  // is already recorded as bought.
   const ends = trialEndsAt(report.first_action_at);
-  if (ends !== null && !client.trialWarningSent && now < ends && now >= ends - WARN_DAYS_BEFORE * DAY) {
+  if (ends !== null && !client.trialWarningSent && !client.licenceBought && now < ends && now >= ends - WARN_DAYS_BEFORE * DAY) {
     out.trialWarn = true;
     out.fields[FIELDS.trialWarned] = iso(now);
   }
@@ -250,7 +258,7 @@ const daysSince = (isoStr, now = Date.now()) => {
 function trialCoachLine({ clientName, firstActionAt, timeZone, self = false }) {
   const ends = trialEndsAt(firstActionAt);
   const who = self ? 'Your' : `${clientName}'s`;
-  return `${who} Linked Helper trial ends about ${whenWords(iso(ends), timeZone)} - 14 days after the first campaign action on ${dayWords(firstActionAt, timeZone)}. The campaign stops then unless a licence has been bought. Buying page: ${LICENCE_PAGE}`;
+  return `${who} Linked Helper trial ends about ${whenWords(iso(ends), timeZone)} - 14 days after the first campaign action on ${dayWords(firstActionAt, timeZone)}. The campaign stops then unless a licence has been bought. Buying page: ${LICENCE_PAGE} - once they have bought, put the date in 'LH Licence Bought' on their row and they are never warned again.`;
 }
 
 function quietCoachLine({ clientName, kind, lastInviteAt, waiting, machineStatus, timeZone, self = false, now = Date.now() }) {

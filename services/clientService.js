@@ -213,6 +213,8 @@ async function getAllClients() {
                 const lastInviteSent = record.get('Last Invite Sent') || null;
                 const invitesWaiting = Number(record.get('Invites Waiting')) || 0;
                 const trialWarningSent = record.get('Trial Warning Sent') || null;
+                // Set when the client buys their licence during the trial (27 Oct 2026): no trial warning.
+                const lhLicenceBought = record.get('LH Licence Bought') || null;
                 const quietCampaignAlerted = record.get('Quiet Campaign Alerted') || null;
                 // Paused with people waiting (16 Oct 2026): when first seen, and when the coach was told.
                 const campaignPausedSince = record.get('Campaign Paused Since') || null;
@@ -372,6 +374,7 @@ async function getAllClients() {
                     lastInviteSent: lastInviteSent,
                     invitesWaiting: invitesWaiting,
                     trialWarningSent: trialWarningSent,
+                    lhLicenceBought: lhLicenceBought,
                     quietCampaignAlerted: quietCampaignAlerted,
                     campaignPausedSince: campaignPausedSince,
                     pausedCampaignAlerted: pausedCampaignAlerted,

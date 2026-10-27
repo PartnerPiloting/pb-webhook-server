@@ -380,6 +380,12 @@ const MASTER_FIELDS = [
     options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
   },
   {
+    name: 'LH Licence Bought',
+    type: 'date',
+    description: 'When this client bought their Linked Helper licence. Set by hand (or by /onboard) when they buy during the trial - the machine cannot see a purchase, so without it services/lhCampaignWatch.js still sends "your trial ends on ..." to someone who has paid. Any date here = no trial warning. Added 2026-10-27 after Alex Solti, Guy McPhee and Matthew Bulat were warned after buying.',
+    options: { dateFormat: { name: 'iso' } }
+  },
+  {
     name: 'Quiet Campaign Alerted',
     type: 'dateTime',
     description: 'When the coach was told this campaign had sent no invitation for four days. Once per episode; cleared by the next invitation, which also sends the coach an all-clear. While set, the campaign shows on the coach\'s Machine check (queue and Follow-Ups). services/lhCampaignWatch.js. Added 2026-10-08.',
