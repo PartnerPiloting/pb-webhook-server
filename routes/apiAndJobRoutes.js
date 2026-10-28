@@ -13428,40 +13428,54 @@ router.get("/api/smart-followup/sweep-status", async (req, res) => {
 // ---------------------------------------------------------------
 // Contacts sweep - the nightly top-up of the contacts warehouse.
 //
-// Runs IN THE REQUEST, like the smart-follow-up cron endpoint above: the whole
-// point of a cron hitting an endpoint (rather than a cron running the script)
-// is that the web service already holds DATABASE_URL and the Airtable keys.
-// DATABASE_URL is set on the service, not in an env group, so a standalone
-// node cron would mean a second copy of the database credentials.
+// Runs ON THE WEB SERVICE: the whole point of a cron hitting an endpoint (rather
+// than a cron running the script) is that the web service already holds
+// DATABASE_URL and the Airtable keys. DATABASE_URL is set on the service, not in
+// an env group, so a standalone node cron would mean a second copy of the
+// database credentials.
 //
 // Incremental by default - each tenant is asked only for records modified
-// since its last sweep, so a nightly pass across every client is seconds.
+// since its last sweep, so a nightly pass is a few minutes. But a client's FIRST
+// mail read goes back a year and can take ten minutes or more on its own, so it
+// answers 202 straight away and the sweep runs behind the request, like
+// linkedin-collect. The cron's curl waits 15 minutes at most: on 28 Oct 2026 a new
+// client's first read took the sweep to 25 minutes and Render emailed a "failure"
+// for a sweep that finished clean. Nobody needs the response body - the result is
+// logged ("contacts sweep: N tenant(s), ...") and a feed that stays broken is
+// caught by alertOnStaleFeeds. A second call while one is running is refused.
+//
 // A FULL re-read (?full=true) is minutes and is not what the cron should call;
 // run that by hand as a one-off job when a base has been bulk-edited.
+// ?wait=true runs in the request and returns the full per-tenant report.
 //
-// GET /api/cron/contacts-sweep[?full=true][&clientId=X&clientId=Y]
+// GET /api/cron/contacts-sweep[?full=true][&clientId=X&clientId=Y][&wait=true]
 // Auth: Bearer PB_WEBHOOK_SECRET
 // ---------------------------------------------------------------
+let contactsSweepRunning = false;
 router.get("/api/cron/contacts-sweep", async (req, res) => {
   const auth = req.headers.authorization;
   const secret = process.env.PB_WEBHOOK_SECRET;
   if (!secret || auth !== `Bearer ${secret}`) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
+  if (contactsSweepRunning) return res.status(409).json({ ok: false, error: 'already running' });
   const log = createLogger({ runId: 'CONTACTS-SWEEP', clientId: 'SYSTEM', operation: 'contacts_sweep_cron' });
   const full = String(req.query.full || '').toLowerCase() === 'true';
+  const skipMail = String(req.query.noMail || '').toLowerCase() === 'true';
+  const wait = String(req.query.wait || '').toLowerCase() === 'true';
   const only = [].concat(req.query.clientId || []).map((s) => String(s).trim()).filter(Boolean);
-  const startedAt = Date.now();
-  try {
+
+  const runSweep = async () => {
+    const startedAt = Date.now();
     const { sweepAll } = require('../services/contactsSweep');
-    const skipMail = String(req.query.noMail || '').toLowerCase() === 'true';
     const results = await sweepAll({ full, skipMail, onlyClientIds: only.length ? only : null });
     const errors = results.filter((r) => (r.leads && r.leads.ok === false && !r.leads.skipped)
       || (r.commsLog && r.commsLog.ok === false)
       || (r.mail && r.mail.ok === false && !r.mail.skipped));
     const seconds = Math.round((Date.now() - startedAt) / 1000);
     log.info(`contacts sweep: ${results.length} tenant(s), ${errors.length} error(s), ${seconds}s${full ? ' (FULL)' : ''}`);
-    // A per-tenant failure does not fail this endpoint (one bad mailbox must not read as a dead
+    errors.forEach((r) => log.warn(`contacts sweep: ${r.clientId} - ${[r.leads, r.commsLog, r.mail].filter((x) => x && x.ok === false && !x.skipped).map((x) => x.error).join('; ')}`));
+    // A per-tenant failure does not fail the sweep (one bad mailbox must not read as a dead
     // cron), so something has to notice a feed that stays broken. Never fatal to the sweep.
     let alert = null;
     try {
@@ -13471,9 +13485,7 @@ router.get("/api/cron/contacts-sweep", async (req, res) => {
     } catch (e) {
       log.warn(`contacts stale check failed: ${e.message}`);
     }
-    // 200 even with per-tenant errors: one bad base must not read as a dead cron.
-    // The counts below are what to look at, and every failure is named.
-    return res.json({
+    return {
       ok: true,
       tenants: results.length,
       errors: errors.length,
@@ -13488,10 +13500,21 @@ router.get("/api/cron/contacts-sweep", async (req, res) => {
           ? { messages: r.mail.messages, contacts: r.mail.contacts, mode: r.mail.mode, ...(r.mail.truncated ? { truncated: true } : {}) }
           : (r.mail.skipped || r.mail.error)),
       })),
-    });
+    };
+  };
+
+  contactsSweepRunning = true;
+  const running = runSweep()
+    .catch((err) => { log.error(`contacts sweep failed: ${err.message}`); throw err; })
+    .finally(() => { contactsSweepRunning = false; });
+  if (!wait) {
+    running.catch(() => {});
+    return res.status(202).json({ ok: true, started: true, mode: full ? 'full' : 'incremental', ...(only.length ? { clientIds: only } : {}) });
+  }
+  try {
+    return res.json(await running);
   } catch (err) {
-    log.error(`contacts sweep failed: ${err.message}`);
-    return res.status(500).json({ ok: false, error: err.message, seconds: Math.round((Date.now() - startedAt) / 1000) });
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 
