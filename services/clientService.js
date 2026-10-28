@@ -215,6 +215,10 @@ async function getAllClients() {
                 const trialWarningSent = record.get('Trial Warning Sent') || null;
                 // Set when the client buys their licence during the trial (27 Oct 2026): no trial warning.
                 const lhLicenceBought = record.get('LH Licence Bought') || null;
+                // The licence line off Linked Helper's own screen (28 Oct 2026): its end date, and
+                // when the coach was told it does not look active.
+                const lhLicenceEnds = record.get('LH Licence Ends') || null;
+                const licenceLapsedAlerted = record.get('Licence Lapsed Alerted') || null;
                 const quietCampaignAlerted = record.get('Quiet Campaign Alerted') || null;
                 // Why it went quiet (28 Oct 2026): empty / stopped / runner-off / paused / exhausted,
                 // stamped with the alert so the portal line keeps the story.
@@ -378,6 +382,8 @@ async function getAllClients() {
                     invitesWaiting: invitesWaiting,
                     trialWarningSent: trialWarningSent,
                     lhLicenceBought: lhLicenceBought,
+                    lhLicenceEnds: lhLicenceEnds,
+                    licenceLapsedAlerted: licenceLapsedAlerted,
                     quietCampaignAlerted: quietCampaignAlerted,
                     quietCampaignKind: quietCampaignKind,
                     campaignPausedSince: campaignPausedSince,

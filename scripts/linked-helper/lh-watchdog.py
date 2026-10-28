@@ -321,6 +321,45 @@ async def press_start(ws_url):
     return "NO RESPONSE"
 
 
+# The licence line Linked Helper draws on its own screen ("Pro license expires in 1 day").
+# WHY (28 Oct 2026): Alex Solti's Claude read that line off his screen the day before his trial
+# ended - a week after he had bought his licence - and told him his campaign was about to stop.
+# Nothing on disk says what licence an account has (it lives on Linked Helper's servers), but
+# the screen does, and it is the only way to see a bought licence actually switch on. Sent as
+# the raw line; the server reads it (services/lhCampaignWatch.js licenceFromLine).
+LICENCE_JS = (
+    '(function(){var t=(document.body&&document.body.innerText)||"";'
+    'var l=t.split("\\n").map(function(s){return s.trim();})'
+    '.filter(function(s){return /licen[cs]e|trial/i.test(s)&&s.length<120;});'
+    'return l[0]||"";})()'
+)
+
+
+async def read_licence_line(ws_url):
+    import websockets
+    async with websockets.connect(ws_url, max_size=2**22, open_timeout=5) as ws:
+        await ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate",
+                                  "params": {"expression": LICENCE_JS, "returnByValue": True}}))
+        for _ in range(30):
+            resp = json.loads(await asyncio.wait_for(ws.recv(), 8))
+            if resp.get("id") == 1:
+                return str(resp.get("result", {}).get("result", {}).get("value") or "")
+    return ""
+
+
+def licence_state(health):
+    """{line, read_at} when the Linked Helper screen shows a licence line, else {} - never raises."""
+    if health.get("state") not in ("IDLE", "RUNNING"):
+        return {}
+    try:
+        ws_url = find_ui_page()
+        line = asyncio.run(asyncio.wait_for(read_licence_line(ws_url), 20)) if ws_url else ""
+    except Exception as e:
+        print(f"licence read failed (non-fatal): {e}")
+        return {}
+    return {"line": line[:120], "read_at": int(time.time())} if line else {}
+
+
 def backup_state():
     """What the nightly backup last managed, as it left /var/lib/lh-backup-state.json.
 
@@ -621,6 +660,7 @@ def main():
                   "backup": backup_state(),
                   "setup": first_run_state(),
                   "campaign": campaign_state(health.get("account") or conf.get("LH_ACCOUNT_ID")),
+                  "licence": licence_state(health),
                   "machine": machine_info() if conf.get("REPORT_URL") else {}})
 
     # Non-zero exit makes failures visible in systemd/journalctl.

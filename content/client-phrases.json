@@ -23,6 +23,17 @@
       ]
     },
     {
+      "phrase": "is my Linked Helper licence OK?",
+      "tool": "wingguy_learn",
+      "topic": "LINKED HELPER - THE TRIAL",
+      "where": [
+        "docs/client-playbook.md"
+      ],
+      "near_misses": [
+        { "text": "my linked helper licence expires in 1 day", "expect": "LINKED HELPER - THE TRIAL" }
+      ]
+    },
+    {
       "phrase": "where are we up to?",
       "tool": "wingguy_learn",
       "tour": "status",

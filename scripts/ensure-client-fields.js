@@ -382,8 +382,25 @@ const MASTER_FIELDS = [
   {
     name: 'LH Licence Bought',
     type: 'date',
-    description: 'When this client bought their Linked Helper licence. Set by hand (or by /onboard) when they buy during the trial - the machine cannot see a purchase, so without it services/lhCampaignWatch.js still sends "your trial ends on ..." to someone who has paid. Any date here = no trial warning. Added 2026-10-27 after Alex Solti, Guy McPhee and Matthew Bulat were warned after buying.',
+    description: 'When this client bought their Linked Helper licence. Set by hand (or by /onboard) when they buy during the trial - the machine cannot see a purchase, so without it services/lhCampaignWatch.js still sends "your trial ends on ..." to someone who has paid. Any date here = no trial warning. Added 2026-10-27 after Alex Solti, Guy McPhee and Matthew Bulat were warned after buying. Since 2026-10-28 also filled in by itself once the machine screen shows a licence ending more than 45 days off (a paid licence, proven).',
     options: { dateFormat: { name: 'iso' } }
+  },
+  {
+    name: 'LH Licence',
+    type: 'singleLineText',
+    description: 'The licence line Linked Helper last showed on the machine screen, e.g. "Pro license expires in 1 day (read 2026-10-28)" - Linked Helper calls the trial "Pro". Written by the machine report (lh-watchdog.py licence_state). Added 2026-10-28 after Alex Solti was told by his own Claude that his bought licence was about to expire.'
+  },
+  {
+    name: 'LH Licence Ends',
+    type: 'dateTime',
+    description: 'When the Linked Helper licence ends, going by the machine screen. Drives the trial warning date and the "licence not active" alert (services/lhCampaignWatch.js rule 4). Added 2026-10-28.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
+    name: 'Licence Lapsed Alerted',
+    type: 'dateTime',
+    description: 'When the coach was told this Linked Helper licence does not look active (expired on screen, or the end date passed with no new one). Cleared - with an all-clear - when the screen shows time left again. Added 2026-10-28.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
   },
   {
     name: 'Quiet Campaign Alerted',

@@ -198,17 +198,29 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   // a campaign has sat paused for two hours with people waiting in it.
   // A machine still on the old watchdog sends no `campaign` block, and nothing happens.
   const campaignReport = (body.campaign && typeof body.campaign === 'object') ? body.campaign : null;
+  // The licence line off Linked Helper's own screen (28 Oct 2026): its real end date, a paid
+  // licence proven by itself, and a same-day alert when a licence does not switch on.
+  const licenceReport = (body.licence && typeof body.licence === 'object') ? body.licence : null;
+  const licence = lhCampaignWatch.licenceStep({
+    licence: licenceReport,
+    client: {
+      licenceEnds: client.lhLicenceEnds, licenceLapsedAlerted: client.licenceLapsedAlerted,
+      licenceBought: client.lhLicenceBought,
+    },
+  });
   const campaign = lhCampaignWatch.campaignStep({
     report: campaignReport,
     client: {
-      trialWarningSent: client.trialWarningSent, licenceBought: client.lhLicenceBought,
+      trialWarningSent: client.trialWarningSent,
+      licenceBought: client.lhLicenceBought || licence.fields[lhCampaignWatch.FIELDS.licenceBought],
       quietCampaignAlerted: client.quietCampaignAlerted,
       campaignPausedSince: client.campaignPausedSince, pausedCampaignAlerted: client.pausedCampaignAlerted,
     },
     // The runner state (RUNNING / IDLE) decides "runner-off" against "stopped" (28 Oct 2026).
     health: { state: h.state },
+    licence: licenceReport,
   });
-  const extra = { ...signout.fields, ...campaign.fields };
+  const extra = { ...signout.fields, ...campaign.fields, ...licence.fields };
   // Each campaign's week (16 Oct 2026), kept for the Monday numbers email
   // (services/lhWeeklyCampaignReport.js). Not awaited, never throws; an older watchdog sends none.
   if (campaignReport && Array.isArray(campaignReport.campaigns)) {
@@ -237,6 +249,8 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
       campaign.quietRecovered = false;
       campaign.pausedAlert = false;
       campaign.pausedRecovered = false;
+      licence.lapseAlert = false;
+      licence.lapseCleared = false;
     }
     clientService.clearCache();
   } catch (e) {
@@ -256,7 +270,7 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   }
   const fresh = { ...client, machineStatus: fields[FIELDS.status] };
   if (campaign.trialWarn) {
-    lhCampaignWatch.sendCampaignAlert({ client: fresh, alert: 'trial', report: campaignReport })
+    lhCampaignWatch.sendCampaignAlert({ client: fresh, alert: 'trial', report: campaignReport, licence: licenceReport })
       .catch((e) => log.error(`LH-CAMPAIGN ${clientId} trial warning failed: ${e.message}`));
   }
   if (campaign.quietAlert) {
@@ -272,6 +286,13 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   } else if (campaign.pausedRecovered) {
     lhCampaignWatch.sendPausedClearedNote({ client: fresh })
       .catch((e) => log.error(`LH-CAMPAIGN ${clientId} paused-cleared note failed: ${e.message}`));
+  }
+  if (licence.lapseAlert) {
+    lhCampaignWatch.sendLicenceLapsedAlert({ client: fresh, reading: licence.reading })
+      .catch((e) => log.error(`LH-LICENCE ${clientId} not-active alert failed: ${e.message}`));
+  } else if (licence.lapseCleared) {
+    lhCampaignWatch.sendLicenceActiveNote({ client: fresh, reading: licence.reading })
+      .catch((e) => log.error(`LH-LICENCE ${clientId} active note failed: ${e.message}`));
   }
   return res.json({ ok: true, wrote: Object.keys({ ...fields, ...extra }) });
 });

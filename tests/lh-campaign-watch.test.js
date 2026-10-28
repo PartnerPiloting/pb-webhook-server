@@ -551,6 +551,125 @@ check('a mail failure never throws out of the alert', async () => {
   assert.equal(r.coachEmailError, 'mailgun down');
 });
 
+console.log('licence off the screen (rule 4, 28 Oct 2026):');
+
+const readAt = Math.floor(NOW / 1000);
+const lic = (line) => ({ line, read_at: readAt });
+
+check('Alex Solti\'s real line - "Pro license expires in 1 day"', () => {
+  const r = w.licenceFromLine(lic('Pro license expires in 1 day'), NOW);
+  assert.equal(r.kind, 'Pro');
+  assert.equal(r.endsAt, NOW + DAY);
+  assert.equal(r.expired, false);
+});
+
+check('other wordings - months, hours, tomorrow, expired, unknown', () => {
+  assert.equal(w.licenceFromLine(lic('Standard license expires in 11 months'), NOW).endsAt, NOW + 330 * DAY);
+  assert.equal(w.licenceFromLine(lic('Standard license expires in 11 months'), NOW).kind, 'Standard');
+  assert.equal(w.licenceFromLine(lic('Pro license expires in 5 hours'), NOW).endsAt, NOW + 5 * 3600000);
+  assert.equal(w.licenceFromLine(lic('License expires tomorrow'), NOW).endsAt, NOW + DAY);
+  assert.equal(w.licenceFromLine(lic('License expires tomorrow'), NOW).kind, null);
+  assert.equal(w.licenceFromLine(lic('Pro license expired'), NOW).expired, true);
+  assert.equal(w.licenceFromLine(lic('Your trial has ended'), NOW).expired, true);
+  const odd = w.licenceFromLine(lic('Licence: something new'), NOW);
+  assert.equal(odd.endsAt, null);
+  assert.equal(odd.expired, false);
+  assert.equal(w.licenceFromLine({}, NOW), null);
+  assert.equal(w.licenceFromLine(null, NOW), null);
+});
+
+check('the line and its end date land on the row; no read changes nothing', () => {
+  const s = w.licenceStep({ licence: lic('Pro license expires in 1 day'), now: NOW });
+  assert.equal(s.fields[F.licence], 'Pro license expires in 1 day (read 2026-10-08)');
+  assert.equal(s.fields[F.licenceEnds], new Date(NOW + DAY).toISOString());
+  assert.equal(s.lapseAlert, false);
+  assert.deepEqual(w.licenceStep({ licence: {}, now: NOW }).fields, {});
+});
+
+check('the end date only moves when it really changed', () => {
+  const s = w.licenceStep({ licence: lic('Pro license expires in 3 days'), client: { licenceEnds: new Date(NOW + 3 * DAY - 3600000).toISOString() }, now: NOW });
+  assert.equal(s.fields[F.licenceEnds], undefined);
+});
+
+check('a far-off end date proves a paid licence - LH Licence Bought fills itself', () => {
+  const s = w.licenceStep({ licence: lic('Standard license expires in 12 months'), now: NOW });
+  assert.equal(s.fields[F.licenceBought], '2026-10-08');
+  const already = w.licenceStep({ licence: lic('Standard license expires in 12 months'), client: { licenceBought: '2026-10-01' }, now: NOW });
+  assert.equal(already.fields[F.licenceBought], undefined);
+  // a trial's 14 days proves nothing
+  assert.equal(w.licenceStep({ licence: lic('Pro license expires in 14 days'), now: NOW }).fields[F.licenceBought], undefined);
+});
+
+check('screen says expired - the coach is told once', () => {
+  const s = w.licenceStep({ licence: lic('Pro license expired'), now: NOW });
+  assert.equal(s.lapseAlert, true);
+  assert.equal(s.fields[F.licenceLapsed], new Date(NOW).toISOString());
+  assert.equal(w.licenceStep({ licence: lic('Pro license expired'), client: { licenceLapsedAlerted: daysAgo(1) }, now: NOW }).lapseAlert, false);
+});
+
+check('the end date passed 2+ days ago and the screen shows no new one - told; within the grace, not', () => {
+  assert.equal(w.licenceStep({ licence: lic('Licence: something new'), client: { licenceEnds: daysAgo(3) }, now: NOW }).lapseAlert, true);
+  assert.equal(w.licenceStep({ licence: lic('Licence: something new'), client: { licenceEnds: daysAgo(1) }, now: NOW }).lapseAlert, false);
+});
+
+check('the bought licence switched on - no alert, and a lapse already told is cleared', () => {
+  const s = w.licenceStep({ licence: lic('Standard license expires in 12 months'), client: { licenceEnds: daysAgo(3), licenceBought: '2026-10-01' }, now: NOW });
+  assert.equal(s.lapseAlert, false);
+  assert.equal(s.lapseCleared, false);
+  const c = w.licenceStep({ licence: lic('Standard license expires in 12 months'), client: { licenceEnds: daysAgo(3), licenceLapsedAlerted: daysAgo(1) }, now: NOW });
+  assert.equal(c.lapseCleared, true);
+  assert.equal(c.fields[F.licenceLapsed], null);
+});
+
+check('trial warning uses Linked Helper\'s own date (Alex: guess said day 14, screen said day 12)', () => {
+  // first action 7 days ago: the guess says 7 days left (too early); the screen says 2 days
+  const r = report({ first_action_at: daysAgo(7) });
+  assert.equal(step(r).trialWarn, false); // guess: 7 days left - too early
+  const s = w.campaignStep({ report: r, licence: lic('Pro license expires in 2 days'), now: NOW });
+  assert.equal(s.trialWarn, true);
+  assert.equal(w.trialEndFor(daysAgo(7), w.licenceFromLine(lic('Pro license expires in 2 days'), NOW)), NOW + 2 * DAY);
+  // a year-off paid licence is not the trial's date
+  assert.equal(w.trialEndFor(daysAgo(7), w.licenceFromLine(lic('Standard license expires in 12 months'), NOW)), NOW + 7 * DAY);
+});
+
+check('trial emails say the screen\'s day', async () => {
+  const sent = [];
+  const toClient = [];
+  await w.sendCampaignAlert({
+    client: { clientId: 'Client-A', clientName: 'Client A', clientEmailAddress: 'a@example.com', coach: COACH, timezone: 'Australia/Brisbane' },
+    alert: 'trial', report: report({ first_action_at: daysAgo(7) }), licence: lic('Pro license expires in 2 days'), now: NOW,
+    deps: {
+      getClientById: async () => ({ clientName: 'Coach One', clientEmailAddress: 'coach@example.com' }),
+      sendAlertEmail: async (subject, html, to, opts) => { sent.push({ subject, text: opts.text }); },
+      sendClientEmail: async (m) => { toClient.push(m); },
+      recordComm: async () => {},
+    },
+  });
+  assert.match(sent[0].text, /going by Linked Helper's own screen/);
+  assert.equal(toClient[0].subject, 'Your Linked Helper trial ends on Saturday 10 October');
+});
+
+check('the not-active alert goes to the coach only, names the line, the account and where to look', async () => {
+  const sent = [];
+  const r = await w.sendLicenceLapsedAlert({
+    client: { clientId: 'Client-A', clientName: 'Client A', coach: COACH, lhAccountId: '591011', lhLicenceEnds: daysAgo(3) },
+    reading: w.licenceFromLine(lic('Pro license expired'), NOW),
+    deps: { getClientById: async () => null, sendAlertEmail: async (subject, html, to, opts) => { sent.push({ subject, text: opts.text }); } },
+  });
+  assert.equal(r.ok, true);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].subject, 'Client A\'s Linked Helper licence is not active');
+  assert.match(sent[0].text, /screen says "Pro license expired"/);
+  assert.match(sent[0].text, /\(account 591011\): check linkedhelper\.com\/member\/accounts/);
+  nodash(sent[0].text);
+});
+
+check('the licence all-clear', async () => {
+  const sent = [];
+  await w.sendLicenceActiveNote({ client: { clientId: 'Client-A', clientName: 'Client A', coach: COACH }, reading: { line: 'Standard license expires in 12 months' }, deps: { sendAlertEmail: async (subject, html, to, opts) => { sent.push({ subject, text: opts.text }); } } });
+  assert.equal(sent[0].subject, 'Client A\'s Linked Helper licence is active');
+});
+
 Promise.all(pending).then(() => {
   if (failures) { console.error(`\n${failures} failing`); process.exit(1); }
   console.log('\nall passing');

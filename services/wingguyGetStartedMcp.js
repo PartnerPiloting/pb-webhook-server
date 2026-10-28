@@ -505,6 +505,10 @@ const TOPIC_ALIASES = [
   // only ever comes up in this context; "api" must sit with "key"/"keys" so "API" alone stays a miss.
   [[/\banthropic\b/], 'YOUR CLAUDE KEY'],
   [[/\bapi\b/, /\bkeys?\b/], 'YOUR CLAUDE KEY'],
+  // the Linked Helper licence (28 Oct 2026): "is my Linked Helper licence OK?", "my licence expires
+  // in 1 day" - Alex Solti's Claude read that line off his screen after he had bought and told him
+  // his campaign would stop. No title says "licence"; the trial topic is where it is answered.
+  [[/\b(licen[cs]es?|subscription)\b/, /\b(linked ?helper|lh|expir\w*|trial|ok|bought|buy|renew\w*)\b/], 'LINKED HELPER - THE TRIAL'],
 ];
 
 function findPlaybookTopic(topics, query) {

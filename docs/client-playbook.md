@@ -837,6 +837,12 @@ the bottom of the form, and it's easy to miss.
 Buy it any time before your trial runs out. Linked Helper holds the new licence and switches it on by
 itself the moment the trial ends - no gap, and nothing to do afterwards.
 
+**Don't be thrown by the countdown.** Linked Helper calls the free trial "Pro", so near the end the
+screen says something like "Pro license expires in 1 day" - even after you've bought. That's the
+trial running out, not your licence. Your Linked Helper machine reads that line for me, so the day
+the trial ends I can see whether your new licence has switched on, and if it hasn't, I'll be in
+touch. If it worries you, ask your Claude "is my Linked Helper licence OK?"
+
 But again - none of this is relevant until the free trial has run its course. We start on the free
 plan, and all of this becomes relevant later, when a paid licence is actually the next decision.
 
