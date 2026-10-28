@@ -392,6 +392,11 @@ const MASTER_FIELDS = [
     options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
   },
   {
+    name: 'Quiet Campaign Kind',
+    type: 'singleLineText',
+    description: 'Why the campaign went quiet, stamped with Quiet Campaign Alerted: empty (nobody left to invite), stopped (people waiting, runner on, nothing sent), runner-off (people waiting, machine IDLE), paused, exhausted. The portal\'s Machine check line reads this plus today\'s waiting count and runner state, so a campaign that ran out and was then topped up says "sending resumes" instead of "stopped sending - check your licence" (Matthew Bulat, 27 Oct 2026). Cleared with the stamp. services/lhCampaignWatch.js. Added 2026-10-28.',
+  },
+  {
     name: 'Campaign Paused Since',
     type: 'dateTime',
     description: 'When the machine first reported a PAUSED campaign that still had people queued to invite and had sent within 30 days. Two hours later, if still so, the coach and client are told (Paused Campaign Alerted). Cleared when no such campaign is left in the report. services/lhCampaignWatch.js. Added 2026-10-16 after Guy paused his own campaign by hand and an acceptance went unseen.',

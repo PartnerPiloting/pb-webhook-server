@@ -205,6 +205,8 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
       quietCampaignAlerted: client.quietCampaignAlerted,
       campaignPausedSince: client.campaignPausedSince, pausedCampaignAlerted: client.pausedCampaignAlerted,
     },
+    // The runner state (RUNNING / IDLE) decides "runner-off" against "stopped" (28 Oct 2026).
+    health: { state: h.state },
   });
   const extra = { ...signout.fields, ...campaign.fields };
   // Each campaign's week (16 Oct 2026), kept for the Monday numbers email

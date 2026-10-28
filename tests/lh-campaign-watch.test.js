@@ -293,25 +293,115 @@ check('quiet emails: one per kind, each with its own fix', () => {
   const stopped = w.quietClientEmail({ ...base, kind: 'stopped' });
   assert.equal(stopped.subject, 'Your campaign has stopped sending');
   assert.match(stopped.text, /since Saturday 3 October/);
-  assert.match(stopped.text, /https:\/\/alex\.example\.com/);
-  assert.match(stopped.text, /your-licence/);
+  assert.match(stopped.text, /looks healthy from here/);
+  assert.match(stopped.text, /nothing you need to do/);
+  // Matthew Bulat, 27 Oct: "stopped" never again points at the licence or LinkedIn as a guess.
+  assert.doesNotMatch(stopped.text, /licence|usual reasons/i);
+  const off = w.quietClientEmail({ ...base, kind: 'runner-off' });
+  assert.equal(off.subject, 'Your campaign runner is switched off');
+  assert.match(off.text, /All campaigns/);
+  assert.match(off.text, /Start campaigns runner/);
+  assert.match(off.text, /https:\/\/alex\.example\.com/);
   const empty = w.quietClientEmail({ ...base, kind: 'empty' });
   assert.equal(empty.subject, 'Your campaign has run out of people');
   assert.match(empty.text, /Help me with my first campaign/);
   const paused = w.quietClientEmail({ ...base, kind: 'paused' });
   assert.equal(paused.subject, 'Your campaign is paused');
   assert.match(paused.text, /paused it on purpose/);
-  for (const m of [stopped, empty, paused]) nodash(m.subject + m.text);
+  for (const m of [stopped, off, empty, paused]) nodash(m.subject + m.text);
 });
 
-check('coach lines: who, since when, how many waiting, and the machine status for "stopped"', () => {
-  const line = w.quietCoachLine({ clientName: 'Client A', kind: 'stopped', lastInviteAt: daysAgo(5), waiting: 1340, machineStatus: 'RUNNING | LinkedIn LOGGED OUT', timeZone: 'Australia/Brisbane', now: NOW });
-  assert.match(line, /^Client A's campaign has stopped sending - no invitation since .+ \(5 days\), with 1340 people still waiting\./);
-  assert.match(line, /Machine says: RUNNING \| LinkedIn LOGGED OUT\./);
+check('coach lines: who, since when, how many waiting; "stopped" says the machine looks healthy and never lists guesses', () => {
+  const line = w.quietCoachLine({ clientName: 'Client A', kind: 'stopped', lastInviteAt: daysAgo(5), waiting: 1340, machineStatus: 'RUNNING | LinkedIn ok', timeZone: 'Australia/Brisbane', now: NOW });
+  assert.match(line, /^Client A's campaign has sent nothing since .+ \(5 days\), with 1340 people waiting, although the machine looks healthy from here/);
+  assert.match(line, /Machine says: RUNNING \| LinkedIn ok\./);
+  assert.doesNotMatch(line, /Usual causes/);
+  // The client's own portal line: no machine status dump, and told that Guy is looking.
+  const mine = w.quietCoachLine({ clientName: 'Client A', kind: 'stopped', lastInviteAt: daysAgo(5), waiting: 60, machineStatus: 'RUNNING | LinkedIn ok', self: true, now: NOW });
+  assert.match(mine, /^Your campaign has sent nothing since/);
+  assert.match(mine, /Guy has been told and is looking - nothing for you to do\./);
+  assert.doesNotMatch(mine, /Machine says|licence/i);
   assert.match(w.trialCoachLine({ clientName: 'Client A', firstActionAt: daysAgo(10), timeZone: 'Australia/Brisbane' }), /^Client A's Linked Helper trial ends about /);
-  for (const kind of ['stopped', 'paused', 'empty']) {
+  for (const kind of ['stopped', 'paused', 'empty', 'exhausted', 'runner-off', 'topped-up']) {
     for (const self of [true, false]) nodash(w.quietCoachLine({ clientName: 'A', kind, lastInviteAt: daysAgo(5), waiting: 3, self, now: NOW }));
   }
+});
+
+check('runner-off line: names the button, and the client version says where our helper looks for it', () => {
+  const mine = w.quietCoachLine({ clientName: 'Matthew Bulat', kind: 'runner-off', lastInviteAt: daysAgo(5), waiting: 60, self: true, now: NOW });
+  assert.match(mine, /^Your campaign runner is switched off - no invitation since .+, with 60 people waiting\. Open your Linked Helper machine, click All campaigns and press Start campaigns runner\./);
+  assert.match(mine, /leave Linked Helper on that screen/);
+  const coach = w.quietCoachLine({ clientName: 'Matthew Bulat', kind: 'runner-off', lastInviteAt: daysAgo(5), waiting: 60, now: NOW });
+  assert.match(coach, /^Matthew Bulat's campaign runner is switched off/);
+  assert.match(coach, /watchdog cannot press Start/);
+});
+
+check('topped-up line: it ran out, people were added, sending resumes - nothing is wrong', () => {
+  const mine = w.quietCoachLine({ clientName: 'Matthew Bulat', kind: 'topped-up', lastInviteAt: daysAgo(5), waiting: 60, self: true, now: NOW });
+  assert.match(mine, /^Your campaign ran out of people after the last invitation on .+\. 60 people have since been added - sending resumes in the next working window/);
+  assert.doesNotMatch(mine, /stopped|licence/i);
+});
+
+console.log('quietKind() with the runner state (Matthew Bulat, 27 Oct 2026):');
+
+check('people waiting and the machine IDLE - "runner-off", and it is stamped on the row', () => {
+  const s = w.campaignStep({ report: report({ last_invite_at: daysAgo(5), waiting_running: 60 }), health: { state: 'IDLE' }, now: NOW });
+  assert.equal(s.quietAlert, true);
+  assert.equal(s.kind, 'runner-off');
+  assert.equal(s.fields[F.quietKind], 'runner-off');
+});
+
+check('people waiting and the machine RUNNING - still "stopped", stamped', () => {
+  const s = w.campaignStep({ report: report({ last_invite_at: daysAgo(5), waiting_running: 60 }), health: { state: 'RUNNING' }, now: NOW });
+  assert.equal(s.kind, 'stopped');
+  assert.equal(s.fields[F.quietKind], 'stopped');
+});
+
+check('nobody waiting and the machine IDLE - "empty" (nothing to run anyway)', () => {
+  assert.equal(w.campaignStep({ report: report({ last_invite_at: daysAgo(5), waiting_running: 0 }), health: { state: 'IDLE' }, now: NOW }).kind, 'empty');
+});
+
+check('an invitation since the alert - the kind is cleared with the stamp', () => {
+  const s = step(report({ last_invite_at: daysAgo(0.1) }), { quietCampaignAlerted: daysAgo(1), quietCampaignKind: 'empty' });
+  assert.equal(s.quietRecovered, true);
+  assert.equal(s.fields[F.quietKind], null);
+});
+
+console.log('resolveQuietKind() - what the portal line says NOW:');
+
+check('went quiet empty, 60 added since, runner on - "topped-up" (Matthew, 27 Oct: was "stopped sending")', () => {
+  assert.equal(w.resolveQuietKind({ storedKind: 'empty', waiting: 60, runnerState: 'RUNNING' }), 'topped-up');
+});
+
+check('went quiet empty, 60 added since, runner OFF - "runner-off" (the fact that matters now)', () => {
+  assert.equal(w.resolveQuietKind({ storedKind: 'empty', waiting: 60, runnerState: 'IDLE' }), 'runner-off');
+});
+
+check('went quiet empty, still nobody waiting - "empty"', () => {
+  assert.equal(w.resolveQuietKind({ storedKind: 'empty', waiting: 0, runnerState: 'RUNNING' }), 'empty');
+});
+
+check('went quiet stopped, runner still on - "stopped"; runner now off - "runner-off"', () => {
+  assert.equal(w.resolveQuietKind({ storedKind: 'stopped', waiting: 40, runnerState: 'RUNNING' }), 'stopped');
+  assert.equal(w.resolveQuietKind({ storedKind: 'stopped', waiting: 40, runnerState: 'IDLE' }), 'runner-off');
+});
+
+check('runner-off at alert time, switched on since - "topped-up" wording (sending resumes), not "stopped"', () => {
+  assert.equal(w.resolveQuietKind({ storedKind: 'runner-off', waiting: 40, runnerState: 'RUNNING' }), 'topped-up');
+});
+
+check('paused and exhausted keep their story; no stored kind (alerted before 28 Oct) falls back to the count', () => {
+  assert.equal(w.resolveQuietKind({ storedKind: 'paused', waiting: 40, runnerState: 'IDLE' }), 'paused');
+  assert.equal(w.resolveQuietKind({ storedKind: 'exhausted', waiting: 0, runnerState: 'RUNNING' }), 'exhausted');
+  assert.equal(w.resolveQuietKind({ storedKind: null, waiting: 40, runnerState: 'RUNNING' }), 'stopped');
+  assert.equal(w.resolveQuietKind({ storedKind: null, waiting: 0, runnerState: 'RUNNING' }), 'empty');
+});
+
+check('runnerStateOf() reads the front of the machine status line', () => {
+  assert.equal(w.runnerStateOf('IDLE | LinkedIn ok | LH 2.130.75 | disk 29%'), 'IDLE');
+  assert.equal(w.runnerStateOf('RUNNING | LinkedIn ok'), 'RUNNING');
+  assert.equal(w.runnerStateOf(''), null);
+  assert.equal(w.runnerStateOf(null), null);
 });
 
 console.log('quietCampaignAlerts():');
@@ -327,7 +417,19 @@ check('alerted and still quiet - on the list', () => {
   const out = list([client()]);
   assert.equal(out.length, 1);
   assert.equal(out[0].kind, 'campaign-quiet');
-  assert.match(out[0].line, /stopped sending/);
+  assert.match(out[0].line, /has sent nothing since/);
+});
+
+check('Matthew Bulat 27 Oct: went quiet EMPTY, 60 added, runner IDLE - the line says the runner is off, not "check your licence"', () => {
+  const out = list([client({ quietCampaignKind: 'empty', invitesWaiting: 60, machineStatus: 'IDLE | LinkedIn ok | LH 2.130.75' })]);
+  assert.match(out[0].line, /campaign runner is switched off/);
+  assert.doesNotMatch(out[0].line, /licence/i);
+});
+
+check('same, but the runner is on - "ran out ... 60 people have since been added - sending resumes"', () => {
+  const out = list([client({ quietCampaignKind: 'empty', invitesWaiting: 60, machineStatus: 'RUNNING | LinkedIn ok' })]);
+  assert.match(out[0].line, /ran out of people after the last invitation/);
+  assert.match(out[0].line, /60 people have since been added/);
 });
 
 check('sending again since the alert - off the list', () => {

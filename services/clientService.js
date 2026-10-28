@@ -216,6 +216,9 @@ async function getAllClients() {
                 // Set when the client buys their licence during the trial (27 Oct 2026): no trial warning.
                 const lhLicenceBought = record.get('LH Licence Bought') || null;
                 const quietCampaignAlerted = record.get('Quiet Campaign Alerted') || null;
+                // Why it went quiet (28 Oct 2026): empty / stopped / runner-off / paused / exhausted,
+                // stamped with the alert so the portal line keeps the story.
+                const quietCampaignKind = record.get('Quiet Campaign Kind') || null;
                 // Paused with people waiting (16 Oct 2026): when first seen, and when the coach was told.
                 const campaignPausedSince = record.get('Campaign Paused Since') || null;
                 const pausedCampaignAlerted = record.get('Paused Campaign Alerted') || null;
@@ -376,6 +379,7 @@ async function getAllClients() {
                     trialWarningSent: trialWarningSent,
                     lhLicenceBought: lhLicenceBought,
                     quietCampaignAlerted: quietCampaignAlerted,
+                    quietCampaignKind: quietCampaignKind,
                     campaignPausedSince: campaignPausedSince,
                     pausedCampaignAlerted: pausedCampaignAlerted,
                     mondayCampaignEmail: mondayCampaignEmail,

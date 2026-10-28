@@ -21,14 +21,28 @@
  * 2. CAMPAIGN GONE QUIET. No invitation sent for QUIET_DAYS, after one was sent within the last
  *    DORMANT_DAYS (a campaign that has been off for months is not "gone quiet" - that is a client
  *    choice, and alerting on it at deploy would be noise). Once per episode; the next invitation
- *    clears it and the coach gets an all-clear. Worded by WHY it is quiet, from the queue:
- *      stopped   - people waiting in a running campaign, yet nothing sent (licence expired,
- *                  LinkedIn signed out, Linked Helper stuck - the machine status line rides along)
- *      paused    - the only people waiting are in paused campaigns that sent within DORMANT_DAYS
- *                  (19 Oct 2026: Julian Davis's two live campaigns ran out of people, and 35 left
- *                  in an old parked one made the email say "paused" - he was right, they were
- *                  only sleeping. A long-parked campaign is a choice; the news is "empty".)
- *      empty     - nobody left to invite: the search needs topping up
+ *    clears it and the coach gets an all-clear. Worded by WHY it is quiet, from the queue and
+ *    the machine's own health line:
+ *      runner-off - people waiting, and the machine says IDLE: the campaign runner is switched
+ *                   off. The fix is a button (All campaigns -> Start campaigns runner).
+ *      stopped    - people waiting in a running campaign, runner on, yet nothing sent. The
+ *                   machine looks healthy from here, so the line says so and that the coach is
+ *                   looking - it never lists guesses.
+ *      paused     - the only people waiting are in paused campaigns that sent within DORMANT_DAYS
+ *                   (19 Oct 2026: Julian Davis's two live campaigns ran out of people, and 35 left
+ *                   in an old parked one made the email say "paused" - he was right, they were
+ *                   only sleeping. A long-parked campaign is a choice; the news is "empty".)
+ *      empty      - nobody left to invite: the search needs topping up
+ *      topped-up  - (portal line only) it went quiet because it was EMPTY, and people have since
+ *                   been added: sending resumes in the next working window, nothing is wrong.
+ *    The kind is stamped on the row ('Quiet Campaign Kind') when the alert fires, so the portal
+ *    line keeps the story of HOW it went quiet. WHY (Matthew Bulat, 27 Oct 2026): his campaign
+ *    ran out on 14 Oct, he added 60 people on the 27th, and the portal box - deciding from the
+ *    waiting count alone - flipped from "run out" to "stopped sending - usual causes: the licence
+ *    has run out, LinkedIn signed out, or Linked Helper is stuck". None of those was true (the
+ *    runner had been left off, which the machine had been reporting as IDLE all along), and he
+ *    spent a day believing his paid licence had failed. A line a client cannot act on is a line
+ *    that makes them worry; every line here now names one cause and one thing to do.
  *    It catches what the trial warning cannot: a PAID licence running out a year from now
  *    (the machine cannot see a paid licence's end date).
  *
@@ -55,6 +69,7 @@
  * State on the client's master row (all written by the machine report route):
  *   'LH First Action', 'Last Invite Sent', 'Invites Waiting' - the facts, readable in Airtable
  *   'Trial Warning Sent', 'Quiet Campaign Alerted'           - once-per-episode stamps
+ *   'Quiet Campaign Kind'                                    - why it went quiet, for the portal line
  *   'LH Licence Bought'                                      - set by hand (or /onboard): no trial warning
  *   'Campaign Paused Since', 'Paused Campaign Alerted'       - the paused episode: first seen, told
  *
@@ -91,6 +106,7 @@ const FIELDS = {
   trialWarned: 'Trial Warning Sent',
   licenceBought: 'LH Licence Bought',
   quietAlerted: 'Quiet Campaign Alerted',
+  quietKind: 'Quiet Campaign Kind',
   pausedSince: 'Campaign Paused Since',
   pausedAlerted: 'Paused Campaign Alerted',
 };
@@ -114,13 +130,40 @@ function trialEndsAt(firstActionAt) {
  *               everyone it reaches was invited before or is already connected. Sam Noble's
  *               campaign, 3-8 Oct 2026: 38 "invited previously", 12 "already 1st-degree".
  */
-function quietKind({ waitingRunning, waitingPaused, lastAttemptAt, failedRecent, now = Date.now() }) {
+function quietKind({ waitingRunning, waitingPaused, lastAttemptAt, failedRecent, runnerState, now = Date.now() }) {
   const attempt = ms(lastAttemptAt);
   if (num(failedRecent) > 0 && attempt !== null && now - attempt < 2 * DAY) return 'exhausted';
-  if (num(waitingRunning) > 0) return 'stopped';
+  if (num(waitingRunning) > 0) return runnerOff(runnerState) ? 'runner-off' : 'stopped';
   if (num(waitingPaused) > 0) return 'paused';
   return 'empty';
 }
+
+/** The runner state word at the front of the machine's status line ("RUNNING | LinkedIn ok | ..."). */
+function runnerStateOf(machineStatus) {
+  const head = String(machineStatus || '').split('|')[0].trim().toUpperCase();
+  return head || null;
+}
+const runnerOff = (state) => String(state || '').trim().toUpperCase() === 'IDLE';
+
+/**
+ * The kind the portal line tells NOW, from the kind stamped when the alert fired and what the row
+ * says today. The current facts beat the stored story: a runner that is off is the news whatever
+ * it was; a campaign that was empty and now has people waiting is "topped-up", not "stopped".
+ */
+function resolveQuietKind({ storedKind, waiting, runnerState }) {
+  const n = num(waiting);
+  let kind = storedKind || (n > 0 ? 'stopped' : 'empty');
+  if (n === 0) return kind === 'exhausted' ? 'exhausted' : 'empty';
+  if (kind === 'paused') return 'paused';
+  if (runnerOff(runnerState)) return 'runner-off';
+  if (kind === 'empty' || kind === 'runner-off') return 'topped-up';
+  return kind;
+}
+
+const kindWords = (kind) => ({
+  exhausted: 'run out of fresh people', empty: 'run out of people', paused: 'paused',
+  'runner-off': 'runner switched off', 'topped-up': 'topped up, sending resumes',
+}[kind] || 'stopped sending');
 
 /**
  * People waiting in paused campaigns that sent an invitation of their own within DORMANT_DAYS -
@@ -171,7 +214,7 @@ function pausedCampaignOf(report, now = Date.now()) {
  * where `paused` is the campaign the alert is about ({ name, waiting, since }) - `since` being the
  * ISO time the watchdog first saw it paused, which is as early as anyone can truthfully say.
  */
-function campaignStep({ report, client = {}, now = Date.now() } = {}) {
+function campaignStep({ report, client = {}, health = {}, now = Date.now() } = {}) {
   const out = {
     fields: {}, trialWarn: false, quietAlert: false, quietRecovered: false, kind: null,
     pausedAlert: false, pausedRecovered: false, paused: null,
@@ -199,13 +242,18 @@ function campaignStep({ report, client = {}, now = Date.now() } = {}) {
   if (alerted !== null && last !== null && last > alerted) {
     // An invitation has gone out since the alert: the episode is over.
     out.fields[FIELDS.quietAlerted] = null;
+    out.fields[FIELDS.quietKind] = null;
     out.quietRecovered = true;
   } else if (alerted === null && last !== null) {
     const idle = now - last;
     if (idle >= QUIET_DAYS * DAY && idle < DORMANT_DAYS * DAY) {
       out.quietAlert = true;
-      out.kind = quietKind({ waitingRunning, waitingPaused: livePausedWaiting(report, now), lastAttemptAt: report.last_invite_attempt_at, failedRecent: report.failed_invites_recent, now });
+      out.kind = quietKind({
+        waitingRunning, waitingPaused: livePausedWaiting(report, now), lastAttemptAt: report.last_invite_attempt_at,
+        failedRecent: report.failed_invites_recent, runnerState: health && health.state, now,
+      });
       out.fields[FIELDS.quietAlerted] = iso(now);
+      out.fields[FIELDS.quietKind] = out.kind;
     }
   }
 
@@ -274,8 +322,22 @@ function quietCoachLine({ clientName, kind, lastInviteAt, waiting, machineStatus
   if (kind === 'paused') {
     return `${who} campaign is paused - no invitation since ${since}, with ${waiting} people waiting in a paused campaign.`;
   }
-  const status = machineStatus ? ` Machine says: ${String(machineStatus).slice(0, 120)}.` : '';
-  return `${who} campaign has stopped sending - no invitation since ${since}, with ${waiting} people still waiting. Usual causes: the licence has run out, LinkedIn signed out, or Linked Helper is stuck.${status}`;
+  if (kind === 'topped-up') {
+    return `${who} campaign ran out of people after the last invitation on ${since}. ${waiting} people have since been added - sending resumes in the next working window, and this notice clears itself once it does.`;
+  }
+  if (kind === 'runner-off') {
+    const fix = self
+      ? 'Open your Linked Helper machine, click All campaigns and press Start campaigns runner. (Our helper presses it every five minutes, but can only find the button on the All campaigns screen - leave Linked Helper on that screen when you finish.)'
+      : 'The watchdog cannot press Start from the campaign page they left open: open the machine, click All campaigns and press Start campaigns runner.';
+    return `${who} campaign runner is switched off - no invitation since ${since}, with ${waiting} people waiting. ${fix}`;
+  }
+  // stopped: the machine looks healthy from here (runner on, LinkedIn signed in), so say that
+  // and nothing more - a list of guesses is what a client reads when nobody has looked.
+  const status = !self && machineStatus ? ` Machine says: ${String(machineStatus).slice(0, 120)}.` : '';
+  const next = self
+    ? 'Guy has been told and is looking - nothing for you to do.'
+    : 'Look on the machine: the invite step\'s limits, a stuck Linked Helper, or the licence.';
+  return `${who} campaign has sent nothing since ${since}, with ${waiting} people waiting, although the machine looks healthy from here - the runner is on and LinkedIn is signed in. ${next}${status}`;
 }
 
 function pausedCoachLine({ clientName, campaignName, since, waiting, timeZone, self = false }) {
@@ -331,13 +393,19 @@ function quietClientEmail({ clientFirstName, clientName, coachName, kind, lastIn
       `Your Linked Helper campaign is paused, so nothing has gone out since ${day}.`,
       'If you paused it on purpose, that\'s fine - ignore this. If not, just reply and I\'ll switch it back on with you.',
     ];
+  } else if (kind === 'runner-off') {
+    subject = 'Your campaign runner is switched off';
+    body = [
+      `Your Linked Helper campaign hasn't sent anything since ${day} - the campaign runner is switched off, so the people waiting aren't being invited.`,
+      `Open your machine, click All campaigns (top left) and press Start campaigns runner:\n${machineLink || 'ask your Claude to "open my Linked Helper machine"'}`,
+      'Our helper presses that button every five minutes, but it can only find it on the All campaigns screen - so when you\'ve finished in Linked Helper, leave it on All campaigns.',
+      'If it\'s already running when you look, just reply and I\'ll take a look.',
+    ];
   } else {
     subject = 'Your campaign has stopped sending';
     body = [
-      `Your Linked Helper campaign hasn't sent any invitations since ${day}, so nobody new is hearing from you.`,
-      `The usual reasons are your licence running out or LinkedIn signing you out. Open your machine and have a look:\n${machineLink || 'ask your Claude to "open my Linked Helper machine"'}`,
-      `If Linked Helper is asking you to sign in, sign in and it carries on. If it's asking for a licence, here's how to buy one:\n${LICENCE_PAGE}`,
-      'If it all looks normal, just reply and I\'ll take a look.',
+      `Your Linked Helper campaign hasn't sent any invitations since ${day}, even though the machine looks healthy from here - it's switched on and LinkedIn is signed in.`,
+      'I\'ve been told and I\'m looking into it, so there\'s nothing you need to do. If you\'ve changed anything in Linked Helper lately, reply and tell me - it helps.',
     ];
   }
   const text = [`Hi ${first},`, ...body, `Cheers,\n${coach}`].join('\n\n');
@@ -439,7 +507,7 @@ async function sendCampaignAlert({ client, alert, kind = null, paused = null, re
     ? `${self ? 'Your' : `${name}'s`} Linked Helper trial ends soon`
     : alert === 'paused'
       ? `${self ? 'Your' : `${name}'s`} campaign "${p.name}": paused with ${p.waiting} people waiting`
-      : `${self ? 'Your' : `${name}'s`} campaign: ${kind === 'exhausted' ? 'run out of fresh people' : kind === 'empty' ? 'run out of people' : kind === 'paused' ? 'paused' : 'stopped sending'}`;
+      : `${self ? 'Your' : `${name}'s`} campaign: ${kindWords(kind)}`;
   const text = `${line}${tail}`;
   try {
     const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
@@ -503,13 +571,13 @@ function quietCampaignAlerts({ coachClientId, clients = [], now = Date.now() } =
     if (last !== null && last > alerted) continue; // sending again; the next report clears it
     if (last !== null && now - last >= DORMANT_DAYS * DAY) continue; // a month quiet: a choice, not news
     const waiting = num(c.invitesWaiting);
+    const kind = resolveQuietKind({ storedKind: c.quietCampaignKind, waiting, runnerState: runnerStateOf(c.machineStatus) });
     out.push({
       clientId: c.clientId,
       clientName: c.clientName || c.clientId,
       kind: 'campaign-quiet',
       line: quietCoachLine({
-        clientName: c.clientName || c.clientId,
-        kind: waiting > 0 ? 'stopped' : 'empty',
+        clientName: c.clientName || c.clientId, kind,
         lastInviteAt: c.lastInviteSent, waiting, machineStatus: c.machineStatus, timeZone: c.timezone, self, now,
       }),
     });
@@ -531,6 +599,6 @@ async function quietCampaignsForCoach(coachClientId) {
 module.exports = {
   campaignStep, sendCampaignAlert, sendSendingAgainNote, sendPausedClearedNote, quietCampaignAlerts, quietCampaignsForCoach,
   trialClientEmail, quietClientEmail, pausedClientEmail, trialCoachLine, quietCoachLine, pausedCoachLine,
-  trialEndsAt, quietKind, livePausedWaiting, pausedCampaignOf, dayWords,
+  trialEndsAt, quietKind, resolveQuietKind, runnerStateOf, kindWords, livePausedWaiting, pausedCampaignOf, dayWords,
   FIELDS, EMAIL_CLIENT, TRIAL_DAYS, WARN_DAYS_BEFORE, QUIET_DAYS, DORMANT_DAYS, PAUSED_HOURS, LICENCE_PAGE,
 };
