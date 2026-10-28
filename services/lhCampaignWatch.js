@@ -169,10 +169,12 @@ function licenceFromLine(licence, now = Date.now()) {
   const kindM = line.match(/^([A-Za-z]+)\s+(?:licen[cs]e|trial)\b/i);
   const kind = kindM && !/^(your|the|licen[cs]e|trial)$/i.test(kindM[1]) ? kindM[1] : null;
   let endsAt = null;
-  const m = line.match(/expires?\s+in\s+(\d+)\s*(minute|hour|day|week|month|year)s?\b/i);
+  // "renews" is a subscription that auto-renews (Guy McPhee's, 28 Oct 2026); "14 days Pro
+  // license" with no verb is a trial that has not started (Steve Nelson's) - no date, no alarm.
+  const m = line.match(/(?:expires?|renews?|ends?)\s+in\s+(\d+)\s*(minute|hour|day|week|month|year)s?\b/i);
   if (m) endsAt = readAt + Number(m[1]) * UNIT_MS[m[2].toLowerCase()];
-  else if (/expires?\s+today/i.test(line)) endsAt = readAt;
-  else if (/expires?\s+tomorrow/i.test(line)) endsAt = readAt + DAY;
+  else if (/(?:expires?|renews?|ends?)\s+today/i.test(line)) endsAt = readAt;
+  else if (/(?:expires?|renews?|ends?)\s+tomorrow/i.test(line)) endsAt = readAt + DAY;
   const expired = !endsAt && /expired|ended|no (active )?licen[cs]e|not active/i.test(line);
   return { line, kind, endsAt, expired, readAt };
 }

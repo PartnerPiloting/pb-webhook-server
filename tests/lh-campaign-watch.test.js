@@ -571,6 +571,11 @@ check('other wordings - months, hours, tomorrow, expired, unknown', () => {
   assert.equal(w.licenceFromLine(lic('License expires tomorrow'), NOW).kind, null);
   assert.equal(w.licenceFromLine(lic('Pro license expired'), NOW).expired, true);
   assert.equal(w.licenceFromLine(lic('Your trial has ended'), NOW).expired, true);
+  // the fleet's real lines, 28 Oct 2026
+  assert.equal(w.licenceFromLine(lic('Standard license renews in 277 days'), NOW).endsAt, NOW + 277 * DAY);
+  const unstarted = w.licenceFromLine(lic('14 days Pro license'), NOW);
+  assert.equal(unstarted.endsAt, null);
+  assert.equal(unstarted.expired, false);
   const odd = w.licenceFromLine(lic('Licence: something new'), NOW);
   assert.equal(odd.endsAt, null);
   assert.equal(odd.expired, false);
