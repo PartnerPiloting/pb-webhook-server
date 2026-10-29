@@ -81,9 +81,12 @@ async function stepStatus(tenant) {
     if (dry.ok) lines.push(`Conversations read so far: ${dry.upToDate} of ${dry.candidates}${dry.toRead ? ` (${dry.toRead} waiting)` : ''}.`);
   }
   lines.push(on ? 'Their Reconnect list is ON - it is on the Follow-Ups screen in their portal.' : 'Their Reconnect list is not switched on yet.');
-  lines.push(on
+  // The switch is set by the daily collect from the first batch (29 Oct 2026), so "on" no longer
+  // means "set up": the list stays empty until the description is saved and the read has run.
+  const allRead = profile.who && !(await score.scoreConversations(tenant, { dryRun: true })).toRead;
+  lines.push(on && allRead
     ? 'Nothing more to set up. New arrivals are read and added each day by themselves.'
-    : `NEXT STEP: ${!profile.who ? 'write their description - ask who they want to hear from again, who they do not, and what a good conversation looks like for them; draft a short first-person paragraph; then step "sample" with it.' : 'step "read" (shows the cost, then needs their yes), then step "leads".'}`);
+    : `NEXT STEP: ${!profile.who ? 'write their description - ask who they want to hear from again, who they do not, and what a good conversation looks like for them; draft a short first-person paragraph; then step "sample" with it.' : 'step "read" (shows the cost, then needs their yes), then step "leads".'}${on && !profile.who ? ' Until then their Reconnect box in the portal is empty - say so if they ask.' : ''}`);
   return { text: lines.join('\n') };
 }
 
