@@ -233,7 +233,13 @@ async function runTagLead(args = {}, tenant = TENANT) {
   const base = clientService.getClientBase(airtableBaseId);
   if (!base) return { text: 'Error: CRM base unavailable.', isError: true };
 
+  // The Airtable SDK retries a 429 silently (backing off up to 5, 10, 20, 40, 80 s with no log
+  // line), so a slow lookup or tag write is invisible unless timed here. 29 Oct 2026: 88 s on a
+  // Weekly click, nothing in the log to say which leg.
+  const tLookup = Date.now();
   const found = await findOneLead(base, { lookupUrl, lookupEmail, lookupName });
+  const lookupMs = Date.now() - tLookup;
+  if (lookupMs > 5000) console.warn(`[wingguy_tag_lead] SLOW lead lookup ${lookupMs}ms for ${tenant} (${lookupUrl || lookupEmail || lookupName}) - Airtable rate-limit retry or a slow base`);
   if (found.reply) return found.reply;
   const rec = found.rec;
   const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
@@ -241,7 +247,10 @@ async function runTagLead(args = {}, tenant = TENANT) {
   // The tag change is the job, so it goes first and its failure is the tool's failure.
   const parts = [];
   if (add.length || remove.length) {
+    const tTag = Date.now();
     const t = await updateLeadTags(base, rec.id, { add, remove });
+    const tagMs = Date.now() - tTag;
+    if (tagMs > 5000) console.warn(`[wingguy_tag_lead] SLOW tag write ${tagMs}ms for ${tenant} on ${rec.id} - Airtable rate-limit retry or a slow base`);
     if (!t || !t.ok) return { text: `Error: ${(t && t.error) || 'the tags could not be updated.'}`, isError: true };
     if (!t.changed) {
       parts.push(`tags already read "${t.before || '(none)'}" - nothing to change there`);

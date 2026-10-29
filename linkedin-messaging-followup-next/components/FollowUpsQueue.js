@@ -35,6 +35,9 @@ import DisconnectSection from './DisconnectSection';
 import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from "../utils/clientUtils";
 
 const RAW_API = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
+
+// What a row says about itself while its action is in flight, by action name.
+const WORKING = { weekly: 'Adding to your weekly email:', park: 'Parking', done: 'Marking done:', drop: 'Dropping' };
 let API_ORIGIN = 'https://pb-webhook-server.onrender.com';
 try { API_ORIGIN = new URL(RAW_API).origin; } catch (_) {}
 
@@ -512,7 +515,10 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
   const [asks, setAsks] = useState({});               // key -> {messages:[{role,content,sources}], pending, live, error}
   const [parkFor, setParkFor] = useState(null);       // person key with the popover open
   const [showHidden, setShowHidden] = useState(false);
-  const [busy, setBusy] = useState(() => new Set());  // keys with an action in flight
+  // keys with an action in flight -> the action name, so the row can say what it is doing. A Weekly
+  // click sat at 40% opacity for 88 seconds on 29 Oct 2026 (one slow Airtable round trip) and read as
+  // dead: a greyed row with no words is indistinguishable from a broken one.
+  const [busy, setBusy] = useState(() => new Map());
 
   const applyData = useCallback((data) => {
     setItems(Array.isArray(data?.items) ? data.items : []);
@@ -581,7 +587,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
 
   const doAction = useCallback(async (it, action, parkDate) => {
     const key = keyOf(it);
-    setBusy((prev) => new Set(prev).add(key));
+    setBusy((prev) => new Map(prev).set(key, action));
     setError(null);
     try {
       const r = await apiPost('/action', { name: it.name, email: it.email || undefined, src: it.src, action, ...(parkDate ? { parkDate } : {}) }, clientId);
@@ -591,7 +597,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
     } catch (e) {
       setError(`${action} failed for ${it.name}: ${e?.message || e}`);
     } finally {
-      setBusy((prev) => { const n = new Set(prev); n.delete(key); return n; });
+      setBusy((prev) => { const n = new Map(prev); n.delete(key); return n; });
       setParkFor(null);
     }
   }, [clientId, removeRow]);
@@ -674,7 +680,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
   // box says what it did before the row clears - so the confirmation is read where the ask was.
   const parkFromAsk = useCallback(async (it, date) => {
     const key = keyOf(it);
-    setBusy((prev) => new Set(prev).add(key));
+    setBusy((prev) => new Map(prev).set(key, 'park'));
     try {
       await apiPost('/action', { name: it.name, email: it.email || undefined, src: it.src, action: 'park', parkDate: date }, clientId);
       setAsks((prev) => ({
@@ -694,7 +700,7 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
       try { const j = JSON.parse(msg); msg = j.details || j.error || msg; } catch (_) { /* plain text */ }
       setAsks((prev) => ({ ...prev, [key]: { ...(prev[key] || { messages: [] }), error: `Park failed: ${msg}` } }));
     } finally {
-      setBusy((prev) => { const n = new Set(prev); n.delete(key); return n; });
+      setBusy((prev) => { const n = new Map(prev); n.delete(key); return n; });
     }
   }, [clientId, removeRow]);
 
@@ -880,8 +886,12 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
                   const badge = draftBadge(it);
                   const story = stories[key];
                   const isBusy = busy.has(key);
+                  const working = isBusy ? (WORKING[busy.get(key)] || 'Working') : null;
                   return (
-                    <li key={key} data-ask-key={key} className={isBusy ? 'opacity-40 pointer-events-none' : ''}>
+                    <li key={key} data-ask-key={key} className={isBusy ? 'opacity-60 pointer-events-none' : ''}>
+                      {working && (
+                        <div className="pt-3 -mb-2 text-sm font-medium text-sky-800 animate-pulse" role="status">{working} {it.name}…</div>
+                      )}
                       <div className="py-3 flex items-start gap-4">
                         <div className="w-5 shrink-0 pt-1">
                           <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={selected.has(key)} onChange={() => toggleSelect(key)} />

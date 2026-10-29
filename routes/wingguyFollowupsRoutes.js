@@ -253,6 +253,19 @@ module.exports = function mountWingguyFollowups(app) {
     if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
     const { name, email, src, action, parkDate } = req.body || {};
     if (!name && !email) return res.status(400).json({ error: 'name_or_email_required' });
+    // One line per action with how long each leg took, WARN when any leg or the whole thing passes
+    // five seconds. A Weekly click took 88 s on 29 Oct 2026 and the log showed nothing between
+    // "found client" and the reply, so there was no way to tell which leg (Airtable lookup, tag
+    // write, Postgres) had stalled.
+    const t0 = Date.now();
+    const legs = [];
+    const timed = async (leg, fn) => { const s = Date.now(); try { return await fn(); } finally { legs.push(`${leg} ${Date.now() - s}ms`); } };
+    res.on('finish', () => {
+      const total = Date.now() - t0;
+      const slow = total > 5000 || legs.some((l) => Number(l.match(/ (\d+)ms$/)?.[1]) > 5000);
+      const line = `followupsScreen: ${action} ${name || email} for ${clientId} -> ${res.statusCode} in ${total}ms (${legs.join(', ') || 'no legs'})`;
+      if (slow) logger.warn(`${line} - SLOW`); else logger.info(line);
+    });
     try {
       const mcp = require('../services/wingguyMailMcp');
       const backlog = require('../services/wingguyBacklogAudit');
@@ -262,7 +275,7 @@ module.exports = function mountWingguyFollowups(app) {
       const call = (tool, args) => {
         const def = mcp.TOOL_DEFS.find((d) => d.name === tool);
         if (!def) throw new Error(`tool ${tool} not found`);
-        return def.run(args || {}, clientId);
+        return timed(tool.replace(/^wingguy_/, ''), () => def.run(args || {}, clientId));
       };
 
       if (action === 'drop') {
@@ -271,7 +284,7 @@ module.exports = function mountWingguyFollowups(app) {
         const r = await call('wingguy_cease_followups', { lead_email: email || undefined, lead_name: name || undefined, cease: true });
         if (r && r.isError) return res.status(400).json({ error: 'drop_failed', details: r.text });
         if (r && /More than one lead matches/i.test(String(r.text || ''))) return res.status(409).json({ error: 'ambiguous_lead', details: r.text });
-        try { if (name) await backlog.markItem(clientId, name, 'done'); } catch (_) { /* no backlog row is fine */ }
+        try { if (name) await timed('backlog', () => backlog.markItem(clientId, name, 'done')); } catch (_) { /* no backlog row is fine */ }
         return res.json({ ok: true, action: 'drop', detail: r ? r.text : null });
       }
 
@@ -290,9 +303,9 @@ module.exports = function mountWingguyFollowups(app) {
         // fall through — marking both for a person in both stores is harmless and self-consistent.
         let backlogDone = null;
         if (src !== 'today' && name) {
-          try { backlogDone = await backlog.markItem(clientId, name, 'done'); } catch (_) { backlogDone = null; }
+          try { backlogDone = await timed('backlog', () => backlog.markItem(clientId, name, 'done')); } catch (_) { backlogDone = null; }
         }
-        if (src === 'today' || !backlogDone) await dismissed.dismiss(clientId, name || email);
+        if (src === 'today' || !backlogDone) await timed('dismiss', () => dismissed.dismiss(clientId, name || email));
         return res.json({ ok: true, action: 'done' });
       }
 
@@ -300,11 +313,11 @@ module.exports = function mountWingguyFollowups(app) {
         // Onto "Network building, rethought" (services/listEditions.js, Guy 26 Oct 2026): the weekly
         // email becomes the touch, so they come off the chase list too; a reply still surfaces them.
         const list = require('../services/listEditions');
-        const r = await list.addToList(clientId, { email: email || '', name: name || '' });
+        const r = await timed('weekly-list', () => list.addToList(clientId, { email: email || '', name: name || '' }));
         if (!r.ok) return res.status(r.ambiguous ? 409 : 400).json({ error: r.ambiguous ? 'ambiguous_lead' : 'weekly_failed', details: r.text });
         let backlogDone = null;
-        if (src !== 'today' && name) { try { backlogDone = await backlog.markItem(clientId, name, 'done'); } catch (_) { backlogDone = null; } }
-        if (src === 'today' || !backlogDone) await dismissed.dismiss(clientId, name || email);
+        if (src !== 'today' && name) { try { backlogDone = await timed('backlog', () => backlog.markItem(clientId, name, 'done')); } catch (_) { backlogDone = null; } }
+        if (src === 'today' || !backlogDone) await timed('dismiss', () => dismissed.dismiss(clientId, name || email));
         return res.json({ ok: true, action: 'weekly', detail: r.text, noEmail: !!r.noEmail });
       }
 
