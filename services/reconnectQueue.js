@@ -269,6 +269,9 @@ async function buildReconnect(tenantId, liveItems = [], { more = 0, nowMs = Date
       handedOver: handedOver.length,
       items: portion.map((p) => toItem(p, todayIso)),
       waiting, dailyNumber: number, moreStep: MORE_STEP,
+      // Nobody scored at the cut-off yet = the read has not run (switch on from the first batch,
+      // 29 Oct 2026) - the screen says so instead of "nobody left".
+      unread: people.length === 0,
       // Disconnects is its own switch (Guy, 5 Oct 2026): most clients never need it. Off = no button.
       disconnects: disconnectsOn(client),
     };

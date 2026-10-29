@@ -32,10 +32,15 @@
 //   - The connections list is read through LinkedIn, so it is read on the first run, weekly after
 //     that, and once more when the history completes - not every day.
 //   - One client failing never stops the others; the error is kept on that client's row.
-//   - THE TOP-UP: for a client whose Reconnect list is switched on (they said both yeses in their
-//     session), each day's newly arrived conversations are then read and the good ones added at
-//     their cut-off - on their own Claude key, which their first yes covered. A client who is not
-//     switched on yet is only collected. A top-up failing never fails the collect.
+//   - THE SWITCH (Guy, 29 Oct 2026): the moment a client's first history arrives, their Reconnect
+//     switch is set to Yes by this run - nobody has to remember it. Josh Tunstall's history sat in
+//     the store for ten days with the switch blank, so his portal had no Reconnect tab. The tab
+//     shows from the first batch; the list fills once their description is saved and the read
+//     has run (the setup chat, or the next day's top-up).
+//   - THE TOP-UP: for a client whose Reconnect list is switched on, each day's newly arrived
+//     conversations are then read and the good ones added at their cut-off - on their own Claude
+//     key. A read with no description saved yet simply waits for one. A top-up failing never
+//     fails the collect.
 
 const { Pool } = require('pg');
 const { createLogger } = require('../utils/contextLogger');
@@ -295,11 +300,29 @@ async function collectOne(client, { nowMs = Date.now(), dryRun = false, force = 
 
   // Guy is not emailed about a client already working their list - "ready" would be noise.
   let notified = null;
-  const alreadyOn = String(client.reconnect || '').trim() === 'Yes';
+  let alreadyOn = String(client.reconnect || '').trim() === 'Yes';
+  // History is in and the switch is blank: switch them on now (see the rule at the top).
+  if (!alreadyOn && messages > 0) {
+    try {
+      const on = deps.switchOn || switchReconnectOn;
+      await on(client);
+      result.switchedOn = true;
+      console.log(`[linkedin-collect] ${tenantId}: Reconnect switched on - first history is in`);
+    } catch (e) {
+      result.switchOnError = e.message;
+      console.error(`[linkedin-collect] ${tenantId}: could not switch Reconnect on - ${e.message}`);
+    }
+  }
   if (next.notify && !(next.notify === 'ready' && alreadyOn)) {
     const mail = buildEmail(next.notify, { tenantId, clientName: client.clientName, connections, conversations: result.conversations, oldestMsgAt });
     // "ready" also goes to the client, coach copied - and Guy's email says whether it went.
     if (next.notify === 'ready') {
+      if (result.switchedOn) mail.text += `
+
+Their Reconnect switch is now on, so the Reconnect tab is in their portal. It stays empty until their description is saved and the read has run.`;
+      else if (result.switchOnError) mail.text += `
+
+Their Reconnect switch could NOT be set (${result.switchOnError}) - set Reconnect = Yes on their record by hand.`;
       const blocker = clientEmailBlocker(client);
       if (blocker) {
         result.clientEmailed = false;
@@ -361,6 +384,16 @@ async function collectOne(client, { nowMs = Date.now(), dryRun = false, force = 
   return result;
 }
 
+/** Reconnect = Yes on the client's master record (the same write the setup chat's last step makes). */
+async function switchReconnectOn(client) {
+  const Airtable = require('airtable');
+  const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
+  const id = client.recordId || client.id;
+  if (!id) throw new Error('no master record id on the client');
+  await base('Clients').update(id, { Reconnect: 'Yes' });
+  try { require('./clientService').clearCache(); } catch (_) { /* next read refreshes it */ }
+}
+
 /**
  * Read whatever has not been read yet and add anyone at the client's cut-off. Both steps only
  * ever add, so running this daily is safe. Never throws.
@@ -369,6 +402,8 @@ async function topUp(tenantId, deps = {}) {
   try {
     const score = deps.score || require('./conversationScore').scoreConversations;
     const read = await score(tenantId, {});
+    // No description saved yet: nothing can be read, and that is not a failure - it waits.
+    if (!read.ok && /paragraph/.test(read.error || '')) return { ok: true, waiting: 'description', read: 0, created: 0, updated: 0 };
     if (!read.ok) return { ok: false, step: 'read', error: read.error };
     const leads = deps.leads || require('./reconnectLeads').syncReconnectLeads;
     const added = await leads(tenantId, { dryRun: false });
@@ -457,4 +492,4 @@ async function runCollectDaily({ dryRun = false, only = '', nowMs = Date.now() }
   return { ok: true, dryRun, clients: due.length, results };
 }
 
-module.exports = { runCollectDaily, collectOne, topUp, monthEnd, monthEndStep, MONTH_DAYS, WARN_DAYS, nextStatus, wantRelations, buildEmail, buildClientReadyEmail, clientEmailBlocker, statusByTenant, ensureSchema, _setPool, NEAR_LIMIT };
+module.exports = { runCollectDaily, collectOne, topUp, switchReconnectOn, monthEnd, monthEndStep, MONTH_DAYS, WARN_DAYS, nextStatus, wantRelations, buildEmail, buildClientReadyEmail, clientEmailBlocker, statusByTenant, ensureSchema, _setPool, NEAR_LIMIT };

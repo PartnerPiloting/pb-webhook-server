@@ -96,7 +96,7 @@ export default function ReconnectSection({ data, post, onReplace, onFlagged, onR
       {error && <div className="text-sm text-red-600 mb-2">{error}</div>}
 
       {items.length === 0 ? (
-        <div className="text-sm text-gray-500">Nobody left on today's list.</div>
+        <div className="text-sm text-gray-500">{data.unread ? 'Your old conversations have not been read yet - once your description is saved and the read has run, people appear here.' : "Nobody left on today's list."}</div>
       ) : (
         <ul className="divide-y">
           {items.map((it) => {

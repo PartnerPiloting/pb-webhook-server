@@ -244,13 +244,38 @@ const iso = (ms) => new Date(ms).toISOString();
     let leadsCalled = false;
     const r = await lc.collectOne(client({ reconnect: 'Yes' }), { nowMs: T0, deps: {
       sync: okSync({ messages: 900, withMessages: 200, connections: 900 }),
-      score: async () => ({ ok: false, error: 'no paragraph yet' }), leads: async () => { leadsCalled = true; return { ok: true }; },
+      score: async () => ({ ok: false, error: 'claude 529 overloaded' }), leads: async () => { leadsCalled = true; return { ok: true }; },
     } });
     assert.strictEqual(r.ok, true);
     assert.strictEqual(r.topUp.ok, false);
     assert.strictEqual(leadsCalled, false);
     const thrown = await lc.topUp('T', { score: async () => { throw new Error('boom'); } });
     assert.deepStrictEqual(thrown, { ok: false, error: 'boom' });
+  });
+  await check('first history in and the switch blank -> Reconnect is switched on, and Guy is told', async () => {
+    lc._setPool(fakeDb(null));
+    const mails = []; const switched = [];
+    const r = await lc.collectOne(client(), { nowMs: T0, deps: { sync: okSync({ messages: 11000, withMessages: 2950, connections: 27150 }), sendAlertEmail: async (s, h, a, o) => mails.push(o.text), switchOn: async (c) => switched.push(c.clientId) } });
+    assert.deepStrictEqual(switched, ['Pat-Client']);
+    assert.strictEqual(r.switchedOn, true);
+    assert.ok(mails[0].includes('Reconnect switch is now on'));
+  });
+  await check('no history yet -> the switch is left alone; already on -> not set again', async () => {
+    lc._setPool(fakeDb(null));
+    const switched = [];
+    await lc.collectOne(client(), { nowMs: T0, deps: { sync: okSync({ messages: 0, withMessages: 0, connections: 0 }), switchOn: async (c) => switched.push(c.clientId) } });
+    await lc.collectOne(client({ reconnect: 'Yes' }), { nowMs: T0, deps: { sync: okSync({ messages: 500, withMessages: 100, connections: 900 }), sendAlertEmail: async () => {}, score: async () => ({ ok: true, read: 0 }), leads: async () => ({ ok: true }), switchOn: async (c) => switched.push(c.clientId) } });
+    assert.deepStrictEqual(switched, []);
+  });
+  await check('the switch write failing never fails the collect', async () => {
+    lc._setPool(fakeDb(null));
+    const r = await lc.collectOne(client(), { nowMs: T0, deps: { sync: okSync({ messages: 11000, withMessages: 2950, connections: 27150 }), sendAlertEmail: async () => {}, switchOn: async () => { throw new Error('airtable 503'); } } });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.switchOnError, 'airtable 503');
+  });
+  await check('a top-up with no description saved waits instead of failing', async () => {
+    const r = await lc.topUp('Pat-Client', { score: async () => ({ ok: false, error: 'Pat-Client has no "who I\'m looking for" paragraph yet' }), leads: async () => { throw new Error('must not run'); } });
+    assert.deepStrictEqual(r, { ok: true, waiting: 'description', read: 0, created: 0, updated: 0 });
   });
   await check('a finished client is skipped - nothing is read', async () => {
     lc._setPool(fakeDb({ tenant_id: 'Pat-Client', account_id: 'li-1', state: 'complete', messages: 21000 }));
