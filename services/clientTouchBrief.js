@@ -188,7 +188,8 @@ async function gatherMaterial(coach, client, deps = {}) {
     deps.lead !== undefined ? deps.lead : findClientLead(coach, client, deps),
   ]);
   const first = String(client.clientFirstName || client.clientName || '').split(' ')[0];
-  const linkedin = lead ? dossier.gatherLinkedIn(lead.fields ? lead.fields['Notes'] : lead.get('Notes'), first, LINKEDIN_MAX) : [];
+  const last = String(client.clientName || '').split(' ').slice(1).join(' ');
+  const linkedin = lead ? dossier.gatherLinkedIn(lead.fields ? lead.fields['Notes'] : lead.get('Notes'), first, LINKEDIN_MAX, { last, coachName: coach.clientName }) : [];
   let dossierRow = null;
   try {
     for (const email of clientAddresses(client)) { dossierRow = await dossier.getDossierRow(coach.clientId, email); if (dossierRow) break; }

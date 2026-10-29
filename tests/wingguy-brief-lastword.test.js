@@ -37,6 +37,15 @@ check('first-name match is case-insensitive and prefix-based (dossier convention
   assert.strictEqual(linkedInLastWord(notes, 'owen').dir, 'them');
 });
 
+check('a lead who shares the coach\'s first name: the coach\'s own line is still you (Guy Newton, 30 Oct 2026)', () => {
+  const notes = '=== LINKEDIN MESSAGES ===\n28-10-26 6:02 PM - Guy Wilson - Hi Guy, I am building a network of Fractional Professionals.';
+  assert.deepStrictEqual(linkedInLastWord(notes, { first: 'Guy', last: 'Newton' }, { name: 'Guy Wilson' }), { dir: 'you', dateIso: '2026-10-28' });
+  // and without the coach name, the last name alone still gets it right
+  assert.strictEqual(linkedInLastWord(notes, { first: 'Guy', last: 'Newton' }).dir, 'you');
+  const reply = `=== LINKEDIN MESSAGES ===\n29-10-26 9:10 AM - Guy Newton - Happy to chat.\n${notes.split('\n')[1]}`;
+  assert.strictEqual(linkedInLastWord(reply, { first: 'Guy', last: 'Newton' }, { name: 'Guy Wilson' }).dir, 'them');
+});
+
 check('no LinkedIn block -> null', () => {
   assert.strictEqual(linkedInLastWord('just narrative, no block', 'Owen'), null);
   assert.strictEqual(linkedInLastWord('', 'Owen'), null);

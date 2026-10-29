@@ -41,6 +41,7 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const { noUpfrontThinking } = require('../config/wingguyThinking');
 const { trimRunOnEmail } = require('../utils/runOnEmail');
+const { senderIsLead } = require('../utils/linkedInSender');
 
 const MS_DAY = 86400000;
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
@@ -196,15 +197,19 @@ function parseJsonArrayLoose(text) {
 
 const LI_RE = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(.+?)\s*-\s*(.*)$/;
 
-function gatherLinkedIn(notes, first, max = LI_LIMIT) {
+// `who` = { last, coachName }: the lead's last name and the client's own full name, so a line
+// from "Guy Wilson" is never read as Guy Newton's (utils/linkedInSender, 30 Oct 2026).
+function gatherLinkedIn(notes, first, max = LI_LIMIT, who = {}) {
   const block = String(notes || '').split(/===\s*LINKEDIN MESSAGES\s*===/i)[1];
   if (!block) return [];
   const out = [];
+  const lead = { first, last: who.last || '' };
+  const coach = { name: who.coachName || '' };
   for (const raw of block.split(/\r?\n/)) {
     const m = raw.trim().match(LI_RE);
     if (!m) continue;
     const iso = `20${m[3]}-${m[2]}-${m[1]}`;
-    const theirs = first && m[5].trim().toLowerCase().startsWith(first.toLowerCase());
+    const theirs = senderIsLead(m[5], lead, coach);
     // Sort must include the TIME: Notes are newest-first, and a date-only key left same-day
     // messages reversed (a reply rendered above the message it answers — the Steve Martin serve,
     // 2026-08-03). The time is dropped before return: only this sort needs it.
@@ -559,7 +564,7 @@ async function buildLiveMiniDossier(tenant, { name, email } = {}) {
   const rec = recs[0];
   const f = rec.fields;
   const fullName = `${f['First Name'] || ''} ${f['Last Name'] || ''}`.trim() || String(name || '').trim();
-  const li = gatherLinkedIn(f['Notes'], f['First Name'] || fullName.split(' ')[0], 20);
+  const li = gatherLinkedIn(f['Notes'], f['First Name'] || fullName.split(' ')[0], 20, { last: f['Last Name'] || '', coachName: coach.clientName });
   const meetings = await gatherMeetings(tenant, rec.id, fullName);
   const onRecord = new Set([String(f['Email'] || '').trim().toLowerCase(), ...splitAltEmails(f['Alt Emails'])].filter(Boolean));
   // An address handed over IN the conversation that never reached the record (learn-back only
@@ -830,7 +835,7 @@ async function prepareDossiers(tenant, opts = {}) {
           ...(rec ? [String(rec.fields['Email'] || '').trim().toLowerCase(), ...splitAltEmails(rec.fields['Alt Emails'])] : []),
         ].filter((a) => a && a.includes('@')));
         const emails = mail.timeline;
-        const li = gatherLinkedIn(rec ? rec.fields['Notes'] : '', first);
+        const li = gatherLinkedIn(rec ? rec.fields['Notes'] : '', first, LI_LIMIT, { last: rec ? (rec.fields['Last Name'] || '') : person.name.split(' ').slice(1).join(' '), coachName: coach.clientName });
         const meetings = await gatherMeetings(tenant, recId, person.name);
         const timeline = [...emails, ...li].sort((a, b) => String(a.date).localeCompare(String(b.date)));
         if (!timeline.length && !meetings.length) { out.failed++; continue; }

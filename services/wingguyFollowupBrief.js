@@ -34,6 +34,7 @@ const MAX_DRAFTS_PER_RUN = 40;    // cap on pre-written email drafts per run (th
 const THREAD_MSGS = 6;            // recent messages pulled per person for triage context
 const STALE_HOURS = 26;           // a brief older than this is flagged stale when served
 const { noUpfrontThinking } = require('../config/wingguyThinking');
+const { senderIsLead } = require('../utils/linkedInSender');
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
 // Sonnet 5+ THINKS BY DEFAULT — with a modest max_tokens the whole budget goes to thinking and the
 // text comes back empty ("triage returned no JSON array", proven live 2026-07-23). Same seam as
@@ -117,14 +118,18 @@ function linkedInTail(notes, n = THREAD_MSGS) {
 // Whose message ends the LinkedIn thread (Guy 2026-09-26, the Owen Senior morning): a
 // mechanical fact the triage was left to infer from date lines, and it recommended open-ended
 // follow-ups to people who had already been nudged and gone quiet. Same line format and
-// direction convention as wingguyDossier.gatherLinkedIn: sender starting with the lead's first
-// name = theirs. Pure — unit-tested.
+// direction convention as wingguyDossier.gatherLinkedIn, both through utils/linkedInSender:
+// the client's own name is 'you' before anything else, then the lead's last name decides
+// (30 Oct 2026 - Guy Newton sat in "Waiting on you" because "Guy Wilson" started with "Guy").
+// Pure — unit-tested. `lead` is {first, last} (a bare string is taken as the first name);
+// `coach` is {name} - the client's full name.
 const LI_LINE_RE = /^(\d{2})-(\d{2})-(\d{2})\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*(.+?)\s*-\s*/;
-function linkedInLastWord(notes, leadFirst) {
+function linkedInLastWord(notes, lead, coach) {
   const tail = linkedInTail(notes, 1); // newest line of the block
   const m = tail.length ? tail[tail.length - 1].match(LI_LINE_RE) : null;
   if (!m) return null;
-  const theirs = leadFirst && m[4].trim().toLowerCase().startsWith(String(leadFirst).toLowerCase());
+  const who = typeof lead === 'string' ? { first: lead } : (lead || {});
+  const theirs = senderIsLead(m[4], who, coach);
   return { dir: theirs ? 'them' : 'you', dateIso: `20${m[3]}-${m[2]}-${m[1]}` };
 }
 
@@ -157,7 +162,7 @@ async function gatherPersonContext(mailProvider, coach, item, tenant) {
     // Mark the slice: an unmarked cut reads as the sender stopping mid-thought.
     out.transcript.push(...li.map((l) => `LINKEDIN: ${l.length > 300 ? `${l.slice(0, 300)} …[record clipped]` : l}`));
     if (!out.channel) out.channel = 'linkedin';
-    const liWord = linkedInLastWord(item.lead.notes, item.lead.first);
+    const liWord = linkedInLastWord(item.lead.notes, item.lead, { name: coach && coach.clientName });
     if (liWord && (!out.lastWord || liWord.dateIso >= out.lastWord.dateIso)) out.lastWord = liWord;
   }
   // CALL-AWARE TRIAGE (Guy 2026-08-29, the Nea Dhillon morning): when this person has a stored

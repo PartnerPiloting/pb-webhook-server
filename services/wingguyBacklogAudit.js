@@ -26,6 +26,7 @@ const EMAIL_LOOKBACK_DAYS = 90;     // provider depth limit (volume finding 2026
 const TRIAGE_BATCH = 20;            // people per triage LLM call
 const MAX_DRAFTS = 80;              // cap pre-written drafts; beyond = draft-on-request
 const { noUpfrontThinking } = require('../config/wingguyThinking');
+const { senderIsLead } = require('../utils/linkedInSender');
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
 const NO_THINKING = noUpfrontThinking(MODEL_ID);   // see config/wingguyThinking.js
 
@@ -167,7 +168,10 @@ async function runBacklogAudit(tenant) {
     const sig = email ? signals.get(email) : null;
     const lastEmailMs = sig ? Math.max(sig.lastInboundMs || 0, sig.lastOutboundMs || 0) || null : null;
     const lastMs = Math.max(li.lastMs || 0, lastEmailMs || 0) || null;
-    const theyEngaged = (sig && sig.lastInboundMs) || li.lines.some((l) => first && l.sender.toLowerCase().startsWith(first.toLowerCase()));
+    // Who wrote each LinkedIn line: utils/linkedInSender (30 Oct 2026 - David Gould's 14 Davids
+    // all read as engaged because every line he wrote started with "David").
+    const who = { first, last: f['Last Name'] || '' };
+    const theyEngaged = (sig && sig.lastInboundMs) || li.lines.some((l) => senderIsLead(l.sender, who, { name: coach.clientName }));
     const connected = !!f['Date Connected'];
 
     if (!lastMs) { skipped.never++; continue; }                                  // no interaction at all
