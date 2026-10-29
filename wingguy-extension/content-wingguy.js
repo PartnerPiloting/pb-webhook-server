@@ -184,7 +184,12 @@
       { key: 'profile_top_card' },
       { key: 'profile_headline', soft: true },
       { key: 'profile_location', soft: true },
-      { key: 'profile_about_spans', soft: true, within: 'about' },
+      // Graded as "did the About READ get text", not "do the old-build aria-hidden spans exist".
+      // The current build has no such spans and readAbout() has read the plain section text since
+      // 2026-09-03, so the selector alone had 41 misses and 0 finds in six weeks while About was
+      // being read fine - and on 2026-10-30 the monitor called that "likely moved". A real blinding
+      // (section present, no text out) still files a miss here.
+      { key: 'profile_about_spans', soft: true, within: 'about', readKey: 'aboutText' },
       // Posts went silently blind for months (worked early on, died with a markup change, nobody knew
       // — Guy noticed by absence, 2026-08-19). Soft because plenty of people genuinely never post,
       // but recorded so the monitor's cross-tenant zero-finds rule can catch the next blinding.
@@ -284,6 +289,10 @@
       // would report misses for content the scrape happily reads on the new-UI build.
       let found = false;
       try { found = !!findByKey(item.key, root); } catch (_) { found = false; }
+      // A landmark whose read has its own fallback (About: plain section text when the old-build
+      // spans are gone) counts as found when the read came back with text. The selector is the
+      // store-correctable half; the fallback is what the draft actually got.
+      if (!found && item.readKey && scopes && scopes[item.readKey]) found = true;
       if (!found && !item.soft) anyHardMiss = true;
       checks.push({
         key: item.key,
@@ -1341,6 +1350,9 @@
         // About now produces a health row for the spans landmark even on the new build - which is
         // exactly the blindness the id-only scope hid for a month.
         about: findAboutSection(),
+        // What the About read actually returned. The spans landmark is graded found when this has
+        // text, because the new build has no marked spans and the read falls back to section text.
+        aboutText: base.about || '',
         activity: activityScope.section,
         featured: activityScope.featured,
         // Whether LinkedIn's deferred About/Featured block had rendered when we read. Unrendered =

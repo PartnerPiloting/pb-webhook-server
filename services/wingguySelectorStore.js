@@ -43,7 +43,9 @@ const KNOWN_KEYS = [
   'profile_headline',        // their headline under the name
   'profile_location',        // the location line
   'profile_top_card',        // the top-card container the name/headline are read from
-  'profile_about_spans',     // the About copy inside the About section
+  'profile_about_spans',     // the About copy inside the About section. Since ext 0.3.37 the health row means
+                             // "the About read got text" (the current build has no marked spans; the read
+                             // falls back to section text), so a miss is a real blinding, not an absent selector.
   'profile_activity_anchor', // the Activity section (their recent posts) — anchor ids
   'profile_activity_items',  // the post-preview text inside the Activity section
   'profile_featured_anchor', // the Featured section (the posts they pinned) — anchor ids
