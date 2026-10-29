@@ -20,7 +20,9 @@ sheet with Guy driving. Guy builds it alone with one command, and a second comma
 a web link to it. It joins Tailscale by name (Guy's own way in), Linked Helper autostarts, the
 watchdog restarts it and presses the runner, the backup lands in Drive at 02:30 and a daily watcher
 emails Guy if it stops, and the machine writes its own health onto the client's record. The client
-then opens their link and signs in to Linked Helper and LinkedIn by themselves - no call needed -
+then opens their link and signs in to Linked Helper (with a login Guy has already registered and
+checked is local - see "New client: the Linked Helper login and the cloud check") and LinkedIn by
+themselves - no call needed -
 and the machine imports any waiting history and builds the ONE connect campaign on its own. What
 still takes a sitting with Guy is making that campaign theirs before it starts: the note, the
 batch size, the days, the search (since 29-30 Sep 2026).
@@ -125,6 +127,99 @@ adopts when there is exactly one account on the machine; it never guesses betwee
 file is `root:lh 664` for this. **A machine built before 29 Sep needs that permission set once**
 (`chown root:lh /etc/linked-helper-machine.conf; chmod 664 ...`) and the current watchdog copied on;
 until then its status says `account-learned:<id> (config locked)` every cycle.
+
+### ★ New client: the Linked Helper login and the cloud check (since 30 Oct 2026)
+
+**Why this exists.** Since late October 2026 Linked Helper deals some new accounts its
+**cloud** storage version at random - an A/B test, unannounced, with no choice offered. Our
+machines only work on **local** storage: the campaign builder, the watchdog's campaign checks,
+the Monday numbers, missed-lead diagnosis and the nightly backup all read `lh.db` on the
+machine, and on a cloud account that file stays at 0 bytes forever. Cloud also costs the client
+double (Standard $29.90 a month against $15). Joshua Tunstall was the first, found 29 Oct 2026
+only when his campaign would not build. Everything below comes from support ticket 508186
+(Tatyana Zemtsova) and ticket 508233 (Evgenii Dzhurov), 29 Oct 2026. Linked Helper says the test
+is temporary and a clear choice for customers will follow; when it does, this section shrinks
+to "choose Local".
+
+**The facts this rests on (all confirmed by Linked Helper support):**
+
+- Cloud or local is decided **the moment the first LinkedIn account is added** to a new Linked
+  Helper login. Registering alone decides nothing.
+- Any LinkedIn account will do for that moment - **a made-up email that is never opened** is
+  enough. The launcher then shows the type.
+- **The tell:** a small cloud symbol on the LinkedIn account's picture, and on the licence tag
+  ("trial pro"), in the launcher's LinkedIn Accounts list. No cloud symbol = local.
+- ⚠ **The Buy-new price is NOT a test before a LinkedIn account exists.** An empty workspace
+  shows cloud prices whatever it will become (tested 29 Oct on a spare login). Only use the
+  price once a LinkedIn account is in: Standard 1 month $15 = local, $29.90 = cloud; Pro $45 =
+  local, $59.90 = cloud.
+- If it comes out cloud, **support switches the login** to local. Then a **new workspace** is
+  made - **after** the switch, never before, or the new workspace is cloud too. The old
+  workspace keeps its cloud stamp for good.
+- **The trial.** Adding the first LinkedIn account creates the 14-day trial licence; the 14 days
+  only start at the first campaign launch. In a new local workspace a fresh trial appears by
+  itself. If the client's real account ever turns up with no licence, the trial can be switched
+  between accounts in the launcher, or support adds one by hand - they offered.
+- Support works 24/7 and has answered within the hour every time. Only contact them when it is
+  cloud - not for every client.
+
+**The routine, client "Sarah" (who does each step in bold):**
+
+1. **Sarah** buys her machine from the step-by-step email, sends the Primary IP. The email
+   promises "a day or two".
+2. **Guy** pastes the IP to Claude: "build Sarah's machine".
+3. **Claude** builds it (one command, about 30 minutes), makes her web link, then emails Guy:
+   "Sarah's machine is built - your turn, two minutes."
+4. **Guy, two minutes, on Sarah's machine** (her web link, or RDP). In the launcher:
+   - **Register** - Sarah's real email, a temporary password Guy makes up.
+   - **LinkedIn Accounts > Add account** - any made-up email and password. Do NOT open it.
+   - Tell Claude "done".
+   Claude never registers an account or types a password - that line is fixed.
+5. **Claude** reads the screen for the cloud symbol.
+   - **Local (the usual case):** Claude archives the made-up account and drafts Sarah's handover
+     email, then emails Guy "Sarah's handover is ready".
+   - **Cloud:** Claude drafts the switch request to support (Sarah's Linked Helper email and
+     account id) and emails Guy "please send this". Guy sends it. When support confirms, Claude
+     adds a new workspace, **switches into it** (Add workspace does NOT switch you - pick it in
+     the workspace list after), archives the made-up account, drafts the handover, and emails
+     Guy "Sarah's handover is ready". If Claude's clicks don't take, the email to Guy says which
+     clicks to make instead - about a minute.
+6. **Guy** opens the handover draft, types the temporary password where it says
+   [TYPE THE PASSWORD HERE], and sends it.
+7. **Sarah** opens her link, signs in to Linked Helper with that login (not Register), changes
+   the password, adds her real LinkedIn account and types the code from her phone.
+8. **The machine** builds her campaign within minutes. Claude checks: no cloud symbol, `lh.db`
+   growing, a trial licence on her account. Missing trial: switch it across from the made-up
+   account, or one line to support.
+9. **Guy and Sarah** make the campaign hers, as always.
+
+Everything that reaches Guy comes by **email**, never a phone notification. If any step fails,
+the email says what failed and what is needed - Guy never has to check or poll.
+
+**Not built yet (owed, 30 Oct 2026):** the emails to Guy at steps 3, 5 and 8; a watchdog check
+that reads the storage type and licence from the launcher log every five minutes and emails Guy
+if an account is cloud or unlicensed; the wording changes to the machine-purchase email ("a day
+or two"), the machine-ready email and the open-your-machine page ("sign in with the login I've
+set up", not register). Until they are built, Claude does steps 3, 5 and 8 inside the chat.
+
+⚠ **Reading the launcher log:** its account lines carry `"storageType":"cloud"|"local"` - and the
+client's **LinkedIn password in plain text**. Grep for the field; never print or copy whole lines.
+
+### Fixing an account that already came up cloud (Joshua Tunstall, 2 Nov 2026)
+
+For a client who signed in before this routine existed and was dealt cloud. Do it **on a call**,
+with Guy clicking over RDP and the client only typing their LinkedIn password and phone code.
+
+1. Support switches the Linked Helper login to local (ask; confirm the reply says switched).
+2. Launcher, **LinkedIn Accounts**: archive the LinkedIn account in the old workspace (or just
+   close it - support says either is fine; archive avoids confusion).
+3. Workspace list (below the "First steps" box) > **Add workspace** > Add. Then pick the new
+   workspace in the list - Add does not switch to it. Check the name on the left.
+4. **LinkedIn Accounts > Add account**: the client signs in to LinkedIn; LinkedIn texts a code.
+5. Check: no cloud symbol; a trial licence on the account (if not, support adds one).
+6. After the call (Claude): point the machine's autostart and watchdog at the NEW account id,
+   rebuild the campaign with the client's saved settings (the first-run job has removed its own
+   cron line and will not rebuild it), and check `lh.db` is growing.
 
 ### The machine finishes its own setup (29 Sep 2026 - UNPROVEN until Roland Illyes's first run)
 
