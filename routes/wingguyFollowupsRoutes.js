@@ -231,9 +231,9 @@ module.exports = function mountWingguyFollowups(app) {
           const formula = (payload.email || email)
             ? `LOWER({Email}) = "${esc(String(payload.email || email).toLowerCase())}"`
             : `FIND(LOWER("${esc(name)}"), LOWER({First Name} & " " & {Last Name})) > 0`;
-          const recs = await base('Leads').select({ filterByFormula: formula, fields: ['First Name', 'Notes'], maxRecords: 1 }).all();
+          const recs = await base('Leads').select({ filterByFormula: formula, fields: ['First Name', 'Last Name', 'Notes'], maxRecords: 1 }).all();
           if (recs.length) {
-            const last = parseLinkedInLast(recs[0].fields['Notes'], recs[0].fields['First Name']);
+            const last = parseLinkedInLast(recs[0].fields['Notes'], { first: recs[0].fields['First Name'], last: recs[0].fields['Last Name'] }, { name: coach.clientName });
             if (last && last.ms && row.built_at && last.ms > new Date(row.built_at).getTime()) stale = true;
           }
         }

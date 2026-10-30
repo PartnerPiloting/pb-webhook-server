@@ -39,6 +39,7 @@
 const { z } = require('zod');
 const mailProvider = require('./mailProvider');
 const { houseDashes } = require('../utils/houseDashes');
+const { senderIsLead } = require('../utils/linkedInSender');
 // NOTE: clientService is required LAZILY inside the executor — its Airtable config crashes at module
 // load when env vars are absent (local test runs), same reason as wingguyBookingMcp.
 
@@ -211,25 +212,27 @@ const LI_MSG_RE = /^(\d{2})-(\d{2})-(\d{2})\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*(.+?)\
 
 /**
  * Newest LinkedIn message in a lead's Notes: { ms, inbound } or null. The block is newest-first, so
- * the first parseable line wins. Inbound = the sender line names the LEAD (their first name); any
- * other name is the coach — which avoids hard-coding the coach's name, so it works per-tenant.
- * (Heuristic: a lead whose first name collides with the coach's could misread — acceptable for v1.)
+ * the first parseable line wins. Inbound = the sender line names the LEAD, decided by
+ * utils/linkedInSender: the coach's own name is never the lead, then the lead's last name decides.
+ * Until 30 Oct 2026 this was `sender.includes(leadFirstName)`, and "Guy Wilson" contained "guy",
+ * so Guy's own opener to Guy Newton read as Guy Newton's reply and put him in "Waiting on you".
+ * `lead` is {first, last} (a bare string is taken as the first name); `coach` is {name}.
  */
-function parseLinkedInLast(notes, leadFirstName) {
+function parseLinkedInLast(notes, lead, coach) {
   const block = String(notes || '');
   const start = block.indexOf('=== LINKEDIN MESSAGES ===');
   if (start === -1) return null;
   let seg = block.slice(start);
   const nextHdr = seg.indexOf('\n=== ', 1);
   if (nextHdr !== -1) seg = seg.slice(0, nextHdr);
-  const first = String(leadFirstName || '').trim().toLowerCase();
+  const who = typeof lead === 'string' ? { first: lead } : (lead || {});
   for (const raw of seg.split('\n')) {
     const m = raw.trim().match(LI_MSG_RE);
     if (!m) continue;
     const [, dd, mm, yy, sender] = m;
     const ms = Date.UTC(2000 + Number(yy), Number(mm) - 1, Number(dd));
     if (Number.isNaN(ms)) continue;
-    return { ms, inbound: first ? sender.toLowerCase().includes(first) : false };
+    return { ms, inbound: senderIsLead(sender, who, coach) };
   }
   return null;
 }
@@ -239,11 +242,11 @@ function parseLinkedInLast(notes, leadFirstName) {
  * names them, full depth, NOT windowed. Feeds the cadence gate (Decision B in classifyLead): the
  * question there is "has this person ever actually spoken?", and the newest-line/windowed
  * parseLinkedInLast can't answer it for someone whose only activity is the coach's own opener.
- * Same sender heuristic (and the same name-collision caveat) as parseLinkedInLast.
+ * Same sender rule as parseLinkedInLast (utils/linkedInSender).
  */
-function linkedInEverInbound(notes, leadFirstName) {
-  const first = String(leadFirstName || '').trim().toLowerCase();
-  if (!first) return false;
+function linkedInEverInbound(notes, lead, coach) {
+  const who = typeof lead === 'string' ? { first: lead } : (lead || {});
+  if (!String(who.first || '').trim()) return false;
   const block = String(notes || '');
   const start = block.indexOf('=== LINKEDIN MESSAGES ===');
   if (start === -1) return false;
@@ -252,7 +255,7 @@ function linkedInEverInbound(notes, leadFirstName) {
   if (nextHdr !== -1) seg = seg.slice(0, nextHdr);
   for (const raw of seg.split('\n')) {
     const m = raw.trim().match(LI_MSG_RE);
-    if (m && m[4].toLowerCase().includes(first)) return true;
+    if (m && senderIsLead(m[4], who, coach)) return true;
   }
   return false;
 }
@@ -1061,7 +1064,8 @@ async function computeFollowupSweep({ window_days, accepted_check } = {}, tenant
       });
       continue;
     }
-    const li = parseLinkedInLast(lead.notes, lead.first);
+    const me = { name: coach && coach.clientName };
+    const li = parseLinkedInLast(lead.notes, lead, me);
     if (li) { // FULL depth (2026-08-24): cadence is open-ended, so an old LI outbound is exactly the
               // signal we need. Stale-signal noise is already handled downstream — reply-owed has its
               // own REPLY_LIVE_DAYS freshness cap, and cadence sorts recent-first.
@@ -1071,7 +1075,7 @@ async function computeFollowupSweep({ window_days, accepted_check } = {}, tenant
     const c = classifyLead(lead, {
       lastInboundMs: lastInboundMs || null,
       lastOutboundMs: lastOutboundMs || null,
-      everInbound: linkedInEverInbound(lead.notes, lead.first),
+      everInbound: linkedInEverInbound(lead.notes, lead, me),
       nowMs, todayMidMs,
     });
     if (!c) continue;

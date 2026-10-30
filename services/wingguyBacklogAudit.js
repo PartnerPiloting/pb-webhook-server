@@ -189,6 +189,7 @@ async function runBacklogAudit(tenant) {
       email: email || null,
       linkedin: String(f['LinkedIn Profile URL'] || '').trim() || null,
       first,
+      last: f['Last Name'] || '',
       notes: f['Notes'] || '',
       quietDays: Math.floor((now - lastMs) / MS_DAY),
       liLines: li.lines,
@@ -211,7 +212,7 @@ async function runBacklogAudit(tenant) {
   const today = new Date().toISOString().slice(0, 10);
   const withContext = [];
   for (const c of candidates) {
-    const transcript = c.liLines.map((l) => `${new Date(l.ms).toISOString().slice(0, 10)} ${c.first && l.sender.toLowerCase().startsWith(c.first.toLowerCase()) ? 'THEM' : 'YOU'} (LinkedIn): ${String(l.text).slice(0, 280)}`);
+    const transcript = c.liLines.map((l) => `${new Date(l.ms).toISOString().slice(0, 10)} ${senderIsLead(l.sender, { first: c.first, last: c.last }, { name: coach.clientName }) ? 'THEM' : 'YOU'} (LinkedIn): ${String(l.text).slice(0, 280)}`);
     if (c.email && c.hasEmailSignal) {
       try {
         const found = await mailProvider.findMessages(coach, { anyEmail: c.email, limit: 5 });

@@ -18,7 +18,7 @@ const check = async (name, fn) => {
   catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); }
 };
 
-const { linkedInEverInbound, classifyLead } = require('../services/wingguyMailMcp');
+const { linkedInEverInbound, parseLinkedInLast, classifyLead } = require('../services/wingguyMailMcp');
 
 const MS_DAY = 86400000;
 const nowMs = Date.UTC(2026, 7, 1, 4, 0, 0); // 2026-08-01
@@ -51,6 +51,14 @@ const NOTES_LEAD_SPOKE = [
   });
   await check('no first name → false (never guess)', () => {
     assert.strictEqual(linkedInEverInbound(NOTES_LEAD_SPOKE, ''), false);
+  });
+  await check('a lead who shares the coach\'s first name: the coach\'s own opener is NOT theirs (Guy Newton, 30 Oct 2026)', () => {
+    const notes = '=== LINKEDIN MESSAGES ===\n28-10-26 6:02 PM - Guy Wilson - Hi Guy, I am building a network of Fractional Professionals.';
+    const lead = { first: 'Guy', last: 'Newton' };
+    assert.strictEqual(linkedInEverInbound(notes, lead, { name: 'Guy Wilson' }), false);
+    assert.strictEqual(parseLinkedInLast(notes, lead, { name: 'Guy Wilson' }).inbound, false);
+    const replied = `=== LINKEDIN MESSAGES ===\n29-10-26 9:10 AM - Guy Newton - Happy to chat.\n${notes.split('\n')[1]}`;
+    assert.strictEqual(parseLinkedInLast(replied, lead, { name: 'Guy Wilson' }).inbound, true);
   });
 
   console.log('classifyLead() cadence gate');
