@@ -422,7 +422,7 @@ preview and report emails end "Go through them with Claude: say "let's do this w
 **How the weekly email looks (Guy, 22 Oct 2026):**
 
 - **A personal email, not a newsletter.** No banner, no series branding, no big heading: "Hi
-  <first name>," then Guy's words, signed "Cheers, / Guy", and one small quiet line at the bottom -
+  <first name>," then Guy's words, signed "Cheers / (I know a) Guy", and one small quiet line at the bottom -
   "Rather not get these weekly emails? Unsubscribe". When the body is a one-pager it sits
   underneath as plain text under a simple bold title. (The prospect series and the public /series
   pages keep their own look.)

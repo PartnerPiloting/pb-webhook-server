@@ -508,7 +508,7 @@ async function stepDraftWelcome(job) {
     '<li>If you use a password manager, save the login link in it now.</li>',
     '</ol>',
     '<p>Then we book your first session and the building starts.</p>',
-    '<p>Guy</p>',
+    '<p>(I know a) Guy</p>',
   ].join('\n');
   const res = await mailProvider.createDraft(coach, {
     subject: 'Welcome aboard - your login and first steps',

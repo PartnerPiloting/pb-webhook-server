@@ -136,7 +136,7 @@ function paymentFailedEmail(client, invoice) {
       `<p>This month's ${money(invoice.amount_due)} didn't go through - usually it's an expired or replaced card.</p>`,
       `<p>You can pay it here with a current card: <a href="${invoice.hosted_invoice_url}">pay this month's invoice</a></p>`,
       "<p>Nothing's switched off. Stripe will keep trying for a few weeks, but it's quicker to sort it now.</p>",
-      '<p>Guy</p>',
+      '<p>(I know a) Guy</p>',
     ].join('\n'),
   };
 }
@@ -152,7 +152,7 @@ function pausedEmail(client) {
       "<p>Nothing's lost - your leads, notes and set-up are all still there, just switched off. While it's paused, the leads Linked Helper finds aren't being scored, so it's worth pausing your campaigns until you're back.</p>",
       `<p>To pick it back up, it's $150 a month as before, with no set-up fee: <a href="${link}">restart my membership</a></p>`,
       "<p>Everything switches back on as soon as it goes through. If you've decided to stop, that's fine too - just reply and let me know.</p>",
-      '<p>Guy</p>',
+      '<p>(I know a) Guy</p>',
     ].join('\n'),
   };
 }

@@ -602,7 +602,7 @@ function previewText(html) {
 }
 
 // The weekly client email looks like a personal email from Guy (22 Oct 2026): no banner, no series
-// branding, no big heading - "Hi <name>," then his words, "Cheers, / Guy", and one quiet line at
+// branding, no big heading - "Hi <name>," then his words, "Cheers / (I know a) Guy", and one quiet line at
 // the bottom to stop them. A one-pager piece sits underneath as plain text under a simple bold
 // title. The prospect series and the public /series pages keep their own look (onePagerShell).
 
@@ -643,7 +643,7 @@ function composeEmail({ client, opening: openingText, body, unsubscribeUrl, base
   parts.push(body.bodyHtml || '');
   if (thought && thought.text) parts.push(briefs.quoteHtml(thought.text, { label: 'A thought for the week', credit: thought.credit || '' }));
   if (firstWeekly) parts.push(`<p>${esc(FIRST_WEEKLY_NOTE)}</p>`);
-  parts.push('<p>Cheers,<br>Guy</p>');
+  parts.push('<p>Cheers<br>(I know a) Guy</p>'); // Guy, 31 Oct 2026: always "(I know a) Guy"
   parts.push(`<p style="margin-top:28px;font-size:12px;color:#888">Rather not get these weekly emails? <a href="${esc(unsubscribeUrl || '#')}" style="color:#888">Unsubscribe</a></p>`);
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(body.title || 'A note from Guy')}</title></head><body style="margin:0;padding:16px;background:#ffffff"><div style="max-width:620px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#222">${parts.join('\n')}</div></body></html>`;
   const base = baseUrl || process.env.SERIES_PUBLIC_BASE_URL || 'https://knowaguy.com.au';

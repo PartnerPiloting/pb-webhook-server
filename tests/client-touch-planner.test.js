@@ -64,7 +64,7 @@ const routes = require('../routes/clientTouchRoutes');
     const html = planner.composeEmail({ client: { clientFirstName: 'Rick', clientName: 'Rick Wong' }, opening: 'Good to talk on Tuesday.', kind: 'one-pager', body: { title: 'Begin with the end in mind', dek: 'What for', bodyHtml: '<p>Body <a href="/series/x?audience=client">x</a></p>' }, unsubscribeUrl: 'https://knowaguy.com.au/series/unsubscribe?t=abc', baseUrl: 'https://knowaguy.com.au' });
     assert.ok(html.includes('<p>Hi Rick,</p>'));
     assert.ok(html.indexOf('Good to talk on Tuesday.') < html.indexOf('<strong>Begin with the end in mind</strong>'));
-    assert.ok(html.indexOf('<strong>Begin with the end in mind</strong>') < html.indexOf('Cheers,<br>Guy'));
+    assert.ok(html.indexOf('<strong>Begin with the end in mind</strong>') < html.indexOf('Cheers<br>(I know a) Guy'));
     assert.ok(html.includes('Rather not get these weekly emails? <a href="https://knowaguy.com.au/series/unsubscribe?t=abc"'));
     assert.ok(!/from the series|Network building, rethought|op-hero|op-t"/i.test(html), 'no banner, no series branding');
     assert.ok(html.includes('href="https://knowaguy.com.au/series/x?audience=client"'));
@@ -93,7 +93,7 @@ const routes = require('../routes/clientTouchRoutes');
     const b = await planner.buildBody({ what: { kind: 'one-pager', key: '(orientation)' }, form: 'full' }, { coach: {}, client: {}, firstEmail: true });
     const html = planner.composeEmail({ client: { clientName: 'Alex Solti' }, opening: '', kind: 'one-pager', body: b, unsubscribeUrl: 'https://x/u', firstWeekly: true });
     const at = (s) => html.indexOf(s);
-    const order = ['<p>Hi Alex,</p>', 'Congratulations! You&#39;ve started', 'First, a quick word on what you&#39;re now part of.', '<strong>You&#39;re not doing this alone</strong>', 'The setup we built together', 'One more thing - from now on', 'Cheers,<br>Guy', 'Rather not get these weekly emails?'];
+    const order = ['<p>Hi Alex,</p>', 'Congratulations! You&#39;ve started', 'First, a quick word on what you&#39;re now part of.', '<strong>You&#39;re not doing this alone</strong>', 'The setup we built together', 'One more thing - from now on', 'Cheers<br>(I know a) Guy', 'Rather not get these weekly emails?'];
     const found = order.map((s) => at(s.replace(/&#39;/g, "'")) >= 0 ? at(s.replace(/&#39;/g, "'")) : at(s));
     assert.ok(found.every((x) => x >= 0), JSON.stringify(found));
     assert.deepStrictEqual([...found].sort((a, c) => a - c), found, 'out of order');
@@ -148,7 +148,7 @@ const routes = require('../routes/clientTouchRoutes');
   await check('a non-piece email carries "A thought for the week:" before the sign-off', () => {
     const html = planner.composeEmail({ client: { clientName: 'Sam Noble' }, opening: 'Next step.', kind: 'setup', body: { title: 'Connect your calendar', bodyHtml: '<p>One small thing.</p>' }, unsubscribeUrl: '#', thought: { slug: 'reason-to-follow-up', text: "Goodwill doesn't sustain a relationship. Motion does." } });
     assert.ok(/<blockquote style="[^"]*"><div[^>]*><strong>A thought for the week<\/strong><\/div><div[^>]*>Goodwill/.test(html), 'the thought sits in the highlighted box');
-    assert.ok(html.indexOf('A thought for the week') < html.indexOf('Cheers,<br>Guy'));
+    assert.ok(html.indexOf('A thought for the week') < html.indexOf('Cheers<br>(I know a) Guy'));
     assert.ok(!html.includes('<strong>Connect your calendar</strong>'), 'a setup step is part of the note, not a titled piece');
   });
   await check('an opening with angle brackets is escaped, never injected', () => {
