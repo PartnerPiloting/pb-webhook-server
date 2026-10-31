@@ -17,12 +17,16 @@
 //     week never bury his Gmail Sent folder (Guy, 26 Oct). Each send is recorded here per person.
 //   - Left off every time: active clients (they get their own weekly email), `unsubscribed`,
 //     addresses that bounced in the last 30 days, Guy himself.
-//   - A reply that just says "unsubscribe" takes them off by itself (the tag comes off,
-//     `unsubscribed` goes on). Anything longer is a normal reply for Guy.
+//   - Unsubscribing takes them off by itself (the tag comes off, `unsubscribed` goes on) and Guy
+//     gets a one-line email saying so (Guy, 31 Oct 2026). Three ways in: the footer link (one
+//     token per send, served by /series/unsubscribe in routes/marketingRoutes.js), Gmail's own
+//     Unsubscribe button (List-Unsubscribe-Post one-click, same link), or a reply that just says
+//     "unsubscribe". Anything longer is a normal reply for Guy.
 //
 // Never twice: an idea used by an edition is never used again for the list. Guy's own Mindset
 // Mastery editions are left out - most of the old list has had them.
 
+const crypto = require('crypto');
 const { Pool } = require('pg');
 const library = require('./inspirationLibrary');
 const sched = require('./scheduledEmails');
@@ -57,6 +61,8 @@ const INTRO = [
 ];
 const CLOSER = 'What would a better network mean for you - more clients, a side gig, the right people around you? With AI, more of that is possible than ever. That\'s what I work on at {{link}} - when you\'re ready to talk, just hit reply.';
 const FOOTER = 'If you\'d prefer not to receive these, just reply "unsubscribe" and I\'ll take you off straight away - no hard feelings at all.';
+// With a link (every real send): {{unsub}} becomes the link. Guy, 31 Oct 2026.
+const FOOTER_LINKED = 'If you\'d prefer not to receive these, {{unsub}} or just reply "unsubscribe" - no hard feelings at all.';
 const SITE_FALLBACK = 'https://knowaguy.com.au/';
 
 // ---------------------------------------------------------------------------------------------
@@ -96,10 +102,11 @@ function firstNameOf(name) {
 }
 
 /** One person's email. variant: 'welcome' | 'back' (their first: the launch piece) | 'regular' (this week's idea). Pure. */
-function render({ edition, variant, firstName, siteUrl = SITE_FALLBACK }) {
+function render({ edition, variant, firstName, siteUrl = SITE_FALLBACK, unsubUrl = '' }) {
   const hi = para(`Hi ${esc(firstName || 'there')},`);
   const signOff = [para('Cheers'), para('(I know a) Guy')];
-  const foot = `<p style="margin-top:28px;font-size:12px;color:#777">${esc(FOOTER)}</p>`;
+  const footText = unsubUrl ? esc(FOOTER_LINKED).replace('{{unsub}}', `<a href="${esc(unsubUrl)}" style="color:#777">unsubscribe here</a>`) : esc(FOOTER);
+  const foot = `<p style="margin-top:28px;font-size:12px;color:#777">${footText}</p>`;
   if (variant === 'welcome' || variant === 'back' || !edition || edition.kind === 'intro') {
     const top = variant === 'back' ? BACK_LINE : WELCOME_LINE;
     const html = wrapHtml([hi, para(esc(top)), ...INTRO.map((t) => para(linked(t, siteUrl))), ...signOff, foot].join('\n'));
@@ -235,6 +242,8 @@ async function withDb(fn, fallback) {
           UNIQUE (edition_id, email)
         );
         CREATE INDEX IF NOT EXISTS list_sends_email ON list_sends (tenant_id, email);
+        ALTER TABLE list_sends ADD COLUMN IF NOT EXISTS unsub_token TEXT;
+        CREATE UNIQUE INDEX IF NOT EXISTS list_sends_unsub ON list_sends (unsub_token) WHERE unsub_token IS NOT NULL;
         CREATE TABLE IF NOT EXISTS list_members (
           tenant_id TEXT NOT NULL,
           email TEXT NOT NULL,
@@ -307,7 +316,7 @@ const isEmail = (e) => /^[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}$/i.test(String(e || 
 const tagsOf = (f) => String(f['Search Tokens (canonical)'] || f['Search Terms'] || f['Search Term'] || '').toLowerCase().split(',').map((s) => s.trim()).filter(Boolean);
 
 /** Who gets this week's email, and who is left off and why. Pure given its inputs. */
-function pickRecipients(leads, { clientEmails = new Set(), bounced = new Set(), selfEmails = new Set() } = {}) {
+function pickRecipients(leads, { clientEmails = new Set(), bounced = new Set(), selfEmails = new Set(), unsubscribed = new Set() } = {}) {
   const seen = new Set();
   const go = [];
   const off = { client: [], unsubscribed: [], bounced: [], noEmail: [], self: [] };
@@ -316,7 +325,8 @@ function pickRecipients(leads, { clientEmails = new Set(), bounced = new Set(), 
     if (!tags.includes(LIST_TAG)) continue;
     const email = String(l.email || '').trim().toLowerCase();
     const who = l.name || email;
-    if (tags.includes(UNSUB_TAG)) { off.unsubscribed.push(who); continue; }
+    // The tag, or our own record of the address - so an unsubscribe holds even if the tag write failed.
+    if (tags.includes(UNSUB_TAG) || unsubscribed.has(email)) { off.unsubscribed.push(who); continue; }
     if (!isEmail(email)) { off.noEmail.push(who); continue; }
     if (selfEmails.has(email)) { off.self.push(who); continue; }
     if (clientEmails.has(email)) { off.client.push(who); continue; }
@@ -368,7 +378,8 @@ async function exclusions(tenantId) {
   selfEmails.add('guyralphwilson@gmail.com');
   selfEmails.add(String(require('./mailgunCreds').fromEmail() || '').replace(/^.*<|>.*$/g, '').trim().toLowerCase());
   const bounced = new Set((await q(`SELECT DISTINCT LOWER(address) AS a FROM wingguy_bounce_alerts WHERE coach_client_id = $1 AND alerted_at > now() - interval '30 days'`, [tenantId]).catch(() => [])).map((x) => x.a));
-  return { clientEmails, bounced, selfEmails };
+  const unsubscribed = new Set((await q("SELECT email FROM list_members WHERE tenant_id = $1 AND source = 'unsubscribed'", [tenantId])).map((r) => r.email));
+  return { clientEmails, bounced, selfEmails, unsubscribed };
 }
 
 async function audience(tenantId) {
@@ -405,8 +416,19 @@ async function replyToFor(tenantId) {
   return (coach && coach.clientEmailAddress) || 'guyralphwilson@gmail.com';
 }
 
-async function mailOne({ to, subject, html, replyTo, tag = 'list-edition' }) {
+// The unsubscribe link: one unguessable token per send, on the same /series/unsubscribe route as
+// the prospect drip and the client emails (routes/marketingRoutes.js).
+const newUnsubToken = () => crypto.randomBytes(24).toString('base64url');
+function unsubUrlFor(token) {
+  const base = (process.env.SERIES_PUBLIC_BASE_URL || 'https://knowaguy.com.au').replace(/\/+$/, '');
+  return `${base}/series/unsubscribe?t=${encodeURIComponent(token)}`;
+}
+// What the mailto fallback in the header sends - the watcher knows it by this subject.
+const UNSUB_MAIL_SUBJECT = `Unsubscribe - ${SERIES}`;
+
+async function mailOne({ to, subject, html, replyTo, tag = 'list-edition', unsubUrl = '' }) {
   const mg = require('./mailgunCreds');
+  const mailto = `<mailto:${replyTo}?subject=${encodeURIComponent(UNSUB_MAIL_SUBJECT)}>`;
   return mg.sendMailgunMessage({
     from: mg.fromAddress('Guy Wilson'),
     to,
@@ -414,7 +436,9 @@ async function mailOne({ to, subject, html, replyTo, tag = 'list-edition' }) {
     html,
     text: htmlToText(html),
     'h:Reply-To': replyTo,
-    'h:List-Unsubscribe': `<mailto:${replyTo}?subject=unsubscribe>`,
+    // Gmail's own Unsubscribe button: one click, POSTed to the link, no email involved.
+    'h:List-Unsubscribe': unsubUrl ? `<${unsubUrl}>, ${mailto}` : mailto,
+    ...(unsubUrl ? { 'h:List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : {}),
     'o:tag': tag,
   });
 }
@@ -426,8 +450,8 @@ async function queueSends(tenantId, edition) {
   const buttonAdds = new Set((await q("SELECT email FROM list_members WHERE tenant_id = $1 AND source = 'weekly-button'", [tenantId])).map((r) => r.email));
   const isLaunch = edition.kind === 'intro' && edition.sendDate === LAUNCH;
   for (const p of go) {
-    await q(`INSERT INTO list_sends (tenant_id, edition_id, email, name, lead_rec_id, variant) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (edition_id, email) DO NOTHING`,
-      [tenantId, edition.id, p.email, p.firstName || '', p.leadRecId, variantFor(p.email, { sentBefore: sent, buttonAdds, isLaunch })]);
+    await q(`INSERT INTO list_sends (tenant_id, edition_id, email, name, lead_rec_id, variant, unsub_token) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (edition_id, email) DO NOTHING`,
+      [tenantId, edition.id, p.email, p.firstName || '', p.leadRecId, variantFor(p.email, { sentBefore: sent, buttonAdds, isLaunch }), newUnsubToken()]);
   }
   await setState(`off:${edition.id}`, JSON.stringify(off));
   return { queued: go.length, off };
@@ -438,9 +462,15 @@ async function sendBatch(tenantId, edition, { limit = BATCH } = {}) {
   if (!rows.length) return 0;
   const [url, replyTo] = await Promise.all([siteUrl(tenantId), replyToFor(tenantId)]);
   for (const r of rows) {
-    const { subject, html } = render({ edition, variant: r.variant, firstName: r.name, siteUrl: url });
+    let token = r.unsub_token;
+    if (!token) { // queued before the link existed
+      token = newUnsubToken();
+      await q('UPDATE list_sends SET unsub_token = $2 WHERE id = $1', [r.id, token]);
+    }
+    const unsubUrl = unsubUrlFor(token);
+    const { subject, html } = render({ edition, variant: r.variant, firstName: r.name, siteUrl: url, unsubUrl });
     try {
-      const res = await mailOne({ to: r.email, subject, html, replyTo });
+      const res = await mailOne({ to: r.email, subject, html, replyTo, unsubUrl });
       await q("UPDATE list_sends SET status = 'sent', mailgun_id = $2, sent_at = now() WHERE id = $1", [r.id, res && res.id ? res.id : null]);
     } catch (e) {
       await q("UPDATE list_sends SET status = 'failed', error = $2 WHERE id = $1", [r.id, String(e.message).slice(0, 300)]);
@@ -480,6 +510,48 @@ function isUnsubscribeReply(text) {
   return first.length <= 80 && /^(please\s+)?(unsubscribe|remove me|take me off)\b/i.test(first);
 }
 
+/**
+ * Take someone off the list, whichever way they asked: our own record of the address first (so it
+ * holds whatever happens next), then the tag swap on their lead, then a one-line email to Guy.
+ * `sentTo` = we know this is the address the list mails (the link); a reply may come from another.
+ */
+async function recordUnsubscribe(tenantId, { email, name = '', how, sentTo = false }) {
+  await q("INSERT INTO list_members (tenant_id, email, source) VALUES ($1, $2, 'unsubscribed') ON CONFLICT DO NOTHING", [tenantId, email]);
+  let t;
+  try { t = await require('./wingguyLeadsMcp').runTagLead({ lead_email: email, remove_tags: LIST_TAG, add_tags: UNSUB_TAG }, tenantId); }
+  catch (e) { t = { isError: true, text: e.message }; }
+  const tagged = t && !t.isError && !/More than one lead matches|No lead/i.test(String(t.text || ''));
+  const who = name ? `${name} (${email})` : email;
+  const lines = [`${who} ${how}. They are off the list from the next edition.`];
+  if (!tagged) {
+    lines.push(sentTo
+      ? `Their lead record could not be tagged (${String((t && t.text) || 'no answer').slice(0, 200)}), but they are still left off every send.`
+      : `No lead record matched ${email}, so if the list mails them at another address they will keep getting it - find them and add the "unsubscribed" tag.`);
+  }
+  await notifyGuy(tenantId, `${name || email} unsubscribed from ${SERIES}`, lines.join('\n\n'));
+  return { tagged, result: t && t.text };
+}
+
+/** The footer link / Gmail button (routes/marketingRoutes.js). Never throws: the page must always answer. */
+async function unsubscribeByToken(token) {
+  const t = String(token || '').trim();
+  if (t.length < 16) return { ok: false };
+  try {
+    if (await getState(`unsub:test:${t}`)) return { ok: true, test: true };
+    const rows = await q('SELECT tenant_id, email, name FROM list_sends WHERE unsub_token = $1', [t]);
+    if (!rows[0]) return { ok: false };
+    const { tenant_id: tenantId, email, name } = rows[0];
+    const had = await q("SELECT 1 FROM list_members WHERE tenant_id = $1 AND email = $2 AND source = 'unsubscribed'", [tenantId, email]);
+    if (had.length) return { ok: true, alreadyUnsubscribed: true };
+    await recordUnsubscribe(tenantId, { email, name, how: 'clicked unsubscribe on the weekly email', sentTo: true });
+    return { ok: true };
+  } catch (e) {
+    console.error(`[listEditions] unsubscribe by link failed: ${e.message}`);
+    return { ok: false };
+  }
+}
+
+/** Replies in Guy's mailbox: "Re: ..." that only says unsubscribe, or the header's mailto (its own subject). */
 async function watchUnsubscribes(tenantId, nowMs = Date.now()) {
   const mail = require('./mailProvider');
   const coach = await coachRecord(tenantId);
@@ -492,13 +564,16 @@ async function watchUnsubscribes(tenantId, nowMs = Date.now()) {
   const done = [];
   for (const m of r.messages || []) {
     const from = String(m.fromEmail || '').toLowerCase();
-    if (!from || self.has(from) || !/^re:/i.test(String(m.subject || ''))) continue;
+    const subject = String(m.subject || '');
+    const viaHeader = subject.toLowerCase().startsWith(UNSUB_MAIL_SUBJECT.toLowerCase());
+    if (!from || self.has(from) || !(viaHeader || /^re:/i.test(subject))) continue;
     if (await getState(`unsub:msg:${m.id}`)) continue;
     await setState(`unsub:msg:${m.id}`, '1');
-    if (!isUnsubscribeReply(m.snippet)) continue;
-    const t = await require('./wingguyLeadsMcp').runTagLead({ lead_email: from, remove_tags: LIST_TAG, add_tags: UNSUB_TAG }, tenantId);
-    await q("INSERT INTO list_members (tenant_id, email, source) VALUES ($1, $2, 'unsubscribed') ON CONFLICT DO NOTHING", [tenantId, from]);
-    done.push({ email: from, result: t && t.text });
+    if (!viaHeader && !isUnsubscribeReply(m.snippet)) continue;
+    const had = await q("SELECT 1 FROM list_members WHERE tenant_id = $1 AND email = $2 AND source = 'unsubscribed'", [tenantId, from]);
+    if (had.length) continue;
+    const res = await recordUnsubscribe(tenantId, { email: from, name: m.fromName || '', how: viaHeader ? 'used their email app\'s unsubscribe button' : 'replied "unsubscribe"' });
+    done.push({ email: from, result: res.result });
   }
   return done;
 }
@@ -611,10 +686,14 @@ async function testSend(tenantId, { sendDate, nowMs = Date.now() } = {}) {
   const first = firstNameOf(coach && coach.clientName) || 'Guy';
   const variants = ed && ed.kind === 'idea' ? ['regular', 'welcome'] : ['back', 'welcome'];
   for (const v of variants) {
-    const { subject, html } = render({ edition: ed, variant: v, firstName: first, siteUrl: url });
-    await mailOne({ to: replyTo, subject: `[TEST ${v}] ${subject}`, html, replyTo, tag: 'list-edition-test' });
+    // A real, working link that changes nothing - so the test shows the page a reader would see.
+    const token = newUnsubToken();
+    await setState(`unsub:test:${token}`, '1');
+    const unsubUrl = unsubUrlFor(token);
+    const { subject, html } = render({ edition: ed, variant: v, firstName: first, siteUrl: url, unsubUrl });
+    await mailOne({ to: replyTo, subject: `[TEST ${v}] ${subject}`, html, replyTo, tag: 'list-edition-test', unsubUrl });
   }
-  return { ok: true, text: `Sent ${variants.length} test copies to ${replyTo} from guy@knowaguy.com.au (${variants.join(' + ')}). Check they landed in your inbox, not spam.` };
+  return { ok: true, text: `Sent ${variants.length} test copies to ${replyTo} from guy@knowaguy.com.au (${variants.join(' + ')}). Check they landed in your inbox, not spam. The unsubscribe link in a test copy shows the page but takes nobody off.` };
 }
 
 /** For the Scheduled page. */
@@ -695,7 +774,8 @@ module.exports = {
   // pure, tested
   nextSendDate, render, ideaQueue, pickRecipients, variantFor, isUnsubscribeReply, firstNameOf, draftPrompt, htmlToText,
   // store + actions
-  buildEdition, editionFor, editionById, statusText, showText, approve, hold, edit, swap, testSend, forPage, addToList, audience, tick, watchUnsubscribes,
+  unsubUrlFor, UNSUB_MAIL_SUBJECT,
+  buildEdition, editionFor, editionById, statusText, showText, approve, hold, edit, swap, testSend, forPage, addToList, audience, tick, watchUnsubscribes, unsubscribeByToken,
   startListEditions, __setTestPool,
   LIST_TAG, SERIES, LAUNCH, INTRO, CLOSER, WELCOME_LINE, BACK_LINE, INTRO_SUBJECT,
 };

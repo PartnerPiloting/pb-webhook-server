@@ -102,7 +102,74 @@ check('a reply that is only an unsubscribe is handled; anything with more in it 
   assert.ok(!L.isUnsubscribeReply('Unsubscribe my colleague Bob please, he left the company last month and his inbox is still forwarding to me so I keep seeing these'));
   assert.ok(!L.isUnsubscribeReply(''));
 });
+check('a real send carries the unsubscribe link in the footer, beside the reply line; a preview keeps the reply line only', () => {
+  const ed = { kind: 'idea', title: 'T', paragraphs: ['x'], source: 'book' };
+  const url = L.unsubUrlFor('tok_abcdefghijklmnopqrstuvwx');
+  assert.strictEqual(url, 'https://knowaguy.com.au/series/unsubscribe?t=tok_abcdefghijklmnopqrstuvwx');
+  for (const variant of ['regular', 'back', 'welcome']) {
+    const h = L.render({ edition: ed, variant, firstName: 'Sam', unsubUrl: url }).html;
+    assert.ok(h.includes(`<a href="${url}" style="color:#777">unsubscribe here</a>`), variant);
+    assert.ok(h.includes('reply &quot;unsubscribe&quot;'), variant);
+    assert.ok(!/[–—]/.test(h), variant);
+  }
+  assert.ok(!L.render({ edition: ed, variant: 'regular' }).html.includes('/series/unsubscribe'));
+});
+check('anyone we recorded as unsubscribed is left off even when their lead still has no unsubscribed tag', () => {
+  const { go, off } = L.pickRecipients([{ id: 'r1', name: 'Tag Failed', email: 'tf@x.com', tags: [L.LIST_TAG] }], { unsubscribed: new Set(['tf@x.com']) });
+  assert.strictEqual(go.length, 0);
+  assert.deepStrictEqual(off.unsubscribed, ['Tag Failed']);
+});
 
-console.log('');
-if (failures) { console.error(`${failures} failing`); process.exit(1); }
-console.log('all passing');
+// The link itself, against a fake store: Postgres, the CRM and Mailgun all stubbed.
+async function linkTests() {
+  console.log('the unsubscribe link');
+  const state = new Map([['unsub:test:testtoken_0123456789abcdef', '1']]);
+  const sends = [{ tenant_id: 'T1', email: 'sam@x.com', name: 'Sam', unsub_token: 'realtoken_0123456789abcdef' }];
+  const members = [];
+  const fake = { connect: async () => ({ release() {}, query: async (sql, p = []) => {
+    if (/FROM list_state/.test(sql)) return { rows: state.has(p[0]) ? [{ value: state.get(p[0]) }] : [] };
+    if (/FROM list_sends WHERE unsub_token/.test(sql)) return { rows: sends.filter((s) => s.unsub_token === p[0]) };
+    if (/SELECT 1 FROM list_members/.test(sql)) return { rows: members.filter((m) => m.email === p[1]) };
+    if (/INSERT INTO list_members/.test(sql)) { members.push({ email: p[1] }); return { rows: [] }; }
+    return { rows: [] };
+  } }) };
+  L.__setTestPool(fake);
+  const tagged = []; const mailed = [];
+  const stub = (rel, exp) => { const id = require.resolve(rel); require.cache[id] = { id, filename: id, loaded: true, exports: exp }; };
+  stub('../services/wingguyLeadsMcp', { runTagLead: async (a) => { tagged.push(a); return { text: 'tags changed' }; } });
+  stub('../services/clientService', { getClientById: async () => ({ clientEmailAddress: 'coach@x.com' }) });
+  stub('../services/mailgunCreds', { fromAddress: (n) => `${n} <guy@x.com>`, sendMailgunMessage: async (m) => { mailed.push(m); return { id: 'm1' }; } });
+
+  const acheck = async (name, fn) => {
+    try { await fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); }
+  };
+  await acheck('a short or unknown token takes nobody off', async () => {
+    assert.deepStrictEqual(await L.unsubscribeByToken('short'), { ok: false });
+    assert.deepStrictEqual(await L.unsubscribeByToken('unknowntoken_0123456789abcdef'), { ok: false });
+    assert.strictEqual(tagged.length + members.length + mailed.length, 0);
+  });
+  await acheck("a test copy's link shows the page and changes nothing", async () => {
+    assert.deepStrictEqual(await L.unsubscribeByToken('testtoken_0123456789abcdef'), { ok: true, test: true });
+    assert.strictEqual(tagged.length + members.length + mailed.length, 0);
+  });
+  await acheck('a real link: recorded, tag swapped on the lead, Guy gets one line saying so', async () => {
+    assert.deepStrictEqual(await L.unsubscribeByToken('realtoken_0123456789abcdef'), { ok: true });
+    assert.deepStrictEqual(members, [{ email: 'sam@x.com' }]);
+    assert.deepStrictEqual(tagged, [{ lead_email: 'sam@x.com', remove_tags: L.LIST_TAG, add_tags: 'unsubscribed' }]);
+    assert.strictEqual(mailed.length, 1);
+    assert.strictEqual(mailed[0].to, 'coach@x.com');
+    assert.ok(/Sam unsubscribed from Network building, rethought/.test(mailed[0].subject));
+    assert.ok(mailed[0].html.includes('sam@x.com'));
+  });
+  await acheck('clicking it twice (or Gmail and the link both) tells Guy once', async () => {
+    assert.deepStrictEqual(await L.unsubscribeByToken('realtoken_0123456789abcdef'), { ok: true, alreadyUnsubscribed: true });
+    assert.strictEqual(mailed.length, 1);
+  });
+  L.__setTestPool(null);
+}
+
+linkTests().then(() => {
+  console.log('');
+  if (failures) { console.error(`${failures} failing`); process.exit(1); }
+  console.log('all passing');
+});

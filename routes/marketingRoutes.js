@@ -638,11 +638,18 @@ module.exports = function mountMarketingSite(app) {
     const token = req.query.t || req.query.token || (req.body && req.body.t) || '';
     // Prospects (site_enquiries rows) first; then clients, whose token lives on their row in the
     // master Clients table (services/clientUnsubscribe.js). One link format for both.
+    // Then Guy's weekly list, "Network building, rethought" (services/listEditions.js), whose
+    // token is per send.
     let result = await enquiries.unsubscribeByToken(token);
     let isClient = false;
+    let isList = false;
     if (!result.ok) {
       result = await require('../services/clientUnsubscribe').unsubscribeClientByToken(token);
       isClient = result.ok;
+    }
+    if (!result.ok) {
+      result = await require('../services/listEditions').unsubscribeByToken(token);
+      isList = result.ok;
     }
 
     if (req.method === 'POST') {
@@ -665,6 +672,14 @@ module.exports = function mountMarketingSite(app) {
         <p>You won't get the weekly emails from me any more. Everything else - your portal, Wingguy, our sessions - carries on exactly as before.</p>
         <p>Changed your mind later? Just tell me and I'll switch them back on.</p>
         <p>- Guy</p>`));
+    }
+
+    if (isList) {
+      logger.info(`[site] weekly list unsubscribe via link${result.test ? ' (test copy - nothing changed)' : ''}`);
+      return res.send(unsubPage('Unsubscribed', `
+        <h1>Done - you're off the list.</h1>
+        <p>You won't get Network building, rethought any more. No hard feelings at all, and thanks for reading.</p>
+        <p>- (I know a) Guy</p>${result.test ? '\n        <p><em>This was a test copy, so nobody was taken off.</em></p>' : ''}`));
     }
 
     logger.info('[site] unsubscribed via link');

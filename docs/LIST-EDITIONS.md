@@ -49,9 +49,22 @@ holds sending; `LIST_EDITION_TICK=off` stops the whole thing; `LIST_EDITION_LAUN
 
 ## Unsubscribes
 
-Every hour the watcher reads replies to "Network building, rethought" in Guy's mailbox. A reply that is only an
-unsubscribe ("Unsubscribe", "Please remove me") takes the `mindset mastery` tag off and puts `unsubscribed` on, by
-itself. Anything longer is a normal reply for Guy.
+Three ways off, all automatic, and each one emails Guy a line ("Sam unsubscribed from Network building,
+rethought") - Guy, 31 Oct 2026, replacing the 17 Sep "no link" decision made for the old GMass newsletter:
+
+- **The footer link** ("unsubscribe here"): one unguessable token per send (`list_sends.unsub_token`), served by the
+  shared `/series/unsubscribe` route on knowaguy.com.au (`routes/marketingRoutes.js`), no login, no confirm.
+- **Gmail's own Unsubscribe button**: `List-Unsubscribe` + `List-Unsubscribe-Post: One-Click` point at the same link.
+  The mailto fallback in that header has the subject "Unsubscribe - Network building, rethought", which the watcher
+  takes as an unsubscribe whatever the body says.
+- **A reply**: every hour the watcher reads replies in Guy's mailbox. One that is only an unsubscribe ("Unsubscribe",
+  "Please remove me") counts; anything longer is a normal reply for Guy.
+
+Each one is recorded in `list_members` (source `unsubscribed`) first, so the address is left off every send even if
+the tag swap on the lead fails; then `mindset mastery` comes off and `unsubscribed` goes on. A reply from an address
+no lead has gets Guy a note saying so - the list may still mail them at another address.
+
+Test copies carry a working link that shows the page and takes nobody off (`list_state` key `unsub:test:<token>`).
 
 ## Tables
 
