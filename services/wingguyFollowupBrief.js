@@ -641,22 +641,18 @@ async function prepareFollowupBrief(tenant) {
     // as one click and the chat confirms via wingguy_set_reconnect. Payloads stamped under the old
     // rule (parked=true) still render as done deeds; nothing new is ever stamped here.
 
-    // Introductions (2026-09-25, services/wingguyIntroductions.js): mark sent intro drafts as made,
-    // then list the ones gone quiet. Decoration only - a failure here never costs the brief.
-    let introductions = [];
+    // Introductions (2026-09-25, services/wingguyIntroductions.js): mark sent intro drafts as made.
+    // Nothing is listed back - Guy (31 Oct 2026) tracks THAT an intro was made, never how it went.
+    // Decoration only - a failure here never costs the brief.
     try {
-      const intros = require('./wingguyIntroductions');
-      const settled = await intros.settleIntroductions(tenant);
+      const settled = await require('./wingguyIntroductions').settleIntroductions(tenant);
       if (settled.checked) console.log(`[followupBrief] introductions settled: ${JSON.stringify(settled)}`);
-      introductions = (await intros.introductionsToCheck(tenant))
-        .map(({ id, person, introducedTo, introducedOn, line }) => ({ id, person, introducedTo, introducedOn, line }));
     } catch (e) { console.warn(`[followupBrief] introductions pass failed (brief unaffected): ${e.message}`); }
 
     const payload = {
       preparedAt: new Date().toISOString(),
       tenant,
       items,
-      introductions,
       totalSurfaced: sweep.surfaced.length,
       counts: sweep.counts,
       windowDays: sweep.windowDays,
@@ -792,9 +788,6 @@ function formatBrief(row) {
     const clr = piles.clear.slice(0, 40).map((it) => `${it.name} (${it.whyLine})`).join(' · ');
     lines.push(`\n[checked & clear — do NOT relay unless asked: ${clr}${piles.clear.length > 40 ? ` · +${piles.clear.length - 40} more` : ''}]`);
   }
-  // Lazy require - wingguyMailMcp requires this module.
-  const introNote = require('./wingguyMailMcp').introChecksNote(p.introductions);
-  if (introNote) lines.push(introNote.replace(/^\n+/, '\n'));
   const more = (p.totalSurfaced || 0) - (p.items || []).length;
   if (more > 0) lines.push(`\n(${more} more surfaced but not in the prepared top group — the live sweep has them.)`);
   if (p.draftsDeferred) lines.push(`\n(${p.draftsDeferred} pre-written drafts deferred to the next overnight run — their stories are ready now; ask me to draft any of them live.)`);

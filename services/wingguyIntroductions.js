@@ -1,5 +1,5 @@
 // services/wingguyIntroductions.js
-// Introductions Guy makes between people, logged by themselves and checked on later (2026-09-25).
+// Introductions Guy makes between people, logged by themselves (2026-09-25).
 //
 // Guy: "I'm continually introducing my clients to each other ... I need some way of reminding me
 // who I've introduced to who." Every introduction he asks for in Claude goes through
@@ -12,11 +12,11 @@
 //      "drafted, not sent yet". A draft that is never sent therefore never counts as made.
 //   2. SENT   - the overnight brief calls settleIntroductions. It looks for the sent email in the
 //      coach's mailbox and moves the row to Introduced, dated the day it actually went.
-//   3. CHECK  - introductionsToCheck lists From Guy rows still at Introduced with nothing recorded
-//      for CHECK_DAYS (the later of the send date and the row's last edit), with whether either
-//      person has replied on the thread. The brief shows them as one section. Guy's answer goes
-//      back through wingguy_referrals update, which edits the row, so the same one does not come
-//      back for another CHECK_DAYS.
+//
+// What this tracks is THAT two people were introduced, so a pair is never introduced twice
+// (wingguy_referrals action=met). It never chases whether they met - Guy, 31 Oct 2026: "The ball
+// is always in their court. It's just whether or not we've introduced them." A 14-day "how did it
+// go?" check used to sit here as step 3; it was removed that day.
 //
 // No new Airtable field: the Referrals table (services/referralService.js) holds the record. The
 // only new store is wingguy_intro_watch in Postgres - what the sent-email search needs (the two
@@ -30,7 +30,6 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const { isFreemailEmail } = require('./pendingLeadFilter');
 
-const CHECK_DAYS = 14;          // quiet this long after the send (or the last note) = worth a check
 const SEND_WAIT_DAYS = 14;      // a draft not sent after this long was dropped - stop looking
 // What makes a two-person email an introduction rather than, say, a joint session reminder.
 const INTRO_WORDS = /introduc|\bintro\b|meet each other|should meet|you two|want you to meet|connect you|put you in touch/i;
@@ -113,44 +112,6 @@ function findSentCopy(messages, { parties, draftedMs }) {
     .sort((x, y) => new Date(x.date || 0) - new Date(y.date || 0))[0] || null;
 }
 
-/** Messages on the thread written by either party after the introduction went out. */
-function repliesFrom(messages, { parties, sentMs }) {
-  const ps = parties.map(lower);
-  return (messages || [])
-    .filter((m) => ps.includes(lower(m.fromEmail)))
-    .filter((m) => !m.date || new Date(m.date).getTime() > sentMs)
-    .sort((x, y) => new Date(x.date || 0) - new Date(y.date || 0));
-}
-
-/** Due for a check: Guy made it (From Guy), it is still just Introduced, and nothing has been
- *  recorded on it for CHECK_DAYS - counted from the later of the send date and the last edit, so
- *  any answer Guy gives (a note, a stage) pushes it out again. */
-function isDue(row, nowMs, days = CHECK_DAYS) {
-  if (row.direction !== 'From Guy' || row.stage !== 'Introduced') return false;
-  const times = [row.introducedOn, row.lastModified].filter(Boolean).map((t) => new Date(t).getTime()).filter((t) => !Number.isNaN(t));
-  if (!times.length) return false;
-  return nowMs - Math.max(...times) >= days * 24 * 3600 * 1000;
-}
-
-function fmtDay(iso) {
-  const d = new Date(`${day(iso)}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return day(iso) || 'an unknown date';
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'UTC' });
-}
-
-/** One brief line for a due introduction. */
-function checkLine(item) {
-  const who = `${item.person} to ${item.introducedTo || 'your client'}`;
-  let thread;
-  if (!item.threadChecked) thread = 'no email thread on record to check';
-  else if (!item.replies.length) thread = 'nobody has replied on that thread';
-  else {
-    const last = item.replies[item.replies.length - 1];
-    thread = `${last.name} replied on the thread on ${fmtDay(last.date)}, nothing recorded since`;
-  }
-  return `You introduced ${who} on ${fmtDay(item.introducedOn)} - ${thread}.`;
-}
-
 // ---------------------------------------------------------------------------------------------
 // Store: what the sent-email search needs
 
@@ -226,7 +187,7 @@ async function logIntroductionDraft({ tenant, coach, recipients, subject, text, 
     `INSERT INTO wingguy_intro_watch (tenant_id, referral_id, parties, subject, thread_id) VALUES ($1, $2, $3, $4, $5)`,
     [tenant, row.id, intro.parties.join(','), String(subject || '').trim() || null, threadId || null],
   );
-  return `Introduction logged: ${intro.other.name} to ${intro.client.clientName} (waiting for you to send it - once it goes, it is marked as made, and you'll be asked how it went after ${CHECK_DAYS} days).\n`;
+  return `Introduction logged: ${intro.other.name} to ${intro.client.clientName} (waiting for you to send it - once it goes, it is marked as made).\n`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -292,65 +253,12 @@ async function settleIntroductions(tenant) {
   return out;
 }
 
-// ---------------------------------------------------------------------------------------------
-// 3. CHECK - introductions that have gone quiet, with what happened on the thread.
-
-async function introductionsToCheck(tenant, { nowMs = Date.now() } = {}) {
-  const clientService = require('./clientService');
-  const mailProvider = require('./mailProvider');
-  const referrals = require('./referralService');
-  const all = await clientService.getAllClients();
-  const due = referrals.scopeToCoach(await referrals.listAllReferrals(), all, tenant).filter((r) => isDue(r, nowMs));
-  if (!due.length) return [];
-
-  const res = await query(
-    `SELECT DISTINCT ON (referral_id) * FROM wingguy_intro_watch
-      WHERE tenant_id = $1 AND status = 'sent' AND referral_id = ANY($2)
-      ORDER BY referral_id, sent_at DESC`,
-    [tenant, due.map((r) => r.id)],
-  );
-  const watchByRow = new Map(((res && res.rows) || []).map((w) => [w.referral_id, w]));
-  const coach = await clientService.getClientById(tenant);
-  const canRead = coach && mailProvider.hasMailbox(coach);
-
-  const items = [];
-  for (const r of due) {
-    const w = watchByRow.get(r.id);
-    const item = {
-      id: r.id, person: r.person, introducedTo: r.introducedTo || r.clientName || '',
-      introducedOn: r.introducedOn, threadChecked: false, replies: [],
-    };
-    if (w && canRead) {
-      try {
-        const parties = String(w.parties).split(',');
-        const sentMs = new Date(w.sent_at).getTime();
-        const found = await mailProvider.findMessages(coach, w.thread_id
-          ? { threadId: w.thread_id, receivedAfter: Math.floor(sentMs / 1000), limit: 20 }
-          : { anyEmail: parties[0], subject: w.subject || undefined, receivedAfter: Math.floor(sentMs / 1000), limit: 20 });
-        if (found.ok) {
-          item.threadChecked = true;
-          const nameOf = (email) => (lower(email) === lower(r.email) ? r.person : (r.introducedTo || r.clientName || email));
-          item.replies = repliesFrom(found.messages, { parties, sentMs }).map((m) => ({ name: nameOf(m.fromEmail), date: m.date }));
-        }
-      } catch (e) { console.warn(`[introductions] thread read for ${r.id} failed (non-fatal): ${e.message}`); }
-    }
-    item.line = checkLine(item);
-    items.push(item);
-  }
-  return items;
-}
-
 module.exports = {
-  CHECK_DAYS,
   SEND_WAIT_DAYS,
   clientEmails,
   detectIntroduction,
   findSentCopy,
-  repliesFrom,
-  isDue,
-  checkLine,
   logIntroductionDraft,
   settleIntroductions,
-  introductionsToCheck,
   _setPool,
 };

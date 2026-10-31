@@ -4,17 +4,15 @@
  * The rules under test:
  *   - a draft to exactly two people that reads like an introduction, with at least one of them the
  *     coach's client, is an introduction; a group email, a note to one person, or two strangers is not;
- *   - the sent copy is the coach's message to the parties after the draft; replies are the parties'
- *     own messages after the send;
- *   - an introduction is due for a check-in when it is still just "Introduced" and nothing has been
- *     recorded on it for 14 days - any edit (Guy's answer) pushes it out again.
+ *   - the sent copy is the coach's message to the parties after the draft.
+ * (The 14-day "how did it go?" check-in was removed 31 Oct 2026 - Guy tracks that an intro was made,
+ * never whether they met.)
  *
  * Pure logic only - no Airtable, no mailbox, no database.
  * Run: node tests/wingguy-introductions.test.js
  */
 const assert = require('assert');
 const intros = require('../services/wingguyIntroductions');
-const { introChecksNote } = require('../services/wingguyMailMcp');
 
 let failures = 0;
 const check = (name, fn) => { try { fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); } };
@@ -100,7 +98,7 @@ check('one person, or two non-clients, or one client at two addresses -> null', 
   assert.strictEqual(intros.detectIntroduction({ ...base, recipients: [{ email: 'owen@pyrah.example' }, { email: 'owen2@x.example' }] }), null);
 });
 
-console.log('findSentCopy / repliesFrom');
+console.log('findSentCopy');
 
 const draftedMs = Date.parse('2026-09-03T01:00:00Z');
 const parties = ['dean@hobin.example', 'jane@acme.example'];
@@ -121,54 +119,11 @@ check('nothing sent yet -> null', () => {
   ], { parties, draftedMs }), null);
 });
 
-check('replies = the parties\' own messages after the send, oldest first', () => {
-  const sentMs = Date.parse('2026-09-03T02:00:00Z');
-  const r = intros.repliesFrom([
-    { id: 'guy', fromEmail: 'guy@knowaguy.example', date: '2026-09-05T00:00:00Z' },
-    { id: 'jane', fromEmail: 'Jane@Acme.example', date: '2026-09-06T00:00:00Z' },
-    { id: 'dean', fromEmail: 'dean@hobin.example', date: '2026-09-04T00:00:00Z' },
-    { id: 'before', fromEmail: 'dean@hobin.example', date: '2026-09-02T00:00:00Z' },
-  ], { parties, sentMs });
-  assert.deepStrictEqual(r.map((m) => m.id), ['dean', 'jane']);
-});
-
-console.log('isDue');
-
-const now = Date.parse('2026-09-25T00:00:00Z');
-const row = (extra) => ({ direction: 'From Guy', stage: 'Introduced', introducedOn: '2026-09-03', lastModified: '2026-09-04T00:00:00.000Z', ...extra });
-
-check('Introduced 3 Sep, untouched since 4 Sep -> due on 25 Sep', () => assert.strictEqual(intros.isDue(row(), now), true));
-check('an answer recorded 20 Sep pushes it out', () => assert.strictEqual(intros.isDue(row({ lastModified: '2026-09-20T00:00:00.000Z' }), now), false));
-check('still waiting to be sent (Promised) -> not due', () => assert.strictEqual(intros.isDue(row({ stage: 'Promised' }), now), false));
-check('moved on (Call held / Went quiet) -> not due', () => {
-  assert.strictEqual(intros.isDue(row({ stage: 'Call held' }), now), false);
-  assert.strictEqual(intros.isDue(row({ stage: 'Went quiet' }), now), false);
-});
-check('an introduction TO Guy is never a check-in', () => assert.strictEqual(intros.isDue(row({ direction: 'To Guy' }), now), false));
-check('no dates at all -> not due (nothing to count from)', () => assert.strictEqual(intros.isDue(row({ introducedOn: null, lastModified: null }), now), false));
-
-console.log('checkLine / introChecksNote');
-
-check('quiet thread', () => {
-  const line = intros.checkLine({ person: 'Owen Pyrah', introducedTo: 'Dean Hobin', introducedOn: '2026-09-03', threadChecked: true, replies: [] });
-  assert.ok(/^You introduced Owen Pyrah to Dean Hobin on 3 Sept? - nobody has replied on that thread\.$/.test(line), line);
-});
-check('someone replied', () => {
-  const line = intros.checkLine({ person: 'Jane Smith', introducedTo: 'Dean Hobin', introducedOn: '2026-09-03', threadChecked: true, replies: [{ name: 'Jane Smith', date: '2026-09-05T03:00:00Z' }] });
-  assert.ok(/Jane Smith replied on the thread on 5 Sept?, nothing recorded since\.$/.test(line), line);
-});
-check('logged by hand, no thread', () => {
-  const line = intros.checkLine({ person: 'Jane Smith', introducedTo: 'Dean Hobin', introducedOn: '2026-09-03', threadChecked: false, replies: [] });
-  assert.ok(line.endsWith('no email thread on record to check.'), line);
-});
-check('house style: no em or en dashes in anything Guy reads', () => {
-  const note = introChecksNote([{ line: intros.checkLine({ person: 'A', introducedTo: 'B', introducedOn: '2026-09-03', threadChecked: true, replies: [] }) }]);
-  assert.ok(!/[–—]/.test(note), note);
-  assert.ok(note.includes('INTRODUCTIONS TO CHECK ON (1)'));
-});
-check('nothing due -> nothing added', () => {
-  assert.strictEqual(introChecksNote([]), '');
-  assert.strictEqual(introChecksNote(undefined), '');
+check('no check-in is left behind - nothing asks how an introduction went', () => {
+  for (const gone of ['introductionsToCheck', 'isDue', 'checkLine', 'repliesFrom', 'CHECK_DAYS']) {
+    assert.strictEqual(intros[gone], undefined, gone);
+  }
+  assert.strictEqual(require('../services/wingguyMailMcp').introChecksNote, undefined);
 });
 
 if (failures) { console.error(`\n${failures} failing`); process.exit(1); }

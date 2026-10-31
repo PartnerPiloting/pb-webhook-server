@@ -2058,7 +2058,6 @@ async function buildQueue(tenant = TENANT, { reconnectMore = 0 } = {}) {
   const todayIso = new Date().toISOString().slice(0, 10);
   let briefPreparedAt = null;
   let backlogCreatedAt = null;
-  let introChecks = [];
   // Read-time guard (2026-09-12, Melissa Jarmyn): a stored park date that contradicts the advice
   // line it sits beside is dropped here too, so entries built before the guard never show a
   // wrong one-click date. Lazy require - the brief module requires this one.
@@ -2067,7 +2066,6 @@ async function buildQueue(tenant = TENANT, { reconnectMore = 0 } = {}) {
     const row = await briefStore.getBrief(tenant);
     const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
     briefPreparedAt = (p && p.preparedAt) || null;
-    introChecks = (p && p.introductions) || [];
     const builtAt = briefPreparedAt; // for the live re-check's cease-waiver comparison
     for (const it of ((p && p.items) || [])) {
       const draftState = deriveDraftState(it);
@@ -2127,7 +2125,7 @@ async function buildQueue(tenant = TENANT, { reconnectMore = 0 } = {}) {
     require('./lhCampaignWatch').quietCampaignsForCoach(tenant),
   ]);
   const fleetAlerts = [...signedOutAlerts, ...quietAlerts, ...darkAlerts];
-  return { items: rc.live, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts, introChecks, reconnect };
+  return { items: rc.live, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts, reconnect };
 }
 
 // Story-derived row signals, read from the stored dossiers (one query, tail only) and attached
@@ -2172,13 +2170,6 @@ async function attachStorySignals(items, tenant, todayIso) {
   }
 }
 
-/** The introductions section the queue and the brief both carry ('' when none are due). */
-function introChecksNote(checks) {
-  if (!(checks || []).length) return '';
-  const { CHECK_DAYS } = require('./wingguyIntroductions');
-  return `\n\nINTRODUCTIONS TO CHECK ON (${checks.length}) - relay one plain line each and ask how it went. Record the answer with wingguy_referrals action=update person=<name>: "they met" -> stage "Call held"; "went nowhere" -> stage "Went quiet"; anything else ("remind me later", what they said) -> a note. Any answer quietens it for ${CHECK_DAYS} days. Never contact either person unasked:\n${checks.map((c) => `- ${c.line}`).join('\n')}`;
-}
-
 async function runQueue({ page } = {}, tenant = TENANT) {
   // THE DOOR RULE (Guy 2026-08-15, the day the Follow-Ups screen shipped): the SCREEN is the
   // volume door — chat is the thinking door. A client WITH the screen gets pointed at it first
@@ -2200,10 +2191,9 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   const fleetNote = (q.fleetAlerts || []).length
     ? `⚠ MACHINE CHECK — relay this first, one plain line per person, before the queue: ${q.fleetAlerts.map((a) => a.line).join(' ')}\n`
     : '';
-  // Introductions gone quiet (2026-09-25, services/wingguyIntroductions.js) - worked out overnight
-  // with the brief, served here because "my follow-ups" lands on the queue, not the brief.
-  // The Reconnect list rides the same tail note, so every return below carries it.
-  const introNote = introChecksNote(q.introChecks) + require('./reconnectQueue').reconnectNote(q.reconnect);
+  // The Reconnect list rides a tail note, so every return below carries it. (An "introductions to
+  // check on" section sat here too until 31 Oct 2026 - Guy tracks that an intro was made, not how it went.)
+  const introNote = require('./reconnectQueue').reconnectNote(q.reconnect);
   if (!q.preGateCount) return { text: `${screenDoor}${fleetNote}The queue is empty — nothing actionable right now (parked people surface on their dates).${introNote}` };
   const deduped = q.items;
   const supp = q.suppressed;
@@ -2480,4 +2470,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { prepareOutbound, finishOutbound, registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker, introChecksNote };
+module.exports = { prepareOutbound, finishOutbound, registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };
