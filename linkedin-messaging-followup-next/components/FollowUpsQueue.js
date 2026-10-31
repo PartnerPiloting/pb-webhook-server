@@ -304,17 +304,18 @@ function AskPanel({ it, ask, onAsk, onPark, busy }) {
   );
 }
 
-// The glance column beside the Ask box: the jog, promises, a few things to remember, and the
-// full story (the old panel) behind one link for the rare time it is wanted whole.
+// The glance column, left of the Ask box: the jog (boxed - it is what gets read first), promises,
+// a few things to remember, and the full story (the old panel) behind one link for the rare time
+// it is wanted whole.
 function GlancePanel({ it, story, builtAt, stale, source, onRefresh, refreshing }) {
   const remember = Array.isArray(story?.remember) ? story.remember.slice(0, 4) : [];
   const [showFull, setShowFull] = useState(false);
   return (
-    <div className="text-sm text-gray-700 space-y-3 lg:border-l lg:pl-4">
+    <div className="text-sm text-gray-700 space-y-3">
       {it.jog && (
-        <div>
-          <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-0.5">The jog</div>
-          <div className="text-gray-700">{it.jog}</div>
+        <div className="rounded-lg border border-blue-100 bg-white px-3 py-2.5">
+          <div className="text-[11px] font-bold tracking-wide text-blue-700 uppercase mb-1">The jog</div>
+          <div className="text-[15px] leading-relaxed text-gray-800">{it.jog}</div>
         </div>
       )}
       {it.wgAngle && (
@@ -346,7 +347,7 @@ function GlancePanel({ it, story, builtAt, stale, source, onRefresh, refreshing 
         {showFull ? '▴ Hide the full story' : '▸ Full story and timeline'}
       </button>
       {showFull && (
-        <div className="-mx-4 lg:-ml-4 lg:-mr-0 border-t">
+        <div className="-mx-4 lg:mx-0 border-t">
           <StoryPanel story={story} builtAt={builtAt} stale={stale} source={source} onRefresh={onRefresh} refreshing={refreshing} compact />
         </div>
       )}
@@ -975,11 +976,12 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
                       </div>
                       {expanded === key && (
                         <div className="mb-3 -mt-1 rounded-lg border bg-slate-50 px-4 py-4">
-                          <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
-                            <AskPanel it={it} ask={asks[key]} onAsk={askAbout} onPark={parkFromAsk} busy={isBusy} />
+                          {/* The glance (jog first) on the left and wide, Ask on the right (31 Oct): in a
+                              280px side column the jog wrapped to a dozen lines and needed a scroll. */}
+                          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
                             <div>
-                              {story?.loading && <div className="text-gray-500 text-sm lg:border-l lg:pl-4">Loading the story…</div>}
-                              {story?.error && <div className="text-sm text-red-600 lg:border-l lg:pl-4">{story.error}</div>}
+                              {story?.loading && <div className="text-gray-500 text-sm">Loading the story…</div>}
+                              {story?.error && <div className="text-sm text-red-600">{story.error}</div>}
                               {story?.data && (
                                 <GlancePanel
                                   it={it}
@@ -991,6 +993,9 @@ export default function FollowUpsQueue({ section = null, preloaded = null, prelo
                                   onRefresh={() => refreshStory(it)}
                                 />
                               )}
+                            </div>
+                            <div className="lg:border-l lg:pl-5">
+                              <AskPanel it={it} ask={asks[key]} onAsk={askAbout} onPark={parkFromAsk} busy={isBusy} />
                             </div>
                           </div>
                         </div>
