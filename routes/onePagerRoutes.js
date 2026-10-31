@@ -118,7 +118,11 @@ module.exports = function mountOnePagers(app /*, base */) {
   });
 
   // A single article.
-  router.get('/series/:slug', async (req, res) => {
+  router.get('/series/:slug', async (req, res, next) => {
+    // /series/unsubscribe belongs to routes/marketingRoutes.js, mounted after this. Without this
+    // line every footer unsubscribe link (drip, client emails, the weekly list) got "That piece
+    // does not exist" - only Gmail's one-click POST worked (found 31 Oct 2026).
+    if (String(req.params.slug || '').toLowerCase() === 'unsubscribe') return next();
     const slug = String(req.params.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
     try {
       const audience = req.query.audience === 'client' ? 'client' : 'prospect';
