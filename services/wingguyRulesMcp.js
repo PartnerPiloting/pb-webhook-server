@@ -558,6 +558,32 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
   return { text: lines.join('\n') };
 }
 
+// The same numbers under their own name (2026-11-02). Chat finds tools by searching names: asked
+// for "the campaign-numbers tool", it searched three times, missed wingguy_get_client, and stopped.
+async function runCampaignNumbers({ client } = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const query = String(client || '').trim();
+  if (!query) return { text: 'Which client? Pass a name or client id (e.g. "Roland" or "Roland-Illyes").', isError: true };
+
+  let all;
+  try {
+    all = await clientService.getAllClients();
+  } catch (e) {
+    return { text: `Couldn't read the client directory: ${e.message}`, isError: true };
+  }
+  const found = matchCoachedClient(all, tenant, query);
+  if (found.error) return { text: found.error, isError: true };
+
+  const c = found.client;
+  try {
+    const report = require('./lhWeeklyCampaignReport');
+    const lines = report.numbersSection(await report.getSnapshot(c.clientId));
+    return { text: [`${c.clientName} (${c.clientId})`, ...lines].join('\n') };
+  } catch (e) {
+    return { text: `Couldn't read ${c.clientName}'s campaign numbers: ${e.message}`, isError: true };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // A client's switches (coach-only, 2026-11-02) - "tick Monday Campaign Email for Roland".
 // Chat told Guy on 2 Nov that none of its tools could tick that box, so a promised email sat
@@ -1146,6 +1172,21 @@ const TOOL_DEFS = [
       required: ['client'],
     },
     run: runGetClient,
+  },
+  {
+    name: 'wingguy_campaign_numbers',
+    description: 'Coach-only: one of YOUR coached clients\' Linked Helper campaign numbers, on request - the same figures their Monday Campaign Email uses, in the same words. Per campaign: invitations sent and accepted last week, people left to invite, weeks left at the current pace (and "time to top up the search" when under three weeks), acceptance so far; paused campaigns say so. Dated, with a warning when their machine has been silent over two days. "Roland\'s campaign numbers", "how many people has Sam got left?", "is Rick running low?", "how\'s Roland\'s campaign going?", or any email to a client that should carry their figures. Read-only - sends nothing. Call this; never say the numbers can\'t be read, never go to Airtable for them, never ask Guy to paste them in. Scoped to the calling coach\'s clients.',
+    zodSchema: {
+      client: z.string().describe('Client name or client id (e.g. "Roland" or "Roland-Illyes"). Matched within your coached clients only.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        client: { type: 'string', description: 'Client name or client id (e.g. "Roland" or "Roland-Illyes"). Matched within your coached clients only.' },
+      },
+      required: ['client'],
+    },
+    run: runCampaignNumbers,
   },
   {
     name: 'wingguy_client_settings',

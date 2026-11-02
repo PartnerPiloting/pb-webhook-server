@@ -311,7 +311,7 @@ async function getSnapshot(clientId) {
 }
 
 /**
- * The same numbers for Chat, on request - wingguy_get_client's "Campaign numbers" section (Guy,
+ * The same numbers for Chat, on request - wingguy_campaign_numbers, and wingguy_get_client's "Campaign numbers" section (Guy,
  * 2 Nov 2026: Chat couldn't give him Roland's figures for an email, and pasting them in by hand
  * for every client is a band-aid). The client's own Monday wording, plus how old the numbers are.
  */
