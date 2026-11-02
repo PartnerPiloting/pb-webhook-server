@@ -107,6 +107,29 @@ check("Guy's digest: top-ups listed first, clients in name order, stale machines
   assert.ok(!/[–—]/.test(d.text + d.html), 'no em or en dashes');
 });
 
+check("Guy's digest OPENS with what to do, most urgent first, then the detail (2 Nov 2026)", () => {
+  const now = Date.parse('2026-11-02T07:00:00+10:00');
+  const fresh = '2026-11-02T06:55:00+10:00';
+  const low = { ...frac, id: 3, name: 'Almost out', waiting: 30, invited_7d: 95, invited_28d: 380 };
+  const paused = { ...frac, id: 4, name: 'On hold', paused: true, waiting: 449 };
+  const d = w.buildDigest([
+    { clientId: 'Sam', clientName: 'Sam Noble', reportedAt: fresh, campaigns: [low, frac] },
+    { clientId: 'Guy-Wilson', clientName: 'Guy Wilson', reportedAt: fresh, campaigns: [planners] },
+    { clientId: 'Steve', clientName: 'Steve Nelson', reportedAt: '2026-10-28T09:00:00+10:00', campaigns: [paused] },
+  ], { now, date: '2026-11-02' });
+  assert.ok(d.text.startsWith('What you need to do:\n'), d.text.slice(0, 80));
+  const lines = d.text.split('\n');
+  assert.ok(/^- Steve Nelson: their machine hasn't reported/.test(lines[1]), 'a silent machine first');
+  assert.ok(/^- Guy Wilson: new search for "Contact Financial Planners" - 2 people left, less than a week\.$/.test(lines[2]), lines[2]);
+  assert.ok(/^- Sam Noble: new search for "Almost out" - 30 people left, less than a week\.$/.test(lines[3]), lines[3]);
+  assert.ok(d.text.includes('Worth a glance:\n- Steve Nelson: "On hold" is paused with 449 people waiting'), 'paused is a glance, not a job');
+  assert.ok(d.text.indexOf('----------') > d.text.indexOf('Worth a glance'), 'detail comes after');
+  assert.ok(d.html.startsWith('<h3 style="margin-bottom:4px">What you need to do:</h3>'));
+
+  const calm = w.buildDigest([{ clientId: 'Z', clientName: 'Zed', reportedAt: fresh, campaigns: [frac] }], { now });
+  assert.ok(calm.text.startsWith('Nothing to do this week'), calm.text.slice(0, 60));
+});
+
 check("the client's own email: first name, their campaigns, a top-up nudge only when needed, Guy's sign-off", () => {
   const e = w.clientEmail({ clientFirstName: 'Rick', clientName: 'Rick Wong', coachName: 'Guy Wilson', campaigns: [planners, frac] });
   assert.strictEqual(e.subject, 'Your campaign numbers this week');

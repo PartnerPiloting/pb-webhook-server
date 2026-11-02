@@ -19,7 +19,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const { pickLandmarkFindings } = require('../services/wingguyMonitor');
+const { pickLandmarkFindings, learningEmailHtml } = require('../services/wingguyMonitor');
 const { SOFT_KEYS, KNOWN_KEYS, INFO_KEYS } = require('../services/wingguySelectorStore');
 
 let failures = 0;
@@ -125,6 +125,17 @@ const slice = (selector_key, tenant, misses, founds, extra = {}) => ({
     }
     assert.ok(softInExtension.length > 0, 'no soft entries parsed from SELF_CHECK_PLAN');
     assert.deepStrictEqual([...SOFT_KEYS].sort(), [...new Set(softInExtension)].sort());
+  });
+
+  await check('the Learning email OPENS with what to do, then the detail (2 Nov 2026)', () => {
+    const html = learningEmailHtml({ beatCount: 13, gapList: [{ question: 'How do I paste a Sales Nav URL?', times: 1, who: 'Roland-Illyes' }],
+      progress: [{ client: 'Roland Illyes', beats: 0, topics: 'the plumbing' }, { client: 'Sam Noble', beats: 0 }] });
+    assert.ok(html.startsWith('<h3>What you need to do:</h3>'), html.slice(0, 60));
+    assert.ok(html.includes("Write a playbook topic that answers Roland-Illyes's question"));
+    assert.ok(html.includes('none of the 2 clients using Wingguy Learning has started the guided tour'));
+    assert.ok(html.indexOf('<hr>') < html.indexOf('Where everyone is up to'), 'detail after the line');
+    const calm = learningEmailHtml({ beatCount: 13, gapList: [], progress: [{ client: 'A', beats: 2 }] });
+    assert.ok(calm.startsWith('<h3>Nothing to do this week</h3>') && !calm.includes('Worth knowing'));
   });
 
   console.log(failures ? `\n${failures} failing` : '\nall passing');

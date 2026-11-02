@@ -300,14 +300,27 @@ async function learningReview() {
   return { gapList, progress, beatCount };
 }
 
+// Opens with what Guy has to DO (2 Nov 2026) - the email used to open on how gaps are logged.
 function learningEmailHtml(rev) {
   const parts = [];
+  if (rev.gapList.length) {
+    parts.push(`<h3>What you need to do:</h3>
+      <ul>${rev.gapList.map((g) => `<li>Write a playbook topic that answers ${esc(g.who)}'s question: "${esc(g.question)}"${g.times > 1 ? ` (asked ${g.times} times)` : ''}</li>`).join('')}</ul>
+      <p>Ask a Claude Code session to "write the Learning gap" and it drafts the topic for you to check.</p>`);
+  } else {
+    parts.push('<h3>Nothing to do this week</h3>');
+  }
+  const started = rev.progress.filter((p) => p.beats > 0).length;
+  if (rev.progress.length && !started) {
+    parts.push(`<p><b>Worth knowing:</b> none of the ${rev.progress.length} clients using Wingguy Learning has started the guided tour yet - they only ask one-off questions.</p>`);
+  }
+  parts.push('<hr>');
   if (rev.gapList.length) {
     parts.push(`<h3>Questions Wingguy Learning could not answer (last 7 days)</h3>
       <p>Asked by clients, most-asked first. Each of these is a candidate topic - the recurring ones especially. Reply to yourself with one and a Claude session can draft it against the playbook.</p>
       <ul>${rev.gapList.map((g) => `<li><b>"${esc(g.question)}"</b> - asked ${g.times}x by ${esc(g.who)}</li>`).join('')}</ul>`);
   } else {
-    parts.push('<h3>No gaps this week</h3><p>Every question clients asked was covered by a topic. Worth knowing, not worth acting on.</p>');
+    parts.push('<p>Every question clients asked was covered by a topic.</p>');
   }
   if (rev.progress.length) {
     parts.push(`<h3>Where everyone is up to</h3>
@@ -323,7 +336,7 @@ function learningEmailHtml(rev) {
 
 function brisbaneNow() {
   const parts = new Intl.DateTimeFormat('en-AU', {
-    timeZone: 'Australia/Brisbane', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false, weekday: 'short',
+    timeZone: 'Australia/Brisbane', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23', weekday: 'short',
   }).formatToParts(new Date());
   const get = (t) => (parts.find((p) => p.type === t) || {}).value;
   return { date: `${get('year')}-${get('month')}-${get('day')}`, hour: Number(get('hour')), weekday: get('weekday') };
@@ -432,4 +445,4 @@ function startWingguyMonitor() {
   setTimeout(tick, 60 * 1000);   // first look one minute after boot, not mid-startup
 }
 
-module.exports = { startWingguyMonitor, runDailyCheck, runWeeklyHeartbeat, runWeeklyLearningReview, recordChatTurn, pickLandmarkFindings };
+module.exports = { startWingguyMonitor, runDailyCheck, runWeeklyHeartbeat, runWeeklyLearningReview, recordChatTurn, pickLandmarkFindings, learningEmailHtml };

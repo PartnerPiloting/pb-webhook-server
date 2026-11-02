@@ -158,7 +158,7 @@ function campaignLines(c) {
 
   if (c.paused) {
     lines.push(`Paused - nothing is going out, and acceptances aren't being picked up. ${plural(c.waiting, 'person', 'people')} waiting to be invited.`);
-    return { name: nameOf(c), lines, topUp, paused: true };
+    return { name: nameOf(c), lines, topUp, paused: true, waiting: c.waiting, weeks: null };
   }
 
   lines.push(c.accepted_7d === null
@@ -181,7 +181,34 @@ function campaignLines(c) {
     const pct = Math.round((100 * c.cohort_accepted) / c.cohort_invited);
     lines.push(`Of the people invited 2 to 5 weeks ago, ${pct}% have accepted so far.`);
   }
-  return { name: nameOf(c), lines, topUp, paused: false };
+  const weeks = !c.waiting ? 0 : (pace ? c.waiting / pace : null);
+  return { name: nameOf(c), lines, topUp, paused: false, waiting: c.waiting, weeks };
+}
+
+/**
+ * The top of Guy's email: what he has to DO, most urgent first, then what is worth a glance.
+ * Guy, 2 Nov 2026: the old email opened with how it works ("Clients with 'Monday Campaign Email'
+ * ticked were sent their own section") and he had to dig for the jobs. Detail stays underneath.
+ */
+function actionList(rows, { now, skipped = [] }) {
+  const todo = [];
+  const glance = [];
+  for (const t of skipped) todo.push({ rank: -2, text: `Their own email didn't go: ${t}` });
+  for (const r of rows) {
+    if (r.reportedAt && now - Date.parse(r.reportedAt) > STALE_MS) {
+      todo.push({ rank: -1, text: `${r.clientName}: their machine hasn't reported since ${dateWords(r.reportedAt)} - check it is running.` });
+    }
+    for (const c of (r.campaigns || []).map(campaignLines)) {
+      if (c.topUp) {
+        const left = c.waiting ? `${plural(c.waiting, 'person', 'people')} left, ${weeksWords(c.weeks)}` : 'nobody left to invite';
+        todo.push({ rank: c.weeks || 0, text: `${r.clientName}: new search for "${c.name}" - ${left}.` });
+      } else if (c.paused && c.waiting) {
+        glance.push(`${r.clientName}: "${c.name}" is paused with ${plural(c.waiting, 'person', 'people')} waiting - fine if that is on purpose.`);
+      }
+    }
+  }
+  todo.sort((a, b) => a.rank - b.rank);
+  return { todo: todo.map((x) => x.text), glance };
 }
 
 function esc(s) {
@@ -209,11 +236,14 @@ function buildDigest(rows, { now = Date.now(), date = '', sent = [], skipped = [
     sections.push({ name: `${r.clientName}${ticked ? '' : ' (not ticked - only you see this)'}`, stale, camps });
   }
 
-  const intro = "Each client's Linked Helper week. Clients with 'Monday Campaign Email' ticked were sent their own section.";
+  const { todo, glance } = actionList(sorted, { now, skipped });
+  const todoHead = todo.length ? 'What you need to do:' : 'Nothing to do this week - every campaign has people for at least 3 more weeks.';
+  const intro = "The detail - each client's Linked Helper week. Clients with 'Monday Campaign Email' ticked were sent their own section.";
   const sentLine = sent.length ? `Sent their own email: ${sent.join(', ')}.` : 'No client was sent their own email this week.';
-  const textParts = [intro, sentLine];
+  const textParts = [todo.length ? `${todoHead}\n${todo.map((t) => `- ${t}`).join('\n')}` : todoHead];
+  if (glance.length) textParts.push(`Worth a glance:\n${glance.map((t) => `- ${t}`).join('\n')}`);
+  textParts.push(`----------\n${intro}`, sentLine);
   if (skipped.length) textParts.push(`Ticked but NOT sent:\n${skipped.map((t) => `- ${t}`).join('\n')}`);
-  if (topUps.length) textParts.push(`Needs a new search soon:\n${topUps.map((t) => `- ${t}`).join('\n')}`);
   for (const s of sections) {
     const body = s.camps.length
       ? s.camps.map((c) => `${c.name}\n${c.lines.map((l) => `  - ${l}`).join('\n')}`).join('\n\n')
@@ -221,9 +251,11 @@ function buildDigest(rows, { now = Date.now(), date = '', sent = [], skipped = [
     textParts.push(`== ${s.name} ==${s.stale ? `\n  (${s.stale})` : ''}\n${body}`);
   }
 
-  const htmlParts = [`<p>${esc(intro)}</p>`, `<p>${esc(sentLine)}</p>`];
+  const htmlParts = [`<h3 style="margin-bottom:4px">${esc(todoHead)}</h3>`];
+  if (todo.length) htmlParts.push(`<ul style="margin-top:0">${todo.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
+  if (glance.length) htmlParts.push(`<p style="margin-bottom:2px"><b>Worth a glance:</b></p><ul style="margin-top:0">${glance.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
+  htmlParts.push('<hr>', `<p>${esc(intro)}</p>`, `<p>${esc(sentLine)}</p>`);
   if (skipped.length) htmlParts.push(`<p><b>Ticked but NOT sent:</b></p><ul>${skipped.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
-  if (topUps.length) htmlParts.push(`<p><b>Needs a new search soon:</b></p><ul>${topUps.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
   for (const s of sections) {
     htmlParts.push(`<h3 style="margin-bottom:4px">${esc(s.name)}</h3>`);
     if (s.stale) htmlParts.push(`<p style="color:#a15c00;margin-top:0">${esc(s.stale)}</p>`);

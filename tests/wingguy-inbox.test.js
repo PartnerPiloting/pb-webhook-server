@@ -135,6 +135,63 @@ function fakeClient({ archiveOk = true } = {}) {
     assert.strictEqual(used, 'gmail');
   });
 
+  // A per-person instruction list held in memory, shaped like services/wingguyInboxStore.js.
+  function fakeStore() {
+    const rows = [];
+    return {
+      rows,
+      listInstructions: async (tenant) => rows.filter((r) => r.tenant === tenant && !r.retired),
+      addInstruction: async (tenant, body) => {
+        const same = rows.find((r) => r.tenant === tenant && !r.retired && r.body.toLowerCase() === body.toLowerCase());
+        if (same) return { ...same, duplicate: true };
+        const row = { id: rows.length + 1, tenant, body };
+        rows.push(row);
+        return row;
+      },
+      retireInstruction: async (tenant, id) => {
+        const r = rows.find((x) => x.id === id && x.tenant === tenant && !x.retired);
+        if (!r) return null;
+        r.retired = true;
+        return r.body;
+      },
+    };
+  }
+
+  await t('a standing instruction is saved, shown at the top of the next list, and can be forgotten', async () => {
+    const { deps } = fakeClient();
+    deps.inboxStore = fakeStore();
+    const saved = await runInbox({ action: 'remember', text: 'Always clear LinkedIn notifications' }, 'Sam-Noble', deps);
+    assert.ok(/Saved as inbox instruction \[1\]/.test(saved.text), saved.text);
+    const again = await runInbox({ action: 'remember', text: 'always clear linkedin notifications' }, 'Sam-Noble', deps);
+    assert.ok(/Already one of your inbox instructions/.test(again.text), again.text);
+    const list = await runInbox({ action: 'list' }, 'Sam-Noble', deps);
+    assert.ok(/^THEIR STANDING INBOX INSTRUCTIONS/.test(list.text) && /\[1\] Always clear LinkedIn notifications/.test(list.text), list.text);
+    const gone = await runInbox({ action: 'forget', instruction_id: 1 }, 'Sam-Noble', deps);
+    assert.ok(/Forgotten: \[1\]/.test(gone.text), gone.text);
+    const after = await runInbox({ action: 'list' }, 'Sam-Noble', deps);
+    assert.ok(!/STANDING INBOX INSTRUCTIONS/.test(after.text), 'gone from the list');
+  });
+
+  await t("one person cannot forget another person's instruction", async () => {
+    const store = fakeStore();
+    await store.addInstruction('Guy-Wilson', 'Always flag the accountant');
+    const out = await runInbox({ action: 'forget', instruction_id: 1 }, 'Sam-Noble', { inboxStore: store });
+    assert.ok(out.isError && /no inbox instruction \[1\] of yours/.test(out.text), out.text);
+    assert.strictEqual((await store.listInstructions('Guy-Wilson')).length, 1);
+  });
+
+  await t('with no database, the inbox still lists and simply has no instructions', async () => {
+    const prev = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    assert.deepStrictEqual(await require('../services/wingguyInboxStore').listInstructions('Sam-Noble'), []);
+    if (prev !== undefined) process.env.DATABASE_URL = prev;
+  });
+
+  await t('the description has Claude offer record fixes from emails, only on their yes', () => {
+    const d = TOOL_DEFS[0].description;
+    assert.ok(/FIX THE RECORD/.test(d) && /wingguy_update_lead/.test(d) && /Never change a record without their yes/.test(d));
+  });
+
   await t('the description says archive only on their yes, check live, and use this for the inbox', () => {
     const d = TOOL_DEFS[0].description;
     assert.ok(/only the thread_ids they have said yes to/.test(d));

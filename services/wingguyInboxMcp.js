@@ -264,11 +264,23 @@ async function resolveInbox(tenant, deps = {}) {
 // Executors
 // ---------------------------------------------------------------------------
 
-async function runList(args, inbox) {
+async function instructionLines(tenant, deps) {
+  let list = [];
+  try { list = await (deps.inboxStore || require('./wingguyInboxStore')).listInstructions(tenant); } catch (_e) { /* the inbox works without them */ }
+  if (!list.length) return [];
+  return [
+    'THEIR STANDING INBOX INSTRUCTIONS - follow these when sorting:',
+    ...list.map((x) => `- [${x.id}] ${x.body}`),
+    '',
+  ];
+}
+
+async function runList(args, inbox, tenant, deps) {
   const max = Math.min(Number(args.max) || MAX_LIST, MAX_LIST);
   const { threads, more } = await inbox.backend.list(max);
-  if (!threads.length) return { text: 'Your inbox is empty.' };
-  const lines = [`${threads.length} email thread(s) in your inbox${more ? ` (the newest ${max} - there are more)` : ''}, newest first. Times are Brisbane.`, ''];
+  const head = await instructionLines(tenant, deps);
+  if (!threads.length) return { text: [...head, 'Your inbox is empty.'].join('\n') };
+  const lines = [...head, `${threads.length} email thread(s) in your inbox${more ? ` (the newest ${max} - there are more)` : ''}, newest first. Times are Brisbane.`, ''];
   threads.forEach((t, n) => {
     const m = t.last;
     const tags = senderTags(m.from, m.to, inbox.who);
@@ -317,15 +329,37 @@ async function runMove(args, inbox, archive) {
   return { text: lines.join('\n'), ...(done.length ? {} : { isError: true }) };
 }
 
+/** remember / forget a standing inbox instruction - no mailbox needed, just the person's own list. */
+async function runInstruction(args, tenant, deps, remember) {
+  const store = deps.inboxStore || require('./wingguyInboxStore');
+  try {
+    if (remember) {
+      const saved = await store.addInstruction(tenant, args.text);
+      return { text: saved.duplicate
+        ? `Already one of your inbox instructions: [${saved.id}] ${saved.body}`
+        : `Saved as inbox instruction [${saved.id}]: ${saved.body}\nIt applies from the next time you go through your inbox.` };
+    }
+    const id = Number(args.instruction_id);
+    if (!id) return { text: 'Which instruction? Pass its number from the list at the top of your inbox.', isError: true };
+    const body = await store.retireInstruction(tenant, id);
+    return body
+      ? { text: `Forgotten: [${id}] ${body}` }
+      : { text: `There is no inbox instruction [${id}] of yours to forget.`, isError: true };
+  } catch (e) {
+    return { text: `Couldn't ${remember ? 'save' : 'forget'} that: ${e.message}`, isError: true };
+  }
+}
+
 async function runInbox(args = {}, tenant = TENANT, deps = {}) {
   const action = args.action || 'list';
-  if (!['list', 'read', 'archive', 'restore'].includes(action)) {
-    return { text: `Unknown action "${action}". Use list, read, archive or restore.`, isError: true };
+  if (!['list', 'read', 'archive', 'restore', 'remember', 'forget'].includes(action)) {
+    return { text: `Unknown action "${action}". Use list, read, archive, restore, remember or forget.`, isError: true };
   }
+  if (action === 'remember' || action === 'forget') return runInstruction(args, tenant, deps, action === 'remember');
   const inbox = await resolveInbox(tenant, deps);
   if (inbox.error) return { text: inbox.error, isError: true };
   try {
-    if (action === 'list') return await runList(args, inbox);
+    if (action === 'list') return await runList(args, inbox, tenant, deps);
     if (action === 'read') return await runRead(args, inbox);
     return await runMove(args, inbox, action === 'archive');
   } catch (e) {
@@ -346,20 +380,26 @@ const TOOL_DEFS = [
       'CHECK BEFORE YOU PASS IT ON: an email is a snapshot from when it was sent. Before you pass on any to-do from an email - especially a report from their own system - check it live with the other Wingguy tools (calendar: wingguy_list_events; a person: wingguy_lead_history / wingguy_get_client; campaigns: wingguy_campaigns). If it is already done, say "already done" and put it in NOTED. On 2 Nov a tidy-up email said Steve\'s call was not on the calendar; the invite had gone 24 minutes after it was sent.\n\n' +
       'Reports from their own system (Monday campaign numbers, Wingguy Learning gaps, memory tidy-up, the morning brief and the like) are written in system language - turn each into the few things they actually have to do, in their words, and drop the rest.\n\n' +
       'ARCHIVING: only the thread_ids they have said yes to in this chat - never on your own judgement, never "while you were at it". Archive takes it out of the inbox and nothing is deleted; action=restore puts it back. Tell them what was archived. If archiving is not switched on for their mailbox, say so plainly and leave it.\n\n' +
+      'FIX THE RECORD: when an email changes a fact about a person - an email address that no longer works, a new email or phone number, they have moved - say so in that email\'s line and offer to fix their record ("Fix Lynne\'s record?"). On their yes use wingguy_update_lead (email, phone, location, LinkedIn URL on the lead\'s record). If the person is on one of their clients\' records rather than their own, say whose record it is instead of changing it. Never change a record without their yes.\n\n' +
+      'STANDING INSTRUCTIONS: the list starts with any standing inbox instructions they have given - follow them when sorting (an "always clear" instruction puts those emails in CLEAR; the yes is still theirs to give). When they say how they always want something handled - "always clear LinkedIn notifications", "always show me anything from the accountant", "never bother me with receipts" - save it with action=remember and text = the instruction in their words, then tell them it is saved. action=forget with instruction_id removes one.\n\n' +
       'action=read with a thread_id gives the whole thread, when you need more than the excerpt. Plain English, what a thing means before what it is called, " - " not an em dash.',
     zodSchema: {
-      action: z.enum(['list', 'read', 'archive', 'restore']).optional().describe('list (default) | read | archive | restore'),
+      action: z.enum(['list', 'read', 'archive', 'restore', 'remember', 'forget']).optional().describe('list (default) | read | archive | restore | remember | forget'),
       thread_id: z.string().optional().describe('read: the thread_id from the list'),
       thread_ids: z.array(z.string()).optional().describe('archive / restore: the thread_ids they said yes to'),
       max: z.number().optional().describe('list: how many threads, newest first (default and most 50)'),
+      text: z.string().optional().describe('remember: the standing instruction, in their words'),
+      instruction_id: z.number().optional().describe('forget: the instruction number shown at the top of the list'),
     },
     jsonSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'read', 'archive', 'restore'], description: 'list (default) | read | archive | restore' },
+        action: { type: 'string', enum: ['list', 'read', 'archive', 'restore', 'remember', 'forget'], description: 'list (default) | read | archive | restore | remember | forget' },
         thread_id: { type: 'string', description: 'read: the thread_id from the list' },
         thread_ids: { type: 'array', items: { type: 'string' }, description: 'archive / restore: the thread_ids they said yes to' },
         max: { type: 'number', description: 'list: how many threads, newest first (default and most 50)' },
+        text: { type: 'string', description: 'remember: the standing instruction, in their words' },
+        instruction_id: { type: 'number', description: 'forget: the instruction number shown at the top of the list' },
       },
     },
     run: runInbox,
