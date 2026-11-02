@@ -258,6 +258,9 @@ function fakeClient({ archiveOk = true } = {}) {
     assert.ok(/Never show the next job in the same message/.test(d));
     assert.ok(/"Later" leaves the email in the inbox/.test(d));
     assert.ok(/That's your inbox done/.test(d));
+    // Guy, 2 Nov: "Clear them?" alone - a person can't tell their own things are left alone
+    assert.ok(d.includes('"Type yes to clear these 7. Then I\'ll take you through your 5 things, one at a time."'), 'the clear question says what happens next');
+    assert.ok(d.includes('the two numbers must add up to the total'), 'the count adds up');
   });
 
   // Guy, 2 Nov: "this doesn't give an option for how or what to do with Michael" - and in a chat
