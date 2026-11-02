@@ -622,4 +622,103 @@ async function sendViaUnipile(coach, details = {}) {
   return { ok: true, messageId: json.tracking_id || json.id || (json.data && json.data.id) || null, threadId: null, provider: 'unipile' };
 }
 
-module.exports = { createDraft, sendMessage, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider, hasMailbox, mailParties };
+/* ---------------------------------------------------------------------------------------------
+ * The inbox itself (wingguy_inbox, 2 Nov 2026) - list what is IN the inbox, read a whole thread,
+ * and take a thread out of the inbox (archive) or put it back. Unipile only: Nylas tenants are
+ * legacy and get a plain "not supported".
+ *
+ * Archive on a Google mailbox = rewrite the message's folders without INBOX (Gmail folders are its
+ * labels, so the others stay put) - proven live on Guy's account 2 Nov: PUT /emails/{id}
+ * {folders:[...]} 200 EmailUpdated, Gmail showed it gone and back. Outlook / IMAP archive is NOT
+ * proven, so it is refused (`archiveSupported: false`) rather than guessed at on a client's mail.
+ * Known gap: Unipile's folder list can lag Gmail - three of Guy's sent mails sat in his Gmail inbox
+ * while Unipile still had them as SENT only. Guy's own inbox therefore runs on the direct Gmail
+ * login instead (services/wingguyInboxMcp.js).
+ * ------------------------------------------------------------------------------------------- */
+
+async function unipileGet(coach, path, params = {}) {
+  const { apiKey, base, accountId } = unipileMailEnv(coach);
+  if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured' };
+  const u = new URL(`${base}${path}`);
+  u.searchParams.set('account_id', accountId);
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, String(v));
+  let res;
+  try { res = await fetch(u.toString(), { headers: unipileMailHeaders(apiKey) }); }
+  catch (e) { return { ok: false, error: `unipile request failed: ${e.message}` }; }
+  const text = await res.text();
+  if (!res.ok) return { ok: false, error: `unipile HTTP ${res.status}: ${text.slice(0, 200)}` };
+  let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+  return { ok: true, json };
+}
+
+function fromUnipileInboxMessage(m) {
+  const fp = fromUnipileParty(m.from_attendee);
+  return {
+    id: m.id,
+    threadId: m.thread_id,
+    subject: m.subject || '',
+    from: fp ? (fp.name ? `${fp.name} <${fp.email}>` : fp.email) : '',
+    to: partiesToString(m.to_attendees, true),
+    cc: partiesToString(m.cc_attendees, true),
+    date: m.date || null,
+    text: m.body_plain || '',
+    html: m.body || '',
+    folders: m.folders || [],
+    unread: !m.read_date || (m.folders || []).includes('UNREAD'),
+    attachments: attachmentNames(m),
+  };
+}
+
+/** The mailbox's kind - GOOGLE_OAUTH, OUTLOOK, MAIL (IMAP)... - which decides how archive works. */
+async function mailboxKind(coach) {
+  if (activeMailProvider(coach) !== 'unipile') return { ok: false, error: 'not supported on this mail provider' };
+  const { accountId } = unipileMailEnv(coach);
+  const r = await unipileGet(coach, `/accounts/${encodeURIComponent(accountId)}`);
+  if (!r.ok) return r;
+  const type = String(r.json.type || '').toUpperCase();
+  return { ok: true, type, archiveSupported: type === 'GOOGLE_OAUTH' };
+}
+
+/** Messages currently in the inbox, newest first (one per message - the caller groups by thread). */
+async function listInbox(coach, { limit = 50 } = {}) {
+  if (activeMailProvider(coach) !== 'unipile') return { ok: false, error: 'not supported on this mail provider' };
+  const r = await unipileGet(coach, '/emails', { folder: 'INBOX', limit: Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100) });
+  if (!r.ok) return r;
+  return { ok: true, messages: (r.json.items || []).map(fromUnipileInboxMessage), more: !!r.json.cursor };
+}
+
+/** Every message in one thread, oldest first. */
+async function threadMessages(coach, threadId) {
+  if (activeMailProvider(coach) !== 'unipile') return { ok: false, error: 'not supported on this mail provider' };
+  const r = await unipileGet(coach, '/emails', { thread_id: threadId, limit: 50 });
+  if (!r.ok) return r;
+  const messages = (r.json.items || []).map(fromUnipileInboxMessage).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  return { ok: true, messages };
+}
+
+/** Take a thread out of the inbox (inInbox=false) or put it back (true). Google mailboxes only. */
+async function setThreadInInbox(coach, threadId, inInbox) {
+  const kind = await mailboxKind(coach);
+  if (!kind.ok) return kind;
+  if (!kind.archiveSupported) return { ok: false, error: `archiving is not switched on for ${kind.type || 'this'} mailboxes yet` };
+  const t = await threadMessages(coach, threadId);
+  if (!t.ok) return t;
+  if (!t.messages.length) return { ok: false, error: 'no such thread' };
+  // Archive: every message carrying INBOX loses it. Restore: the newest message gets it back
+  // (Gmail shows the whole thread in the inbox when any message has the label).
+  const targets = inInbox ? [t.messages[t.messages.length - 1]] : t.messages.filter((m) => m.folders.includes('INBOX'));
+  const { apiKey, base, accountId } = unipileMailEnv(coach);
+  for (const m of targets) {
+    const folders = inInbox ? [...new Set([...m.folders, 'INBOX'])] : m.folders.filter((f) => f !== 'INBOX');
+    let res;
+    try {
+      res = await fetch(`${base}/emails/${encodeURIComponent(m.id)}?account_id=${encodeURIComponent(accountId)}`, {
+        method: 'PUT', headers: { ...unipileMailHeaders(apiKey), 'Content-Type': 'application/json' }, body: JSON.stringify({ folders }),
+      });
+    } catch (e) { return { ok: false, error: `unipile request failed: ${e.message}` }; }
+    if (!res.ok) return { ok: false, error: `unipile HTTP ${res.status}: ${(await res.text()).slice(0, 200)}` };
+  }
+  return { ok: true, subject: t.messages[0].subject, moved: targets.length };
+}
+
+module.exports = { createDraft, sendMessage, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider, hasMailbox, mailParties, listInbox, threadMessages, setThreadInInbox, mailboxKind };

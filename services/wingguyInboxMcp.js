@@ -1,5 +1,5 @@
 /**
- * "Go through my inbox" - Guy's Gmail inbox, sorted in chat and cleared on his yes.
+ * "Go through my inbox" - the caller's own inbox, sorted in chat and cleared on their yes.
  *
  * The problem it solves (Guy, 2 Nov 2026): he no longer writes emails - he starts them in Claude -
  * and wanted the other direction too. Twenty or thirty emails sit in the inbox; Claude should say
@@ -9,11 +9,17 @@
  * email is never passed on without checking it live first. That is written into the description.
  *
  * The tool fetches and acts; the chat's Claude does the judging (three piles: needs you / noted /
- * clear). Nothing is archived unless Guy has said yes in the chat, and every archive can be undone
- * with restore. Archive = take the INBOX label off; nothing is ever deleted.
+ * clear). Nothing is archived unless the person has said yes in the chat, and every archive can be
+ * undone with restore. Archive = out of the inbox; nothing is ever deleted.
  *
- * Guy only: it runs on the server's own Gmail login (GMAIL_REFRESH_TOKEN, guyralphwilson@gmail.com,
- * gmail.modify), so it answers for the coach tenant alone. A client's connector gets a refusal.
+ * ONE TOOL, TWO CONNECTIONS (Guy, 2 Nov: "make this work both for Gmail and for Wingguy, so there's
+ * no friction"). Whoever asks, it is their own inbox:
+ *   - Guy (the coach tenant): the server's direct Gmail login (GMAIL_REFRESH_TOKEN, gmail.modify).
+ *     Not Unipile, because Unipile's copy of his folders lagged Gmail on 2 Nov - three sent mails
+ *     sat in his Gmail inbox that Unipile still had as SENT only, so they could never be cleared.
+ *   - Anyone else: their own mailbox through Wingguy's mail link (services/mailProvider.js,
+ *     Unipile). Archive is proven on Google mailboxes; Outlook / IMAP list and read, and archive is
+ *     refused until it is proven.
  *
  * One definition, BOTH transports (same pattern as machineClipboardMcp):
  *   - the SDK server (services/mcpRecallServer.js -> /mcp2/:token, claude.ai)
@@ -21,7 +27,7 @@
  */
 
 const { z } = require('zod');
-// NOTE: googleapis / clientService are required LAZILY inside executors - clientService's Airtable
+// NOTE: googleapis / clientService / mailProvider are required LAZILY - clientService's Airtable
 // config crashes at module load when env vars are absent (local test runs).
 
 const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -29,19 +35,9 @@ const MAX_LIST = 50;
 const EXCERPT_CHARS = 600;
 const READ_CHARS = 6000;
 
-// Senders that are Guy's own system: their reports are snapshots, so their to-dos get a live check.
+// Senders that are Guy's own system (Wingguy, knowaguy): their reports are snapshots.
 const OWN_SYSTEM = [/@knowaguy\.com\.au$/i, /@mg\.knowaguy\.com\.au$/i, /@australiansidehustles\.com\.au$/i];
-const GUY_ADDRESS = 'guyralphwilson@gmail.com';
-
-function isCoach(tenant) {
-  return tenant === TENANT;
-}
-
-function gmailClient() {
-  const { google } = require('googleapis');
-  const { getGmailOAuthClient } = require('./gmailApiService');
-  return google.gmail({ version: 'v1', auth: getGmailOAuthClient() });
-}
+const GUY_GMAIL = 'guyralphwilson@gmail.com';
 
 // ---------------------------------------------------------------------------
 // Message text helpers (pure - tested in tests/wingguy-inbox.test.js)
@@ -65,7 +61,7 @@ function htmlToText(html) {
     .replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"');
 }
 
-/** The readable body of one message: text/plain if there is one, else the HTML made plain. */
+/** The readable body of one Gmail message: text/plain if there is one, else the HTML made plain. */
 function bodyText(payload) {
   let plain = '';
   let html = '';
@@ -109,14 +105,23 @@ function attachmentNames(payload) {
   return names;
 }
 
-/** What Claude should know about who sent it, before reading a word. */
-function senderTags(from, to, clientsByEmail) {
+/**
+ * What Claude should know about who sent it, before reading a word.
+ * who = { coach: bool, own: Set of the caller's own addresses, clients: Map email -> name }
+ */
+function senderTags(from, to, who) {
   const addr = senderAddress(from);
+  const own = (who && who.own) || new Set();
   const tags = [];
-  if (OWN_SYSTEM.some((re) => re.test(addr))) tags.push('a report from your own system - a snapshot, check its to-dos live');
-  else if (addr === GUY_ADDRESS && String(to || '').toLowerCase().includes(GUY_ADDRESS)) tags.push('sent by you to yourself - a note or a system report; check its to-dos live');
-  else if (addr === GUY_ADDRESS) tags.push(`your own email to ${to || 'someone'} - the latest word is yours, nobody has replied since`);
-  const client = clientsByEmail && clientsByEmail.get(addr);
+  const toSelf = [...own].some((a) => String(to || '').toLowerCase().includes(a));
+  if (OWN_SYSTEM.some((re) => re.test(addr))) {
+    tags.push(who && who.coach ? 'a report from your own system - a snapshot, check its to-dos live' : 'from Guy / Wingguy');
+  } else if (own.has(addr) && toSelf) {
+    tags.push('sent by you to yourself - a note or a system report; check its to-dos live');
+  } else if (own.has(addr)) {
+    tags.push(`your own email to ${to || 'someone'} - the latest word is yours, nobody has replied since`);
+  }
+  const client = who && who.clients && who.clients.get(addr);
   if (client) tags.push(`from your client ${client}`);
   return tags;
 }
@@ -127,120 +132,204 @@ function brisbaneTime(ms) {
   });
 }
 
-async function coachedClientsByEmail(tenant) {
-  const map = new Map();
-  try {
-    const all = await require('./clientService').getAllClients();
-    for (const c of all || []) {
-      if (c.coach !== tenant && c.clientId !== tenant) continue;
-      if (c.clientId === tenant) continue;
-      for (const e of String(c.clientEmailAddress || '').split(/[,;\s]+/)) if (e.includes('@')) map.set(e.toLowerCase(), c.clientName);
-    }
-  } catch (_e) { /* tags are a nicety - the list still works without them */ }
-  return map;
+function excerpt(text, max) {
+  const t = String(text || '');
+  return t.length > max ? `${t.slice(0, max)}... (more - read it with action=read)` : t;
+}
+
+// ---------------------------------------------------------------------------
+// The two connections. Each gives: list(max) -> { threads:[{id, subject, last, count, unread}], more },
+// read(threadId) -> { subject, messages }, move(threadId, archive) -> { subject }.
+// A message is { date(ms), from, to, cc, text, attachments }.
+// ---------------------------------------------------------------------------
+
+function gmailBackend() {
+  const { google } = require('googleapis');
+  const { getGmailOAuthClient } = require('./gmailApiService');
+  const gmail = google.gmail({ version: 'v1', auth: getGmailOAuthClient() });
+  const toMsg = (m) => ({
+    date: Number(m.internalDate), from: header(m, 'From'), to: header(m, 'To'), cc: header(m, 'Cc'),
+    text: cleanBody(bodyText(m.payload)) || m.snippet || '', attachments: attachmentNames(m.payload),
+  });
+  return {
+    async list(max) {
+      const { data } = await gmail.users.threads.list({ userId: 'me', q: 'in:inbox', maxResults: max });
+      const out = [];
+      const ids = (data.threads || []).map((t) => t.id);
+      // A few at a time - Gmail rate-limits a burst of thread reads.
+      for (let i = 0; i < ids.length; i += 8) {
+        const batch = await Promise.all(ids.slice(i, i + 8).map((id) =>
+          gmail.users.threads.get({ userId: 'me', id, format: 'full' }).then((r) => r.data).catch(() => null)));
+        for (const t of batch) {
+          if (!t || !(t.messages || []).length) continue;
+          const msgs = t.messages;
+          out.push({
+            id: t.id, subject: header(msgs[0], 'Subject'), last: toMsg(msgs[msgs.length - 1]), count: msgs.length,
+            unread: msgs.some((m) => (m.labelIds || []).includes('UNREAD')),
+          });
+        }
+      }
+      return { threads: out, more: !!data.nextPageToken };
+    },
+    async read(id) {
+      const { data } = await gmail.users.threads.get({ userId: 'me', id, format: 'full' });
+      const msgs = data.messages || [];
+      return { subject: msgs.length ? header(msgs[0], 'Subject') : '', messages: msgs.map(toMsg) };
+    },
+    async move(id, archive) {
+      const { data } = await gmail.users.threads.modify({
+        userId: 'me', id, requestBody: archive ? { removeLabelIds: ['INBOX'] } : { addLabelIds: ['INBOX'] },
+      });
+      let subject = header((data.messages || [])[0] || {}, 'Subject');
+      if (!subject) {
+        const meta = await gmail.users.threads.get({ userId: 'me', id, format: 'metadata', metadataHeaders: ['Subject'] }).catch(() => null);
+        subject = meta ? header((meta.data.messages || [])[0] || {}, 'Subject') : '';
+      }
+      return { subject };
+    },
+  };
+}
+
+function wingguyMailBackend(record, mail) {
+  const toMsg = (m) => ({
+    date: Date.parse(m.date) || 0, from: m.from, to: m.to, cc: m.cc,
+    text: cleanBody(m.text || htmlToText(m.html)), attachments: m.attachments || [],
+  });
+  return {
+    async list(max) {
+      const r = await mail.listInbox(record, { limit: max });
+      if (!r.ok) throw new Error(r.error);
+      // The inbox is a list of messages; show each thread once, by its newest message.
+      const byThread = new Map();
+      for (const m of r.messages) {
+        const key = m.threadId || m.id;
+        const t = byThread.get(key);
+        if (!t) byThread.set(key, { id: key, subject: m.subject, last: m, count: 1, unread: m.unread });
+        else {
+          t.count += 1;
+          t.unread = t.unread || m.unread;
+          if (String(m.date) > String(t.last.date)) t.last = m;
+        }
+      }
+      const threads = [...byThread.values()]
+        .sort((a, b) => String(b.last.date).localeCompare(String(a.last.date)))
+        .map((t) => ({ ...t, last: toMsg(t.last) }));
+      return { threads, more: r.more };
+    },
+    async read(id) {
+      const r = await mail.threadMessages(record, id);
+      if (!r.ok) throw new Error(r.error);
+      return { subject: (r.messages[0] || {}).subject || '', messages: r.messages.map(toMsg) };
+    },
+    async move(id, archive) {
+      const r = await mail.setThreadInInbox(record, id, !archive);
+      if (!r.ok) throw new Error(r.error);
+      return { subject: r.subject };
+    },
+  };
+}
+
+/**
+ * Whose inbox, and through which connection. Guy -> direct Gmail; anyone else -> their own
+ * mailbox through Wingguy's mail link, or a plain "not connected".
+ */
+async function resolveInbox(tenant, deps = {}) {
+  const clientService = deps.clientService || require('./clientService');
+  const mail = deps.mailProvider || require('./mailProvider');
+  let record = null;
+  try { record = await clientService.getClientById(tenant); } catch (_e) { /* handled below */ }
+  const coach = tenant === TENANT;
+  const own = new Set(String((record && record.clientEmailAddress) || '').toLowerCase().split(/[,;\s]+/).filter((e) => e.includes('@')));
+
+  const clients = new Map();
+  if (coach) {
+    own.add(GUY_GMAIL);
+    try {
+      for (const c of (await clientService.getAllClients()) || []) {
+        if (c.coach !== tenant || c.clientId === tenant) continue;
+        for (const e of String(c.clientEmailAddress || '').split(/[,;\s]+/)) if (e.includes('@')) clients.set(e.toLowerCase(), c.clientName);
+      }
+    } catch (_e) { /* tags are a nicety - the list still works without them */ }
+  }
+  const who = { coach, own, clients };
+
+  if (coach && process.env.GMAIL_REFRESH_TOKEN) return { backend: (deps.gmailBackend || gmailBackend)(), who };
+  if (record && mail.hasMailbox(record) && mail.activeMailProvider(record) === 'unipile') {
+    return { backend: wingguyMailBackend(record, mail), who };
+  }
+  return { error: "Your mailbox isn't connected to Wingguy yet, so I can't see your inbox. Guy can connect it for you." };
 }
 
 // ---------------------------------------------------------------------------
 // Executors
 // ---------------------------------------------------------------------------
 
-async function runList(args, tenant) {
-  const gmail = gmailClient();
+async function runList(args, inbox) {
   const max = Math.min(Number(args.max) || MAX_LIST, MAX_LIST);
-  const { data } = await gmail.users.threads.list({ userId: 'me', q: 'in:inbox', maxResults: max });
-  const threads = data.threads || [];
+  const { threads, more } = await inbox.backend.list(max);
   if (!threads.length) return { text: 'Your inbox is empty.' };
-
-  const clients = await coachedClientsByEmail(tenant);
-  const items = [];
-  // A few at a time - Gmail rate-limits a burst of thread reads.
-  for (let i = 0; i < threads.length; i += 8) {
-    const batch = await Promise.all(threads.slice(i, i + 8).map((t) =>
-      gmail.users.threads.get({ userId: 'me', id: t.id, format: 'full' }).then((r) => r.data).catch(() => null)));
-    items.push(...batch);
-  }
-
-  const lines = [`${threads.length} email thread(s) in your inbox${data.nextPageToken ? ` (the newest ${max} - there are more)` : ''}, newest first. Times are Brisbane.`, ''];
-  items.forEach((t, n) => {
-    if (!t) return;
-    const msgs = t.messages || [];
-    const last = msgs[msgs.length - 1];
-    const first = msgs[0];
-    const from = header(last, 'From');
-    const unread = msgs.some((m) => (m.labelIds || []).includes('UNREAD'));
-    const atts = attachmentNames(last.payload);
-    const tags = senderTags(from, header(last, 'To'), clients);
-    let text = cleanBody(bodyText(last.payload)) || last.snippet || '';
-    if (text.length > EXCERPT_CHARS) text = `${text.slice(0, EXCERPT_CHARS)}... (more - read it with action=read)`;
-    lines.push(`[${n + 1}] thread_id=${t.id} | ${brisbaneTime(last.internalDate)} | ${from}${unread ? ' | UNREAD' : ''}${msgs.length > 1 ? ` | ${msgs.length} messages` : ''}`);
-    lines.push(`Subject: ${header(first, 'Subject') || '(no subject)'}`);
+  const lines = [`${threads.length} email thread(s) in your inbox${more ? ` (the newest ${max} - there are more)` : ''}, newest first. Times are Brisbane.`, ''];
+  threads.forEach((t, n) => {
+    const m = t.last;
+    const tags = senderTags(m.from, m.to, inbox.who);
+    lines.push(`[${n + 1}] thread_id=${t.id} | ${brisbaneTime(m.date)} | ${m.from}${t.unread ? ' | UNREAD' : ''}${t.count > 1 ? ` | ${t.count} messages` : ''}`);
+    lines.push(`Subject: ${t.subject || '(no subject)'}`);
     if (tags.length) lines.push(`About the sender: ${tags.join('; ')}`);
-    if (atts.length) lines.push(`Attachments: ${atts.join(', ')}`);
-    lines.push(`Text: ${text.replace(/\n/g, ' / ')}`);
+    if (m.attachments.length) lines.push(`Attachments: ${m.attachments.join(', ')}`);
+    lines.push(`Text: ${excerpt(m.text, EXCERPT_CHARS).replace(/\n/g, ' / ')}`);
     lines.push('');
   });
   return { text: lines.join('\n') };
 }
 
-async function runRead(args) {
+async function runRead(args, inbox) {
   const id = String(args.thread_id || '').trim();
   if (!id) return { text: 'Which email? Pass its thread_id from the list.', isError: true };
-  const gmail = gmailClient();
-  const { data } = await gmail.users.threads.get({ userId: 'me', id, format: 'full' });
-  const out = [`Subject: ${header((data.messages || [])[0] || {}, 'Subject') || '(no subject)'}`, ''];
-  for (const m of data.messages || []) {
-    let text = cleanBody(bodyText(m.payload));
-    if (text.length > READ_CHARS) text = `${text.slice(0, READ_CHARS)}... (cut)`;
-    const atts = attachmentNames(m.payload);
-    out.push(`--- ${brisbaneTime(m.internalDate)} | From: ${header(m, 'From')} | To: ${header(m, 'To')}${header(m, 'Cc') ? ` | Cc: ${header(m, 'Cc')}` : ''}`);
-    if (atts.length) out.push(`Attachments: ${atts.join(', ')}`);
+  const { subject, messages } = await inbox.backend.read(id);
+  const out = [`Subject: ${subject || '(no subject)'}`, ''];
+  for (const m of messages) {
+    const text = m.text.length > READ_CHARS ? `${m.text.slice(0, READ_CHARS)}... (cut)` : m.text;
+    out.push(`--- ${brisbaneTime(m.date)} | From: ${m.from} | To: ${m.to}${m.cc ? ` | Cc: ${m.cc}` : ''}`);
+    if (m.attachments.length) out.push(`Attachments: ${m.attachments.join(', ')}`);
     out.push(text, '');
   }
   return { text: out.join('\n') };
 }
 
-/** archive = take INBOX off; restore = put it back. Reports each by subject so Guy sees what moved. */
-async function runMove(args, archive) {
+/** archive = out of the inbox; restore = put it back. Reports each by subject so they see what moved. */
+async function runMove(args, inbox, archive) {
   const ids = [...new Set((Array.isArray(args.thread_ids) ? args.thread_ids : [args.thread_ids]).map((x) => String(x || '').trim()).filter(Boolean))];
   if (!ids.length) return { text: 'Which emails? Pass thread_ids from the list.', isError: true };
-  const gmail = gmailClient();
   const done = [];
   const failed = [];
   for (const id of ids) {
     try {
-      const { data } = await gmail.users.threads.modify({
-        userId: 'me', id, requestBody: archive ? { removeLabelIds: ['INBOX'] } : { addLabelIds: ['INBOX'] },
-      });
-      const msg = (data.messages || [])[0];
-      let subject = msg ? header(msg, 'Subject') : '';
-      if (!subject) {
-        const meta = await gmail.users.threads.get({ userId: 'me', id, format: 'metadata', metadataHeaders: ['Subject'] }).catch(() => null);
-        subject = meta ? header((meta.data.messages || [])[0] || {}, 'Subject') : '';
-      }
+      const { subject } = await inbox.backend.move(id, archive);
       done.push(`- ${subject || '(no subject)'} (thread_id=${id})`);
     } catch (e) {
       failed.push(`- thread_id=${id}: ${e.message}`);
     }
   }
-  const verb = archive ? 'Archived' : 'Put back in the inbox';
   const lines = [];
-  if (done.length) lines.push(`${verb} ${done.length}:`, ...done);
+  if (done.length) lines.push(`${archive ? 'Archived' : 'Put back in the inbox'} ${done.length}:`, ...done);
   if (failed.length) lines.push(`Couldn't ${archive ? 'archive' : 'restore'} ${failed.length}:`, ...failed);
-  if (archive && done.length) lines.push('', 'Nothing was deleted - they are in All Mail. To undo, action=restore with the same thread_ids.');
+  if (archive && done.length) lines.push('', 'Nothing was deleted. To undo, action=restore with the same thread_ids.');
   return { text: lines.join('\n'), ...(done.length ? {} : { isError: true }) };
 }
 
-async function runInbox(args = {}, tenant = TENANT) {
-  if (!isCoach(tenant)) return { text: "This is Guy's own inbox - not available here.", isError: true };
+async function runInbox(args = {}, tenant = TENANT, deps = {}) {
   const action = args.action || 'list';
-  try {
-    if (action === 'list') return await runList(args, tenant);
-    if (action === 'read') return await runRead(args);
-    if (action === 'archive') return await runMove(args, true);
-    if (action === 'restore') return await runMove(args, false);
+  if (!['list', 'read', 'archive', 'restore'].includes(action)) {
     return { text: `Unknown action "${action}". Use list, read, archive or restore.`, isError: true };
+  }
+  const inbox = await resolveInbox(tenant, deps);
+  if (inbox.error) return { text: inbox.error, isError: true };
+  try {
+    if (action === 'list') return await runList(args, inbox);
+    if (action === 'read') return await runRead(args, inbox);
+    return await runMove(args, inbox, action === 'archive');
   } catch (e) {
-    return { text: `Couldn't reach your Gmail: ${e.message}`, isError: true };
+    return { text: `Couldn't reach your mailbox: ${e.message}`, isError: true };
   }
 }
 
@@ -248,20 +337,20 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_inbox',
     description:
-      "Guy's own Gmail inbox, gone through in chat - \"go through my inbox\", \"what's in my inbox?\", \"clear my inbox\", \"anything I need to deal with?\". Guy no longer reads his email one by one: you read it for him, tell him in plain English what matters, and clear the rest on his yes.\n\n" +
-      'HOW TO RUN IT: action=list gives every inbox thread (sender, subject, time, who the sender is to him, attachments, the text). Sort them into three piles and show Guy:\n' +
-      '1. NEEDS YOU - one line on what it is, one line on what he has to do (and any deadline). Put the most urgent first.\n' +
+      "The person's own email inbox, gone through in chat - \"go through my inbox\", \"what's in my inbox?\", \"clear my inbox\", \"anything I need to deal with?\", \"check my email\". Use THIS for their inbox, not any other email connector: it is their own mailbox (Gmail or Outlook) and knows who their clients and contacts are. You read it for them, tell them in plain English what matters, and clear the rest on their yes.\n\n" +
+      'HOW TO RUN IT: action=list gives every inbox thread (sender, subject, time, who the sender is to them, attachments, the text). Sort them into three piles and show them:\n' +
+      '1. NEEDS YOU - one line on what it is, one line on what they have to do (and any deadline). Most urgent first.\n' +
       '2. NOTED - useful but no action: one line each on the useful bit.\n' +
-      "3. CLEAR - nothing he needs: one short line each.\n" +
-      'Number every email across the piles so he can answer "yes", "clear all except 4" or "archive 2 and 7". Then ask once whether to archive NOTED and CLEAR.\n\n' +
-      'CHECK BEFORE YOU PASS IT ON: an email is a snapshot from when it was sent. Before you tell Guy any to-do from an email - especially a report from his own system - check it live with the other Wingguy tools (calendar: wingguy_list_events; a client: wingguy_get_client / wingguy_lead_history; campaigns: wingguy_campaigns). If it is already done, say "already done" and put it in NOTED. On 2 Nov a tidy-up email said Steve\'s call was not on the calendar; the invite had gone 24 minutes after it was sent.\n\n' +
-      "His own system's reports (Monday campaign numbers, Wingguy Learning gaps, memory tidy-up, the morning brief and the like) are written in system language - turn each into the few things he actually has to do, in his words, and drop the rest.\n\n" +
-      'ARCHIVING: only the thread_ids Guy has said yes to in this chat - never on your own judgement, never "while you were at it". Archive takes it out of the inbox and nothing is deleted; action=restore puts it back. Tell him what was archived.\n\n' +
-      'action=read with a thread_id gives the whole thread, when you need more than the excerpt to explain it. Plain English, what a thing means before what it is called, " - " not an em dash.',
+      '3. CLEAR - nothing they need: one short line each.\n' +
+      'Number every email across the piles so they can answer "yes", "clear all except 4" or "archive 2 and 7". Then ask once whether to archive NOTED and CLEAR.\n\n' +
+      'CHECK BEFORE YOU PASS IT ON: an email is a snapshot from when it was sent. Before you pass on any to-do from an email - especially a report from their own system - check it live with the other Wingguy tools (calendar: wingguy_list_events; a person: wingguy_lead_history / wingguy_get_client; campaigns: wingguy_campaigns). If it is already done, say "already done" and put it in NOTED. On 2 Nov a tidy-up email said Steve\'s call was not on the calendar; the invite had gone 24 minutes after it was sent.\n\n' +
+      'Reports from their own system (Monday campaign numbers, Wingguy Learning gaps, memory tidy-up, the morning brief and the like) are written in system language - turn each into the few things they actually have to do, in their words, and drop the rest.\n\n' +
+      'ARCHIVING: only the thread_ids they have said yes to in this chat - never on your own judgement, never "while you were at it". Archive takes it out of the inbox and nothing is deleted; action=restore puts it back. Tell them what was archived. If archiving is not switched on for their mailbox, say so plainly and leave it.\n\n' +
+      'action=read with a thread_id gives the whole thread, when you need more than the excerpt. Plain English, what a thing means before what it is called, " - " not an em dash.',
     zodSchema: {
       action: z.enum(['list', 'read', 'archive', 'restore']).optional().describe('list (default) | read | archive | restore'),
       thread_id: z.string().optional().describe('read: the thread_id from the list'),
-      thread_ids: z.array(z.string()).optional().describe('archive / restore: the thread_ids Guy said yes to'),
+      thread_ids: z.array(z.string()).optional().describe('archive / restore: the thread_ids they said yes to'),
       max: z.number().optional().describe('list: how many threads, newest first (default and most 50)'),
     },
     jsonSchema: {
@@ -269,7 +358,7 @@ const TOOL_DEFS = [
       properties: {
         action: { type: 'string', enum: ['list', 'read', 'archive', 'restore'], description: 'list (default) | read | archive | restore' },
         thread_id: { type: 'string', description: 'read: the thread_id from the list' },
-        thread_ids: { type: 'array', items: { type: 'string' }, description: 'archive / restore: the thread_ids Guy said yes to' },
+        thread_ids: { type: 'array', items: { type: 'string' }, description: 'archive / restore: the thread_ids they said yes to' },
         max: { type: 'number', description: 'list: how many threads, newest first (default and most 50)' },
       },
     },
@@ -315,5 +404,5 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 
 module.exports = {
   registerWingguyInboxTools, legacyToolList, legacyToolCall, TOOL_DEFS, runInbox,
-  _test: { cleanBody, bodyText, senderTags, senderAddress, attachmentNames },
+  _test: { cleanBody, bodyText, senderTags, senderAddress, attachmentNames, wingguyMailBackend, resolveInbox },
 };
