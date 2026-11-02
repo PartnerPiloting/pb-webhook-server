@@ -299,6 +299,29 @@ function fakeClient({ archiveOk = true } = {}) {
     assert.ok(/Open in Gmail: https:\/\/mail\.google\.com\/mail\/\?authuser=guyralphwilson%40gmail\.com#all\/thread-f:1880724998925233022/.test(out.text), out.text);
   });
 
+  // Guy, 2 Nov 2026: his own emails waiting for approval come up in an inbox run - even an empty one.
+  await t("Guy's own emails waiting for his OK are listed on the first page, even when the inbox is empty", async () => {
+    const mk = (threads) => ({ list: async () => ({ threads, more: false, next: null, total: threads.length }) });
+    const one = { id: 'T1', subject: 's', count: 1, unread: false, last: { date: Date.UTC(2026, 10, 2), from: 'a@b.com', to: 'me@x.com', text: 't', attachments: [] } };
+    const base = {
+      clientService: { getClientById: async (id) => ({ clientId: id, unipileAccountId: 'a', emailProvider: 'unipile' }), getAllClients: async () => [] },
+      mailProvider: { hasMailbox: () => true, activeMailProvider: () => 'unipile' },
+      approvals: async () => ['Weekly client email to Roland Illyes for Wednesday 4 Nov - not approved yet'],
+    };
+    const empty = await runInbox({ action: 'list' }, 'Guy-Wilson', { ...base, backendOverride: mk([]) });
+    assert.ok(/YOUR OWN EMAILS WAITING FOR YOUR OK \(1\)/.test(empty.text) && /Roland Illyes/.test(empty.text) && /Your inbox is empty/.test(empty.text), empty.text);
+    const full = await runInbox({ action: 'list' }, 'Guy-Wilson', { ...base, backendOverride: mk([one]) });
+    assert.ok(/YOUR OWN EMAILS WAITING FOR YOUR OK/.test(full.text) && /thread_id=T1/.test(full.text), 'alongside the inbox');
+    const later = await runInbox({ action: 'list', page_token: '50~P2' }, 'Guy-Wilson', { ...base, backendOverride: mk([one]) });
+    assert.ok(!/WAITING FOR YOUR OK/.test(later.text), 'not repeated on the next batch');
+    const client = await runInbox({ action: 'list' }, 'Sam-Noble', { ...base, backendOverride: mk([one]) });
+    assert.ok(!/WAITING FOR YOUR OK/.test(client.text), 'a client never sees it');
+    const broken = await runInbox({ action: 'list' }, 'Guy-Wilson', { ...base, approvals: async () => { throw new Error('db down'); }, backendOverride: mk([one]) });
+    assert.ok(/thread_id=T1/.test(broken.text) && !/WAITING FOR YOUR OK/.test(broken.text), 'a failing check never hides the inbox');
+    const d = TOOL_DEFS[0].description;
+    assert.ok(d.includes('YOUR OWN EMAILS WAITING (only when') && d.includes('when the inbox is empty, straight after "Your inbox is clear."') && d.includes('Approve, change, skip or cancel ONLY on their number'), 'the description asks at the end, one at a time');
+  });
+
   console.log(failed ? `\n${failed} failed` : '\nall passed');
   process.exit(failed ? 1 : 0);
 })();

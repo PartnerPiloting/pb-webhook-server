@@ -320,11 +320,55 @@ function coverageLines({ shown, offset, more, total, next }) {
   return lines;
 }
 
+/**
+ * Guy only: his own emails that will not go until he says so - one-offs on the Scheduled page, the
+ * weekly client emails, and the weekly email to his list. Unapproved weekly ones lapse and never go,
+ * so a run of his inbox is where he is reminded. Each source is read on its own; one failing never
+ * hides the others or the inbox.
+ */
+async function waitingForOk(tenant) {
+  const out = [];
+  const add = async (what, fn) => {
+    try { out.push(...(await fn())); } catch (e) { console.warn(`[wingguyInbox] waiting-for-ok ${what}: ${e.message}`); }
+  };
+  await add('scheduled', async () => {
+    const q = require('./scheduledEmails');
+    const rows = await q.listRows(tenant, { statuses: ['awaiting', 'held', 'failed'] });
+    return rows.map((r) => {
+      const who = [...r.to, ...r.cc].map((p) => p.name || p.email).join(' + ');
+      const state = r.status === 'awaiting' ? 'needs your OK' : r.status === 'held' ? `HELD: ${r.holdReason}` : `FAILED: ${r.result}`;
+      return `One-off #${r.id} "${r.subject}" to ${who} - ${q.whenLabel(r.sendAt)} - ${state} (wingguy_scheduled_emails id=${r.id}: show, approve, edit, cancel)`;
+    });
+  });
+  await add('weekly', async () => {
+    const actions = require('./clientTouchActions');
+    const week = actions.weekOrDefault();
+    const rows = (await require('./clientTouchPlanStore').plansFor(week)).filter((r) => r.pick && (r.status === 'proposed' || r.status === 'held'));
+    return rows.map((r) => `Weekly client email to ${String(r.clientId).replace(/-/g, ' ')} for ${actions.dayLabel(week)} - ${r.status === 'held' ? 'HELD' : 'not approved yet; it never goes unless approved'} (wingguy_weekly_emails client=${r.clientId}: show, approve, edit, skip)`);
+  });
+  await add('list', async () => {
+    const s = await require('./listEditions').statusText(tenant);
+    return s.edition && s.edition.status === 'draft'
+      ? [`Your list email "${s.edition.title}" for ${s.sendDate} - not approved yet; it never goes unless approved (wingguy_list_edition: show, approve, edit, hold)`]
+      : [];
+  });
+  return out;
+}
+
+async function approvalLines(tenant, deps = {}) {
+  if (tenant !== TENANT) return [];
+  let items = [];
+  try { items = await (deps.approvals || waitingForOk)(tenant); } catch (_) { items = []; }
+  if (!items.length) return [];
+  return [`YOUR OWN EMAILS WAITING FOR YOUR OK (${items.length}) - not inbox emails; ask about these at the end, see YOUR OWN EMAILS WAITING:`, ...items.map((i) => `  - ${i}`), ''];
+}
+
 async function runList(args, inbox, tenant, deps) {
   const max = Math.min(Number(args.max) || MAX_LIST, MAX_LIST);
   const { offset, page } = readPageToken(args.page_token);
   const { threads, more, next, total } = await inbox.backend.list(max, page);
-  const head = await instructionLines(tenant, deps);
+  // Guy, 2 Nov 2026: an empty inbox must not hide them, so they come first and on every first page.
+  const head = [...await instructionLines(tenant, deps), ...(offset ? [] : await approvalLines(tenant, deps))];
   if (!threads.length) return { text: [...head, offset ? 'No more emails - that was the end of the inbox.' : 'Your inbox is empty.'].join('\n') };
   const lines = [...head, ...coverageLines({ shown: threads.length, offset, more, total, next }), ''];
   threads.forEach((t, n) => {
@@ -440,6 +484,7 @@ const TOOL_DEFS = [
       '   If something can only be done outside this chat, the choice is a link that takes them straight there (the email\'s "Open in Gmail" link from the list, their portal) - never just "go and do it".\n' +
       '4. AT THE END: "That\'s your inbox done." plus one line listing anything they said "later" to.\n' +
       'If they ask to see everything at once, show it - but one at a time is the default, every time.\n\n' +
+      'YOUR OWN EMAILS WAITING (only when the list has a YOUR OWN EMAILS WAITING FOR YOUR OK section): these are emails the person is SENDING, not inbox emails - never count them in the inbox numbers or mix them into the jobs. Straight after "That\'s your inbox done." - or, when the inbox is empty, straight after "Your inbox is clear." - ask in one message, with the real count and the soonest send: "4 of your own emails need your OK before Wednesday - they won\'t go without it. Go through them now?" then "1 Yes" / "2 Later" and "Type a number." On 1, take them ONE AT A TIME the same way: show each with the tool named on its line (action=show), then choices 1 Approve it / 2 Change it / 3 Skip this week (for a one-off: 3 Cancel it) / 4 Later. Approve, change, skip or cancel ONLY on their number. Weekly client emails that are not approved never go. When there is no such section, say nothing about it. Guy, 2 Nov 2026 - his approvals were lapsing on days he did not open the review.\n\n' +
       'PILE NAMES: when you name groups, use Needs you (the jobs), Worth knowing and Can go (the easy clear) - the names the person has been told.\n\n' +
       'QUICK THANKS: when a real person wrote to them personally and a short reply would be the courteous thing - a client explaining something, someone answering their question, a favour, good news, a kind word - it is a job: "Worth a quick thanks?" with a one-line reply drafted in their voice, NEVER in the easy clear. Its choices are exactly: 1 Put it in my Drafts (wingguy_create_draft as a threaded reply, reply_to_message_id from the list - it lands in their Drafts and THEY press send; Wingguy never sends, so never say "send"), 2 Change it (they say how, you rewrite and show it again), 3 No reply needed. Archive it only after they have decided. Not for emails that expect no reply: calendar acceptances, automatic notices, their own system reports, newsletters, receipts, copies of mail they sent. Their business runs on relationships - an email from a person never disappears unanswered without their say-so.\n\n' +
       'NOT THE WHOLE INBOX: the list comes 50 at a time. When it starts "NOT THE WHOLE INBOX", your first line must say how many emails there are and how many this covers - never let them think the rest were looked at - and when this batch is done offer the next one (action=list with the page_token it gives).\n\n' +
