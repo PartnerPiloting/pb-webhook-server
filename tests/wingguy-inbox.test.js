@@ -228,9 +228,9 @@ function fakeClient({ archiveOk = true } = {}) {
   // archived as Worth knowing, unanswered. A person's email never goes without their say-so.
   await t('piles use the names clients were told, and a personal email gets a quick thanks, never Can go', () => {
     const d = TOOL_DEFS[0].description;
-    assert.ok(/1\. NEEDS YOU/.test(d) && /2\. WORTH KNOWING/.test(d) && /3\. CAN GO/.test(d), 'the three names');
-    assert.ok(!/\bNOTED\b/.test(d) && !/\bCLEAR -/.test(d), 'the old names are gone');
-    assert.ok(/QUICK THANKS/.test(d) && /NEVER under Worth knowing or Can go/.test(d), 'quick thanks rule');
+    assert.ok(/use Needs you \(the jobs\), Worth knowing and Can go \(the easy clear\)/.test(d), 'the three names');
+    assert.ok(!/\bNOTED\b/.test(d) && !/\d\. CLEAR -/.test(d), 'the old names are gone');
+    assert.ok(/QUICK THANKS/.test(d) && /NEVER in the easy clear/.test(d), 'quick thanks rule');
     assert.ok(/Archive it only after they have decided/.test(d));
     assert.ok(/reply_to_message_id/.test(d) && /wingguy_create_draft/.test(d), 'replies draft into the thread');
   });
@@ -245,9 +245,19 @@ function fakeClient({ archiveOk = true } = {}) {
   await t('the description says archive only on their yes, check live, and use this for the inbox', () => {
     const d = TOOL_DEFS[0].description;
     assert.ok(/only the thread_ids they have said yes to/.test(d));
-    assert.ok(/CHECK BEFORE YOU PASS IT ON/.test(d));
+    assert.ok(/CHECK EVERY JOB LIVE/.test(d) && /Never pass on a job with "I haven't checked"/.test(d), 'live check is a must');
     assert.ok(/Use THIS for their inbox, not any other email connector/.test(d));
     assert.ok(!/—|–/.test(d), 'no em or en dash');
+  });
+
+  // Guy, 2 Nov: a 13-item answer was "still a bit overwhelming - it should be one at a time".
+  await t('the walk-through is one thing at a time: one line, the easy clear, then one job per message', () => {
+    const d = TOOL_DEFS[0].description;
+    assert.ok(/ONE THING AT A TIME - THIS IS THE WHOLE POINT/.test(d));
+    assert.ok(/1\. ONE LINE/.test(d) && /2\. THE EASY CLEAR/.test(d) && /3\. THE JOBS, ONE PER MESSAGE/.test(d) && /4\. AT THE END/.test(d), 'the order');
+    assert.ok(/Never show the next job in the same message/.test(d));
+    assert.ok(/"Later" leaves the email in the inbox/.test(d));
+    assert.ok(/That's your inbox done/.test(d));
   });
 
   console.log(failed ? `\n${failed} failed` : '\nall passed');
