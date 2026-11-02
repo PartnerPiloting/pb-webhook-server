@@ -1,0 +1,295 @@
+<style>
+  /* The editorial shell the one-pagers use (routes/onePagerRoutes.js) rather
+     than the homepage's teal/paper palette - deliberately. This page is a
+     letter to somebody who has already had the conversation, and it is sent
+     alongside /series/nodes, so matching THAT is what matters. Single-theme,
+     like the rest of the site: every colour is painted explicitly. */
+  :root {
+    color-scheme: light;
+    --ground:   #e9e2d3;
+    --card:     #fbf9f3;
+    --ink:      #2c2823;
+    --ink-deep: #221f1a;
+    --ink-soft: #6f6558;
+    --ink-mid:  #4a423a;
+    --rule:     #e2dccd;
+    --rule-sc:  #efe9dc;
+    --dark:     #211d18;
+    --gold:     #c49a5e;
+    --gold-ink: #9a6a2f;
+    --cream:    #f3ede1;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .op-page { padding: 28px 16px 52px; }
+
+  .op {
+    max-width: 640px;
+    margin: 0 auto 22px;
+    background: var(--card);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+  }
+
+  .op-mast { background: var(--dark); padding: 34px 40px 30px; }
+  .op-eb {
+    font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--gold); margin: 0 0 12px;
+  }
+  .op-wm { font-size: 30px; margin: 0; font-weight: 400; }
+  .op-wm a { color: var(--cream); text-decoration: none; }
+
+  .op-c { padding: 34px 40px 8px; }
+
+  .op-t {
+    font-size: 28px; line-height: 1.25; margin: 0 0 12px;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-dek {
+    font-style: italic; color: var(--ink-soft); font-size: 18px;
+    line-height: 1.5; margin: 0 0 20px; text-wrap: balance;
+  }
+  .op-r { border: 0; border-top: 1px solid var(--rule); margin: 0 0 22px; }
+
+  .op-body p { font-size: 17px; line-height: 1.66; margin: 0 0 1.15rem; }
+  .op-body h2 {
+    font-size: 21px; line-height: 1.3; margin: 1.9rem 0 .4rem;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-body strong { font-weight: 700; }
+  .op-body em { font-style: italic; }
+  .op-body a { color: var(--gold-ink); }
+  .op-body a:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+
+  /* The price, stated once. Three lines, hairline rules, gold on the total -
+     enough structure to be found at a glance, not enough to read as an invoice. */
+  .price { margin: 1.4rem 0 1.15rem; }
+  .price dl { margin: 0; display: grid; grid-template-columns: 1fr auto; }
+  .price dt, .price dd {
+    margin: 0; padding: 9px 0; font-size: 16.5px; line-height: 1.45;
+    border-bottom: 1px solid var(--rule-sc);
+  }
+  .price dd {
+    text-align: right; padding-left: 18px;
+    font-variant-numeric: tabular-nums; color: var(--ink-mid);
+    white-space: nowrap;
+  }
+  .price dt.total, .price dd.total {
+    border-bottom: 0; border-top: 1px solid var(--gold);
+    padding-top: 12px; margin-top: 2px; color: var(--ink-deep);
+  }
+  .price dd.total { font-weight: 700; }
+
+  .op-foot {
+    padding: 18px 40px 6px; border-top: 1px solid var(--rule);
+    margin-top: 1.6rem; font-size: 14px; line-height: 1.6; color: var(--ink-soft);
+  }
+  .op-foot a { color: var(--gold-ink); }
+  .op-sign { margin: .9rem 0 0; }
+  .op-bar { background: var(--dark); height: 34px; }
+
+  @media (max-width: 520px) {
+    .op-mast, .op-c, .op-foot { padding-left: 22px; padding-right: 22px; }
+    .op-t { font-size: 24px; }
+    .op-wm { font-size: 26px; }
+    .price dt, .price dd { font-size: 16px; }
+  }
+</style>
+<style>
+  /* A made-up run of "go through my inbox", drawn as the chat it happens in.
+     Names are invented - a real client's or lead's email must never appear on
+     a public page. The words Claude says are the ones the inbox tool's
+     instructions ask for (services/wingguyInboxMcp.js), so keep them in step. */
+  .shot { margin: 18px 0 24px; }
+  .shot img {
+    display: block; width: 100%; height: auto;
+    border: 1px solid var(--rule); border-radius: 4px; background: #fff;
+  }
+  .shot figcaption { margin-top: 8px; font-size: 0.86rem; line-height: 1.45; color: var(--ink-soft); }
+  .shot figcaption b { color: var(--ink-mid); }
+  .op-body ul, .op-body ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  .op-body li { font-size: 17px; line-height: 1.6; margin: 0 0 .5rem; }
+
+  /* The step people miss. Loud on purpose, but not red - red reads as an error. */
+  .first {
+    margin: 0 0 1.8rem; padding: 18px 20px 6px;
+    background: #fff4d6; border: 2px solid var(--gold); border-radius: 6px;
+  }
+  .first h2 { margin-top: 0 !important; }
+  .first .line {
+    display: block; margin: .3rem 0 1rem; padding: 10px 12px;
+    background: var(--card); border: 1px dashed var(--gold); border-radius: 4px;
+    font-size: 16.5px; line-height: 1.5;
+  }
+
+  .chat {
+    margin: 1.2rem 0 1.6rem; padding: 18px 16px;
+    background: #f6f4ef; border: 1px solid var(--rule); border-radius: 8px;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 15.5px; line-height: 1.55; color: #29261f;
+  }
+  .chat .you {
+    margin: 4px 0 14px auto; width: fit-content; max-width: 80%;
+    padding: 8px 14px; background: #e8e3d8; border-radius: 14px;
+  }
+  .chat .used { margin: 0 0 8px; font-size: 13.5px; color: #8a8175; }
+  .chat .cl { margin: 0 0 16px; }
+  .chat .cl p { font-size: 15.5px; line-height: 1.55; margin: 0 0 .7rem; }
+  .chat .cl ul, .chat .cl ol { margin: 0 0 .7rem; padding-left: 1.3rem; }
+  .chat .cl li { font-size: 15.5px; line-height: 1.5; margin: 0 0 .3rem; }
+  .chat .cl b { font-weight: 700; }
+  .chat .cl a { color: #2e5fa8; }
+  .chat .cl .reply {
+    margin: 0 0 .7rem; padding: 2px 0 2px 12px;
+    border-left: 3px solid #d6cfc2; color: #4a453d; font-style: italic;
+  }
+  .chat .gap { text-align: center; font-size: 13.5px; color: #8a8175; margin: 4px 0 14px; }
+
+  /* Small labels pointing at the things worth noticing. */
+  .note {
+    display: block; margin: -6px 0 16px; padding: 6px 10px;
+    border-left: 3px solid var(--gold); background: var(--cream);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 14.5px; line-height: 1.45; color: var(--ink-mid); font-style: italic;
+  }
+  @media (max-width: 520px) {
+    .chat { padding: 14px 10px; font-size: 15px; }
+    .chat .you { max-width: 90%; }
+  }
+</style>
+<div class="op-page">
+  <article class="op">
+    <header class="op-mast">
+      <p class="op-eb">Network building, rethought</p>
+      <p class="op-wm"><a href="/">(I know a) Guy</a></p>
+    </header>
+    <div class="op-c">
+      <h1 class="op-t">Your inbox, one thing at a time</h1>
+      <p class="op-dek">Say "go through my inbox" to Claude - or "help me with my emails", or whatever springs to mind. Wingguy reads every email, clears the ones that need nothing from you, and takes you through the rest one by one.</p>
+      <hr class="op-r">
+      <div class="op-body">
+
+        <div class="first" id="first">
+          <h2>Do this first - two minutes</h2>
+          <p>Claude has its own email connection, and it reaches for that first. It doesn't know your leads, your clients or your calendar, so none of what's below happens. One line in your Claude settings fixes it for good.</p>
+          <ol>
+            <li>In Claude, click your name at the bottom left, then <b>Settings</b>, then <b>Memory</b>.</li>
+            <li>Scroll to the bottom of your Preferences. In the box at the very bottom, type this and press Enter:
+              <span class="line">Whenever I ask about my inbox or my emails, use Wingguy, not Gmail or Outlook.</span>
+            </li>
+          </ol>
+          <figure class="shot">
+            <img src="/assets/inbox-preferences.png" alt="Claude's Settings window with Memory selected on the left, outlined in red. On the right, a list of preferences (blurred) and, at the bottom, an empty box to add a new one, outlined in red.">
+            <figcaption><b>Claude's Settings, Memory, 2 November 2026.</b> Your own list will be different - the box you type into is the one at the bottom.</figcaption>
+          </figure>
+          <ol start="3">
+            <li>The first time you ask, Claude asks before using <b>wingguy inbox</b>. Click <b>Always allow</b>, so it never needs to ask again.</li>
+          </ol>
+          <figure class="shot">
+            <img src="/assets/inbox-always-allow.png" alt="Claude asking: Claude wants to use wingguy inbox from Wingguy. Buttons: Decline, Always allow (outlined in red) and Allow once.">
+            <figcaption><b>The question Claude asks the first time, 2 November 2026.</b></figcaption>
+          </figure>
+          <p>If it ever asks again after I've improved something, click Always allow again.</p>
+        </div>
+
+        <h2 id="example">What it looks like</h2>
+        <p>Here's a made-up Monday evening. The names are invented; everything else is what you'll see.</p>
+
+        <div class="chat">
+          <div class="you">Go through my inbox</div>
+          <p class="used">Used Wingguy</p>
+          <div class="cl">
+            <p>18 emails - 6 things for you, 12 can go.</p>
+            <p><b>Already done, so you can ignore them:</b></p>
+            <ul>
+              <li>Priya Shah's reminder - your call with her is on your calendar for Thursday 2pm.</li>
+              <li>Tom Becker's "just following up" - you emailed him this morning.</li>
+            </ul>
+            <p><b>Can go:</b></p>
+            <ul>
+              <li>4 LinkedIn notifications</li>
+              <li>Receipts from Officeworks and Zoom</li>
+              <li>2 calendar acceptances (Anna, Raj)</li>
+              <li>A copy of your own sent email to Lisa</li>
+              <li>Your Monday campaign numbers - plenty of people left, nothing to do this week</li>
+            </ul>
+            <p>Type yes to clear these 12. Then I'll take you through your 6 things, one at a time.</p>
+          </div>
+          <p class="note">It checked your calendar and your sent mail before telling you anything - Tom isn't a job, because you've already written to him.</p>
+
+          <div class="you">yes</div>
+          <p class="used">Used Wingguy</p>
+          <div class="cl">
+            <p>Done - 12 cleared.</p>
+            <p><b>1 of 6 - <a href="#example">Sarah Whitfield</a></b></p>
+            <p>Sarah, your client, wrote to say her first two meetings from LinkedIn are booked. Worth a quick thanks?</p>
+            <p class="reply">That's great news, Sarah - two in the first fortnight is a strong start. Let me know how they go.</p>
+            <p>1 Put it in my Drafts<br>2 Change it<br>3 No reply needed<br>4 Later</p>
+            <p>Type a number.</p>
+          </div>
+
+          <div class="you">1</div>
+          <p class="used">Used Wingguy</p>
+          <div class="cl">
+            <p>It's in your Drafts, in Sarah's conversation, ready for you to send. Her email's archived.</p>
+            <p><b>2 of 6 - <a href="#example">Daniel Okafor</a></b></p>
+            <p>Daniel sent you a LinkedIn message at 7:13pm. He isn't in your leads yet, and the email doesn't show what he wrote.</p>
+            <p>1 <a href="#example">Open his message on LinkedIn</a>, then paste it here and I'll help you reply<br>2 Skip it<br>3 Later</p>
+            <p>Type a number.</p>
+          </div>
+          <p class="note">Anything that can only be done somewhere else comes with the link - one click, not "go and find it".</p>
+
+          <div class="you">3</div>
+          <p class="used">Used Wingguy</p>
+          <div class="cl">
+            <p>Left in your inbox.</p>
+            <p><b>3 of 6 - <a href="#example">Mark Ellis</a></b></p>
+            <p>Mark asked to move Thursday's coffee to Friday. I checked your calendar - Friday 10am and 2pm are both free.</p>
+            <p>1 Draft a reply offering Friday 10am or 2pm<br>2 Change it<br>3 Later</p>
+            <p>Type a number.</p>
+          </div>
+
+          <p class="gap">... and so on, one at a time, until ...</p>
+
+          <div class="cl">
+            <p>That's your inbox done. Still waiting on you: Daniel Okafor's LinkedIn message.</p>
+          </div>
+        </div>
+
+        <h2 id="different">Why it's different</h2>
+        <p>The inbox tools you see advertised only know your emails. Wingguy knows your leads, your clients and your calendar, so it can:</p>
+        <ul>
+          <li>tell you "this is the lead you met on Thursday", not just "an email from Sarah"</li>
+          <li>check whether something is already done before it asks you to do it</li>
+          <li>draft the reply in your own voice</li>
+        </ul>
+
+        <h2 id="never">What it will never do</h2>
+        <ul>
+          <li><b>Delete anything.</b> Clearing an email just takes it out of your inbox - it's still in your mailbox.</li>
+          <li><b>Send anything.</b> Replies go into your Drafts, and you press send.</li>
+          <li><b>Clear anything without your yes.</b> "Later" leaves an email exactly where it is.</li>
+          <li><b>Clear a personal email unanswered.</b> If a person wrote to you, it offers a reply first and lets you decide.</li>
+        </ul>
+
+        <h2 id="tell-it">Tell it how you like things</h2>
+        <p>Say it once - "always clear LinkedIn notifications", "anything from my accountant is always a job" - and it remembers next time.</p>
+        <p>If you have a big backlog, it works through 50 at a time and tells you how many are left. On Outlook it reads and sorts your inbox now, and clearing is coming shortly.</p>
+
+      </div>
+      <footer class="op-foot">
+        <p>If something is clunky, or Claude still reaches for its own email connection after the step at the top, just tell me.</p>
+        <p class="op-sign">Guy</p>
+      </footer>
+    </div>
+    <div class="op-bar"></div>
+  </article>
+</div>

@@ -231,6 +231,15 @@ const PAGES = {
     title: 'Your follow-ups, already sorted - I Know A Guy',
     description: 'A clickable example of the Wingguy Follow-Ups screen - every morning, who is owed a reply, what to do about it, and the message drafted. Names made up, screen real.',
   },
+  // "Go through my inbox" (2 Nov 2026): the one setup step clients miss (a line in their Claude
+  // Preferences, or Claude uses its own Gmail connection) boxed at the top with two dated
+  // screenshots - Guy's own preference lines blurred - then a made-up run of the chat. Linked
+  // from the client announcement email. Names invented; Claude's words follow wingguyInboxMcp.js.
+  inboxExample: {
+    file: 'inbox-example.html',
+    title: 'Your inbox, one thing at a time - I Know A Guy',
+    description: 'Say "go through my inbox" and Wingguy clears what needs nothing from you, then takes you through the rest one by one. The two-minute setup, and a made-up run.',
+  },
   rejoinThanks: {
     file: 'rejoin-thanks.html',
     title: 'Welcome back - I Know A Guy',
@@ -367,6 +376,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/your-links', servePage(PAGES.links));
   router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/follow-ups-example', servePage(PAGES.followupsExample));
+  router.get('/inbox', servePage(PAGES.inboxExample));
   router.get('/thanks-for-connecting-example', servePage(PAGES.thanksExample));
   router.get('/guy', servePage(PAGES.guy));
   router.get('/privacy', servePage(PAGES.privacy));
