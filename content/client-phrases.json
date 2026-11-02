@@ -30,7 +30,10 @@
         "docs/client-playbook.md"
       ],
       "near_misses": [
-        { "text": "my linked helper licence expires in 1 day", "expect": "LINKED HELPER - THE TRIAL" }
+        {
+          "text": "my linked helper licence expires in 1 day",
+          "expect": "LINKED HELPER - THE TRIAL"
+        }
       ]
     },
     {
@@ -207,6 +210,11 @@
         "services/clientTouchPlanner.js",
         "docs/CLIENT-TOUCH-PLANNER.md"
       ]
+    },
+    {
+      "phrase": "go through my inbox",
+      "tool": "wingguy_inbox",
+      "where": []
     }
   ],
   "near_misses": [

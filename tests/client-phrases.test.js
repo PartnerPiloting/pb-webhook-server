@@ -50,6 +50,7 @@ const MODULES = {
   'services/machineClipboardMcp.js': require('../services/machineClipboardMcp'),
   'services/wingguyScoringMcp.js': require('../services/wingguyScoringMcp'),
   'services/wingguyReconnectMcp.js': require('../services/wingguyReconnectMcp'),
+  'services/wingguyInboxMcp.js': require('../services/wingguyInboxMcp'),
 };
 
 function findTool(name) {
@@ -160,6 +161,18 @@ check('mcpRecallServer.js passes instructions naming wingguy_learn', () => {
   assert.ok(m, 'could not find the McpServer construction');
   assert.ok(/instructions\s*:/.test(m[0]), 'McpServer is constructed without instructions - the model gets no server-level steer at all');
   assert.ok(/wingguy_learn/.test(m[0]), 'the instructions do not name wingguy_learn');
+});
+// 2 Nov 2026: "go through my inbox" in a fresh chat went to the Gmail connector ("Used Gmail") -
+// the inbox tool was never looked at. The steer above every tool is what makes a chat reach for it.
+check('mcpRecallServer.js instructions send inbox requests to wingguy_inbox, not a mail connector', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'services', 'mcpRecallServer.js'), 'utf8');
+  const start = src.indexOf('instructions:');
+  const block = start < 0 ? '' : src.slice(start, src.indexOf('server.registerTool(', start));
+  const inbox = block.indexOf('INBOX:');
+  assert.ok(inbox > 0, 'the server instructions have no INBOX line');
+  const line = block.slice(inbox);
+  assert.ok(line.includes('call wingguy_inbox') && line.includes('never a Gmail or Outlook connector'),
+    'the INBOX line no longer sends inbox requests to wingguy_inbox over a mail connector');
 });
 
 console.log(`\n${failures ? `${failures} FAILED` : 'all passed'}\n`);

@@ -388,7 +388,11 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
         + "EMAIL: when they say \"send X an email\", \"email X\", \"email me\" or anything like it, that means WRITE A DRAFT with "
         + "wingguy_create_draft - never say you cannot send email and stop there. Wingguy never sends; the draft lands in their "
         + "own Drafts folder (Outlook, Gmail, whichever they connected) and they read it and press send themselves. Write the "
-        + "draft, then tell them where it is. This applies even when the email is to themselves.",
+        + "draft, then tell them where it is. This applies even when the email is to themselves. "
+        + "INBOX: when they ask to go through, check, sort or clear their inbox or their email (\"go through my inbox\", "
+        + "\"what's in my email?\", \"anything I need to deal with?\"), call wingguy_inbox - never a Gmail or Outlook connector. "
+        + "It is their own mailbox, it knows who their clients and contacts are, checks every to-do live before passing it "
+        + "on, and archives only on their yes. A plain mail connector does none of that.",
     },
   );
 
