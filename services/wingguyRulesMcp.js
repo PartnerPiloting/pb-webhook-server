@@ -499,6 +499,29 @@ async function runEditReview({ action = 'list', ids, resolution = 'reviewed', no
 // so a plain client's connector can never read another client's record. The
 // portal token is a portal access key — hence coach-only.
 // ---------------------------------------------------------------------------
+// Coach gate shared by the directory tools: only the clients this caller coaches are ever
+// visible. Exact id/name first, then a contains-match; several hits ask for the exact id.
+function matchCoachedClient(all, tenant, query) {
+  const mine = (all || []).filter((c) => c.coach && c.coach === tenant);
+  if (!mine.length) return { error: `No coached clients are visible to "${tenant}". This lookup is coach-only.` };
+
+  const q = query.toLowerCase();
+  const exact = mine.filter((c) =>
+    (c.clientId && c.clientId.toLowerCase() === q) || (c.clientName && c.clientName.toLowerCase() === q));
+  const matches = exact.length ? exact : mine.filter((c) =>
+    (c.clientId && c.clientId.toLowerCase().includes(q)) || (c.clientName && c.clientName.toLowerCase().includes(q)));
+
+  if (!matches.length) {
+    const names = mine.map((c) => `${c.clientName} (${c.clientId})`).join(', ');
+    return { error: `No coached client matched "${query}". Your clients: ${names}.` };
+  }
+  if (matches.length > 1) {
+    const names = matches.map((c) => `${c.clientName} (${c.clientId})`).join(', ');
+    return { error: `"${query}" matched several: ${names}. Re-run with the exact client id.` };
+  }
+  return { client: matches[0] };
+}
+
 async function runGetClient({ client } = {}, tenant = TENANT) {
   const clientService = require('./clientService');
   const query = String(client || '').trim();
@@ -511,28 +534,10 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
     return { text: `Couldn't read the client directory: ${e.message}`, isError: true };
   }
 
-  // Coach gate: only the clients this caller coaches are ever visible.
-  const mine = (all || []).filter((c) => c.coach && c.coach === tenant);
-  if (!mine.length) {
-    return { text: `No coached clients are visible to "${tenant}". This lookup is coach-only.`, isError: true };
-  }
+  const found = matchCoachedClient(all, tenant, query);
+  if (found.error) return { text: found.error, isError: true };
 
-  const q = query.toLowerCase();
-  const exact = mine.filter((c) =>
-    (c.clientId && c.clientId.toLowerCase() === q) || (c.clientName && c.clientName.toLowerCase() === q));
-  const matches = exact.length ? exact : mine.filter((c) =>
-    (c.clientId && c.clientId.toLowerCase().includes(q)) || (c.clientName && c.clientName.toLowerCase().includes(q)));
-
-  if (!matches.length) {
-    const names = mine.map((c) => `${c.clientName} (${c.clientId})`).join(', ');
-    return { text: `No coached client matched "${query}". Your clients: ${names}.`, isError: true };
-  }
-  if (matches.length > 1) {
-    const names = matches.map((c) => `${c.clientName} (${c.clientId})`).join(', ');
-    return { text: `"${query}" matched several: ${names}. Re-run with the exact client id.`, isError: true };
-  }
-
-  const c = matches[0];
+  const c = found.client;
   const portalUrl = c.portalToken ? `https://pb-webhook-server.vercel.app/?token=${c.portalToken}` : '(no token set)';
   const lines = [
     `Client: ${c.clientName} (${c.clientId})`,
@@ -544,6 +549,61 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
     `Portal URL: ${portalUrl}`,
   ].filter(Boolean);
   return { text: lines.join('\n') };
+}
+
+// ---------------------------------------------------------------------------
+// A client's switches (coach-only, 2026-11-02) - "tick Monday Campaign Email for Roland".
+// Chat told Guy on 2 Nov that none of its tools could tick that box, so a promised email sat
+// in Drafts until he went into Airtable himself. Each switch is a master Clients checkbox;
+// add one here and it is listed and settable. Reads back from a fresh record after a write.
+// ---------------------------------------------------------------------------
+const CLIENT_SWITCHES = {
+  monday_campaign_email: {
+    field: 'Monday Campaign Email',
+    flag: 'mondayCampaignEmail',
+    what: 'they are emailed their own Linked Helper campaign numbers every Monday morning (invites sent, accepted, people left, weeks left)',
+  },
+};
+
+async function runClientSettings({ client, setting, on } = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const query = String(client || '').trim();
+  if (!query) return { text: 'Which client? Pass a name or client id (e.g. "Roland" or "Roland-Illyes").', isError: true };
+
+  let all;
+  try {
+    all = await clientService.getAllClients();
+  } catch (e) {
+    return { text: `Couldn't read the client directory: ${e.message}`, isError: true };
+  }
+  const found = matchCoachedClient(all, tenant, query);
+  if (found.error) return { text: found.error, isError: true };
+  let c = found.client;
+
+  const line = (key, rec) => `- ${CLIENT_SWITCHES[key].field}: ${rec[CLIENT_SWITCHES[key].flag] ? 'ON' : 'off'} - when on, ${CLIENT_SWITCHES[key].what}`;
+
+  if (setting == null && on == null) {
+    return { text: [`${c.clientName} (${c.clientId}) - switches:`, ...Object.keys(CLIENT_SWITCHES).map((k) => line(k, c))].join('\n') };
+  }
+  const sw = CLIENT_SWITCHES[setting];
+  if (!sw) return { text: `Unknown setting "${setting}". Settable: ${Object.keys(CLIENT_SWITCHES).join(', ')}.`, isError: true };
+  if (typeof on !== 'boolean') return { text: 'Pass on=true to switch it on, on=false to switch it off.', isError: true };
+
+  const was = !!c[sw.flag];
+  if (was !== on) {
+    try {
+      await clientService.updateClientRecordFields(c.clientId, { [sw.field]: on });
+      c = (await clientService.getClientByIdFresh(c.clientId)) || c;
+    } catch (e) {
+      return { text: `Couldn't change ${sw.field} for ${c.clientName}: ${e.message}`, isError: true };
+    }
+  }
+  const now = !!c[sw.flag];
+  if (now !== on) return { text: `Wrote ${sw.field} for ${c.clientName}, but the record reads back ${now ? 'ON' : 'off'}. Check it in Airtable.`, isError: true };
+  const head = was === on
+    ? `${sw.field} was already ${on ? 'ON' : 'off'} for ${c.clientName} - nothing changed.`
+    : `${sw.field} is now ${on ? 'ON' : 'off'} for ${c.clientName} (read back from the record).`;
+  return { text: `${head}\n${line(setting, c)}` };
 }
 
 // ---------------------------------------------------------------------------
@@ -1079,6 +1139,25 @@ const TOOL_DEFS = [
       required: ['client'],
     },
     run: runGetClient,
+  },
+  {
+    name: 'wingguy_client_settings',
+    description: 'Coach-only: see or flip one of YOUR coached clients\' switches on their client record - "tick Monday Campaign Email for Roland", "turn on Sam\'s Monday numbers", "is Dean getting the Monday email?", "stop Rick\'s Monday email". Switches: monday_campaign_email (when on, the client is emailed their own Linked Helper campaign numbers every Monday morning; off by default). Call with just client to list their switches; add setting + on=true/false to change one. Do it yourself when Guy asks - never tell him to go into Airtable for these. Change only what Guy has said to; the reply reads the record back. Scoped to the calling coach\'s clients.',
+    zodSchema: {
+      client: z.string().describe('Client name or client id (e.g. "Roland" or "Roland-Illyes"). Matched within your coached clients only.'),
+      setting: z.enum(Object.keys(CLIENT_SWITCHES)).optional().describe('Which switch to change. Omit to list them.'),
+      on: z.boolean().optional().describe('true = switch on, false = switch off. Needed with setting.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        client: { type: 'string', description: 'Client name or client id (e.g. "Roland" or "Roland-Illyes"). Matched within your coached clients only.' },
+        setting: { type: 'string', enum: Object.keys(CLIENT_SWITCHES), description: 'Which switch to change. Omit to list them.' },
+        on: { type: 'boolean', description: 'true = switch on, false = switch off. Needed with setting.' },
+      },
+      required: ['client'],
+    },
+    run: runClientSettings,
   },
   {
     name: 'wingguy_client_emails',
