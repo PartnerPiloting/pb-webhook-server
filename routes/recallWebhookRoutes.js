@@ -1311,6 +1311,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
           ...require('../services/captureControlMcp').legacyToolList(),
           // Machine clipboard (paste into the Linked Helper machine) — shared defs with /mcp2.
           ...require('../services/machineClipboardMcp').legacyToolList(),
+          // Guy's own inbox (go through my inbox) - shared defs with /mcp2.
+          ...require('../services/wingguyInboxMcp').legacyToolList(),
         ],
       },
     });
@@ -1331,7 +1333,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
         || await require('../services/wingguyReconnectMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyContactsMcp').legacyToolCall(toolName, args)
         || await require('../services/captureControlMcp').legacyToolCall(toolName, args)
-        || await require('../services/machineClipboardMcp').legacyToolCall(toolName, args);
+        || await require('../services/machineClipboardMcp').legacyToolCall(toolName, args)
+        || await require('../services/wingguyInboxMcp').legacyToolCall(toolName, args);
       if (result) return res.json({ jsonrpc: '2.0', id, result });
     }
 

@@ -35,6 +35,7 @@ const { registerRecallImportTools } = require('./recallImportMcp');
 const { registerCaptureControlTools } = require('./captureControlMcp');
 const { registerWingguyContactsTools } = require('./wingguyContactsMcp');
 const { registerMachineClipboardTools } = require('./machineClipboardMcp');
+const { registerWingguyInboxTools } = require('./wingguyInboxMcp');
 const connectorSeen = require('./connectorSeenStore');
 
 const BASE = '/mcp2';
@@ -483,6 +484,8 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
   registerCaptureControlTools(server, coachClientId);
   // Machine clipboard (paste into the Linked Helper machine - the connection cannot carry it).
   registerMachineClipboardTools(server, coachClientId);
+  // Guy's own inbox ("go through my inbox" - sort, check live, archive on his yes). Coach only.
+  registerWingguyInboxTools(server, coachClientId);
 
   return server;
 }
