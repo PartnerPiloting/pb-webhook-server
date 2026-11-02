@@ -126,6 +126,19 @@ function senderTags(from, to, who) {
   return tags;
 }
 
+/**
+ * One click to the real email in Gmail's web app. Gmail thread ids are 16 hex digits; the web app
+ * opens them as thread-f:<the same number in decimal> - the form Gmail's own connector hands back.
+ * An Outlook id is not hex, so it gets no link. `account` picks the right Google login when the
+ * browser holds several; without it Gmail opens the first one.
+ */
+function gmailThreadLink(threadId, account) {
+  const id = String(threadId || '');
+  if (!/^[0-9a-f]{16}$/i.test(id)) return null;
+  const who = account ? `?authuser=${encodeURIComponent(account)}` : '';
+  return `https://mail.google.com/mail/${who}#all/thread-f:${BigInt(`0x${id}`).toString()}`;
+}
+
 function brisbaneTime(ms) {
   return new Date(Number(ms)).toLocaleString('en-AU', {
     timeZone: 'Australia/Brisbane', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
@@ -321,6 +334,8 @@ async function runList(args, inbox, tenant, deps) {
     lines.push(`Subject: ${t.subject || '(no subject)'}`);
     // The newest message's id - a quick-thanks reply drafts into this thread with it.
     if (m.id) lines.push(`To reply: reply_to_message_id=${m.id}`);
+    const link = gmailThreadLink(t.id, inbox.who.coach ? GUY_GMAIL : null);
+    if (link) lines.push(`Open in Gmail: ${link}`);
     if (tags.length) lines.push(`About the sender: ${tags.join('; ')}`);
     if (m.attachments.length) lines.push(`Attachments: ${m.attachments.join(', ')}`);
     lines.push(`Text: ${excerpt(m.text, EXCERPT_CHARS).replace(/\n/g, ' / ')}`);
@@ -409,18 +424,23 @@ const TOOL_DEFS = [
       "The person's own email inbox, gone through in chat - \"go through my inbox\", \"what's in my inbox?\", \"clear my inbox\", \"anything I need to deal with?\", \"check my email\". Use THIS for their inbox, not any other email connector: it is their own mailbox (Gmail or Outlook) and knows who their clients and contacts are. You read it for them, tell them in plain English what matters, and clear the rest on their yes.\n\n" +
       'ONE THING AT A TIME - THIS IS THE WHOLE POINT. A full inbox is overwhelming; never answer with a wall of numbered items, nested lists or every email at once (2 Nov 2026: a 13-item answer was "still a bit overwhelming - it should be one at a time"). Keep every message short.\n\n' +
       'FIRST, SILENTLY: action=list, then work out two things before you say a word.\n' +
-      '(a) THE JOBS - each thing they actually need to do or decide, most important first. One email can hold several jobs (a report from their own system - Monday campaign numbers, Wingguy Learning, memory tidy-up, the morning brief - is usually several, in system language: turn each into a plain job and drop the rest) or none; several emails can be one job. A QUICK THANKS (below) is a job.\n' +
+      '(a) THE JOBS - each thing they actually need to do or decide, most important first. One email can hold several jobs (a report from their own system - Monday campaign numbers, Wingguy Learning, memory tidy-up, the morning brief - is usually several, in system language: turn each into a plain job and drop the rest) or none; several emails can be one job. A QUICK THANKS (below) is a job. A job is something they can act on from this chat, or with one click on a link you give them. NEVER make a job of Claude\'s own housekeeping - note merges, memory contradictions, test results in a memory tidy-up report are handled by Claude Code, not here: leave them out.\n' +
       '(b) THE EASY CLEAR - emails with no job: information, calendar acceptances, automatic notices, newsletters, receipts, copies of mail they sent.\n' +
       'CHECK EVERY JOB LIVE before it goes in the queue (wingguy_list_events for the calendar; wingguy_dossier / wingguy_lead_history for a person; wingguy_campaigns for campaigns; wingguy_scheduled_emails for what is queued). An email is a snapshot - on 2 Nov a tidy-up email said Steve\'s call was not on the calendar and the invite had gone 24 minutes after it was sent. A job already done is not a job: fold it into the easy clear ("Steve\'s call - already on your calendar"). Never pass on a job with "I haven\'t checked" - check it, or if nothing can check it, say plainly what to look at.\n\n' +
       'THEN TALK, IN THIS ORDER:\n' +
       '1. ONE LINE: "12 emails - 5 things for you, 7 can go." (If the list says NOT THE WHOLE INBOX, this line also says how many there are in all and that this covers the newest 50.)\n' +
       '2. THE EASY CLEAR, in one go: one short line per kind, alike ones run together ("Rick\'s 2 calendar acceptances", "3 of your own sent emails", "Rick\'s call is Fri 10:30am - on your calendar"). These are the CAN GO pile; a useful fact rides along in its line (WORTH KNOWING). Ask "Clear them?" and STOP. On yes, archive exactly those.\n' +
-      '3. THE JOBS, ONE PER MESSAGE: "1 of 5 - Kay Ridge." Two or three short sentences: what it is and why now. Then ONE suggested next step as a question ("Want me to draft a welcome-back with times for her first session?"). STOP and wait. Never show the next job in the same message.\n' +
-      '   When they answer, do it (draft, book, fix the record, send the thanks), confirm in one line, archive that job\'s email once every job in it is decided, then "2 of 5 - ..." "Later" leaves the email in the inbox and moves on; "skip" means no action is needed - archive it.\n' +
+      '3. THE JOBS, ONE PER MESSAGE: "1 of 5 - Kay Ridge." Two or three short sentences: what it is and why now. Then the CHOICES, numbered, each on its own line, the one you recommend first, always ending with Later:\n' +
+      '   1 Draft her a welcome-back with times for her first session\n' +
+      '   2 Open the email in Gmail\n' +
+      '   3 Later\n' +
+      '   Say "Type a number." (If this chat can show clickable choices, show them as buttons instead.) STOP and wait. Never show the next job in the same message - the numbers only ever belong to the job on screen. Typing words instead of a number works too.\n' +
+      '   When they answer, do it (draft, book, fix the record), confirm in one line, archive that job\'s email once every job in it is decided, then "2 of 5 - ..." "Later" leaves the email in the inbox and moves on; "nothing needed" or "skip" archives it.\n' +
+      '   If something can only be done outside this chat, the choice is a link that takes them straight there (the email\'s "Open in Gmail" link from the list, their portal) - never just "go and do it".\n' +
       '4. AT THE END: "That\'s your inbox done." plus one line listing anything they said "later" to.\n' +
       'If they ask to see everything at once, show it - but one at a time is the default, every time.\n\n' +
       'PILE NAMES: when you name groups, use Needs you (the jobs), Worth knowing and Can go (the easy clear) - the names the person has been told.\n\n' +
-      'QUICK THANKS: when a real person wrote to them personally and a short reply would be the courteous thing - a client explaining something, someone answering their question, a favour, good news, a kind word - it is a job: "Worth a quick thanks?" with a one-line reply drafted in their voice, NEVER in the easy clear. They say "send that" (draft it with wingguy_create_draft as a threaded reply, reply_to_message_id from the list), change it, or "no reply needed". Archive it only after they have decided. Not for emails that expect no reply: calendar acceptances, automatic notices, their own system reports, newsletters, receipts, copies of mail they sent. Their business runs on relationships - an email from a person never disappears unanswered without their say-so.\n\n' +
+      'QUICK THANKS: when a real person wrote to them personally and a short reply would be the courteous thing - a client explaining something, someone answering their question, a favour, good news, a kind word - it is a job: "Worth a quick thanks?" with a one-line reply drafted in their voice, NEVER in the easy clear. Its choices are exactly: 1 Put it in my Drafts (wingguy_create_draft as a threaded reply, reply_to_message_id from the list - it lands in their Drafts and THEY press send; Wingguy never sends, so never say "send"), 2 Change it (they say how, you rewrite and show it again), 3 No reply needed. Archive it only after they have decided. Not for emails that expect no reply: calendar acceptances, automatic notices, their own system reports, newsletters, receipts, copies of mail they sent. Their business runs on relationships - an email from a person never disappears unanswered without their say-so.\n\n' +
       'NOT THE WHOLE INBOX: the list comes 50 at a time. When it starts "NOT THE WHOLE INBOX", your first line must say how many emails there are and how many this covers - never let them think the rest were looked at - and when this batch is done offer the next one (action=list with the page_token it gives).\n\n' +
       'ARCHIVING: only the thread_ids they have said yes to in this chat - the easy clear needs its own yes; a job\'s email goes once they have decided that job. Never on your own judgement, never "while you were at it". Archive takes it out of the inbox and nothing is deleted; action=restore puts it back. If archiving is not switched on for their mailbox, say so plainly and leave it.\n\n' +
       'FIX THE RECORD: when an email changes a fact about a person - an email address that no longer works, a new email or phone number, they have moved - make it part of that email\'s job and offer to fix their record ("Fix Lynne\'s record?"). On their yes use wingguy_update_lead (email, phone, location, LinkedIn URL on the lead\'s record). If the person is on one of their clients\' records rather than their own, say whose record it is instead of changing it. Never change a record without their yes.\n\n' +
@@ -493,5 +513,5 @@ require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
 module.exports = {
   registerWingguyInboxTools, legacyToolList, legacyToolCall, TOOL_DEFS, runInbox,
-  _test: { cleanBody, bodyText, senderTags, senderAddress, attachmentNames, wingguyMailBackend, resolveInbox },
+  _test: { cleanBody, bodyText, senderTags, senderAddress, attachmentNames, wingguyMailBackend, resolveInbox, gmailThreadLink },
 };

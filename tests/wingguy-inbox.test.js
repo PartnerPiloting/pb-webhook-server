@@ -260,6 +260,37 @@ function fakeClient({ archiveOk = true } = {}) {
     assert.ok(/That's your inbox done/.test(d));
   });
 
+  // Guy, 2 Nov: "this doesn't give an option for how or what to do with Michael" - and in a chat
+  // nothing can be clicked, so the choices are numbers that belong to the one job on screen.
+  await t('every job ends with numbered choices, quick thanks never says "send", housekeeping stays out', () => {
+    const d = TOOL_DEFS[0].description;
+    assert.ok(/Then the CHOICES, numbered/.test(d) && /always ending with Later/.test(d) && /Type a number/.test(d));
+    assert.ok(/the numbers only ever belong to the job on screen/.test(d));
+    assert.ok(/1 Put it in my Drafts/.test(d) && /2 Change it/.test(d) && /3 No reply needed/.test(d));
+    assert.ok(/THEY press send; Wingguy never sends, so never say "send"/.test(d));
+    assert.ok(/NEVER make a job of Claude's own housekeeping/.test(d));
+    assert.ok(/never just "go and do it"/.test(d));
+  });
+
+  await t('Open in Gmail: the link Gmail itself uses, only for Gmail ids, with the right login for Guy', async () => {
+    const { gmailThreadLink } = require('../services/wingguyInboxMcp')._test;
+    // The accountant's thread: Gmail's own connector returned thread-f:1880724998925233022 for 1a19ad6c0922ab7e.
+    assert.strictEqual(gmailThreadLink('1a19ad6c0922ab7e', 'guyralphwilson@gmail.com'),
+      'https://mail.google.com/mail/?authuser=guyralphwilson%40gmail.com#all/thread-f:1880724998925233022');
+    assert.strictEqual(gmailThreadLink('1a19ad6c0922ab7e'), 'https://mail.google.com/mail/#all/thread-f:1880724998925233022');
+    assert.strictEqual(gmailThreadLink('AAQkAGI2TG93AAA='), null, 'an Outlook id gets no link');
+    const prev = process.env.GMAIL_REFRESH_TOKEN;
+    const deps = {
+      clientService: { getClientById: async () => ({ clientId: 'Guy-Wilson' }), getAllClients: async () => [] },
+      mailProvider: { hasMailbox: () => true, activeMailProvider: () => 'unipile' },
+      backendOverride: { list: async () => ({ threads: [{ id: '1a19ad6c0922ab7e', subject: 'q', count: 1, unread: false,
+        last: { id: 'm', date: 0, from: 'a@b.com', to: 'x', text: 't', attachments: [] } }], more: false, total: 1 }) },
+    };
+    const out = await runInbox({ action: 'list' }, 'Guy-Wilson', deps);
+    if (prev === undefined) delete process.env.GMAIL_REFRESH_TOKEN; else process.env.GMAIL_REFRESH_TOKEN = prev;
+    assert.ok(/Open in Gmail: https:\/\/mail\.google\.com\/mail\/\?authuser=guyralphwilson%40gmail\.com#all\/thread-f:1880724998925233022/.test(out.text), out.text);
+  });
+
   console.log(failed ? `\n${failed} failed` : '\nall passed');
   process.exit(failed ? 1 : 0);
 })();
