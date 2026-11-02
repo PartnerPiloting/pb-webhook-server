@@ -1562,7 +1562,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_lead_history',
     description:
-      'What has this lead already been SENT? Reads the asset ledger (written by wingguy_create_draft at draft time — no mailbox access) and lists every asset-library link already drafted to a lead, with dates and subjects. THE CHECK BEHIND THE ASSET-USAGE GATES: call it before composing an email that includes an asset link, or when the human asks "have I sent them X yet?". Ledger starts 2026-07-16 — sends before that are not in it.',
+      'Which asset-library LINKS has this lead already been sent? NOT a record of the emails - it cannot tell you whether anything has gone to them or when; for that call wingguy_lead_correspondence, which reads the mailbox. Reads the asset ledger (written by wingguy_create_draft at draft time — no mailbox access) and lists every asset-library link already drafted to a lead, with dates and subjects. THE CHECK BEHIND THE ASSET-USAGE GATES: call it before composing an email that includes an asset link, or when the human asks "have I sent them X yet?". Ledger starts 2026-07-16 — sends before that are not in it.',
     zodSchema: {
       lead_email: z.string().describe('The lead\'s email address.'),
       limit: z.number().optional().describe('Max entries (default 50, max 200).'),
@@ -1614,7 +1614,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_lead_correspondence',
     description:
-      'List the recent email correspondence with ONE person, BOTH directions (their messages and the coach\'s), newest first — date, subject, snippet, direction, messageId. Use for "show me my emails with X" / "where did we leave things with X". Works on any provider via the coach\'s own Nylas grant. Person-scoped by design — it is not a mailbox keyword search. Follow up with wingguy_read_message (full body) or wingguy_create_draft reply_to_message_id (threaded reply).',
+      'List the recent email correspondence with ONE person, BOTH directions (their messages and the coach\'s), newest first — date, subject, snippet, direction, messageId. Use for "show me my emails with X" / "where did we leave things with X". THE CHECK before suggesting or drafting any email to a person, and before ever saying nothing has gone to them or they have not replied - it includes mail sent from the mailbox itself, outside Wingguy. Works on any provider via the coach\'s own Nylas grant. Person-scoped by design — it is not a mailbox keyword search. Follow up with wingguy_read_message (full body) or wingguy_create_draft reply_to_message_id (threaded reply).',
     zodSchema: {
       lead_email: z.string().describe('The person\'s email address (matches from/to/cc/bcc).'),
       since_iso: z.string().optional().describe('Optional ISO 8601 date — only messages received after this.'),

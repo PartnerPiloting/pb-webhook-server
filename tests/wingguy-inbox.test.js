@@ -258,6 +258,11 @@ function fakeClient({ archiveOk = true } = {}) {
     assert.ok(/Never show the next job in the same message/.test(d));
     assert.ok(/"Later" leaves the email in the inbox/.test(d));
     assert.ok(/That's your inbox done/.test(d));
+    // Guy, 2 Nov: Kay was offered a second welcome-back - a person is checked in the real mailbox
+    assert.ok(d.includes('call wingguy_lead_correspondence'), 'person jobs checked in the mailbox');
+    assert.ok(!d.includes('wingguy_dossier / wingguy_lead_history for a person'), 'never the ledger as the person check');
+    const lh = require('../services/wingguyMailMcp').TOOL_DEFS?.find?.(x => x.name === 'wingguy_lead_history');
+    if (lh) assert.ok(/NOT a record of the emails/.test(lh.description), 'lead_history says it is not the mailbox');
     // Guy, 2 Nov: "Clear them?" alone - a person can't tell their own things are left alone
     assert.ok(d.includes('"Type yes to clear these 7. Then I\'ll take you through your 5 things, one at a time."'), 'the clear question says what happens next');
     assert.ok(d.includes('the two numbers must add up to the total'), 'the count adds up');
