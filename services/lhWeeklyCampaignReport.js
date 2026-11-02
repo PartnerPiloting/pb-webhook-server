@@ -301,6 +301,31 @@ async function loadRows(client, deps = {}) {
     }));
 }
 
+/** One client's latest numbers from their machine, or null when none are kept. Throws with no database. */
+async function getSnapshot(clientId) {
+  if (!getPool()) throw new Error('no database connection');
+  const r = await withClient((client) => client.query(
+    'SELECT campaigns, reported_at FROM lh_campaign_snapshots WHERE client_id = $1', [String(clientId)]));
+  const row = r && r.rows[0];
+  return row ? { campaigns: row.campaigns || [], reportedAt: new Date(row.reported_at).toISOString() } : null;
+}
+
+/**
+ * The same numbers for Chat, on request - wingguy_get_client's "Campaign numbers" section (Guy,
+ * 2 Nov 2026: Chat couldn't give him Roland's figures for an email, and pasting them in by hand
+ * for every client is a band-aid). The client's own Monday wording, plus how old the numbers are.
+ */
+function numbersSection(snap, now = Date.now()) {
+  if (!snap) return ['Campaign numbers: none - their Linked Helper machine has not sent any (no machine, or an older watchdog).'];
+  if (!(snap.campaigns || []).length) return [`Campaign numbers (as of ${dateWords(snap.reportedAt)} Brisbane): no live campaigns.`];
+  const old = now - Date.parse(snap.reportedAt) > STALE_MS ? ' - ⚠ machine silent since then, these may be out of date' : '';
+  const out = [`Campaign numbers (as of ${dateWords(snap.reportedAt)} Brisbane${old}), worded as their Monday email reads:`];
+  for (const c of snap.campaigns.map(campaignLines)) {
+    out.push(`${c.name}`, ...c.lines.map((l) => `- ${l}`));
+  }
+  return out;
+}
+
 /** The client's own email: their campaigns' lines, short. */
 function clientEmail({ clientFirstName, clientName, coachName, campaigns, machineLink }) {
   const first = String(clientFirstName || '').trim() || String(clientName || '').trim().split(/\s+/)[0] || 'there';
@@ -435,4 +460,4 @@ function startLhWeeklyReport() {
   log.info(`lh-weekly-report: starting (Mondays after ${RUN_HOUR}:00 Brisbane, clients only when ticked)`);
 }
 
-module.exports = { saveSnapshot, cleanCampaigns, campaignLines, buildDigest, clientEmail, skipReason, sendClientEmails, runWeeklyReport, startLhWeeklyReport };
+module.exports = { saveSnapshot, getSnapshot, numbersSection, cleanCampaigns, campaignLines, buildDigest, clientEmail, skipReason, sendClientEmails, runWeeklyReport, startLhWeeklyReport };

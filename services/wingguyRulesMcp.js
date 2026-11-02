@@ -548,6 +548,13 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
     `Portal token: ${c.portalToken || '(none set)'}`,
     `Portal URL: ${portalUrl}`,
   ].filter(Boolean);
+  // Their Linked Helper numbers, the same lines their Monday email uses (2026-11-02).
+  try {
+    const report = require('./lhWeeklyCampaignReport');
+    lines.push('', ...report.numbersSection(await report.getSnapshot(c.clientId)));
+  } catch (e) {
+    lines.push('', `Campaign numbers: couldn't read them (${e.message}).`);
+  }
   return { text: lines.join('\n') };
 }
 
@@ -1127,7 +1134,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_get_client',
-    description: 'Coach-only directory lookup: fetch one of YOUR coached clients\' setup details — portal token + ready-to-paste portal URL, login email, and leads base id — by name or client id. Use when you need a client\'s portal link (e.g. for a welcome email), their login email, or their Airtable base id. Scoped to the calling coach: it only ever returns clients whose Coach is you, so it cannot read another coach\'s or an unrelated client\'s record. Returns the portal TOKEN, which is a portal access key — treat it as sensitive.',
+    description: 'Coach-only directory lookup: fetch one of YOUR coached clients\' setup details — portal token + ready-to-paste portal URL, login email, and leads base id — by name or client id - PLUS their Linked Helper campaign numbers (each campaign: invitations sent and accepted last week, people left to invite, weeks left at the current pace, acceptance so far), worded exactly as their Monday Campaign Email reads and dated. Use when you need a client\'s portal link (e.g. for a welcome email), their login email, or their Airtable base id - AND whenever Guy asks how a client\'s campaigns are going ("Roland\'s numbers", "how many people has Sam got left?", "is Rick running low?") or you are writing to a client and their campaign figures belong in it. Call this for those; never say the numbers can\'t be read, and never ask Guy to paste them in. Scoped to the calling coach: it only ever returns clients whose Coach is you, so it cannot read another coach\'s or an unrelated client\'s record. Returns the portal TOKEN, which is a portal access key — treat it as sensitive.',
     zodSchema: {
       client: z.string().describe('Client name or client id to look up (e.g. "McPhee" or "Guy-McPhee"). Matched within your coached clients only.'),
     },

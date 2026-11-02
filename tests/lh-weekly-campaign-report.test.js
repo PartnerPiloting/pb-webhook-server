@@ -188,6 +188,18 @@ check("Guy's digest says who was sent theirs, who was skipped, and marks unticke
   assert.ok(d.text.includes('== Ticked =='));
 });
 
+check("Chat's on-request section (wingguy_get_client): the Monday lines, dated, flagged when old", () => {
+  const at = '2026-11-02T00:00:00Z';
+  const fresh = w.numbersSection({ campaigns: [frac], reportedAt: at }, Date.parse(at) + 3600000);
+  assert.ok(fresh[0].startsWith('Campaign numbers (as of '));
+  assert.ok(!fresh[0].includes('out of date'));
+  assert.deepStrictEqual(fresh.slice(1), ['Fractional in profile', ...w.campaignLines(frac).lines.map((l) => `- ${l}`)]);
+  const old = w.numbersSection({ campaigns: [frac], reportedAt: at }, Date.parse(at) + 3 * 86400000);
+  assert.ok(old[0].includes('out of date'));
+  assert.ok(w.numbersSection(null)[0].includes('has not sent any'));
+  assert.ok(w.numbersSection({ campaigns: [], reportedAt: at })[0].includes('no live campaigns'));
+});
+
 Promise.all(pending).then(() => {
   console.log(failures ? `\n${failures} failing` : '\nall passing');
   process.exit(failures ? 1 : 0);
