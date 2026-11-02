@@ -148,7 +148,7 @@ function gmailBackend() {
   const { getGmailOAuthClient } = require('./gmailApiService');
   const gmail = google.gmail({ version: 'v1', auth: getGmailOAuthClient() });
   const toMsg = (m) => ({
-    date: Number(m.internalDate), from: header(m, 'From'), to: header(m, 'To'), cc: header(m, 'Cc'),
+    id: m.id, date: Number(m.internalDate), from: header(m, 'From'), to: header(m, 'To'), cc: header(m, 'Cc'),
     text: cleanBody(bodyText(m.payload)) || m.snippet || '', attachments: attachmentNames(m.payload),
   });
   return {
@@ -194,7 +194,7 @@ function gmailBackend() {
 
 function wingguyMailBackend(record, mail) {
   const toMsg = (m) => ({
-    date: Date.parse(m.date) || 0, from: m.from, to: m.to, cc: m.cc,
+    id: m.id, date: Date.parse(m.date) || 0, from: m.from, to: m.to, cc: m.cc,
     text: cleanBody(m.text || htmlToText(m.html)), attachments: m.attachments || [],
   });
   return {
@@ -319,6 +319,8 @@ async function runList(args, inbox, tenant, deps) {
     const tags = senderTags(m.from, m.to, inbox.who);
     lines.push(`[${offset + n + 1}] thread_id=${t.id} | ${brisbaneTime(m.date)} | ${m.from}${t.unread ? ' | UNREAD' : ''}${t.count > 1 ? ` | ${t.count} messages` : ''}`);
     lines.push(`Subject: ${t.subject || '(no subject)'}`);
+    // The newest message's id - a quick-thanks reply drafts into this thread with it.
+    if (m.id) lines.push(`To reply: reply_to_message_id=${m.id}`);
     if (tags.length) lines.push(`About the sender: ${tags.join('; ')}`);
     if (m.attachments.length) lines.push(`Attachments: ${m.attachments.join(', ')}`);
     lines.push(`Text: ${excerpt(m.text, EXCERPT_CHARS).replace(/\n/g, ' / ')}`);
@@ -406,16 +408,18 @@ const TOOL_DEFS = [
     description:
       "The person's own email inbox, gone through in chat - \"go through my inbox\", \"what's in my inbox?\", \"clear my inbox\", \"anything I need to deal with?\", \"check my email\". Use THIS for their inbox, not any other email connector: it is their own mailbox (Gmail or Outlook) and knows who their clients and contacts are. You read it for them, tell them in plain English what matters, and clear the rest on their yes.\n\n" +
       'HOW TO RUN IT: action=list gives every inbox thread (sender, subject, time, who the sender is to them, attachments, the text). Sort them into three piles and show them:\n' +
-      '1. NEEDS YOU - one line on what it is, one line on what they have to do (and any deadline). Most urgent first.\n' +
-      '2. NOTED - useful but no action: one line each on the useful bit.\n' +
-      '3. CLEAR - nothing they need: one short line each.\n' +
+      '1. NEEDS YOU - one line on what it is, one line on what they have to do (and any deadline). Most urgent first. Quick thanks go here too (below).\n' +
+      '2. WORTH KNOWING - useful but no action and nobody waiting on a reply: one line each on the useful bit.\n' +
+      '3. CAN GO - nothing they need: one short line each.\n' +
+      'Use those three names exactly - Needs you, Worth knowing, Can go - they are the names the person has been told.\n' +
+      'QUICK THANKS: when a real person wrote to them personally and a short reply would be the courteous thing - a client explaining something, someone answering their question, a favour, good news, a kind word - it goes under NEEDS YOU as "Worth a quick thanks?" with a one-line reply drafted underneath in their voice, NEVER under Worth knowing or Can go. They say "send that" (draft it with wingguy_create_draft as a threaded reply, reply_to_message_id from the list), change it, or "no reply needed". Archive it only after they have decided. Not for emails that expect no reply: calendar acceptances, automatic notices, their own system reports, newsletters, receipts, copies of mail they sent. Their business runs on relationships - an email from a person never disappears unanswered without their say-so.\n' +
       'NOT THE WHOLE INBOX: the list comes 50 at a time. When it starts "NOT THE WHOLE INBOX", your first line must say how many emails there are and how many this covers, before the piles - never let them think the rest were looked at - and offer the next batch at the end (action=list with the page_token it gives). Numbers carry on across batches.\n' +
-      'Number every email across the piles so they can answer "yes", "clear all except 4" or "archive 2 and 7". Then ask once whether to archive NOTED and CLEAR.\n\n' +
-      'CHECK BEFORE YOU PASS IT ON: an email is a snapshot from when it was sent. Before you pass on any to-do from an email - especially a report from their own system - check it live with the other Wingguy tools (calendar: wingguy_list_events; a person: wingguy_lead_history / wingguy_get_client; campaigns: wingguy_campaigns). If it is already done, say "already done" and put it in NOTED. On 2 Nov a tidy-up email said Steve\'s call was not on the calendar; the invite had gone 24 minutes after it was sent.\n\n' +
+      'Number every email across the piles so they can answer "yes", "clear all except 4" or "archive 2 and 7". Then ask once whether to archive Worth knowing and Can go.\n\n' +
+      'CHECK BEFORE YOU PASS IT ON: an email is a snapshot from when it was sent. Before you pass on any to-do from an email - especially a report from their own system - check it live with the other Wingguy tools (calendar: wingguy_list_events; a person: wingguy_lead_history / wingguy_get_client; campaigns: wingguy_campaigns). If it is already done, say "already done" and put it in Worth knowing. On 2 Nov a tidy-up email said Steve\'s call was not on the calendar; the invite had gone 24 minutes after it was sent.\n\n' +
       'Reports from their own system (Monday campaign numbers, Wingguy Learning gaps, memory tidy-up, the morning brief and the like) are written in system language - turn each into the few things they actually have to do, in their words, and drop the rest.\n\n' +
       'ARCHIVING: only the thread_ids they have said yes to in this chat - never on your own judgement, never "while you were at it". Archive takes it out of the inbox and nothing is deleted; action=restore puts it back. Tell them what was archived. If archiving is not switched on for their mailbox, say so plainly and leave it.\n\n' +
       'FIX THE RECORD: when an email changes a fact about a person - an email address that no longer works, a new email or phone number, they have moved - say so in that email\'s line and offer to fix their record ("Fix Lynne\'s record?"). On their yes use wingguy_update_lead (email, phone, location, LinkedIn URL on the lead\'s record). If the person is on one of their clients\' records rather than their own, say whose record it is instead of changing it. Never change a record without their yes.\n\n' +
-      'STANDING INSTRUCTIONS: the list starts with any standing inbox instructions they have given - follow them when sorting (an "always clear" instruction puts those emails in CLEAR; the yes is still theirs to give). When they say how they always want something handled - "always clear LinkedIn notifications", "always show me anything from the accountant", "never bother me with receipts" - save it with action=remember and text = the instruction in their words, then tell them it is saved. action=forget with instruction_id removes one.\n\n' +
+      'STANDING INSTRUCTIONS: the list starts with any standing inbox instructions they have given - follow them when sorting (an "always clear" instruction puts those emails in Can go; the yes is still theirs to give). When they say how they always want something handled - "always clear LinkedIn notifications", "always show me anything from the accountant", "never bother me with receipts" - save it with action=remember and text = the instruction in their words, then tell them it is saved. action=forget with instruction_id removes one.\n\n' +
       'action=read with a thread_id gives the whole thread, when you need more than the excerpt. Plain English, what a thing means before what it is called, " - " not an em dash.',
     zodSchema: {
       action: z.enum(['list', 'read', 'archive', 'restore', 'remember', 'forget']).optional().describe('list (default) | read | archive | restore | remember | forget'),

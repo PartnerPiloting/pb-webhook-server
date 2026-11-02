@@ -224,6 +224,24 @@ function fakeClient({ archiveOk = true } = {}) {
     assert.ok(/FIX THE RECORD/.test(d) && /wingguy_update_lead/.test(d) && /Never change a record without their yes/.test(d));
   });
 
+  // Guy, 2 Nov: Michael Spicer wrote personally ("escaped the salt mines") and would have been
+  // archived as Worth knowing, unanswered. A person's email never goes without their say-so.
+  await t('piles use the names clients were told, and a personal email gets a quick thanks, never Can go', () => {
+    const d = TOOL_DEFS[0].description;
+    assert.ok(/1\. NEEDS YOU/.test(d) && /2\. WORTH KNOWING/.test(d) && /3\. CAN GO/.test(d), 'the three names');
+    assert.ok(!/\bNOTED\b/.test(d) && !/\bCLEAR -/.test(d), 'the old names are gone');
+    assert.ok(/QUICK THANKS/.test(d) && /NEVER under Worth knowing or Can go/.test(d), 'quick thanks rule');
+    assert.ok(/Archive it only after they have decided/.test(d));
+    assert.ok(/reply_to_message_id/.test(d) && /wingguy_create_draft/.test(d), 'replies draft into the thread');
+  });
+
+  await t('every listed email carries the id a threaded reply needs', async () => {
+    const { deps } = fakeClient();
+    const out = await runInbox({ action: 'list' }, 'Sam-Noble', deps);
+    assert.ok(/To reply: reply_to_message_id=m2/.test(out.text), 'newest message of T1');
+    assert.ok(/To reply: reply_to_message_id=m3/.test(out.text));
+  });
+
   await t('the description says archive only on their yes, check live, and use this for the inbox', () => {
     const d = TOOL_DEFS[0].description;
     assert.ok(/only the thread_ids they have said yes to/.test(d));
