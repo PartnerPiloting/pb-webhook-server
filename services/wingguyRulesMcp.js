@@ -560,10 +560,11 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
 
 // The same numbers under their own name (2026-11-02). Chat finds tools by searching names: asked
 // for "the campaign-numbers tool", it searched three times, missed wingguy_get_client, and stopped.
+// A client asking for their OWN numbers ("show me my campaign numbers", Guy 2 Nov 2026) gets
+// them too, worded to them - never anyone else's: a non-coach is only ever answered for themself.
 async function runCampaignNumbers({ client } = {}, tenant = TENANT) {
   const clientService = require('./clientService');
   const query = String(client || '').trim();
-  if (!query) return { text: 'Which client? Pass a name or client id (e.g. "Roland" or "Roland-Illyes").', isError: true };
 
   let all;
   try {
@@ -571,13 +572,30 @@ async function runCampaignNumbers({ client } = {}, tenant = TENANT) {
   } catch (e) {
     return { text: `Couldn't read the client directory: ${e.message}`, isError: true };
   }
-  const found = matchCoachedClient(all, tenant, query);
-  if (found.error) return { text: found.error, isError: true };
+  const self = (all || []).find((c) => c.clientId === tenant);
+  const coaches = (all || []).some((c) => c.coach && c.coach === tenant);
+  const q = query.toLowerCase();
+  // A coach naming someone means that client ("Guy" may be Guy McPhee), so only an exact match is the coach himself.
+  const selfName = self ? String(self.clientName || '').toLowerCase() : '';
+  const isSelf = !query || (self && (self.clientId.toLowerCase() === q || selfName === q || (!coaches && selfName.includes(q))));
 
-  const c = found.client;
+  let c;
+  let own = false;
+  if (!coaches || isSelf) {
+    if (!self) return { text: `Couldn't find your own client record ("${tenant}").`, isError: true };
+    if (!isSelf) return { text: 'These are your own campaign numbers only - another person\'s numbers are not available here.', isError: true };
+    c = self;
+    own = true;
+  } else {
+    const found = matchCoachedClient(all, tenant, query);
+    if (found.error) return { text: found.error, isError: true };
+    c = found.client;
+  }
   try {
     const report = require('./lhWeeklyCampaignReport');
-    const lines = report.numbersSection(await report.getSnapshot(c.clientId));
+    const snap = await report.getSnapshot(c.clientId);
+    const lines = report.numbersSection(snap, Date.now(), { own });
+    if (own && snap && (snap.campaigns || []).length) lines.push('', 'Show these as a small table, one column per campaign: invitations sent last week, accepted last week, people left to invite, weeks left at this pace, acceptance so far.');
     return { text: [`${c.clientName} (${c.clientId})`, ...lines].join('\n') };
   } catch (e) {
     return { text: `Couldn't read ${c.clientName}'s campaign numbers: ${e.message}`, isError: true };
@@ -1175,16 +1193,15 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_campaign_numbers',
-    description: 'Coach-only: one of YOUR coached clients\' Linked Helper campaign numbers, on request - the same figures their Monday Campaign Email uses, in the same words. Per campaign: invitations sent and accepted last week, people left to invite, weeks left at the current pace (and "time to top up the search" when under three weeks), acceptance so far; paused campaigns say so. Dated, with a warning when their machine has been silent over two days. "Roland\'s campaign numbers", "how many people has Sam got left?", "is Rick running low?", "how\'s Roland\'s campaign going?", or any email to a client that should carry their figures. Read-only - sends nothing. Call this; never say the numbers can\'t be read, never go to Airtable for them, never ask Guy to paste them in. Scoped to the calling coach\'s clients.',
+    description: 'YOUR OWN Linked Helper campaign numbers - or, for a coach, one of your coached clients\' - on request: the same figures the Monday Campaign Email uses, in the same words. Per campaign: invitations sent and accepted last week, people left to invite, weeks left at the current pace (and "time to top up the search" when under three weeks), acceptance so far; paused campaigns say so. Dated, with a warning when the machine has been silent over two days. A client asking about themself: "show me my campaign numbers", "my campaign stats", "how is my campaign going?", "how many people have I got left?" - call with no client, and show the result as a small table, one column per campaign. A coach: "Roland\'s campaign numbers", "how many people has Sam got left?", "is Rick running low?", or any email to a client that should carry their figures. The numbers come from the client\'s Linked Helper machine; when there are none it says why - pass that on as it reads. Read-only - sends nothing. Call this; never say the numbers can\'t be read, never guess them, never go to Airtable for them, never ask anyone to paste them in. A client only ever sees their own.',
     zodSchema: {
-      client: z.string().describe('Client name or client id (e.g. "Roland" or "Roland-Illyes"). Matched within your coached clients only.'),
+      client: z.string().optional().describe('Coach only: client name or client id (e.g. "Roland" or "Roland-Illyes"). Leave out for your own numbers.'),
     },
     jsonSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string', description: 'Client name or client id (e.g. "Roland" or "Roland-Illyes"). Matched within your coached clients only.' },
+        client: { type: 'string', description: 'Coach only: client name or client id (e.g. "Roland" or "Roland-Illyes"). Leave out for your own numbers.' },
       },
-      required: ['client'],
     },
     run: runCampaignNumbers,
   },

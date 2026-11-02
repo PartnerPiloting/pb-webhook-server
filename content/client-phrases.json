@@ -215,6 +215,12 @@
       "phrase": "go through my inbox",
       "tool": "wingguy_inbox",
       "where": []
+    },
+    {
+      "phrase": "show me my campaign numbers",
+      "tool": "wingguy_campaign_numbers",
+      "note": "In the client announcement email Guy sends by hand (2 Nov 2026) - not in a repo doc yet.",
+      "where": []
     }
   ],
   "near_misses": [

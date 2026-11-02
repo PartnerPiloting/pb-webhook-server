@@ -200,6 +200,16 @@ check("Chat's on-request section (wingguy_get_client): the Monday lines, dated, 
   assert.ok(w.numbersSection({ campaigns: [], reportedAt: at })[0].includes('no live campaigns'));
 });
 
+check("A client asking for their own numbers: worded to them, and no machine is explained, never 'their'", () => {
+  const at = '2026-11-02T00:00:00Z';
+  const mine = w.numbersSection({ campaigns: [frac], reportedAt: at }, Date.parse(at) + 3600000, { own: true });
+  assert.ok(mine[0].startsWith('Your campaign numbers (as of '));
+  assert.deepStrictEqual(mine.slice(1), ['Fractional in profile', ...w.campaignLines(frac).lines.map((l) => `- ${l}`)]);
+  const none = w.numbersSection(null, Date.now(), { own: true })[0];
+  assert.ok(none.includes('your own computer') && none.includes("Linked Helper's own dashboard"));
+  assert.ok(!/\btheir\b/.test(none));
+});
+
 Promise.all(pending).then(() => {
   console.log(failures ? `\n${failures} failing` : '\nall passing');
   process.exit(failures ? 1 : 0);

@@ -315,11 +315,18 @@ async function getSnapshot(clientId) {
  * 2 Nov 2026: Chat couldn't give him Roland's figures for an email, and pasting them in by hand
  * for every client is a band-aid). The client's own Monday wording, plus how old the numbers are.
  */
-function numbersSection(snap, now = Date.now()) {
-  if (!snap) return ['Campaign numbers: none - their Linked Helper machine has not sent any (no machine, or an older watchdog).'];
-  if (!(snap.campaigns || []).length) return [`Campaign numbers (as of ${dateWords(snap.reportedAt)} Brisbane): no live campaigns.`];
+// own: the client is asking about themself - worded to them, and a missing machine explained.
+function numbersSection(snap, now = Date.now(), { own = false } = {}) {
+  if (!snap) {
+    return [own
+      ? "Your campaign numbers: none have come through. They are sent by a Linked Helper machine - if your Linked Helper runs on your own computer, nothing sends them here, and Linked Helper's own dashboard shows them. If it runs on one of Guy's machines, let Guy know so he can check it. (wingguy_campaigns shows how many leads each campaign has brought in.)"
+      : 'Campaign numbers: none - their Linked Helper machine has not sent any (no machine, or an older watchdog).'];
+  }
+  if (!(snap.campaigns || []).length) return [`${own ? 'Your campaign numbers' : 'Campaign numbers'} (as of ${dateWords(snap.reportedAt)} Brisbane): no live campaigns.`];
   const old = now - Date.parse(snap.reportedAt) > STALE_MS ? ' - ⚠ machine silent since then, these may be out of date' : '';
-  const out = [`Campaign numbers (as of ${dateWords(snap.reportedAt)} Brisbane${old}), worded as their Monday email reads:`];
+  const out = [own
+    ? `Your campaign numbers (as of ${dateWords(snap.reportedAt)} Brisbane${old}):`
+    : `Campaign numbers (as of ${dateWords(snap.reportedAt)} Brisbane${old}), worded as their Monday email reads:`];
   for (const c of snap.campaigns.map(campaignLines)) {
     out.push(`${c.name}`, ...c.lines.map((l) => `- ${l}`));
   }
