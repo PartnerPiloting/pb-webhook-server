@@ -94,11 +94,43 @@ function fakeClient({ archiveOk = true } = {}) {
     const { deps } = fakeClient();
     const out = await runInbox({ action: 'list' }, 'Sam-Noble', deps);
     assert.ok(!out.isError, out.text);
-    assert.ok(/^2 email thread/.test(out.text), out.text);
+    assert.ok(/^All 2 email thread/.test(out.text), out.text);
+    assert.ok(!/NOT THE WHOLE INBOX/.test(out.text), 'everything fitted - no warning');
     assert.ok(out.text.indexOf('thread_id=T1') < out.text.indexOf('thread_id=T2'), 'newest thread first');
     assert.ok(/thread_id=T1 .*\| UNREAD \| 2 messages/.test(out.text), 'thread shows unread + count');
     assert.ok(/Text: Or Friday/.test(out.text), 'shows the newest message');
     assert.ok(/Text: Pay me/.test(out.text) && /Attachments: inv.pdf/.test(out.text), 'HTML made plain, attachment listed');
+  });
+
+  // Guy, 2 Nov: with 50 at a time, someone with 180 emails could think all 180 had been gone through.
+  await t('a big inbox says up front how much there is and how much this covers, and the next batch carries on', async () => {
+    const pages = [];
+    const backend = {
+      list: async (max, page) => {
+        pages.push(page);
+        const mk = (i) => ({ id: `T${i}`, subject: `s${i}`, count: 1, unread: false,
+          last: { date: Date.UTC(2026, 10, 2) - i * 60000, from: 'a@b.com', to: 'me@x.com', text: 't', attachments: [] } });
+        if (!page) return { threads: [1, 2].map(mk), more: true, next: 'P2', total: 180 };
+        return { threads: [3].map(mk), more: false, next: null, total: 180 };
+      },
+    };
+    const deps = {
+      clientService: { getClientById: async () => ({ clientId: 'Sam-Noble', unipileAccountId: 'a', emailProvider: 'unipile' }), getAllClients: async () => [] },
+      mailProvider: { hasMailbox: () => true, activeMailProvider: () => 'unipile' },
+      backendOverride: backend,
+    };
+    const first = await runInbox({ action: 'list', max: 2 }, 'Sam-Noble', deps);
+    assert.ok(/^NOT THE WHOLE INBOX: this is emails 1-2 of 180/.test(first.text), first.text.slice(0, 120));
+    assert.ok(/You have 180 emails in your inbox - this covers the newest 2/.test(first.text), 'tells Claude what to say first');
+    assert.ok(/page_token=2~P2/.test(first.text), 'hands over the next batch');
+    const second = await runInbox({ action: 'list', max: 2, page_token: '2~P2' }, 'Sam-Noble', deps);
+    assert.deepStrictEqual(pages, [null, 'P2']);
+    assert.ok(/emails 3-3 of 180/.test(second.text) && /\[3\] thread_id=T3/.test(second.text), 'numbering carries on');
+    assert.ok(/This is the last batch/.test(second.text));
+  });
+
+  await t('the description makes Claude say when it has not covered the whole inbox', () => {
+    assert.ok(/NOT THE WHOLE INBOX: the list comes 50 at a time/.test(TOOL_DEFS[0].description));
   });
 
   await t('a client can archive and restore their own thread', async () => {

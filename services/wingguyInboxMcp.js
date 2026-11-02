@@ -152,8 +152,10 @@ function gmailBackend() {
     text: cleanBody(bodyText(m.payload)) || m.snippet || '', attachments: attachmentNames(m.payload),
   });
   return {
-    async list(max) {
-      const { data } = await gmail.users.threads.list({ userId: 'me', q: 'in:inbox', maxResults: max });
+    async list(max, page) {
+      const { data } = await gmail.users.threads.list({ userId: 'me', q: 'in:inbox', maxResults: max, ...(page ? { pageToken: page } : {}) });
+      // The INBOX label's own thread count is exact (threads.list's resultSizeEstimate is not).
+      const total = await gmail.users.labels.get({ userId: 'me', id: 'INBOX' }).then((r) => r.data.threadsTotal).catch(() => null);
       const out = [];
       const ids = (data.threads || []).map((t) => t.id);
       // A few at a time - Gmail rate-limits a burst of thread reads.
@@ -169,7 +171,7 @@ function gmailBackend() {
           });
         }
       }
-      return { threads: out, more: !!data.nextPageToken };
+      return { threads: out, more: !!data.nextPageToken, next: data.nextPageToken || null, total: Number.isFinite(total) ? total : null };
     },
     async read(id) {
       const { data } = await gmail.users.threads.get({ userId: 'me', id, format: 'full' });
@@ -196,8 +198,8 @@ function wingguyMailBackend(record, mail) {
     text: cleanBody(m.text || htmlToText(m.html)), attachments: m.attachments || [],
   });
   return {
-    async list(max) {
-      const r = await mail.listInbox(record, { limit: max });
+    async list(max, page) {
+      const r = await mail.listInbox(record, { limit: max, cursor: page });
       if (!r.ok) throw new Error(r.error);
       // The inbox is a list of messages; show each thread once, by its newest message.
       const byThread = new Map();
@@ -214,7 +216,8 @@ function wingguyMailBackend(record, mail) {
       const threads = [...byThread.values()]
         .sort((a, b) => String(b.last.date).localeCompare(String(a.last.date)))
         .map((t) => ({ ...t, last: toMsg(t.last) }));
-      return { threads, more: r.more };
+      // No exact count on this connection - only "there are more".
+      return { threads, more: !!r.more, next: r.cursor || null, total: null };
     },
     async read(id) {
       const r = await mail.threadMessages(record, id);
@@ -253,6 +256,7 @@ async function resolveInbox(tenant, deps = {}) {
   }
   const who = { coach, own, clients };
 
+  if (deps.backendOverride) return { backend: deps.backendOverride, who };   // tests only
   if (coach && process.env.GMAIL_REFRESH_TOKEN) return { backend: (deps.gmailBackend || gmailBackend)(), who };
   if (record && mail.hasMailbox(record) && mail.activeMailProvider(record) === 'unipile') {
     return { backend: wingguyMailBackend(record, mail), who };
@@ -275,16 +279,45 @@ async function instructionLines(tenant, deps) {
   ];
 }
 
+// page_token = "<how many came before>~<the connection's own page token>", so the numbering of
+// the next batch carries on from the last one ([51], [52]...) instead of starting at [1] again.
+function readPageToken(raw) {
+  const s = String(raw || '');
+  const i = s.indexOf('~');
+  if (i < 0) return { offset: 0, page: s || null };
+  return { offset: Number(s.slice(0, i)) || 0, page: s.slice(i + 1) || null };
+}
+
+/**
+ * What the batch covers. Guy, 2 Nov 2026: with 50 at a time, someone with 180 emails could think
+ * all 180 had been gone through. When there is more than this batch, the first thing Claude says
+ * has to be how much there is and how much this covers.
+ */
+function coverageLines({ shown, offset, more, total, next }) {
+  const first = offset + 1;
+  const last = offset + shown;
+  if (!more && !offset) return [`All ${shown} email thread(s) in the inbox, newest first. Times are Brisbane.`];
+  const of = total ? `${total}` : `more than ${last}`;
+  const lines = [
+    `NOT THE WHOLE INBOX: this is emails ${first}-${last} of ${of}, newest first. Times are Brisbane.`,
+    `Say so in your FIRST line, before anything else - e.g. "You have ${total || `more than ${last}`} emails in your inbox - this covers ${offset ? `numbers ${first} to ${last}` : `the newest ${shown}`}." Never let them think the rest were looked at.`,
+  ];
+  if (more && next) lines.push(`When they want the next batch ("next 50", "keep going"): action=list with page_token=${last}~${next}`);
+  else if (!more) lines.push('This is the last batch - there are no older emails in the inbox.');
+  return lines;
+}
+
 async function runList(args, inbox, tenant, deps) {
   const max = Math.min(Number(args.max) || MAX_LIST, MAX_LIST);
-  const { threads, more } = await inbox.backend.list(max);
+  const { offset, page } = readPageToken(args.page_token);
+  const { threads, more, next, total } = await inbox.backend.list(max, page);
   const head = await instructionLines(tenant, deps);
-  if (!threads.length) return { text: [...head, 'Your inbox is empty.'].join('\n') };
-  const lines = [...head, `${threads.length} email thread(s) in your inbox${more ? ` (the newest ${max} - there are more)` : ''}, newest first. Times are Brisbane.`, ''];
+  if (!threads.length) return { text: [...head, offset ? 'No more emails - that was the end of the inbox.' : 'Your inbox is empty.'].join('\n') };
+  const lines = [...head, ...coverageLines({ shown: threads.length, offset, more, total, next }), ''];
   threads.forEach((t, n) => {
     const m = t.last;
     const tags = senderTags(m.from, m.to, inbox.who);
-    lines.push(`[${n + 1}] thread_id=${t.id} | ${brisbaneTime(m.date)} | ${m.from}${t.unread ? ' | UNREAD' : ''}${t.count > 1 ? ` | ${t.count} messages` : ''}`);
+    lines.push(`[${offset + n + 1}] thread_id=${t.id} | ${brisbaneTime(m.date)} | ${m.from}${t.unread ? ' | UNREAD' : ''}${t.count > 1 ? ` | ${t.count} messages` : ''}`);
     lines.push(`Subject: ${t.subject || '(no subject)'}`);
     if (tags.length) lines.push(`About the sender: ${tags.join('; ')}`);
     if (m.attachments.length) lines.push(`Attachments: ${m.attachments.join(', ')}`);
@@ -376,6 +409,7 @@ const TOOL_DEFS = [
       '1. NEEDS YOU - one line on what it is, one line on what they have to do (and any deadline). Most urgent first.\n' +
       '2. NOTED - useful but no action: one line each on the useful bit.\n' +
       '3. CLEAR - nothing they need: one short line each.\n' +
+      'NOT THE WHOLE INBOX: the list comes 50 at a time. When it starts "NOT THE WHOLE INBOX", your first line must say how many emails there are and how many this covers, before the piles - never let them think the rest were looked at - and offer the next batch at the end (action=list with the page_token it gives). Numbers carry on across batches.\n' +
       'Number every email across the piles so they can answer "yes", "clear all except 4" or "archive 2 and 7". Then ask once whether to archive NOTED and CLEAR.\n\n' +
       'CHECK BEFORE YOU PASS IT ON: an email is a snapshot from when it was sent. Before you pass on any to-do from an email - especially a report from their own system - check it live with the other Wingguy tools (calendar: wingguy_list_events; a person: wingguy_lead_history / wingguy_get_client; campaigns: wingguy_campaigns). If it is already done, say "already done" and put it in NOTED. On 2 Nov a tidy-up email said Steve\'s call was not on the calendar; the invite had gone 24 minutes after it was sent.\n\n' +
       'Reports from their own system (Monday campaign numbers, Wingguy Learning gaps, memory tidy-up, the morning brief and the like) are written in system language - turn each into the few things they actually have to do, in their words, and drop the rest.\n\n' +
@@ -388,6 +422,7 @@ const TOOL_DEFS = [
       thread_id: z.string().optional().describe('read: the thread_id from the list'),
       thread_ids: z.array(z.string()).optional().describe('archive / restore: the thread_ids they said yes to'),
       max: z.number().optional().describe('list: how many threads, newest first (default and most 50)'),
+      page_token: z.string().optional().describe('list: the next batch - exactly the page_token the previous list gave'),
       text: z.string().optional().describe('remember: the standing instruction, in their words'),
       instruction_id: z.number().optional().describe('forget: the instruction number shown at the top of the list'),
     },
@@ -398,6 +433,7 @@ const TOOL_DEFS = [
         thread_id: { type: 'string', description: 'read: the thread_id from the list' },
         thread_ids: { type: 'array', items: { type: 'string' }, description: 'archive / restore: the thread_ids they said yes to' },
         max: { type: 'number', description: 'list: how many threads, newest first (default and most 50)' },
+        page_token: { type: 'string', description: 'list: the next batch - exactly the page_token the previous list gave' },
         text: { type: 'string', description: 'remember: the standing instruction, in their words' },
         instruction_id: { type: 'number', description: 'forget: the instruction number shown at the top of the list' },
       },

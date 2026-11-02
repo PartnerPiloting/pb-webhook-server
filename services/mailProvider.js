@@ -680,11 +680,11 @@ async function mailboxKind(coach) {
 }
 
 /** Messages currently in the inbox, newest first (one per message - the caller groups by thread). */
-async function listInbox(coach, { limit = 50 } = {}) {
+async function listInbox(coach, { limit = 50, cursor } = {}) {
   if (activeMailProvider(coach) !== 'unipile') return { ok: false, error: 'not supported on this mail provider' };
-  const r = await unipileGet(coach, '/emails', { folder: 'INBOX', limit: Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100) });
+  const r = await unipileGet(coach, '/emails', { folder: 'INBOX', limit: Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100), cursor: cursor || undefined });
   if (!r.ok) return r;
-  return { ok: true, messages: (r.json.items || []).map(fromUnipileInboxMessage), more: !!r.json.cursor };
+  return { ok: true, messages: (r.json.items || []).map(fromUnipileInboxMessage), more: !!r.json.cursor, cursor: r.json.cursor || null };
 }
 
 /** Every message in one thread, oldest first. */
