@@ -991,7 +991,8 @@ the usual tool-list cache). Pairs accumulate silently either way; review is pull
 **★ THE WEEKLY AUTOMATIC PASS (2026-11-04 - Guy: busy people never say "review my edits").** Once a week
 Wingguy makes the call itself, but only on a CLEAR pattern, and always tells the client. `services/wingguyEditLearner.js`.
 - **When:** Sundays after 6pm Brisbane (Monday's drafts carry it). Week claimed in Postgres first.
-  `EDIT_LEARN` = `off` (default) | `owner` (Guy's tenant only) | `on` (everyone). By hand:
+  `EDIT_LEARN` = `off` (default) | `owner` (Guy's tenant, plus the client ids in `EDIT_LEARN_CLIENTS`,
+  comma-separated - David-Gould added 4 Nov 2026) | `on` (everyone). Every gate still applies to a named client. By hand:
   `node scripts/edit-learner-run-now.js --tenant=Guy-Wilson --dry-run` (both calls happen; nothing written or sent).
 - **Cost:** the client's OWN stored key only - stricter than `resolveClientAnthropic`: managed clients and
   `WINGGUY_PLATFORM_KEY_CLIENTS` are SKIPPED, never billed to Guy; the owner's tenant may use the platform key.

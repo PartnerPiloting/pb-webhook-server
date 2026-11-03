@@ -49,6 +49,17 @@ const rules = [
     assert.strictEqual(L.inScope({ clientId: 'Other' }, 'on'), true);
     assert.strictEqual(L.inScope({ clientId: 'Guy-Wilson' }, 'off'), false);
   });
+  await check('EDIT_LEARN_CLIENTS adds named clients alongside the owner, and nobody else', () => {
+    const named = new Set(['david-gould']);
+    assert.strictEqual(L.inScope({ clientId: 'David-Gould' }, 'owner', named), true);
+    assert.strictEqual(L.inScope({ clientId: 'Guy-Wilson' }, 'owner', named), true);
+    assert.strictEqual(L.inScope({ clientId: 'Other' }, 'owner', named), false);
+    assert.strictEqual(L.inScope({ clientId: 'David-Gould' }, 'off', named), false);
+  });
+  await check('a named client still needs their own key and still obeys the opt-out', () => {
+    assert.strictEqual(L.keyLane({ clientId: 'David-Gould' }).lane, null);
+    assert.match(L.skipBeforeCall({ client: { clientId: 'David-Gould', anthropicApiKey: 'sk-ant-x', stopLearningFromEdits: true }, pairs: [{ id: 1 }, { id: 2 }, { id: 3 }], lastPairId: 0 }), /switched off/);
+  });
 
   console.log('no-call gates');
   const keyed = { clientId: 'C1', anthropicApiKey: 'sk-ant-x' };

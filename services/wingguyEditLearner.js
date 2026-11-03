@@ -29,7 +29,8 @@
  *
  * WHEN: Sundays after 6pm Brisbane, so Monday's drafts already carry what was learned. The week is
  * claimed in Postgres before anything runs (the lhWeeklyCampaignReport pattern), so a restart never
- * runs it twice. EDIT_LEARN = off (default) | owner (Guy's tenant only) | on (everyone).
+ * runs it twice. EDIT_LEARN = off (default) | owner (Guy's tenant, plus any client ids listed in
+ * EDIT_LEARN_CLIENTS, comma-separated) | on (everyone).
  * scripts/edit-learner-run-now.js runs it by hand, with --dry-run to see what it WOULD change.
  */
 
@@ -155,10 +156,20 @@ function keyLane(client) {
   return { lane: null };
 }
 
-/** Is this client in this run at all? mode = EDIT_LEARN (off | owner | on). */
-function inScope(client, mode) {
+/** EDIT_LEARN_CLIENTS: client ids that run alongside the owner in owner mode (Guy, 4 Nov 2026: "Yes, add David"). Read per call. */
+function namedClients(raw = process.env.EDIT_LEARN_CLIENTS) {
+  return new Set(String(raw || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+}
+
+/**
+ * Is this client in this run at all? mode = EDIT_LEARN (off | owner | on). In owner mode the owner
+ * plus anyone named in EDIT_LEARN_CLIENTS. Being in scope changes nothing else: the key, the
+ * no-new-edits and the opt-out gates still apply.
+ */
+function inScope(client, mode, named = namedClients()) {
+  const id = String((client && client.clientId) || '').trim();
   if (mode === 'on') return true;
-  if (mode === 'owner') return String((client && client.clientId) || '').trim() === ownerId();
+  if (mode === 'owner') return id === ownerId() || named.has(id.toLowerCase());
   return false;
 }
 
@@ -612,7 +623,8 @@ function startEditLearner() {
   };
   intervalHandle = setInterval(tick, TICK_MS);
   setTimeout(tick, 3 * 60 * 1000);
-  log.info(`edit-learner: starting (Sundays after ${RUN_HOUR}:00 Brisbane, EDIT_LEARN=${mode()})`);
+  const named = [...namedClients()];
+  log.info(`edit-learner: starting (Sundays after ${RUN_HOUR}:00 Brisbane, EDIT_LEARN=${mode()}${mode() === 'owner' && named.length ? ` + ${named.join(', ')}` : ''})`);
 }
 
 // ---------------------------------------------------------------------------
