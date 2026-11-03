@@ -5354,6 +5354,29 @@ Node fetch only (no browser, no Google account), what was found:
   door a lead opens for us. No second public Google appointment page was found to test; the shell is
   Google's app, not something the owner configures, so the finding is not Laura-specific.
 
+## Lead booking links: Microsoft Bookings read too (2026-11-03)
+
+- **Why:** Michael Farag (a lead) replied with a Microsoft "Bookings with me" link
+  (`outlook.office.com/bookwithme/user/<32-hex mailbox id>@52ndSolution.net?anonymous&ismsaljsauthenabled`).
+  Wingguy could not read it, so it was booked by hand (Thu 5 Nov 12:30 pm, Guy's Zoom). Guy: build it.
+- **What it does now:** /WG (panel, the MCP tool and Follow-Ups Ask - all one reader) reads the lead's
+  free times off a Bookings page, keeps only the times Guy is free too, and books one with Guy's own
+  invite - exactly like Calendly / TidyCal / TimeTrade. Live read of Michael's real page: 47 slots.
+- **How (no browser, no sign-in - proven with plain Node fetch):** tenant GUID from
+  `login.microsoftonline.com/<domain>/.well-known/openid-configuration` (the page makes the same call);
+  then `bookings.cloud.microsoft/BookingsService/api/V1/bookingBusinessesc2/mbx:<id>@<tenant>/` (owner),
+  `/services` (meeting types) and POST `/getStaffAvailability`. The staff id in that POST is a FIXED
+  value Microsoft writes into its own page code for every "Bookings with me" page (read out of the
+  loaded webpack module; any other id answers 500). Asked in timeZone "UTC" the answer is UTC; any other
+  zone comes back as a Windows display label ("(UTC+10:00) Brisbane") with no daylight-saving info, so
+  the reader asks in UTC and refuses anything else. AVAILABLE ranges are cut into starts on the page's
+  timeSlotInterval; minimumLeadTime / maximumAdvance / buffers applied. curl gets HTTP 417 from these
+  hosts; Node fetch is fine.
+- **Falls open (never chooses for the lead):** several visible meeting types and no `/s/<code>` in the
+  link; Bookings BUSINESS pages (`/book/<Name>@<domain>/`, `owa/calendar/.../bookings/`) are recognised
+  so the no-promise guards fire, but not read. Microsoft is slow - 5-12 s a call - so its calls get a 20 s
+  timeout and run in parallel (~15-20 s a read).
+
 ## The extension keeps its owner + the LinkedIn name must agree (0.3.29, 2026-09-30)
 
 **What went wrong.** Guy ran /wg on his own lead (Shiva Farabi) and the draft came back signed "Cheers,

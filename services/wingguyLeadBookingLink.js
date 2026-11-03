@@ -36,7 +36,8 @@
  * (coach's own invite, Zoom room, lead record) - the lead's link only tells us WHEN.
  *
  * Supported today: calendly.com/<profile>/<event>[?...], tidycal.com/<profile>/<booking-type> and
- * TimeTrade (my.timetrade.com/book/<code>, my-schedule.timetrade.com/app/<td>/workflows/<wf>/...).
+ * TimeTrade (my.timetrade.com/book/<code>, my-schedule.timetrade.com/app/<td>/workflows/<wf>/...) and
+ * Microsoft Bookings "Bookings with me" pages (outlook.office.com/bookwithme/user/<id>@<domain>).
  * Other providers (cal.com, HubSpot) parse as { provider:null } and the caller says so.
  *
  * TIMETRADE (Steve Brossman, 14 Oct 2026: "https://bit.ly/StevePPcall"; proven with plain curl the same
@@ -73,6 +74,32 @@
  * sees it and the no-promise / no-confession guards engage; parseBookingLink returns provider 'google'
  * with no slugs, so readBookingLink answers { ok:false, reason } without a network call and the caller
  * offers the coach's own times.
+ *
+ * MICROSOFT BOOKINGS - "Bookings with me" (Michael Farag, 3 Nov 2026: "https://outlook.office.com/
+ * bookwithme/user/f743d474fe5b4780b0c99e64d5f1862b@52ndSolution.net?anonymous&ismsaljsauthenabled";
+ * worked out in a browser, then proven with plain Node fetch the same day - no sign-in, no browser).
+ * The link carries the owner's Exchange mailbox id (32 hex) and their email domain. Every call is
+ * unauthenticated JSON on bookings.cloud.microsoft:
+ *
+ *   GET login.microsoftonline.com/<domain>/.well-known/openid-configuration
+ *       -> token_endpoint ".../<tenant GUID>/oauth2/token"  (the Bookings API wants the tenant GUID -
+ *          "mbx:<hex>@<domain>" answers 400/404. The page itself makes this same call.)
+ *   B = /BookingsService/api/V1/bookingBusinessesc2/mbx:<hex>@<tenant GUID>
+ *   GET B/          -> { businessInfo: { displayName, businessTimeZone (Windows id), schedulingPolicy } }
+ *   GET B/services  -> { service: [{ serviceId, title, defaultDuration "PT30M", webUrl ".../s/<code>",
+ *          isHiddenFromCustomers, bookingsSchedulingPolicy: { timeSlotInterval, minimumLeadTime,
+ *          maximumAdvance } }] }
+ *   POST B/getStaffAvailability  { staffIds: [STAFF], serviceId, startDateTime: { dateTime, timeZone },
+ *          endDateTime }  -> { staffAvailabilityResponse: [{ availabilityItems: [{ status:
+ *          "BOOKINGSAVAILABILITYSTATUS_AVAILABLE" | _BUSY | _OUT_OF_OFFICE, startDateTime, endDateTime }] }] }
+ *   STAFF is a FIXED id written into Microsoft's own page code for every "Bookings with me" page
+ *   (1c1c7887-...; any other id answers 500). Asked in timeZone "UTC", the answers come back in UTC;
+ *   anything else comes back with a Windows display label ("(UTC+10:00) Brisbane") that does not say
+ *   whether daylight saving applies - so the reader always asks in UTC and refuses any other label.
+ *   AVAILABLE items are free RANGES, cut here into starts every timeSlotInterval of the service length.
+ *   Several visible meeting types and no /s/<code> in the link -> falls open (never choose for the lead).
+ *   Bookings BUSINESS pages (outlook.office365.com/book/<Name>@<domain>/, owa/calendar/.../bookings/)
+ *   are recognised but not read - they choose between staff, and none has been seen from a lead yet.
  */
 
 const { DateTime } = require('luxon');
@@ -82,8 +109,26 @@ const CALENDLY_MAX_RANGE_DAYS = MAX_RANGE_DAYS;
 const FETCH_TIMEOUT_MS = 8000;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 
-const PROVIDER_LABELS = { calendly: 'Calendly', tidycal: 'TidyCal', timetrade: 'TimeTrade', google: 'Google appointment' };
-const READABLE = 'Calendly, TidyCal or TimeTrade only';
+const PROVIDER_LABELS = { calendly: 'Calendly', tidycal: 'TidyCal', timetrade: 'TimeTrade', msbookings: 'Microsoft Bookings', google: 'Google appointment' };
+const READABLE = 'Calendly, TidyCal, TimeTrade or Microsoft Bookings only';
+// Microsoft Bookings: the hosts a "Bookings with me" / Bookings page is served from.
+const MS_BOOKINGS_HOSTS = new Set(['outlook.office.com', 'outlook.office365.com', 'outlook.live.com', 'bookings.cloud.microsoft']);
+const MS_BOOKINGS_API = 'https://bookings.cloud.microsoft/BookingsService/api/V1/bookingBusinessesc2';
+// The one staff id Microsoft's own "Bookings with me" page sends for every personal page (read out of
+// its code, 3 Nov 2026). Any other id answers 500.
+const MS_BWM_STAFF_ID = '1c1c7887-e0fc-479b-ac7d-6983d0f026ff';
+const MS_AVAILABLE = 'BOOKINGSAVAILABILITYSTATUS_AVAILABLE';
+// Bookings is slow: 5-8 seconds a call on 3 Nov 2026 (the first read timed out at the usual 8).
+const MS_TIMEOUT_MS = 20000;
+// Windows time zone ids Bookings reports for its owners -> IANA (informational only; the slots are read in UTC).
+const WINDOWS_TZ = {
+  'E. Australia Standard Time': 'Australia/Brisbane', 'AUS Eastern Standard Time': 'Australia/Sydney', 'Cen. Australia Standard Time': 'Australia/Adelaide',
+  'AUS Central Standard Time': 'Australia/Darwin', 'W. Australia Standard Time': 'Australia/Perth', 'Tasmania Standard Time': 'Australia/Hobart',
+  'New Zealand Standard Time': 'Pacific/Auckland', 'GMT Standard Time': 'Europe/London', 'W. Europe Standard Time': 'Europe/Berlin',
+  'Romance Standard Time': 'Europe/Paris', 'Singapore Standard Time': 'Asia/Singapore', 'India Standard Time': 'Asia/Kolkata', 'Arabian Standard Time': 'Asia/Dubai',
+  'Eastern Standard Time': 'America/New_York', 'Central Standard Time': 'America/Chicago', 'Mountain Standard Time': 'America/Denver', 'Pacific Standard Time': 'America/Los_Angeles',
+  UTC: 'UTC',
+};
 const GOOGLE_REASON = `a Google Calendar appointment page - Google only serves its slots to a browser, so Wingguy cannot read it (${READABLE})`;
 // Hosts that only ever redirect somewhere else. LinkedIn's own lnkd.in is one: it wraps links in posts.
 const SHORTENER_HOSTS = new Set(['bit.ly', 'bitly.com', 'tinyurl.com', 'ow.ly', 'buff.ly', 'rebrand.ly', 'cutt.ly', 'is.gd', 't.ly', 'rb.gy', 'tiny.cc', 'shorturl.at', 'lnkd.in', 'bl.ink', 's.id']);
@@ -104,9 +149,19 @@ function providerLabel(provider) {
  * URL". A bare host+path is returned with https:// put back so every caller sees one shape.
  */
 function findBookingLink(text) {
-  const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com\/|tidycal\.com\/|(?:[a-z0-9-]+\.)?timetrade\.com\/(?:book|app)\/|calendar\.app\.google\/|calendar\.google\.com\/(?:calendar\/)?appointments\/)[^\s<>"')\]]+/i);
+  const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com\/|tidycal\.com\/|(?:[a-z0-9-]+\.)?timetrade\.com\/(?:book|app)\/|calendar\.app\.google\/|calendar\.google\.com\/(?:calendar\/)?appointments\/|(?:outlook\.office(?:365)?\.com|outlook\.live\.com|bookings\.cloud\.microsoft)\/(?:bookwithme\/user\/|book\/|owa\/calendar\/[^\s/]+\/booking))[^\s<>"')\]]+/i);
   if (!m) return null;
   let raw = m[0];
+  // Microsoft Bookings (Michael Farag, 2026-11-03): the owner's domain is mixed case (52ndSolution.net)
+  // and the query (?anonymous&ismsaljsauthenabled) is not needed, so a "Bookings with me" link is cut
+  // back to mailbox id + domain - which also drops anything LinkedIn glued onto the end of the query.
+  // The "@" may arrive as %40 or a full-width "＠" (as Michael's did).
+  if (/^(?:https?:\/\/)?(?:www\.)?(?:outlook\.|bookings\.cloud\.microsoft)/i.test(raw)) {
+    const bwm = raw.match(/^(?:https?:\/\/)?([^/]+)\/bookwithme\/user\/([0-9a-f]{32})(?:@|＠|%40)([A-Za-z0-9.-]+[A-Za-z0-9])/i);
+    if (bwm) return `https://${bwm[1]}/bookwithme/user/${bwm[2].toLowerCase()}@${bwm[3]}`;
+    raw = raw.replace(/[.,;:!?]+$/, '');
+    return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  }
   // LinkedIn's full-thread view glues the next line onto the link with no space between
   // ("…/consultationLook forward to chatting", Sam Trattles 2026-10-09, third run - the reader then
   // fetched a page that does not exist). Slugs on Calendly and TidyCal are lower case, so the path
@@ -121,9 +176,10 @@ function findBookingLink(text) {
 function parseBookingLink(url) {
   let u;
   const str = String(url || '').trim();
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(str) ? str : (/^(?:www\.)?(?:calendly\.com|tidycal\.com|(?:[a-z0-9-]+\.)?timetrade\.com|calendar\.app\.google|calendar\.google\.com)\//i.test(str) || isShortLink(str) ? `https://${str}` : str);
-  try { u = new URL(withScheme); } catch (_) { return { provider: null, url, reason: 'not a URL' }; }
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(str) ? str : (/^(?:www\.)?(?:calendly\.com|tidycal\.com|(?:[a-z0-9-]+\.)?timetrade\.com|calendar\.app\.google|calendar\.google\.com|outlook\.office(?:365)?\.com|outlook\.live\.com|bookings\.cloud\.microsoft)\//i.test(str) || isShortLink(str) ? `https://${str}` : str);
+  try { u = new URL(withScheme.replace(/＠/g, '@')); } catch (_) { return { provider: null, url, reason: 'not a URL' }; }
   const host = u.hostname.replace(/^www\./, '').toLowerCase();
+  if (MS_BOOKINGS_HOSTS.has(host)) return parseMsBookings(u, url);
   // A short link says nothing until it is followed - readBookingLink resolves it, then parses again.
   if (SHORTENER_HOSTS.has(host)) return { provider: null, url, short: true, reason: `a ${host} short link that did not lead to a booking page` };
   if (host === 'timetrade.com' || host.endsWith('.timetrade.com')) {
@@ -160,6 +216,28 @@ function parseBookingLink(url) {
     return { provider: 'tidycal', url, profileSlug: parts[0], eventSlug: parts[1], pageUrl };
   }
   return { provider: null, url, reason: `${host} is not a booking page Wingguy can read yet (${READABLE})` };
+}
+
+/**
+ * A Microsoft Bookings address -> its parts. Readable: "Bookings with me" pages (bookwithme/user/<hex>@
+ * <domain>) and the per-meeting-type links they hand out (book/mbx:<hex>@<tenant GUID>/s/<code>).
+ * Bookings BUSINESS pages are recognised (so the guards fire) but carry no slugs, so they fall open.
+ */
+function parseMsBookings(u, url) {
+  const parts = u.pathname.split('/').filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch (_) { return p; } });
+  if (parts[0] === 'bookwithme' && parts[1] === 'user' && parts[2]) {
+    const m = parts[2].match(/^([0-9a-f]{32})@([A-Za-z0-9.-]+)$/i);
+    if (m) return { provider: 'msbookings', url, profileSlug: m[1].toLowerCase(), eventSlug: null, domain: m[2] };
+    return { provider: 'msbookings', url, reason: 'a Microsoft Bookings address without the owner\'s id - ask for the full booking link' };
+  }
+  if (parts[0] === 'book' && parts[1]) {
+    const m = parts[1].match(/^mbx:([0-9a-f]{32})@([0-9a-f-]{36})$/i);
+    if (m) return { provider: 'msbookings', url, profileSlug: m[1].toLowerCase(), eventSlug: parts[2] === 's' && parts[3] ? parts[3] : null, tenantId: m[2].toLowerCase() };
+  }
+  if (parts[0] === 'book' || (parts[0] === 'owa' && parts[1] === 'calendar' && /^bookings?$/i.test(parts[3] || ''))) {
+    return { provider: 'msbookings', url, reason: `a Microsoft Bookings business page (it chooses between staff) - Wingguy reads personal "Bookings with me" pages only (${READABLE})` };
+  }
+  return { provider: null, url, reason: `${u.hostname} is not a booking page Wingguy can read yet (${READABLE})` };
 }
 
 /** True for a link on a known URL shortener (bit.ly, tinyurl, lnkd.in, ...), with or without https://. */
@@ -228,9 +306,9 @@ async function findBookingLinkResolved(text, { fetchImpl = global.fetch } = {}) 
 }
 
 /** One GET with a timeout. Returns { status, text, body } where body is the parsed JSON or null. */
-async function fetchPage(url, fetchImpl, headers) {
+async function fetchPage(url, fetchImpl, headers, timeoutMs = FETCH_TIMEOUT_MS) {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = ctrl ? setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS) : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
     const res = await fetchImpl(url, { headers, signal: ctrl ? ctrl.signal : undefined });
     const text = await res.text();
@@ -240,8 +318,8 @@ async function fetchPage(url, fetchImpl, headers) {
   } finally { if (timer) clearTimeout(timer); }
 }
 
-async function getJson(url, fetchImpl) {
-  return fetchPage(url, fetchImpl, { Accept: 'application/json', 'User-Agent': UA });
+async function getJson(url, fetchImpl, timeoutMs) {
+  return fetchPage(url, fetchImpl, { Accept: 'application/json', 'User-Agent': UA }, timeoutMs);
 }
 
 /** Cloudflare's "Just a moment..." interstitial, or its block page, where a JSON answer was expected. */
@@ -291,6 +369,7 @@ async function readBookingLink(url, { timezone = 'Australia/Brisbane', rangeStar
   try {
     if (parsed.provider === 'tidycal') return await readTidyCal(parsed, { timezone, start, end, fetchImpl });
     if (parsed.provider === 'timetrade') return await readTimeTrade(parsed, { timezone, start, end, fetchImpl });
+    if (parsed.provider === 'msbookings') return await readMsBookings(parsed, { timezone, start, end, fetchImpl });
     return await readCalendly(parsed, { timezone, start, end, fetchImpl });
   } catch (e) {
     return { ok: false, reason: `could not read the link (${e && e.name === 'AbortError' ? 'timed out' : (e && e.message) || 'error'})` };
@@ -498,6 +577,122 @@ async function readTimeTrade(parsed, { timezone, start, end, fetchImpl }) {
     durationMins: null, // TimeTrade never shows the meeting length - the fit uses the coach's own
     leadTimezone: null,
     slots: [...new Set(slots)],
+  };
+}
+
+/** An ISO 8601 duration ("PT30M", "PT1H30M", "P90D") in minutes, or null. */
+function isoDurationMins(s) {
+  const m = String(s || '').match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/i);
+  if (!m || !m[0] || m[0].toUpperCase() === 'P' || m[0].toUpperCase() === 'PT') return null;
+  return (Number(m[1] || 0) * 1440) + (Number(m[2] || 0) * 60) + Number(m[3] || 0) + (Number(m[4] || 0) / 60);
+}
+
+/** A Bookings { dateTime, timeZone } that was asked for in UTC -> epoch ms, or NaN for any other zone. */
+function msUtcMs(dt) {
+  if (!dt || !dt.dateTime) return NaN;
+  const tz = String(dt.timeZone || '');
+  if (!/^(?:UTC|\(UTC\) Coordinated Universal Time|Coordinated Universal Time|\(UTC\).*)$/i.test(tz)) return NaN;
+  return parseUtcStamp(String(dt.dateTime).slice(0, 19));
+}
+
+async function msPostJson(url, body, fetchImpl) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), MS_TIMEOUT_MS) : null;
+  try {
+    const res = await fetchImpl(url, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json; charset=utf-8', 'x-req-source': 'BookWithMe', 'User-Agent': UA }, body: JSON.stringify(body), signal: ctrl ? ctrl.signal : undefined });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (_) { /* not json */ }
+    return { status: res.status, text: String(text || ''), body: json };
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+async function readMsBookings(parsed, { timezone, start, end, fetchImpl }) {
+  // 1. The tenant GUID behind the owner's email domain - the same public lookup the page makes.
+  let tenant = parsed.tenantId;
+  if (!tenant) {
+    const oid = await getJson(`https://login.microsoftonline.com/${encodeURIComponent(parsed.domain)}/.well-known/openid-configuration`, fetchImpl);
+    const m = oid.body && String(oid.body.token_endpoint || oid.body.issuer || '').match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    if (oid.status !== 200 || !m) return { ok: false, reason: `Microsoft did not recognise ${parsed.domain} as a Microsoft 365 organisation (HTTP ${oid.status})` };
+    tenant = m[1].toLowerCase();
+  }
+  const base = `${MS_BOOKINGS_API}/mbx:${parsed.profileSlug}@${tenant}`;
+  // 2. The owner (name, clock) and the meeting types on the page.
+  const [biz, sv] = await Promise.all([getJson(`${base}/`, fetchImpl, MS_TIMEOUT_MS), getJson(`${base}/services`, fetchImpl, MS_TIMEOUT_MS)]);
+  if (biz.status !== 200 || !biz.body || !biz.body.businessInfo) return { ok: false, reason: `Microsoft Bookings page lookup failed (HTTP ${biz.status})` };
+  const info = biz.body.businessInfo;
+  if (info.isPublished === false) return { ok: false, reason: 'the Microsoft Bookings page is switched off (not published)' };
+  if (sv.status !== 200 || !sv.body || !Array.isArray(sv.body.service)) return { ok: false, reason: `Microsoft Bookings meeting types failed (HTTP ${sv.status})` };
+  const visible = sv.body.service.filter((s) => s && s.serviceId && !s.isHiddenFromCustomers && !s.isPrivate);
+  let service = null;
+  if (parsed.eventSlug) {
+    service = sv.body.service.find((s) => s && s.serviceId && String(s.webUrl || '').replace(/\/+$/, '').endsWith(`/s/${parsed.eventSlug}`)) || null;
+    if (!service) return { ok: false, reason: 'the Microsoft Bookings link names a meeting type the page no longer offers' };
+  } else if (visible.length === 1) {
+    service = visible[0];
+  } else {
+    // Never choose for the lead (same rule as TimeTrade).
+    return { ok: false, reason: visible.length ? `the Microsoft Bookings page offers ${visible.length} meeting types (${visible.map((s) => `"${s.title}"`).join(', ')}) and asks the visitor to choose one before it shows times` : 'the Microsoft Bookings page offers no meeting types' };
+  }
+  const policy = service.bookingsSchedulingPolicy || info.schedulingPolicy || {};
+  const durationMins = isoDurationMins(service.defaultDuration) || 30;
+  const stepMins = isoDurationMins(policy.timeSlotInterval) || durationMins;
+  const preMs = (isoDurationMins(service.preBuffer) || 0) * 60000;
+  const postMs = (isoDurationMins(service.postBuffer) || 0) * 60000;
+  const earliest = Date.now() + (isoDurationMins(policy.minimumLeadTime) || 0) * 60000;
+  const advance = isoDurationMins(policy.maximumAdvance);
+  const latest = advance ? Date.now() + advance * 60000 : Infinity;
+  // 3. Free ranges over the coach's window (whole days in the coach's clock), asked for in UTC so the
+  //    answers come back in UTC too. The chunks go out together - each call takes seconds.
+  const ranges = [];
+  const chunks = [];
+  for (let chunkStart = start; chunkStart <= end;) {
+    const chunkEnd = [addDays(chunkStart, MAX_RANGE_DAYS - 1), end].sort()[0];
+    chunks.push([chunkStart, chunkEnd]);
+    chunkStart = addDays(chunkEnd, 1);
+  }
+  const answers = await Promise.all(chunks.map(([chunkStart, chunkEnd]) => {
+    const from = DateTime.fromISO(chunkStart, { zone: timezone }).startOf('day').toUTC().toFormat("yyyy-MM-dd'T'HH:mm:ss");
+    const to = DateTime.fromISO(chunkEnd, { zone: timezone }).endOf('day').toUTC().toFormat("yyyy-MM-dd'T'HH:mm:ss");
+    return msPostJson(`${base}/getStaffAvailability`, { staffIds: [MS_BWM_STAFF_ID], startDateTime: { dateTime: from, timeZone: 'UTC' }, endDateTime: { dateTime: to, timeZone: 'UTC' }, serviceId: service.serviceId }, fetchImpl);
+  }));
+  for (const av of answers) {
+    const list = av.body && Array.isArray(av.body.staffAvailabilityResponse) ? av.body.staffAvailabilityResponse : null;
+    if (av.status !== 200 || !list) return { ok: false, reason: `Microsoft Bookings availability failed (HTTP ${av.status})` };
+    for (const staff of list) {
+      for (const item of (staff && Array.isArray(staff.availabilityItems) ? staff.availabilityItems : [])) {
+        if (!item || item.status !== MS_AVAILABLE) continue;
+        const s = msUtcMs(item.startDateTime);
+        const e = msUtcMs(item.endDateTime);
+        if (!Number.isFinite(s) || !Number.isFinite(e)) return { ok: false, reason: `Microsoft Bookings answered in a time zone Wingguy cannot pin down ("${(item.startDateTime && item.startDateTime.timeZone) || 'none'}")` };
+        if (e > s) ranges.push([s, e]);
+      }
+    }
+  }
+  // 4. Merge touching ranges, then cut each into start times on the page's own grid.
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const r of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([...r]);
+  }
+  const lenMs = durationMins * 60000;
+  const stepMs = stepMins * 60000;
+  const slots = [];
+  for (const [s, e] of merged) {
+    for (let t = s + preMs; t + lenMs + postMs <= e; t += stepMs) {
+      if (t >= earliest && t <= latest) slots.push(new Date(t).toISOString());
+    }
+  }
+  return {
+    ok: true,
+    provider: 'msbookings',
+    eventName: service.title || '',
+    ownerName: info.displayName || '',
+    durationMins,
+    leadTimezone: WINDOWS_TZ[info.businessTimeZone] || null,
+    slots: [...new Set(slots)].sort(),
   };
 }
 

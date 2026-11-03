@@ -574,11 +574,11 @@ async function detectLeadBookingLinkResolved(conversation = [], coachName = '', 
  * drafted exactly that line over a TidyCal link it could not read, and left Guy booking by hand).
  * Returns the offending phrase, or null.
  */
-const LINK_PROMISE_RE = /\b(grab|grabbing|book|booking|pick|picking|take|taking|snag|lock(?:ing)?(?: in)?|schedule|scheduling|secure|choose|select|find|reserve|jump|jumping)\b[^.!?\n]{0,80}?\b(through|via|using|on|off|from|with)\s+(your|the|that)\s+(?:booking\s+|scheduling\s+|calendar\s+|tidycal\s+|calendly\s+|timetrade\s+)?(link|calendly|tidycal|timetrade|page|calendar|site|scheduler)\b/i;
+const LINK_PROMISE_RE = /\b(grab|grabbing|book|booking|pick|picking|take|taking|snag|lock(?:ing)?(?: in)?|schedule|scheduling|secure|choose|select|find|reserve|jump|jumping)\b[^.!?\n]{0,80}?\b(through|via|using|on|off|from|with)\s+(your|the|that)\s+(?:booking\s+|scheduling\s+|calendar\s+|tidycal\s+|calendly\s+|timetrade\s+|(?:microsoft\s+)?bookings\s+)?(link|calendly|tidycal|timetrade|bookings|page|calendar|site|scheduler)\b/i;
 // And a draft must never CONFESS to the lead that their link could not be read ("I wasn't able to
 // pull your diary link in from here", Sam Trattles 2026-10-09, third run). The lead learns nothing
 // from that except that something is off on Guy's side; the times go out as if no link was sent.
-const LINK_FAIL_RE = /\b(couldn't|could not|can't|cannot|wasn't able|was not able|unable|not able|didn't manage|failed|struggled|having trouble|had trouble|trouble)\b[^.!?\n]{0,60}?\b(link|calendly|tidycal|timetrade|page|diary link|calendar link|booking page|scheduler)\b/i;
+const LINK_FAIL_RE = /\b(couldn't|could not|can't|cannot|wasn't able|was not able|unable|not able|didn't manage|failed|struggled|having trouble|had trouble|trouble)\b[^.!?\n]{0,60}?\b(link|calendly|tidycal|timetrade|bookings|page|diary link|calendar link|booking page|scheduler)\b/i;
 // Fourth run, same day: "thanks for the diary link. Couldn't quite get it to load on my end" - the
 // noun sat in the sentence before, so the pattern above missed it. While the thread holds a lead's
 // link (the only time this guard runs), any "couldn't load / open / get it to work / on my end"
@@ -599,7 +599,7 @@ function linkBookingPromise(text) {
  * usual (TidyCal 15-minute slots vs his 30: "I've put 30 minutes on it, happy to keep it to 15 if that
  * suits better"). Returns null when the draft passes, else the plain-English reason it does not.
  */
-const LINK_MENTION_RE = /\b(link|page|calendly|tidycal|timetrade)\b/i;
+const LINK_MENTION_RE = /\b(link|page|calendly|tidycal|timetrade|bookings)\b/i;
 const INVITE_SENT_RE = /\b(sent|on its way|heading your way|coming through)\b/i;
 const IN_YOUR_CALENDAR_RE = /\b(in|into|on)\s+your\s+(calendar|diary)\b/i;
 const NAMES_A_TIME_RE = /\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b(today|tomorrow)\b/i;
