@@ -303,7 +303,11 @@ yourself - don't forward it or put it in a shared doc."
 1. Opens **claude.ai** → **Settings** → **Connectors**
 2. Clicks **Add custom connector**
 3. Names it **Wingguy**, pastes the link, clicks **Add**
-4. Starts a **new chat** and types: **"what can I do with Wingguy?"**
+4. Clicks **Wingguy** in the connector list → under **Tool permissions**, changes the dropdown next
+   to "Other tools" from **Custom** to **Always allow** (added 3 Nov 2026 - clicking "Always allow"
+   in a chat covers only that one tool, so every other tool keeps asking; Guy: "bugs the life out
+   of you"). Screenshot: `content/site/assets/inbox-always-allow-all.png`.
+5. Starts a **new chat** and types: **"what can I do with Wingguy?"**
 
 **Check it worked:** Wingguy introduces itself in their chat and lists what it can do. If they see
 that, you're done here.

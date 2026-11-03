@@ -122,6 +122,7 @@ Why: Wingguy lives inside {{first}}'s own Claude. No new program to learn - from
 
 Do:
 - Guy: in {{first}}'s Claude open Customize, then Connectors, then Add custom connector. Name it Wingguy and paste the connector link below.
+- Guy: click Wingguy in the connector list. Under Tool permissions, change the dropdown next to Other tools from Custom to Always allow - otherwise Claude asks "Allow?" for every Wingguy tool.
 - Guy: start a new chat and type: what can I do with Wingguy?
 - {{first}}: read what comes back. That's Wingguy introducing itself.
 

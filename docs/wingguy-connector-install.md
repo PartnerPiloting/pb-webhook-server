@@ -39,6 +39,10 @@ in the Master Clients Base → "Portal Token" field).
 > 3. Name it **Wingguy**, and paste this as the URL:
 >    `https://pb-webhook-server.onrender.com/mcp2/<YOUR-URL-HERE>`
 > 4. Click **Add / Connect**.
+> 5. Still in Settings, click **Wingguy** in your list of connectors. Under **Tool permissions**,
+>    the dropdown next to "Other tools" says **Custom** - change it to **Always allow**. Otherwise
+>    Claude stops to ask "Allow?" the first time you use each Wingguy tool. (Clicking "Always allow"
+>    inside a chat only covers that one tool - the dropdown covers them all, including new ones.)
 >
 > That's it. Start a new chat and just type: **"what can I do with Wingguy?"** - Wingguy will take
 > it from there and walk you through everything.
