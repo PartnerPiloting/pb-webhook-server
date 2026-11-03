@@ -420,6 +420,15 @@ const routes = require('../routes/clientTouchRoutes');
     assert.deepStrictEqual(planner.recentEvents(fresh, at).map((e) => e.key), ['today-first-records']);
     assert.ok(!('today-first-records' in planner.todayFirstSeen({ 'today-first-records': '2026-10-22T00:00:00Z' }, null)));
   });
+  await check('"drafting regularly" = /wg on 10+ people over 4+ days, and it lands on train-it-dont-fix-it', () => {
+    assert.ok(planner.isDraftingRegularly({ people: 10, days: 4 }));
+    assert.ok(!planner.isDraftingRegularly({ people: 9, days: 6 }), 'too few people');
+    assert.ok(!planner.isDraftingRegularly({ people: 30, days: 3 }), 'one busy afternoon is not a habit');
+    assert.ok(!planner.isDraftingRegularly(null));
+    const answers = require('../services/onePagerContent').listPieces()
+      .filter((p) => require('../config/clientTouchLabels').eventKeysFor(p.labels.event).includes('drafting-regularly'));
+    assert.deepStrictEqual(answers.map((p) => p.slug), ['train-it-dont-fix-it']);
+  });
   await check('a Stripe subscription set to cancel gives its end date; a live or already-cancelled one gives none', () => {
     assert.strictEqual(planner.cancellationFrom({ status: 'active', cancel_at: 1799971200 }), new Date(1799971200 * 1000).toISOString());
     assert.strictEqual(planner.cancellationFrom({ status: 'active', cancel_at_period_end: true, current_period_end: 1799971200 }), new Date(1799971200 * 1000).toISOString());

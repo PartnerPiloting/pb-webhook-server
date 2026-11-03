@@ -116,7 +116,15 @@
       "tool": "wingguy_edit_review",
       "where": [
         "docs/client-playbook.md",
-        "linkedin-messaging-followup-next/app/start-here/page.tsx"
+        "linkedin-messaging-followup-next/app/start-here/page.tsx",
+        "content/one-pagers/train-it-dont-fix-it.md"
+      ]
+    },
+    {
+      "phrase": "Wingguy wrote this - in future I'd like",
+      "tool": "wingguy_rule_propose",
+      "where": [
+        "content/one-pagers/train-it-dont-fix-it.md"
       ]
     },
     {

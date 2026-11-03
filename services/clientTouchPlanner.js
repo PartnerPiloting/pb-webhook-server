@@ -188,6 +188,26 @@ function leaveOffList(file = path.join(__dirname, '..', 'config', 'clientEmailOv
   }
 }
 
+// "Drafting regularly" (Guy, 4 Nov 2026 - train-it-dont-fix-it): /wg used on at least this many
+// different people, on at least this many different days, inside the last fortnight.
+const DRAFTING_PEOPLE = 10;
+const DRAFTING_DAYS = 4;
+
+/** How much /wg drafting a client did in the last 14 days: distinct people and distinct days. */
+async function draftingLastFortnight(client) {
+  const r = await rows(
+    `SELECT COUNT(DISTINCT LOWER(lead_name))::int AS people, COUNT(DISTINCT created_at::date)::int AS days
+       FROM wingguy_chat_metrics WHERE tenant_id = $1 AND created_at > now() - interval '14 days'`,
+    [client.clientId],
+  );
+  return r[0] || { people: 0, days: 0 };
+}
+
+/** Pure: is that drafting enough to count as "drafting regularly"? */
+function isDraftingRegularly(d) {
+  return !!d && Number(d.people) >= DRAFTING_PEOPLE && Number(d.days) >= DRAFTING_DAYS;
+}
+
 /**
  * The today-first-records event's date: the REAL first record date when there is one, so the
  * event only counts while that is recent. Fixes the stored first-seen state too. Pure.
@@ -335,7 +355,7 @@ async function factsFor(client, card, ctx) {
   const seenKey = `events:${client.clientId}`;
   let firstSeen = {};
   try { firstSeen = JSON.parse((await planStore.getState(seenKey)) || '{}'); } catch (_) { firstSeen = {}; }
-  const [todayFirstAt, cancelsAt] = await Promise.all([todayFirstRecordAt(client), stripeCancellationAt(client, ctx.stripeDeps || {})]);
+  const [todayFirstAt, cancelsAt, drafting] = await Promise.all([todayFirstRecordAt(client), stripeCancellationAt(client, ctx.stripeDeps || {}), draftingLastFortnight(client)]);
   const today = !!todayFirstAt;
   firstSeen = todayFirstSeen(firstSeen, todayFirstAt);
   const nowIso = new Date(now).toISOString();
@@ -349,6 +369,7 @@ async function factsFor(client, card, ctx) {
   // When their invitations started: nothing records it (the earliest connection is often an old
   // imported one - Alex's goes back to 2015), so the first day the planner sees invitations going out.
   if (client.lastInviteSent) mark('invitations-going');
+  if (isDraftingRegularly(drafting)) mark('drafting-regularly');
   const usedDays = daysSince(card.lastUsedAt, now);
   if (usedDays !== null && usedDays >= 21 && signals.live > 0 && !signals.paused) mark('busy');
   if (usedDays !== null && usedDays >= 42 && card.group === 'running') mark('drifting');
@@ -1871,6 +1892,7 @@ module.exports = {
   cancellationFrom,
   leaveOffList,
   todayFirstSeen,
+  isDraftingRegularly,
   lastTouches,
   whatChanged,
   samePick,

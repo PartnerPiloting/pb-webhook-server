@@ -51,6 +51,7 @@ const EVENTS = {
   'drifting':                 { label: 'Drifting - quiet for weeks while still paying', test: /client drifting/i },
   'not-working':              { label: "Week 8-12, or an 'it's not working' reply", test: /it's not working|week 8-12/i },
   'setup-step-done':          { label: 'The previous setup step is done', test: /previous setup step/i },
+  'drafting-regularly':       { label: 'They are drafting with /wg regularly', test: /drafting regularly/i },
 };
 
 /** Which event keys a piece's free-text `event:` label answers. */
