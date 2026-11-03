@@ -43,6 +43,9 @@ const CHAT_THINKING = noUpfrontThinking(MODEL_ID);
 const CHAT_MAX_TOKENS = 3000;
 const MAX_TOOL_ITERATIONS = 8;     // safety cap on the agent loop
 
+// The rules-store tools the panel carries ("update my rules" from the drafting window).
+const PANEL_RULE_TOOLS = new Set(['wingguy_rules_list', 'wingguy_rule_get', 'wingguy_rule_propose', 'wingguy_rule_commit', 'wingguy_rule_revert', 'wingguy_rule_reset_to_standard']);
+
 const AGENT_TOOLS = [
   {
     name: 'check_availability',
@@ -162,12 +165,15 @@ const AGENT_TOOLS = [
       },
     },
   },
-  // Wingguy rules-store door (list/get/propose/commit/revert/variables) — the SAME shared
+  // Wingguy rules-store door (list/get/propose/commit/revert/reset) — the SAME shared
   // executors the /mcp and /mcp2 connectors use (services/wingguyRulesMcp.js TOOL_DEFS), so the
   // panel can change its own rulebook instead of telling Guy "I can't" (his ask, 2026-07-06).
   // The propose→commit split keeps the human-confirm gate: commit needs a proposal's
   // expected_version, and the instructions require Guy's explicit yes in chat first.
-  ...wingguyRules.TOOL_DEFS.map((d) => ({ name: d.name, description: d.description, input_schema: d.jsonSchema })),
+  // ONLY the rule tools (2026-11-03): the rest of TOOL_DEFS (weekly emails, referrals, campaign
+  // numbers, client settings, assets, edit review...) belongs to the claude.ai connector, never came
+  // up in the drafting window, and rode along on every call - about 5.5k tokens each time.
+  ...wingguyRules.TOOL_DEFS.filter((d) => PANEL_RULE_TOOLS.has(d.name)).map((d) => ({ name: d.name, description: d.description, input_schema: d.jsonSchema })),
 ];
 
 // Pick the exact sign-off line for THIS draft (CODE — deterministic; the model just uses it verbatim).
@@ -350,6 +356,140 @@ function setConvoCacheMarker(convo) {
   if (Array.isArray(last.content) && last.content.length) {
     last.content[last.content.length - 1].cache_control = { type: 'ephemeral' };
   }
+}
+
+// HISTORY TRIM (Guy, 2026-11-03 - David Gould's bill, ~US$190/month on his own key). The panel resends
+// the whole chat each turn, every earlier check_availability JSON included, and all of it went to
+// Claude on every round-trip: a 44-message chat about one person billed its history again and again.
+// What the MODEL sees of earlier turns is now trimmed; the full history still comes in, is still
+// scanned by code (slotCandidates, priorLeadLinkRead, coachAskedForTimes) and still goes back to the
+// panel untouched - only the copy sent to Claude is smaller.
+// - Keeps the last MAX_HISTORY_TURNS exchanges (an exchange = one coach message and everything the
+//   agent did answering it), same cap as the Follow-Ups Ask. Older ones drop as whole exchanges, so a
+//   tool_use never loses its tool_result. The window moves in steps of HISTORY_DROP_STEP so the cached
+//   prefix survives several turns instead of shifting (and re-billing) on every one.
+// - Always keeps the exchange that set the current draft and the one that booked, however old -
+//   "make it warmer" and "move the meeting" need them.
+// - Earlier exchanges' big tool results are shrunk: check_availability keeps each slot's label and
+//   ISO (enough to book "the Tuesday one"), anything else over the size limit keeps its short fields.
+//   Rule-tool results stay whole (rare, and a commit needs the proposal's exact id and text).
+// The current turn's own tool loop is never touched.
+const MAX_HISTORY_TURNS = 12;
+const HISTORY_DROP_STEP = 6;
+const TOOL_RESULT_KEEP_CHARS = 1500;
+const DRAFT_TOOLS = new Set(['propose_message', 'propose_times']);
+
+function isCoachTextMessage(m) {
+  if (!m || m.role !== 'user') return false;
+  if (typeof m.content === 'string') return true;
+  return Array.isArray(m.content) && !m.content.some((b) => b && b.type === 'tool_result');
+}
+
+function splitExchanges(history) {
+  const out = [];
+  for (const m of history) {
+    if (isCoachTextMessage(m) || !out.length) out.push([]);
+    out[out.length - 1].push(m);
+  }
+  return out;
+}
+
+function exchangeToolUses(ex) {
+  const uses = [];
+  for (const m of ex) {
+    if (m && m.role === 'assistant' && Array.isArray(m.content)) {
+      for (const b of m.content) if (b && b.type === 'tool_use') uses.push(b);
+    }
+  }
+  return uses;
+}
+
+function exchangeToolResult(ex, id) {
+  for (const m of ex) {
+    if (m && m.role === 'user' && Array.isArray(m.content)) {
+      for (const b of m.content) if (b && b.type === 'tool_result' && b.tool_use_id === id) return b;
+    }
+  }
+  return null;
+}
+
+function resultOk(block) {
+  try { return !!(block && JSON.parse(block.content).ok); } catch (_) { return false; }
+}
+
+function compactToolResult(toolName, content) {
+  if (typeof content !== 'string' || /^wingguy_/.test(toolName || '')) return content;
+  let r = null;
+  try { r = JSON.parse(content); } catch (_) { /* plain text */ }
+  if (toolName === 'check_availability' && r && Array.isArray(r.days)) {
+    const out = {
+      trimmed: 'Earlier calendar read, shortened to save cost: each slot as "label = time". Call check_availability again for fresh detail before offering new times.',
+      window: r.window,
+      days: r.days.map((d) => ({
+        date: d && d.date,
+        ...(d && d.meetingCount != null ? { meetingCount: d.meetingCount } : {}),
+        ...(d && d.busyDay ? { busyDay: true } : {}),
+        slots: ((d && d.freeSlots) || []).map((s) => `${s.label || s.display || ''} = ${s.time}`),
+      })),
+    };
+    if (r.leadLink) out.leadLink = { read: r.leadLink.read, url: r.leadLink.url, provider: r.leadLink.provider };
+    return JSON.stringify(out);
+  }
+  if (content.length <= TOOL_RESULT_KEEP_CHARS) return content;
+  if (r && typeof r === 'object' && !Array.isArray(r)) {
+    const out = { trimmed: 'Earlier tool result, shortened to save cost - call the tool again if you need the detail.' };
+    for (const [k, v] of Object.entries(r)) {
+      const j = JSON.stringify(v);
+      if (j && j.length <= 300) out[k] = v;
+    }
+    return JSON.stringify(out);
+  }
+  return `${content.slice(0, 600)} ... [rest of this earlier result left out to save cost]`;
+}
+
+function compactExchange(ex) {
+  const names = new Map(exchangeToolUses(ex).map((tu) => [tu.id, tu.name]));
+  return ex.map((m) => {
+    if (!m || m.role !== 'user' || !Array.isArray(m.content) || !m.content.some((b) => b && b.type === 'tool_result')) return m;
+    return {
+      ...m,
+      content: m.content.map((b) => {
+        if (!b || b.type !== 'tool_result') return b;
+        const c = compactToolResult(names.get(b.tool_use_id), b.content);
+        return c === b.content ? b : { ...b, content: c };
+      }),
+    };
+  });
+}
+
+/** The model's view of the history BEFORE this turn (see HISTORY TRIM above). Pure: same input,
+ * same output, so the cached prefix holds across the turn's round-trips. */
+function trimHistoryForModel(history = []) {
+  const exchanges = splitExchanges(Array.isArray(history) ? history : []);
+  const n = exchanges.length;
+  const drop = n > MAX_HISTORY_TURNS ? Math.ceil((n - MAX_HISTORY_TURNS) / HISTORY_DROP_STEP) * HISTORY_DROP_STEP : 0;
+  const keep = new Set();
+  for (let i = drop; i < n; i++) keep.add(i);
+  let lastDraft = -1;
+  let lastBooking = -1;
+  exchanges.forEach((ex, i) => {
+    for (const tu of exchangeToolUses(ex)) {
+      if (DRAFT_TOOLS.has(tu.name) && resultOk(exchangeToolResult(ex, tu.id))) lastDraft = i;
+      if (tu.name === 'book_meeting' && resultOk(exchangeToolResult(ex, tu.id))) lastBooking = i;
+    }
+  });
+  if (lastDraft >= 0) keep.add(lastDraft);
+  if (lastBooking >= 0) keep.add(lastBooking);
+  const kept = [...keep].sort((a, b) => a - b);
+  const out = [];
+  for (const i of kept) out.push(...compactExchange(exchanges[i]));
+  const left = n - kept.length;
+  if (left > 0 && out.length && isCoachTextMessage(out[0])) {
+    const note = { type: 'text', text: `(${left} earlier exchange${left === 1 ? '' : 's'} in this chat left out to keep it short. The latest draft and any booking are still below.)` };
+    const first = out[0];
+    out[0] = { ...first, content: [note, ...(typeof first.content === 'string' ? [{ type: 'text', text: first.content }] : first.content)] };
+  }
+  return out;
 }
 
 // The model occasionally double-escapes newlines inside tool-call arguments, so the draft text
@@ -1674,7 +1814,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       currentDraft = draft;
       return { ok: true };
     }
-    if (name.startsWith('wingguy_')) {
+    if (PANEL_RULE_TOOLS.has(name)) {
       // Rules-store door — shared executors (legacyToolCall returns MCP-shaped {content,isError}).
       // Scope to the CALLER's tenant (coach.clientId), NOT the module default — otherwise an
       // extension-chat "update my rules" from any client would write to Guy's rulebook.
@@ -1684,16 +1824,23 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     return { ok: false, error: `unknown tool ${name}` };
   };
 
+  // Earlier turns go to the model trimmed (see HISTORY TRIM); this turn - from the coach's newest
+  // message on - goes whole. Worked out once, so every round-trip shares the same cached prefix.
+  let turnStart = convo.length - 1;
+  while (turnStart > 0 && !isCoachTextMessage(convo[turnStart])) turnStart--;
+  const historyView = trimHistoryForModel(convo.slice(0, Math.max(turnStart, 0)));
+
   let assistantText = '';
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    setConvoCacheMarker(convo);
+    const sent = [...historyView, ...convo.slice(Math.max(turnStart, 0))];
+    setConvoCacheMarker(sent);
     const response = await client.messages.create({
       model: MODEL_ID,
       max_tokens: CHAT_MAX_TOKENS,
       thinking: CHAT_THINKING,
       system,
       tools: AGENT_TOOLS,
-      messages: convo,
+      messages: sent,
     });
 
     if (response.stop_reason === 'refusal') {
@@ -1742,4 +1889,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: clocked.reply, draft: draftOut, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, restoreSignoffLayout,meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, withdrawnAcceptance, leadBlamingLine, summariseEventsForPanel, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, trimHistoryForModel, restoreSignoffLayout, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, withdrawnAcceptance, leadBlamingLine, summariseEventsForPanel, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
