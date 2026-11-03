@@ -204,16 +204,22 @@
             <figcaption><b>The memory list, 2 November 2026.</b> Your own list will be different - the box you type into is the one at the bottom.</figcaption>
           </figure>
           <ol start="4">
-            <li>Check the line now shows in the list. Then close Settings.</li>
-            <li>Start a <b>new chat</b> - a chat you already had open won't know about the line - and type "go through my inbox".</li>
-            <li>The first time, Claude asks before using <b>wingguy inbox</b>. Click <b>Always allow</b>, so it never needs to ask again.</li>
+            <li>Check the line now shows in the list.</li>
+          </ol>
+          <p><b>While you're still in Settings, stop Claude asking permission for every Wingguy tool.</b> Otherwise Claude stops to ask "Allow?" the first time you use each one - and Wingguy has dozens.</p>
+          <ol start="5">
+            <li>In the menu on the left, click <b>Customize</b>, then <b>Connectors</b>, then <b>Wingguy</b>.</li>
+            <li>Under "Tool permissions" there's a dropdown on the right, next to "Other tools". It usually says <b>Custom</b>. Click it and choose <b>Always allow</b>. Make sure it now says Always allow - that one setting covers every Wingguy tool, including ones I add later.</li>
           </ol>
           <figure class="shot">
-            <img src="/assets/inbox-always-allow.png" alt="Claude asking: Claude wants to use wingguy inbox from Wingguy. Buttons: Decline, Always allow (outlined in red) and Allow once.">
-            <figcaption><b>The question Claude asks the first time, 2 November 2026.</b></figcaption>
+            <img src="/assets/inbox-always-allow-all.png" alt="Claude's Settings with Customize selected on the left, outlined in red. On the right, the Wingguy connector's Tool permissions, with the dropdown next to Other tools set to Always allow, outlined in red.">
+            <figcaption><b>Customize, Connectors, Wingguy, 3 November 2026.</b> Set the dropdown next to "Other tools" to <b>Always allow</b>. Clicking "Always allow" in a chat only covers that one tool - this covers them all.</figcaption>
           </figure>
+          <ol start="7">
+            <li>Close Settings. Start a <b>new chat</b> - a chat you already had open won't know about the memory line - and type "go through my inbox".</li>
+          </ol>
           <p><b>How to tell it worked:</b> under your message Claude shows "Used Wingguy", then counts your emails. If it shows "Used Gmail" or "Used Outlook" instead, the line isn't in your memory list yet - go back to step 1. And if the <b>Manage</b> button is greyed out, switch on "Generate memory from chats" just above it first.</p>
-          <p>If it ever asks again after I've improved something, click Always allow again.</p>
+          <p>If Claude ever asks "Allow?" for a Wingguy tool again, go back to step 6 - the dropdown has probably slipped back to Custom.</p>
         </div>
 
         <h2 id="example">What it looks like</h2>
