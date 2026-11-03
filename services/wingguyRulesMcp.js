@@ -448,7 +448,36 @@ async function runAssets({ set_key, set_url, set_kind, retire } = {}, tenant = T
 // so the human and the model can talk each diff through ("one-off, or a preference to bake in?")
 // and route any real pattern into the NORMAL propose→commit door. This tool never writes rules —
 // it reads pairs and closes them out.
-async function runEditReview({ action = 'list', ids, resolution = 'reviewed', note, status = 'pending', limit } = {}, tenant = TENANT) {
+async function runEditReview({ action = 'list', ids, resolution = 'reviewed', note, status = 'pending', limit, change_id, on } = {}, tenant = TENANT) {
+  // The weekly automatic pass (services/wingguyEditLearner.js): what it changed, undoing one, and
+  // switching it off or back on for yourself.
+  if (action === 'learned' || action === 'undo') {
+    const learner = require('./wingguyEditLearner');
+    const rows = await learner.listChanges(tenant, 10);
+    if (action === 'learned') {
+      if (!rows.length) return { text: 'Wingguy has not changed any of your instructions from your edits yet.' };
+      return {
+        text: ['Changes Wingguy made to your instructions from your edits (newest first):', ...rows.map((r) =>
+          `- change ${r.id} · ${String(r.created_at.toISOString ? r.created_at.toISOString() : r.created_at).slice(0, 10)} · ${r.rule_key} v${r.to_version}${r.undone_at ? ' · UNDONE' : ''}\n  ${r.noticed} -> "${r.instruction}"`),
+        'To undo one: wingguy_edit_review action=undo with its change_id (no change_id = the newest one not yet undone). Confirm with the human first.'].join('\n'),
+      };
+    }
+    const row = change_id != null ? rows.find((r) => Number(r.id) === Number(change_id)) : rows.find((r) => !r.undone_at);
+    if (!row) return { text: change_id != null ? `No change ${change_id} found for you.` : 'Nothing to undo - no learned change is still in place.', isError: change_id != null };
+    const r = await learner.undoChange(row);
+    return { text: `${r.message} (${row.rule_key}: "${row.instruction}")`, isError: !r.ok };
+  }
+  if (action === 'learning') {
+    if (typeof on !== 'boolean') return { text: 'Pass on=false to stop the weekly learning from your edits, on=true to start it again.', isError: true };
+    const clientService = require('./clientService');
+    await clientService.updateClientRecordFields(tenant, { 'Stop Learning From Edits': !on });
+    const c = await clientService.getClientByIdFresh(tenant);
+    const learning = !(c && c.stopLearningFromEdits);
+    if (learning !== on) return { text: 'Wrote the switch, but the record reads back differently - tell Guy.', isError: true };
+    return { text: on
+      ? 'Weekly learning from your edits is ON: when you keep making the same change, Wingguy folds it into your instructions and emails you, with an undo link.'
+      : 'Weekly learning from your edits is OFF. Your edits are still collected - say "review my edits" any time to go through them yourself.' };
+  }
   if (action === 'resolve') {
     const r = await store.resolveEditPairs({ tenantId: tenant, ids: ids || [], status: resolution, note });
     return { text: `Closed out ${r.resolved} edit pair${r.resolved === 1 ? '' : 's'} as ${resolution}.${r.resolved ? '' : ' (Only pending pairs can be resolved — check the ids.)'}` };
@@ -613,6 +642,11 @@ const CLIENT_SWITCHES = {
     field: 'Monday Campaign Email',
     flag: 'mondayCampaignEmail',
     what: 'they are emailed their own Linked Helper campaign numbers every Monday morning (invites sent, accepted, people left, weeks left)',
+  },
+  stop_learning_from_edits: {
+    field: 'Stop Learning From Edits',
+    flag: 'stopLearningFromEdits',
+    what: 'Wingguy STOPS its weekly pass over their draft edits (normally, when they keep making the same change, it folds it into their instructions and emails them with an undo link; off by default, so it learns)',
   },
 };
 
@@ -1358,9 +1392,11 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_edit_review',
-    description: 'Learn-from-my-edit ("review my edits" / "review my rules from my edits"). Lists the pending generated-vs-sent pairs — LinkedIn sends captured by the extension AND emails drafted via wingguy_create_draft then edited in the mail client before sending (settled automatically on each list). Each pair is a draft Wingguy wrote next to what the human ACTUALLY sent. Discuss each diff with the human (one-off vs preference), fold recurring changes into ONE rule via the normal wingguy_rule_propose→commit door (prefer amending an existing rule over adding one), then close pairs out with action=resolve. This tool never writes rules itself. AMBIGUITY: a bare "review the rules" might mean the rulebook (wingguy_rules_list) instead — when unclear, ask ONE short question offering both.',
+    description: 'Learn-from-my-edit ("review my edits" / "review my rules from my edits"; also "what did you learn from my edits?" = action=learned, "undo that change from my edits" = action=undo, "stop learning from my edits" = action=learning on=false). Every week Wingguy also folds clear repeated edits into the instructions BY ITSELF and emails the human with an undo link - action=learned lists those changes, action=undo takes one back (confirm with the human first). Lists the pending generated-vs-sent pairs — LinkedIn sends captured by the extension AND emails drafted via wingguy_create_draft then edited in the mail client before sending (settled automatically on each list). Each pair is a draft Wingguy wrote next to what the human ACTUALLY sent. Discuss each diff with the human (one-off vs preference), fold recurring changes into ONE rule via the normal wingguy_rule_propose→commit door (prefer amending an existing rule over adding one), then close pairs out with action=resolve. This tool never writes rules itself. AMBIGUITY: a bare "review the rules" might mean the rulebook (wingguy_rules_list) instead — when unclear, ask ONE short question offering both.',
     zodSchema: {
-      action: z.enum(['list', 'resolve']).optional().describe('list (default) shows pairs; resolve closes them out after discussion'),
+      action: z.enum(['list', 'resolve', 'learned', 'undo', 'learning']).optional().describe('list (default) shows pairs; resolve closes them out after discussion; learned lists the changes the weekly pass made; undo takes one back; learning switches the weekly pass on/off'),
+      change_id: z.number().optional().describe('For undo: which learned change (from action=learned). Omit for the newest one still in place.'),
+      on: z.boolean().optional().describe('For learning: false = stop the weekly learning, true = start it again'),
       ids: z.array(z.number()).optional().describe('For resolve: the pair ids to close out'),
       resolution: z.enum(['reviewed', 'dismissed']).optional().describe('For resolve: reviewed (discussed, default) or dismissed (noise / mispaired capture)'),
       note: z.string().optional().describe('For resolve: one line on the outcome (e.g. "folded into greeting-style v3" or "one-off for that lead")'),
@@ -1370,7 +1406,9 @@ const TOOL_DEFS = [
     jsonSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'resolve'], description: 'list (default) shows pairs; resolve closes them out after discussion' },
+        action: { type: 'string', enum: ['list', 'resolve', 'learned', 'undo', 'learning'], description: 'list (default) shows pairs; resolve closes them out after discussion; learned lists the changes the weekly pass made; undo takes one back; learning switches the weekly pass on/off' },
+        change_id: { type: 'number', description: 'For undo: which learned change (from action=learned). Omit for the newest one still in place.' },
+        on: { type: 'boolean', description: 'For learning: false = stop the weekly learning, true = start it again' },
         ids: { type: 'array', items: { type: 'number' }, description: 'For resolve: the pair ids to close out' },
         resolution: { type: 'string', enum: ['reviewed', 'dismissed'], description: 'For resolve: reviewed (discussed, default) or dismissed (noise / mispaired capture)' },
         note: { type: 'string', description: 'For resolve: one line on the outcome (e.g. "folded into greeting-style v3" or "one-off for that lead")' },

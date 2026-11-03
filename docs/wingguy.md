@@ -988,6 +988,37 @@ the usual tool-list cache). Pairs accumulate silently either way; review is pull
    keeps it to ONE offer at the END of what the human asked for ("sort these now, or later?"), capped at 3 items
    shown, never silent-fixing (everything through the door), and dropped without nagging on "later".
 
+**★ THE WEEKLY AUTOMATIC PASS (2026-11-04 - Guy: busy people never say "review my edits").** Once a week
+Wingguy makes the call itself, but only on a CLEAR pattern, and always tells the client. `services/wingguyEditLearner.js`.
+- **When:** Sundays after 6pm Brisbane (Monday's drafts carry it). Week claimed in Postgres first.
+  `EDIT_LEARN` = `off` (default) | `owner` (Guy's tenant only) | `on` (everyone). By hand:
+  `node scripts/edit-learner-run-now.js --tenant=Guy-Wilson --dry-run` (both calls happen; nothing written or sent).
+- **Cost:** the client's OWN stored key only - stricter than `resolveClientAnthropic`: managed clients and
+  `WINGGUY_PLATFORM_KEY_CLIENTS` are SKIPPED, never billed to Guy; the owner's tenant may use the platform key.
+  No new pair since last run (`wingguy_edit_learn_state.last_pair_id`) or fewer than 3 pending = NO call.
+  At most two calls: (1) find patterns over up to 40 pending pairs from the last 60 days + the rulebook (bodies
+  clipped to 600 chars), (2) write the new wording, only when a pattern passed the code checks.
+- **A pattern (code-enforced, not trusted from the model):** 3+ real pair ids · 3+ different people · zero
+  counter-edits (the model must list edits that went the other way; one kills it) · target exists, is not a
+  locked guardrail, was not changed by hand in the last 7 days · max 2 changes a week · no pair used twice.
+  The new wording must have no em/en dash. Commit goes through `proposeRule` -> `commitRule` on the CLIENT
+  layer as `auto-learn:<tenant>`; a standard shared instruction becomes the client's own version (override).
+  Used pairs are resolved `reviewed` with "auto-learn: folded into <key> vN"; one-offs stay pending.
+- **Telling people:** a short email to the client (Mailgun, Reply-To the coach, `recordComm` channel `edit-learn`)
+  with a one-click undo link `knowaguy.com.au/wingguy/undo-learned?t=<token>` (GET shows a confirm button so a
+  mail scanner changes nothing; POST undoes). Guy gets one digest of every client: changed, looked-nothing-clear,
+  skipped and why, total cost. `wingguy_edit_learn_changes` records every change and its undo.
+- **Undo** = revert to the previous version / reset to the standard / retire a new one - refused when the
+  instruction has been changed again since. In chat: `wingguy_edit_review` action=learned | undo |
+  learning (on=false = stop). Coach switch: `wingguy_client_settings` `stop_learning_from_edits`
+  (master Clients `Stop Learning From Edits`, unticked = learns).
+- **Guy's first dry run (4 Nov 2026):** 40 of ~100 pending pairs read, 2 patterns suggested; "keep messages
+  lean" (11 edits, 11 people) passed and would amend `writing-voice-foundation` as his own version; "adds a
+  weekend line" was refused (4 edits went the other way). 65k tokens in, US$0.14 - before the 600-char clip.
+  Second dry run after the clip: 39k in, US$0.08, ONE call - the model framed the trimming more narrowly
+  ("on time-offer replies"), listed 5 counter-edits, and nothing passed. So the call is not stable run to run;
+  the counter-edit rule makes the instability err toward changing nothing.
+
 ### Stickiness vision + the reconciliations that protect it (2026-06-09)
 **Signal:** Guy himself is astonished/reliant (an hour for previously-impossible work last night) =
 real product-market fit + the best sales proof (show, don't pitch).

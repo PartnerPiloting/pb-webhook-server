@@ -432,6 +432,12 @@ const MASTER_FIELDS = [
     options: { icon: 'check', color: 'greenBright' }
   },
   {
+    name: 'Stop Learning From Edits',
+    type: 'checkbox',
+    description: 'Ticked = the weekly pass stops turning the repeated draft edits of this client into instructions. Unticked (the default) = it learns: a change made 3+ times to 3+ people is folded into one instruction and the client is emailed with an undo link. services/wingguyEditLearner.js. Added 2026-11-04.',
+    options: { icon: 'check', color: 'grayBright' }
+  },
+  {
     name: 'Machine Icon Proven',
     type: 'date',
     description: 'The day the client double-clicked the Remote Desktop icon on their OWN laptop and saw their Linked Helper machine (Tailscale on their laptop under their own account, the machine shared to them, the .rdp from scripts/make-client-rdp.js). Set by hand at the machine session - checklist step 14. Blank with Machine Tailscale filled = the client has no way into their own machine; the onboarding preflight flags it. Added 2026-09-26 after Sam Noble was told "icon on your desktop" and there was none.',

@@ -2020,6 +2020,16 @@ try {
     moduleLogger.error('index.js: Error starting LH weekly report', e.message, e.stack);
 }
 
+// Learning from edits: Sunday evenings Brisbane, each client's repeated draft edits are folded into
+// their instructions (clear patterns only), on their own Claude key, with an undo link emailed to
+// them. EDIT_LEARN = off (default) | owner | on.
+try {
+    const { startEditLearner } = require('./services/wingguyEditLearner.js');
+    startEditLearner();
+} catch (e) {
+    moduleLogger.error('index.js: Error starting edit learner', e.message, e.stack);
+}
+
 // The weekly client touch planner: builds every client's plan on Monday morning and emails Guy
 // the preview. Nothing reaches a client unless Guy approves it on the screen, or
 // CLIENT_TOUCH_AUTOSEND=on (off by default). CLIENT_TOUCH_PLANNER=off kills the tick.
@@ -2137,6 +2147,13 @@ try {
     }
 } catch(e) {
     moduleLogger.error('index.js: Error mounting one-pager series routes', e.message, e.stack);
+}
+
+// The undo link in the "Wingguy picked up something from your edits" email (token = the auth).
+try {
+    require('./services/wingguyEditLearner.js').mountUndoRoutes(app);
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting edit-learner undo routes', e.message, e.stack);
 }
 
 // The public marketing site (I Know A Guy). Homepage at /home for now; the
