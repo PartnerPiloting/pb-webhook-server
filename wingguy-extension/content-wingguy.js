@@ -2971,22 +2971,11 @@
   // voice using his campaign templates, and Guy steers it conversationally. The lead's email (for
   // the invite) is looked up in the background and passed each turn. STATELESS backend: we resend
   // the running `messages` array (incl. tool blocks) each turn and store what comes back.
-  let chatState = null; // { profile, thread, messages, leadEmail, draft, kickoff, ready, started }
+  let chatState = null; // { profile, thread, messages, leadEmail, draft }
 
   async function startChat(profile, thread) {
-    // NO AUTO-DRAFT ON OPEN (Guy, 2026-11-03 - David Gould's bill). The panel used to send a hidden
-    // first turn the moment it opened, so just LOOKING at someone cost a full Claude call (David opened
-    // it on 18 people one evening, messaged a handful). Now the header and the profile read happen on
-    // open, and the first draft waits for "Draft it" - or for whatever the coach types first.
-    let markReady;
-    const ready = new Promise((r) => { markReady = r; });
-    chatState = { profile, thread, messages: [], leadEmail: '', draft: '', kickoff: '', ready, started: false };
-    const st = chatState;
+    chatState = { profile, thread, messages: [], leadEmail: '', draft: '' };
     renderChatShell();
-    try { await prepareChat(st, profile, thread); } finally { markReady(); }
-  }
-
-  async function prepareChat(chatState, profile, thread) {
     // profile.profileUrl is already un-scrambled at the source (scrapeProfile). Guard anyway: never look
     // the lead up by a scrambled /in/ACoA… URL (it's guaranteed to miss → no email → booking can't build
     // the invite and the agent reports it "can't write", Deepti 2026-07-01) — fall back to the name.
@@ -3045,8 +3034,7 @@
         renderContext(chatState.profile);
       }
     }
-    // The first turn's hidden wording - sent on "Draft it", or folded into the coach's own first
-    // message (startDraft). THREE kickoffs, chosen by what the LEAD has done - not by
+    // Auto-kick the first turn (hidden). THREE kickoffs, chosen by what the LEAD has done - not by
     // whether the thread is empty. A thread holding only the coach's own connection note is still a
     // first touch (classifyMode says so), but it used to get the "read the conversation, give me the
     // next message" wording - the strongest push in the whole prompt toward "following on from my
@@ -3057,28 +3045,12 @@
     const coachAskedToMeet = hasThread && thread.some((m) =>
       classifyMode([m], profile.name) === 'thanks' && /\b(zoom|teams|google meet|meet\b|meeting|call|chat|catch[- ]?up|coffee)\b/i.test(String(m.text || '')));
     const handshakeOnly = hasThread && classifyMode(thread, profile.name) === 'thanks' && !coachAskedToMeet;
-    chatState.kickoff = !hasThread
+    const kickoff = !hasThread
       ? '(Opened on this connection — no reply from them yet. Draft my thanks-for-connecting opener in my voice, using the campaign template.)'
       : handshakeOnly
         ? '(Opened from the LinkedIn conversation above. Everything in it is MINE — they accepted my connection request and have not said anything, and my note never asked for a meeting. So this is my FIRST real message, not a follow-up: draft my thanks-for-connecting opener from the campaign template, opening with "Thanks for connecting." and ending on the meeting ask. Do not refer to my earlier note.)'
         : '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)';
-  }
-
-  // The one click that starts the chat. Waits for the profile read so the first draft is built from
-  // the same material it always was. A typed first message gets the kickoff folded in AFTER the coach's
-  // words: the server ignores a user message that starts with "(" when it looks for Guy asking for times.
-  async function startDraft(typed) {
-    const st = chatState;
-    if (!st || st.started) return;
-    st.started = true;
-    const box = document.getElementById('wg-kickoff');
-    const btn = document.getElementById('wg-draft-it');
-    if (btn) { btn.disabled = true; btn.textContent = 'Getting ready…'; }
-    await st.ready;
-    if (chatState !== st) return; // panel closed or reopened on someone else while we waited
-    if (box) box.remove();
-    if (typed) sendChatTurn(typed, { kickoff: st.kickoff });
-    else sendChatTurn(st.kickoff, { hidden: true });
+    sendChatTurn(kickoff, { hidden: true });
   }
 
   function renderChatShell() {
@@ -3093,12 +3065,7 @@
           </div>
           <div class="wingguy-status" id="wingguy-status"></div>
         </div>
-        <div class="wingguy-chatlog" id="wg-chatlog">
-          <div class="wingguy-kickoff" id="wg-kickoff">
-            <button class="wingguy-primary" id="wg-draft-it">Draft it</button>
-            <div class="wingguy-muted">Click when you're ready to message them - or type what you want below.</div>
-          </div>
-        </div>
+        <div class="wingguy-chatlog" id="wg-chatlog"></div>
         <div class="wingguy-chatinput">
           <textarea id="wg-chat-text" rows="2" placeholder="Talk to Wingguy — e.g. “suggest some times”, “book the Tuesday one”, “make it warmer”"></textarea>
           <button class="wingguy-primary" id="wg-chat-send">Send</button>
@@ -3138,10 +3105,8 @@
       const t = (textEl.value || '').trim();
       if (!t) return;
       textEl.value = '';
-      if (chatState && !chatState.started) startDraft(t);
-      else sendChatTurn(t);
+      sendChatTurn(t);
     };
-    document.getElementById('wg-draft-it').addEventListener('click', () => startDraft());
     document.getElementById('wg-chat-send').addEventListener('click', fire);
     textEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); fire(); } });
     textEl.focus();
@@ -3202,8 +3167,8 @@
     const sendBtn = document.getElementById('wg-chat-send');
     if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '…'; }
     if (!opts.hidden) appendBubble('me', text);
-    chatState.messages.push({ role: 'user', content: opts.kickoff ? `${text}\n\n${opts.kickoff}` : text });
-    const thinking = showThinking(!!opts.hidden || !!opts.kickoff);
+    chatState.messages.push({ role: 'user', content: text });
+    const thinking = showThinking(!!opts.hidden);
     try {
       const data = await bg({
         type: 'WG_CHAT',
