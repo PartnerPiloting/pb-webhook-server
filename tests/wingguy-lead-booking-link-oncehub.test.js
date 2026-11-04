@@ -136,6 +136,9 @@ function fakeOnceHub({ calls = [], services = [COFFEE, STRATEGY], page = {}, ava
   });
 
   console.log('guards:');
+  const { linkBookedDraftProblem } = require('../services/wingguyChat');
+  check('Guy\'s wording passes the after-booking check', () => assert.strictEqual(linkBookedDraftProblem("Hi Ivan - I noticed Friday 11am was free on your calendar, and I'm free then too - so to make it easy, I've sent you a calendar invite for then. It's gone to ivan@mypathwealth.com.au. Look forward to seeing you then."), null));
+  check('"it\'s now in your calendar" is still refused', () => assert.match(linkBookedDraftProblem("Hi Ivan - saw Friday 11am was free on your link. I've sent the invite and it's now in your calendar."), /in your calendar/));
   check('"I\'ll book through your OnceHub page" is caught', () => assert.ok(linkBookingPromise('I\'ll book a time through your OnceHub page now.')));
 
   if (failures) { console.error(`❌ ${failures} test(s) failed`); process.exit(1); }

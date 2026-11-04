@@ -739,17 +739,21 @@ function linkBookingPromise(text) {
  * usual (TidyCal 15-minute slots vs his 30: "I've put 30 minutes on it, happy to keep it to 15 if that
  * suits better"). Returns null when the draft passes, else the plain-English reason it does not.
  */
-const LINK_MENTION_RE = /\b(link|page|calendly|tidycal|timetrade|oncehub|bookings)\b/i;
+const LINK_MENTION_RE = /\b(link|page|calendar|diary|calendly|tidycal|timetrade|oncehub|bookings)\b/i;
 const INVITE_SENT_RE = /\b(sent|on its way|heading your way|coming through)\b/i;
 const IN_YOUR_CALENDAR_RE = /\b(in|into|on)\s+your\s+(calendar|diary)\b/i;
 const NAMES_A_TIME_RE = /\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b(today|tomorrow)\b/i;
 function linkBookedDraftProblem(text, { leadSlotMins = 0, coachMins = 0 } = {}) {
   const s = String(text || '');
-  const diary = s.match(IN_YOUR_CALENDAR_RE);
-  if (diary) return `it says "${diary[0]}" - Guy's invite is a request the lead accepts, not an entry on their diary. Say the invite has been SENT to their email ("just accept and we're set")`;
-  if (!LINK_MENTION_RE.test(s)) return 'it never mentions the link the lead sent. They handed it over to make this easy, so acknowledge it: name the time you saw open on their link ("Saw Friday 11am was open on your link, so ...")';
+  // "I noticed Friday 11am was free on your calendar" (Guy's wording, 4 Nov 2026) is the
+  // acknowledgement, not a claim the meeting sits in their diary - only the sentence that says the
+  // MEETING is in their calendar is refused.
+  const diarySentence = s.split(/(?<=[.!?])\s+|\n+/).find((x) => IN_YOUR_CALENDAR_RE.test(x) && !/\b(free|open|available|noticed|saw|spotted)\b/i.test(x));
+  const diary = diarySentence ? diarySentence.match(IN_YOUR_CALENDAR_RE) : null;
+  if (diary) return `it says "${diary[0]}" - Guy's invite is a request the lead accepts, not an entry on their diary. Say the invite has been SENT to their email ("I've sent you a calendar invite for then. It's gone to <email>.")`;
+  if (!LINK_MENTION_RE.test(s)) return 'it never mentions the link the lead sent. They handed it over to make this easy, so acknowledge it: name the time you saw free on their calendar ("I noticed Friday 11am was free on your calendar, and I\'m free then too - so ...")';
   if (!NAMES_A_TIME_RE.test(s)) return 'it never names the day and time that was open on their link';
-  if (!INVITE_SENT_RE.test(s)) return 'it never says the invite has been SENT to their email ("so I\'ve sent an invite for then to make it easy for you - it\'s gone to <email>, just accept and we\'re set")';
+  if (!INVITE_SENT_RE.test(s)) return 'it never says the invite has been SENT to their email ("so to make it easy, I\'ve sent you a calendar invite for then. It\'s gone to <email>.")';
   if (leadSlotMins && coachMins && leadSlotMins < coachMins) {
     const coachLen = new RegExp('\\b' + coachMins + '\\s*-?\\s*min', 'i');
     const leadLen = new RegExp('\\b' + leadSlotMins + '\\b');
@@ -1312,7 +1316,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           // his own clock said 10:00). The model quotes it; the reply guard below writes it anyway.
           const leadTzNow = avail.leadTzDetected ? (avail.leadTimezone || null) : null;
           filtered = { ...filtered, days: filtered.days.map((d) => ({ ...d, freeSlots: d.freeSlots.map((s) => ({ ...s, both: coachSlotLine(s.time, avail.yourTimezone || coachTz, leadTzNow) })) })) };
-          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, eventChosen: lead.eventChosen || undefined, durationMins: lead.durationMins || null, leadSlots: lead.slots.length, leadSlotMins: filtered.leadSlotMins, coachMins, note: filtered.days.length ? `The days below are ONLY the times BOTH Guy and the lead are free.${slotNote}${lengthNote} Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. When you ask Guy to confirm, quote the slot's "both" value word for word - it gives his own clock for that date, worked out in code. Never tell Guy the clocks match unless "both" says so. The message that follows the booking ACKNOWLEDGES their ${label} link (propose_message checks for this): name the time you saw open on their link and say the invite has been SENT to ${currentLeadEmail || 'their email'} - never "booked, you'll see it in your calendar", Guy's invite is a request they accept. Shape: "Saw Friday 11am was open on your link, so I've sent an invite for then to ${currentLeadEmail || '<email>'} - just accept and we're set."` : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
+          filtered.leadLink = { read: true, url: linkUrl, source, provider: label, owner: lead.ownerName, event: lead.eventName, eventChosen: lead.eventChosen || undefined, durationMins: lead.durationMins || null, leadSlots: lead.slots.length, leadSlotMins: filtered.leadSlotMins, coachMins, note: filtered.days.length ? `The days below are ONLY the times BOTH Guy and the lead are free.${slotNote}${lengthNote} Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. When you ask Guy to confirm, quote the slot's "both" value word for word - it gives his own clock for that date, worked out in code. Never tell Guy the clocks match unless "both" says so. The message that follows the booking ACKNOWLEDGES their ${label} link (propose_message checks for this): name the time you saw open on their link and say the invite has been SENT to ${currentLeadEmail || 'their email'} - never "booked, you'll see it in your calendar", Guy's invite is a request they accept. Shape: "I noticed Friday 11am was free on your calendar, and I'm free then too - so to make it easy, I've sent you a calendar invite for then. It's gone to ${currentLeadEmail || '<email>'}. Look forward to seeing you then."` : `No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, a wider window), then run check_availability again with that. Do not promise the lead a booking through their ${label} page - Guy's own invite is the only booking door.` };
         } else {
           // The give-up path (Sam Trattles, 2026-10-09): an unreadable link means Guy's OWN times go
           // out in the normal list. The old note ("or suggest he books through the link by hand")
