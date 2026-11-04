@@ -127,7 +127,8 @@ function senderTags(from, to, who) {
 }
 
 /**
- * One click to the real email in Gmail's web app. Gmail thread ids are 16 hex digits, and the web
+ * One click to the real email in Gmail's web app. Pass the NEWEST message's id - a thread id is the
+ * id of the thread's first message, so it opens an old email. Gmail ids are 16 hex digits, and the web
  * app opens them as they are: #all/<hex id>. NOT thread-f:<the id in decimal> - that is the form
  * Gmail's own connector hands back, and clicked in a browser it opens an empty Gmail (Guy, 4 Nov 2026).
  * An Outlook id is not hex, so it gets no link. `account` picks the right Google login when the
@@ -379,7 +380,10 @@ async function runList(args, inbox, tenant, deps) {
     lines.push(`Subject: ${t.subject || '(no subject)'}`);
     // The newest message's id - a quick-thanks reply drafts into this thread with it.
     if (m.id) lines.push(`To reply: reply_to_message_id=${m.id}`);
-    const link = gmailThreadLink(t.id, inbox.who.coach ? GUY_GMAIL : null);
+    // Link the NEWEST message, not the thread: a thread id is its FIRST message's id, so on a thread
+    // with several messages Gmail opened the oldest one (Laura's Wilfreed thread, Guy, 4 Nov 2026).
+    const account = inbox.who.coach ? GUY_GMAIL : null;
+    const link = gmailThreadLink(m.id, account) || gmailThreadLink(t.id, account);
     if (link) lines.push(`Open in Gmail: ${link}`);
     if (tags.length) lines.push(`About the sender: ${tags.join('; ')}`);
     if (m.attachments.length) lines.push(`Attachments: ${m.attachments.join(', ')}`);

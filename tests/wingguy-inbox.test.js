@@ -299,6 +299,22 @@ function fakeClient({ archiveOk = true } = {}) {
     assert.ok(/Open in Gmail: https:\/\/mail\.google\.com\/mail\/\?authuser=guyralphwilson%40gmail\.com#all\/1a19ad6c0922ab7e/.test(out.text), out.text);
   });
 
+  // Guy, 4 Nov 2026: Laura's 5-message Wilfreed thread opened her 27 Oct email, not the 4 Nov one -
+  // a thread id is its FIRST message's id. The link must name the newest message.
+  await t('Open in Gmail: a thread with several messages links its NEWEST message, not the first', async () => {
+    const prev = process.env.GMAIL_REFRESH_TOKEN;
+    const deps = {
+      clientService: { getClientById: async () => ({ clientId: 'Guy-Wilson' }), getAllClients: async () => [] },
+      mailProvider: { hasMailbox: () => true, activeMailProvider: () => 'unipile' },
+      backendOverride: { list: async () => ({ threads: [{ id: '1a17ab64decdd015', subject: 'Fw: Wilfreed Super Fund', count: 5, unread: true,
+        last: { id: '1a1a432842b8f09a', date: 0, from: 'a@b.com', to: 'x', text: 't', attachments: [] } }], more: false, total: 1 }) },
+    };
+    const out = await runInbox({ action: 'list' }, 'Guy-Wilson', deps);
+    if (prev === undefined) delete process.env.GMAIL_REFRESH_TOKEN; else process.env.GMAIL_REFRESH_TOKEN = prev;
+    assert.ok(/Open in Gmail: [^\n]*#all\/1a1a432842b8f09a/.test(out.text), out.text);
+    assert.ok(!/#all\/1a17ab64decdd015/.test(out.text), 'never the thread (first-message) id');
+  });
+
   // Guy, 2 Nov 2026: his own emails waiting for approval come up in an inbox run - even an empty one.
   await t("Guy's own emails waiting for his OK are listed on the first page, even when the inbox is empty", async () => {
     const mk = (threads) => ({ list: async () => ({ threads, more: false, next: null, total: threads.length }) });
