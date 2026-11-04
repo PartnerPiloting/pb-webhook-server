@@ -282,10 +282,10 @@ function fakeClient({ archiveOk = true } = {}) {
 
   await t('Open in Gmail: the link Gmail itself uses, only for Gmail ids, with the right login for Guy', async () => {
     const { gmailThreadLink } = require('../services/wingguyInboxMcp')._test;
-    // The accountant's thread: Gmail's own connector returned thread-f:1880724998925233022 for 1a19ad6c0922ab7e.
+    // The accountant's thread: Gmail's own connector returned 1a19ad6c0922ab7e for 1a19ad6c0922ab7e.
     assert.strictEqual(gmailThreadLink('1a19ad6c0922ab7e', 'guyralphwilson@gmail.com'),
-      'https://mail.google.com/mail/?authuser=guyralphwilson%40gmail.com#all/thread-f:1880724998925233022');
-    assert.strictEqual(gmailThreadLink('1a19ad6c0922ab7e'), 'https://mail.google.com/mail/#all/thread-f:1880724998925233022');
+      'https://mail.google.com/mail/?authuser=guyralphwilson%40gmail.com#all/1a19ad6c0922ab7e');
+    assert.strictEqual(gmailThreadLink('1a19ad6c0922ab7e'), 'https://mail.google.com/mail/#all/1a19ad6c0922ab7e');
     assert.strictEqual(gmailThreadLink('AAQkAGI2TG93AAA='), null, 'an Outlook id gets no link');
     const prev = process.env.GMAIL_REFRESH_TOKEN;
     const deps = {
@@ -296,7 +296,7 @@ function fakeClient({ archiveOk = true } = {}) {
     };
     const out = await runInbox({ action: 'list' }, 'Guy-Wilson', deps);
     if (prev === undefined) delete process.env.GMAIL_REFRESH_TOKEN; else process.env.GMAIL_REFRESH_TOKEN = prev;
-    assert.ok(/Open in Gmail: https:\/\/mail\.google\.com\/mail\/\?authuser=guyralphwilson%40gmail\.com#all\/thread-f:1880724998925233022/.test(out.text), out.text);
+    assert.ok(/Open in Gmail: https:\/\/mail\.google\.com\/mail\/\?authuser=guyralphwilson%40gmail\.com#all\/1a19ad6c0922ab7e/.test(out.text), out.text);
   });
 
   // Guy, 2 Nov 2026: his own emails waiting for approval come up in an inbox run - even an empty one.

@@ -127,8 +127,9 @@ function senderTags(from, to, who) {
 }
 
 /**
- * One click to the real email in Gmail's web app. Gmail thread ids are 16 hex digits; the web app
- * opens them as thread-f:<the same number in decimal> - the form Gmail's own connector hands back.
+ * One click to the real email in Gmail's web app. Gmail thread ids are 16 hex digits, and the web
+ * app opens them as they are: #all/<hex id>. NOT thread-f:<the id in decimal> - that is the form
+ * Gmail's own connector hands back, and clicked in a browser it opens an empty Gmail (Guy, 4 Nov 2026).
  * An Outlook id is not hex, so it gets no link. `account` picks the right Google login when the
  * browser holds several; without it Gmail opens the first one.
  */
@@ -136,7 +137,7 @@ function gmailThreadLink(threadId, account) {
   const id = String(threadId || '');
   if (!/^[0-9a-f]{16}$/i.test(id)) return null;
   const who = account ? `?authuser=${encodeURIComponent(account)}` : '';
-  return `https://mail.google.com/mail/${who}#all/thread-f:${BigInt(`0x${id}`).toString()}`;
+  return `https://mail.google.com/mail/${who}#all/${id.toLowerCase()}`;
 }
 
 function brisbaneTime(ms) {
