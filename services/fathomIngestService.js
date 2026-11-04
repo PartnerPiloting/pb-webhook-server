@@ -27,7 +27,7 @@ const clientService = require('./clientService');
 const { findLeadByEmail, findLeadByName, learnEmailForLead } = require('./inboundEmailService');
 const { insertImportedMeeting, addMeetingLead } = require('./recallWebhookDb');
 const { normalizeEmail } = require('./recallImportService');
-const { splitFathomMeeting, dedupeMeetingEvents, resolveSpeakingEvents } = require('./fathomSplitService');
+const { splitFathomMeeting, dedupeMeetingEvents, resolveSpeakingEvents, eventLeadSpeaks } = require('./fathomSplitService');
 const { extractMeetingUrl, isCoachAttending } = require('./recallAutoJoinService');
 const { getMeetingsInWindow } = require('./calendarProvider');
 const { claimSameLeadEmails } = require('./pendingLeadFilter');
@@ -406,7 +406,17 @@ async function ingestFathomMeeting(opts = {}) {
   let calendarUnmatched = []; // [{email, name?}] — identified on the coach's calendar but no lead exists
   if (matched.length === 0) {
     // Only the booking this recording BELONGS to - never every event it brushes (pickAlignedEvent).
-    const aligned = pickAlignedEvent(uniqueEvents, meeting.recording_start_time || meeting.scheduled_start_time, meeting.recording_end_time || meeting.scheduled_end_time);
+    // ...or, failing timing, the ONE booking whose person is actually HEARD on the recording
+    // (Bernard Kassab, 4 Nov 2026): Guy's ad-hoc Unipile fix with Alex ran from 2:10 straight into
+    // Bernard's 2:30 booking on the same Zoom. 20 minutes late = not "near start", and the
+    // recording was mostly outside the booking, so the call was filed with 0 leads. A booked
+    // person who speaks is the strongest evidence a booking belongs; exactly one, so the Rick Wong
+    // rule still holds (a group session's guests never ride in on overlap alone). HEARD means by
+    // name or by Fathom's invitee email (eventLeadSpeaks) - NOT the splitter's timing adoption,
+    // which would hand a no-show's booking to whoever else joined at that time.
+    const heard = speakingEvents.filter((ev) => eventLeadSpeaks(meeting, ev, coachNames, coachEmails));
+    const aligned = pickAlignedEvent(uniqueEvents, meeting.recording_start_time || meeting.scheduled_start_time, meeting.recording_end_time || meeting.scheduled_end_time)
+      || (heard.length === 1 ? heard[0] : null);
     const calParticipants = calendarParticipantEmails(aligned ? [aligned] : [], coachEmails);
     const cal = calParticipants.length ? await matchLeads(coach, calParticipants.map((x) => x.email)) : { matched: [], unmatched: [] };
     for (const m of cal.matched) matched.push({ ...m, via: 'calendar-email' });
