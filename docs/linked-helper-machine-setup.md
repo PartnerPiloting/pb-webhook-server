@@ -355,6 +355,39 @@ from a probe.** They are @electron/remote proxies; enumerating them raised "An o
 cloned" in the main process, a modal error box appeared, DevTools hung and the instance exited
 (Guy's box, 11 Sep 2026). The watchdog's normal path recovered it, LinkedIn stayed logged in.
 
+### Campaign top-ups from a search link (PROVEN 5 Nov 2026, Guy's machine)
+
+A client hands their Claude (or the top-up page linked from the Monday numbers email) a LinkedIn or
+Sales Navigator people-search link. The server (`services/lhTopUp.js`, `services/lhTopUpStore.js`,
+table `lh_campaign_topups`) checks the link, picks their one live campaign and queues a job. The
+machine's clipboard agent (`lh-clipboard.py`, same polling rule as the clipboard - instant while
+someone is on the screen, every 5 minutes otherwise) collects it from
+`GET /webhooks/lh-machine/<ClientId>/topups` and runs `lh-topup.py apply <campaign> <url>`.
+
+What `apply` does - Linked Helper has a built-in action type **AutoCollectPeople** ("Auto-collect
+people from LinkedIn": a collecting URL, a page type, a repeat interval). At the HEAD of a campaign
+chain it walks the search itself and every person flows into the next step (the invite). So:
+- no auto-collect step yet -> `people.actions.createAction` with `at: 0` (inserted first; proven on
+  campaign 49: action 171 landed ahead of the existing step);
+- one already there -> `people.actions.createActionVersion` with the new URL (proven on campaign 48).
+  A new URL does NOT interrupt a collect that is running - the current search finishes first.
+- then `campaigns.setCampaignPaused false` if the campaign was paused.
+The repeat interval is set to a year, so a search is walked once; the next top-up replaces the URL.
+Settings shape: `{collectingSource:{autoCollectSourceType:"LinkedInURL", linkedInCollectingType:
+"search-page"|"sn-search-page"|"sn-list-people-page", linkedInCollectingUrl}, repeatIntervalInMs}`.
+
+The agent then runs `lh-topup.py status` every 2 minutes and POSTs progress: people added since the
+apply (`person_in_campaigns_history`, result_status 1 on the auto-collect action), their connection
+degree (`person_member_distance`), and whether Linked Helper is on that step (the instance window
+title names it: `action #<id> AutoCollectPeople`). Finished = nothing new for 15 minutes and not on
+the step, or Linked Helper postponed the action (page credits). The final report is the email the
+client gets (coach cc). First proof: 30 people in 3 minutes, 140 in 15, all DISTANCE_2, flowing into
+the next action's queue.
+
+By hand on a machine: `sudo -u lh env DISPLAY=:0 lh-topup.py check <url>` / `apply <campaign> <url>`
+/ `status <campaign> <action> <since-iso>`. Playbook topic: KEEPING YOUR CAMPAIGN FED. Test campaigns 48 and 49 on Guy's instance were built for
+this and should be archived once the dedup check is done.
+
 ### Access: Tailscale for Guy, a web link for the client
 
 **Two roads, independent of each other.** Guy reaches every machine by RDP over Tailscale (settled

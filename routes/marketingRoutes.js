@@ -290,6 +290,28 @@ const PAGES = {
     title: 'Terms of use - I Know A Guy',
     description: 'The short terms for using this site.',
   },
+  // The two-minute reminder linked from the top of every Monday campaign-numbers email (5 Nov 2026):
+  // search -> link to Wingguy -> Linked Helper collects and invites -> webhook -> Thanks for Connecting.
+  howWorks: {
+    file: 'how-campaigns-work.html',
+    title: 'How your campaign works - I Know A Guy',
+    description: 'The whole campaign on one page: your search, Linked Helper, the webhook, your database - and how to top up.',
+    noindex: true,
+  },
+  // Choosing who to invite and copying the search link - a different skill from topping up.
+  pickPeople: {
+    file: 'pick-your-people.html',
+    title: 'Picking your people on LinkedIn - I Know A Guy',
+    description: 'How to build the LinkedIn or Sales Navigator search your campaign invites, and copy its link.',
+    noindex: true,
+  },
+  // The top-up form itself - rendered by hand (it knows who it is for), never by servePage.
+  topUp: {
+    file: 'top-up.html',
+    title: 'Top up your campaign - I Know A Guy',
+    description: 'Paste a LinkedIn or Sales Navigator search link and Wingguy adds the people to your campaign.',
+    noindex: true,
+  },
 };
 
 const cachedBodies = {};
@@ -381,6 +403,74 @@ module.exports = function mountMarketingSite(app) {
   router.get('/guy', servePage(PAGES.guy));
   router.get('/privacy', servePage(PAGES.privacy));
   router.get('/terms', servePage(PAGES.terms));
+  router.get('/how-campaigns-work', servePage(PAGES.howWorks));
+  router.get('/pick-your-people', servePage(PAGES.pickPeople));
+
+  // ---------------------------------------------------------------------------
+  // Top up your campaign (5 Nov 2026). The Monday numbers email carries a per-client link
+  // (utils/topUpLink.js - client id + HMAC); the page shows a box for the search link; the POST
+  // hands it to services/lhTopUp.js, which checks it and queues it for the client's machine.
+  // No sign-in: the signed link is the trust, same level as the machine link in the same email.
+  // The page body is a template with {{placeholders}} because it knows who it is for.
+  // ---------------------------------------------------------------------------
+  const escHtml = (s) => String(s === undefined || s === null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const parseTopUpForm = express.urlencoded({ extended: false, limit: '16kb' });
+
+  async function renderTopUp(req, res, { message = '', kind = '', done = false } = {}) {
+    const { verifyTopUpQuery } = require('../utils/topUpLink');
+    const clientId = verifyTopUpQuery(req.method === 'POST' ? req.body : req.query);
+    const tpl = loadBody(PAGES.topUp);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    if (!clientId) {
+      const body = tpl
+        .replace('{{DEK}}', 'This page only works from the link in your own Monday email.')
+        .replace('{{MESSAGE}}', '<div class="msg bad">That link is not one of ours, or it has been cut short. Open the Monday campaign-numbers email and click <b>paste it here</b> - or open a chat with your Claude and say <b>top up my campaign with this search</b>.</div>')
+        .replace('{{FORM}}', '');
+      return res.status(403).end(fullPage(body, req.get('host'), PAGES.topUp));
+    }
+    let client = null;
+    try { client = await require('../services/clientService').getClientById(clientId); } catch (_e) { client = null; }
+    const first = client ? (client.clientFirstName || String(client.clientName || '').split(/\s+/)[0]) : '';
+    const c = encodeURIComponent(clientId);
+    const k = encodeURIComponent(String((req.method === 'POST' ? req.body : req.query).k || ''));
+    const form = done ? '' : `
+        <form method="post" action="/site/top-up">
+          <input type="hidden" name="c" value="${escHtml(clientId)}">
+          <input type="hidden" name="k" value="${escHtml(String((req.method === 'POST' ? req.body : req.query).k || ''))}">
+          <label for="url">Your search link - copied whole from the address bar (LinkedIn people search, Sales Navigator search, or a Sales Navigator lead list)</label>
+          <textarea id="url" name="url" placeholder="https://www.linkedin.com/sales/search/people?..." required>${escHtml(req.method === 'POST' && kind === 'bad' ? (req.body || {}).url : '')}</textarea>
+          <button type="submit">Add these people to my campaign</button>
+        </form>`;
+    const dek = first ? `Hi ${escHtml(first)}. Paste your search link and Wingguy puts those people into your campaign.` : 'Paste your search link and Wingguy puts those people into your campaign.';
+    const body = tpl
+      .replace('{{DEK}}', dek)
+      .replace('{{MESSAGE}}', message ? `<div class="msg ${kind}">${message}</div>` : '')
+      .replace('{{FORM}}', form + (done ? `<p><a href="/top-up?c=${c}&k=${k}">Send another search</a></p>` : ''));
+    return res.end(fullPage(body, req.get('host'), PAGES.topUp));
+  }
+
+  router.get('/top-up', (req, res) => renderTopUp(req, res).catch((err) => {
+    logger.error(`[site] top-up page failed: ${err && err.message}`);
+    res.status(500).send('The page is briefly unavailable - please try again, or reply to your Monday email.');
+  }));
+
+  router.post('/site/top-up', parseTopUpForm, async (req, res) => {
+    try {
+      const { verifyTopUpQuery } = require('../utils/topUpLink');
+      const clientId = verifyTopUpQuery(req.body || {});
+      if (!clientId) return renderTopUp(req, res);
+      const client = await require('../services/clientService').getClientById(clientId);
+      if (!client) return renderTopUp(req, res, { message: 'That client record could not be found - reply to your Monday email and I will sort it.', kind: 'bad' });
+      const r = await require('../services/lhTopUp').requestTopUp({ client, url: (req.body || {}).url, requestedBy: 'top-up page' });
+      logger.info(`[site] top-up ${r.ok ? 'queued' : 'refused'} for ${clientId}`);
+      if (!r.ok) return renderTopUp(req, res, { message: escHtml(r.text).replace(/\n/g, '<br>'), kind: 'bad' });
+      return renderTopUp(req, res, { message: `<b>Queued.</b> ${escHtml(r.text.split('\n\n')[0].replace(/^Queued\.\s*/, ''))}`, kind: 'good', done: true });
+    } catch (err) {
+      logger.error(`[site] top-up submit failed: ${err && err.message}`);
+      return res.status(500).send('Something went wrong queueing the top-up - please try again, or reply to your Monday email.');
+    }
+  });
 
   const { BUILDER_LOOKUP, BUILDER_PLAN, isBuilderSubscription } = require('../services/builderPlan');
   const MONTHLY_LOOKUP = 'ikag_membership_150_monthly';

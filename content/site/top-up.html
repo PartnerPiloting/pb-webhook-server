@@ -1,0 +1,81 @@
+<style>
+  :root {
+    color-scheme: light;
+    --ground:   #e9e2d3;
+    --card:     #fbf9f3;
+    --ink:      #2c2823;
+    --ink-deep: #221f1a;
+    --ink-soft: #6f6558;
+    --ink-mid:  #4a423a;
+    --rule:     #e2dccd;
+    --dark:     #211d18;
+    --gold:     #c49a5e;
+    --gold-ink: #9a6a2f;
+    --cream:    #f3ede1;
+  }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif; -webkit-font-smoothing: antialiased; }
+  .op-page { padding: 28px 16px 52px; }
+  .op { max-width: 640px; margin: 0 auto 22px; background: var(--card); border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.10); }
+  .op-mast { background: var(--dark); padding: 34px 40px 30px; }
+  .op-eb { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--gold); margin: 0 0 12px; }
+  .op-wm { font-size: 30px; margin: 0; font-weight: 400; }
+  .op-wm a { color: var(--cream); text-decoration: none; }
+  .op-c { padding: 34px 40px 8px; }
+  .op-t { font-size: 28px; line-height: 1.25; margin: 0 0 12px; color: var(--ink-deep); font-weight: 400; text-wrap: balance; }
+  .op-dek { font-style: italic; color: var(--ink-soft); font-size: 18px; line-height: 1.5; margin: 0 0 20px; text-wrap: balance; }
+  .op-r { border: 0; border-top: 1px solid var(--rule); margin: 0 0 22px; }
+  .op-body p { font-size: 17px; line-height: 1.66; margin: 0 0 1.15rem; }
+  .op-body b { font-weight: 700; }
+  .op-body a { color: var(--gold-ink); }
+  .op-body ul { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  .op-body li { font-size: 16.5px; line-height: 1.6; margin: 0 0 .5rem; }
+  .msg { margin: 0 0 1.4rem; padding: 14px 18px; border: 1px solid var(--rule); border-left: 3px solid var(--gold); border-radius: 3px; background: var(--cream); font-size: 16.5px; line-height: 1.6; color: var(--ink-mid); }
+  .msg.bad { border-left-color: #b4542e; }
+  .msg.good { border-left-color: #4f7d4a; }
+  form { margin: 1.2rem 0 1.6rem; }
+  label { display: block; font-size: 15px; color: var(--ink-soft); margin: 0 0 6px; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 92px; padding: 10px 12px; font: 15px/1.45 Consolas, Menlo, monospace; color: var(--ink-deep); background: #fff; border: 1px solid var(--rule); border-radius: 4px; resize: vertical; }
+  textarea:focus { outline: 2px solid var(--gold); outline-offset: 1px; border-color: var(--gold); }
+  button { margin-top: 12px; padding: 11px 22px; font: 16px Georgia, serif; color: var(--cream); background: var(--dark); border: 0; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #000; }
+  .op-foot { padding: 18px 40px 6px; border-top: 1px solid var(--rule); margin-top: 1.6rem; font-size: 14px; line-height: 1.6; color: var(--ink-soft); }
+  .op-foot a { color: var(--gold-ink); }
+  .op-sign { margin: .9rem 0 0; }
+  .op-bar { background: var(--dark); height: 34px; }
+  @media (max-width: 520px) { .op-mast, .op-c, .op-foot { padding-left: 22px; padding-right: 22px; } .op-t { font-size: 24px; } .op-wm { font-size: 26px; } }
+</style>
+
+<div class="op-page">
+  <article class="op">
+
+    <header class="op-mast">
+      <p class="op-eb">Network building, rethought</p>
+      <p class="op-wm"><a href="/">(I know a) Guy</a></p>
+    </header>
+
+    <div class="op-c">
+      <h1 class="op-t">Top up your campaign</h1>
+      <p class="op-dek">{{DEK}}</p>
+      <hr class="op-r">
+
+      <div class="op-body">
+        {{MESSAGE}}
+        {{FORM}}
+        <p><b>What happens next.</b> Your Linked Helper machine picks the search up within about five minutes and puts it into your campaign. Linked Helper then reads the search page by page - minutes for a small search, a few hours for a big one. You get an email when it has finished, with how many people were added.</p>
+        <ul>
+          <li>Anyone from the search who is already in your list is skipped, so the number added is always less than the search shows. That's normal.</li>
+          <li>Once it's done, open the campaign and check the people look right for you, and that they're 2nd or 3rd degree - Linked Helper can't invite someone you're already connected to.</li>
+        </ul>
+        <p>Prefer to do it in chat? Open your Claude and say <b>top up my campaign with this search</b>, then paste the link.</p>
+        <p>Not sure who to search for? <a href="/pick-your-people">How to pick your people on LinkedIn</a>. The two-minute reminder of the whole thing: <a href="/how-campaigns-work">How your campaign works</a>.</p>
+      </div>
+
+      <footer class="op-foot">
+        <p>Something not right? Reply to your Monday email and I'll sort it.</p>
+        <p class="op-sign">- (I know a) Guy</p>
+      </footer>
+    </div>
+
+    <div class="op-bar"></div>
+  </article>
+</div>

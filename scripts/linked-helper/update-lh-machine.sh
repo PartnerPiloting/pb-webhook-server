@@ -62,6 +62,18 @@ echo "== 5. nightly backup + reboot (leave a collect alone) =="
 [ -f /etc/cron.d/lh-nightly-backup ] && install -m 755 "$SRC_DIR/lh-nightly-backup.sh" /usr/local/bin/lh-nightly-backup.sh
 install -m 755 "$SRC_DIR/lh-nightly-reboot.sh" /usr/local/bin/lh-nightly-reboot.sh
 echo "0 3 * * * root /usr/local/bin/lh-nightly-reboot.sh" > /etc/cron.d/lh-nightly-reboot
+echo "== 6. campaign top-ups (lh-topup.py + the clipboard agent that collects them, 5 Nov 2026) =="
+# lh-topup.py imports lh-campaigns.py; Guy's own machine never had the builder installed, so both go on.
+install -m 755 "$SRC_DIR/lh-campaigns.py" /usr/local/bin/lh-campaigns.py
+install -m 755 "$SRC_DIR/lh-topup.py" /usr/local/bin/lh-topup.py
+if cmp -s "$SRC_DIR/lh-clipboard.py" /usr/local/bin/lh-clipboard.py; then
+  echo "clipboard agent already current"
+else
+  [ -f /usr/local/bin/lh-clipboard.py ] && cp -p /usr/local/bin/lh-clipboard.py /usr/local/bin/lh-clipboard.py.before-update
+  install -m 755 "$SRC_DIR/lh-clipboard.py" /usr/local/bin/lh-clipboard.py
+  systemctl restart lh-clipboard.service 2>/dev/null && echo "clipboard agent replaced and restarted" || echo "clipboard agent replaced (no lh-clipboard.service here)"
+fi
+python3 -c "import websockets" 2>/dev/null || apt-get install -y -qq python3-websockets >/dev/null
 echo "installed"
 
 echo

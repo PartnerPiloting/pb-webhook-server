@@ -389,4 +389,39 @@ router.post('/webhooks/lh-machine/:clientId/files', express.json({ limit: '16kb'
   return res.json({ ok: true, recorded });
 });
 
+/**
+ * Campaign top-ups (services/lhTopUpStore.js, 5 Nov 2026). Polled by lh-clipboard.py on the same
+ * cadence as the clipboard, behind the same per-client secret - a machine only ever collects its
+ * own client's search. GET hands over the one queued job (marking it applying); POST is the machine
+ * reporting - applied, progress while Linked Helper walks the search, final when it has finished -
+ * and the final report is what the client is emailed (services/lhTopUp.js afterMachineReport).
+ * `live:false` in the reply tells the machine a newer top-up has replaced this one, so it stops.
+ */
+router.get('/webhooks/lh-machine/:clientId/topups', async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  let job = null;
+  try {
+    job = await require('../services/lhTopUpStore').takeForMachine(client.clientId);
+  } catch (e) {
+    log.error(`LH-MACHINE top-up read failed for ${client.clientId}: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'read failed' });
+  }
+  if (job) log.info(`LH-MACHINE ${client.clientId} collected top-up ${job.id} (campaign ${job.campaign_id})`);
+  return res.json({ ok: true, topup: job });
+});
+
+router.post('/webhooks/lh-machine/:clientId/topups', express.json({ limit: '16kb' }), async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const topups = require('../services/lhTopUpStore');
+  const row = await topups.reportFromMachine(client.clientId, clip(body.id, 40), body);
+  if (row) {
+    require('../services/lhTopUp').afterMachineReport(client.clientId, row)
+      .catch((e) => log.error(`LH-MACHINE top-up notify failed for ${client.clientId}: ${e.message}`));
+  }
+  return res.json({ ok: true, live: !!row, status: row ? row.status : null });
+});
+
 module.exports = router;

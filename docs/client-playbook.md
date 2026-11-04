@@ -594,6 +594,41 @@ sort of thing that's silently wrong otherwise. Give it a day or two; people have
 
 ---
 
+## KEEPING YOUR CAMPAIGN FED - TOPPING UP WHEN IT RUNS LOW
+
+Your campaign only ever invites the people in the search you gave it. When they've all been invited, it
+goes quiet - not broken, just empty. Your Monday email tells you when that's coming ("time to top up
+the search"), and topping up is the one job the system asks of you.
+Ask me "show me how to top up my campaign" any time and you get this page.
+
+**The easy way - give me the link.** Build a fresh search in Sales Navigator or LinkedIn, 2nd and 3rd
+degree connections only, and copy the whole address from the address bar. Then either paste it on the
+top-up page (the link is in your Monday email) or, right here, say **top up my campaign with this
+search** and paste the link. Wingguy checks it's a people search, puts it into your campaign on your
+Linked Helper machine, makes sure the campaign is running, and emails you when Linked Helper has
+finished collecting - with how many people it added.
+
+**What I can and can't check from the link.** I can see it's a people search, and usually whether it
+includes 1st-degree connections - if it does, I'll say so and ask for a fresh link, because the
+campaign can't invite someone you're already connected to. What I can't see from a link is whether the
+people look right for you, or who's already in your list. So once the collect has finished, open the
+campaign and look at the first page of people. Anyone from the search who was already in your list is
+skipped, so the number collected is always less than the search shows. That's normal.
+
+**How long it takes.** Linked Helper reads the search page by page - minutes for a few hundred people.
+It only lets itself load about 95 pages a day to stay inside LinkedIn's limits, so a very big search
+carries on by itself the next day. You'll get the email when it's done either way.
+
+**Choosing who to search for** is the part people actually forget, and it's a different skill from
+topping up: https://knowaguy.com.au/pick-your-people
+
+**If your Linked Helper runs on your own computer** rather than a machine I look after, I can't reach
+it from here. Topping up is pasting the search into your campaign yourself: open the campaign, open the
+first step's Queue, choose Add and collect from your search URL. Ask me to help with your first campaign
+and I'll walk you through it.
+
+---
+
 ## YOUR LINKED HELPER MACHINE - SETTING IT UP IN TEN MINUTES
 
 Ten minutes, about $21.50 a month, and you can't break anything.

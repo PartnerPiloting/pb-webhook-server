@@ -224,46 +224,27 @@ function dateWords(iso, timeZone = 'Australia/Brisbane') {
  * Returns { subject, text, html, topUps } - topUps lists "Client - Campaign" needing a new search.
  */
 function buildDigest(rows, { now = Date.now(), date = '', sent = [], skipped = [] } = {}) {
-  const sections = [];
   const topUps = [];
   const sorted = [...rows].sort((a, b) => String(a.clientName).localeCompare(String(b.clientName)));
   for (const r of sorted) {
-    const camps = (r.campaigns || []).map(campaignLines);
-    camps.filter((c) => c.topUp).forEach((c) => topUps.push(`${r.clientName} - ${c.name}`));
-    const stale = r.reportedAt && now - Date.parse(r.reportedAt) > STALE_MS
-      ? `Machine has not reported since ${dateWords(r.reportedAt)} - these numbers are from then.` : '';
-    const ticked = !!(r.client && r.client.mondayCampaignEmail);
-    sections.push({ name: `${r.clientName}${ticked ? '' : ' (not ticked - only you see this)'}`, stale, camps });
+    (r.campaigns || []).map(campaignLines).filter((c) => c.topUp).forEach((c) => topUps.push(`${r.clientName} - ${c.name}`));
   }
 
+  // Guy, 5 Nov 2026: the per-client detail had become noise - the only lines he ever acted on were
+  // "X has nobody left" and "Y's email didn't go", and any client's numbers are a question away in
+  // chat (wingguy_campaign_numbers). So the email is the action list and the sent/skipped line, nothing else.
   const { todo, glance } = actionList(sorted, { now, skipped });
   const todoHead = todo.length ? 'What you need to do:' : 'Nothing to do this week - every campaign has people for at least 3 more weeks.';
-  const intro = "The detail - each client's Linked Helper week. Clients with 'Monday Campaign Email' ticked were sent their own section.";
   const sentLine = sent.length ? `Sent their own email: ${sent.join(', ')}.` : 'No client was sent their own email this week.';
+  const tail = `${rows.length} client machine${rows.length === 1 ? '' : 's'} reported. Any client's numbers: ask Chat for "Roland's campaign numbers".`;
   const textParts = [todo.length ? `${todoHead}\n${todo.map((t) => `- ${t}`).join('\n')}` : todoHead];
   if (glance.length) textParts.push(`Worth a glance:\n${glance.map((t) => `- ${t}`).join('\n')}`);
-  textParts.push(`----------\n${intro}`, sentLine);
-  if (skipped.length) textParts.push(`Ticked but NOT sent:\n${skipped.map((t) => `- ${t}`).join('\n')}`);
-  for (const s of sections) {
-    const body = s.camps.length
-      ? s.camps.map((c) => `${c.name}\n${c.lines.map((l) => `  - ${l}`).join('\n')}`).join('\n\n')
-      : '  No live campaigns.';
-    textParts.push(`== ${s.name} ==${s.stale ? `\n  (${s.stale})` : ''}\n${body}`);
-  }
+  textParts.push(sentLine, tail);
 
   const htmlParts = [`<h3 style="margin-bottom:4px">${esc(todoHead)}</h3>`];
   if (todo.length) htmlParts.push(`<ul style="margin-top:0">${todo.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
   if (glance.length) htmlParts.push(`<p style="margin-bottom:2px"><b>Worth a glance:</b></p><ul style="margin-top:0">${glance.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
-  htmlParts.push('<hr>', `<p>${esc(intro)}</p>`, `<p>${esc(sentLine)}</p>`);
-  if (skipped.length) htmlParts.push(`<p><b>Ticked but NOT sent:</b></p><ul>${skipped.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
-  for (const s of sections) {
-    htmlParts.push(`<h3 style="margin-bottom:4px">${esc(s.name)}</h3>`);
-    if (s.stale) htmlParts.push(`<p style="color:#a15c00;margin-top:0">${esc(s.stale)}</p>`);
-    if (!s.camps.length) htmlParts.push('<p style="margin-top:0">No live campaigns.</p>');
-    for (const c of s.camps) {
-      htmlParts.push(`<p style="margin:8px 0 2px"><b>${esc(c.name)}</b></p><ul style="margin-top:0">${c.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`);
-    }
-  }
+  htmlParts.push(`<p>${esc(sentLine)}</p>`, `<p style="color:#666;font-size:90%">${esc(tail)}</p>`);
 
   return {
     subject: `Monday campaign numbers${date ? ` - ${date}` : ''}${topUps.length ? ` (${topUps.length} need${topUps.length === 1 ? 's' : ''} a top-up)` : ''}`,
@@ -333,33 +314,77 @@ function numbersSection(snap, now = Date.now(), { own = false } = {}) {
   return out;
 }
 
-/** The client's own email: their campaigns' lines, short. */
-function clientEmail({ clientFirstName, clientName, coachName, campaigns, machineLink }) {
+const HOW_IT_WORKS_URL = 'https://knowaguy.com.au/how-campaigns-work';
+const PICK_PEOPLE_URL = 'https://knowaguy.com.au/pick-your-people';
+
+/**
+ * The client's own email. Guy, 5 Nov 2026 (sample for Roland): a "reminder of how this works" link
+ * at the top, because people run campaigns for months and forget what the pieces are; the live
+ * campaigns' numbers; paused campaigns collapsed to one quiet line (two blocks of "Paused - nothing
+ * is going out" read like something was wrong); and when a top-up is due, an exit that actually
+ * works - the top-up page link, or the sentence to say to their Claude - instead of "reply if you
+ * want a hand". The honest skip rule is stated every time, so a smaller number reads as normal.
+ */
+function clientEmail({ clientFirstName, clientName, coachName, campaigns, machineLink, topUpLink = null }) {
   const first = String(clientFirstName || '').trim() || String(clientName || '').trim().split(/\s+/)[0] || 'there';
   const { signoffName } = require('./lhSignoutWatch');
   const camps = campaigns.map(campaignLines);
-  const tail = camps.some((c) => c.topUp)
-    ? 'When a campaign is close to empty, a fresh search keeps the invitations going - just reply if you want a hand with it.'
-    : '';
-  // Their own machine's web link, so checking a number or topping up a search is one click away.
+  const live = camps.filter((c) => !c.paused);
+  const paused = camps.filter((c) => c.paused);
+  const topUp = live.some((c) => c.topUp);
+  const needing = live.filter((c) => c.topUp).map((c) => c.name);
+
+  const reminder = `Reminder of how this works: ${HOW_IT_WORKS_URL} - one page, two minutes, for when it all goes a bit hazy.`;
+  const reminderHtml = `<p><a href="${HOW_IT_WORKS_URL}">Reminder of how this works</a> - one page, two minutes, for when it all goes a bit hazy.</p>`;
+  const opener = live.length
+    ? `Here's how your Linked Helper campaign${live.length === 1 ? '' : 's'} went last week.`
+    : 'Your Linked Helper campaigns this week.';
+
+  let pausedLine = '';
+  if (paused.length && live.length) {
+    const names = paused.map((c) => c.name).join(', ');
+    pausedLine = `${paused.length === 1 ? 'One older campaign is' : `${paused.length} older campaigns are`} paused and quiet (${names}) - nothing going out, nothing to do.`;
+  } else if (paused.length && !live.length) {
+    pausedLine = `All your campaigns are paused (${paused.map((c) => c.name).join(', ')}) - nothing is going out and no acceptances are being picked up. If that is not on purpose, open your machine and press Start on the campaign.`;
+  }
+
+  const target = needing.length === 1 ? `"${needing[0]}"` : 'your campaign';
+  const topUpText = topUp ? [
+    `To top up ${target}: build a fresh search in Sales Navigator or LinkedIn (2nd and 3rd degree only), copy the link from the address bar, and paste it here: ${topUpLink || 'ask your Claude - see below'}`,
+    'Or open a chat with your Claude and say "top up my campaign with this search" and paste the link.',
+    'Either way, Wingguy puts the people into your campaign, makes sure it is running, and emails you how many it collected. Anyone already in your list is skipped, so the number is always less than the search shows.',
+    `Not sure who to search for? ${PICK_PEOPLE_URL}`,
+  ] : [];
+  const topUpHtml = topUp ? [
+    `<p><b>To top up ${esc(target)}:</b> build a fresh search in Sales Navigator or LinkedIn (2nd and 3rd degree only), copy the link from the address bar, and ${topUpLink ? `<a href="${esc(topUpLink)}">paste it here</a>` : 'give it to your Claude'}.</p>`,
+    '<p>Or open a chat with your Claude and say <b>top up my campaign with this search</b> and paste the link.</p>',
+    '<p>Either way, Wingguy puts the people into your campaign, makes sure it is running, and emails you how many it collected. Anyone already in your list is skipped, so the number is always less than the search shows.</p>',
+    `<p>Not sure who to search for? <a href="${PICK_PEOPLE_URL}">How to pick your people on LinkedIn</a>.</p>`,
+  ] : [];
+
+  // Their own machine's web link, so checking a number is one click away.
   const open = `To open your Linked Helper machine: ${machineLink || 'ask your Claude to "open my Linked Helper machine"'}`;
   const text = [
     `Hi ${first},`,
-    "Here's how your Linked Helper campaigns went last week.",
-    camps.map((c) => `${c.name}\n${c.lines.map((l) => `- ${l}`).join('\n')}`).join('\n\n'),
-    tail,
+    reminder,
+    opener,
+    live.map((c) => `${c.name}\n${c.lines.map((l) => `- ${l}`).join('\n')}`).join('\n\n'),
+    pausedLine,
+    ...topUpText,
     open,
     `Cheers,\n${signoffName(coachName)}`,
   ].filter(Boolean).join('\n\n');
   const html = [
     `<p>Hi ${esc(first)},</p>`,
-    "<p>Here's how your Linked Helper campaigns went last week.</p>",
-    ...camps.map((c) => `<p style="margin:12px 0 2px"><b>${esc(c.name)}</b></p><ul style="margin-top:0">${c.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`),
-    tail ? `<p>${esc(tail)}</p>` : '',
+    reminderHtml,
+    `<p>${esc(opener)}</p>`,
+    ...live.map((c) => `<p style="margin:12px 0 2px"><b>${esc(c.name)}</b></p><ul style="margin-top:0">${c.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`),
+    pausedLine ? `<p style="color:#555">${esc(pausedLine)}</p>` : '',
+    ...topUpHtml,
     machineLink ? `<p><a href="${esc(machineLink)}">Open your Linked Helper machine</a></p>` : `<p>${esc(open)}</p>`,
     `<p>Cheers,<br>${esc(signoffName(coachName))}</p>`,
   ].filter(Boolean).join('\n');
-  return { subject: 'Your campaign numbers this week', text, html };
+  return { subject: topUp ? 'Your campaign numbers this week - time to top up' : 'Your campaign numbers this week', text, html, topUp };
 }
 
 /** Why a ticked client is NOT sent theirs this week, or null to send. */
@@ -385,7 +410,9 @@ async function sendClientEmails(rows, deps = {}, now = Date.now()) {
       const coachEmail = String((coach && coach.clientEmailAddress) || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim();
       const addr = require('./mailgunCreds').fromEmail();
       const to = String(r.client.clientEmailAddress).trim();
-      const cm = clientEmail({ clientFirstName: r.client.clientFirstName, clientName: r.clientName, coachName, campaigns: r.campaigns, machineLink: r.client.machineLink });
+      let topUpLink = null;
+      try { topUpLink = require('../utils/topUpLink').topUpLink(r.clientId); } catch (e) { log.warn(`lh-weekly-report: no top-up link for ${r.clientId}: ${e.message}`); }
+      const cm = clientEmail({ clientFirstName: r.client.clientFirstName, clientName: r.clientName, coachName, campaigns: r.campaigns, machineLink: r.client.machineLink, topUpLink });
       const sendClient = deps.sendClientEmail || require('./emailNotificationService').sendMailgunEmail;
       await sendClient({
         from: addr.includes('<') ? addr : `${coachName} <${addr}>`,

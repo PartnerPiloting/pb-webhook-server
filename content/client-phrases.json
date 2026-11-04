@@ -14,6 +14,29 @@
   ],
   "phrases": [
     {
+      "phrase": "top up my campaign with this search",
+      "tool": "wingguy_top_up_campaign",
+      "where": [
+        "docs/client-playbook.md",
+        "services/lhWeeklyCampaignReport.js",
+        "content/site/how-campaigns-work.html",
+        "content/site/pick-your-people.html",
+        "content/site/top-up.html"
+      ]
+    },
+    {
+      "phrase": "show me how to top up my campaign",
+      "tool": "wingguy_learn",
+      "topic": "KEEPING YOUR CAMPAIGN FED",
+      "where": [
+        "docs/client-playbook.md"
+      ],
+      "near_misses": [
+        { "text": "how do I add a new search to Linked Helper", "expect": "KEEPING YOUR CAMPAIGN FED" },
+        { "text": "my campaign has run out of people", "expect": "KEEPING YOUR CAMPAIGN FED" }
+      ]
+    },
+    {
       "phrase": "Help me set up my Linked Helper machine",
       "tool": "wingguy_learn",
       "topic": "YOUR LINKED HELPER MACHINE",

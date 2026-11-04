@@ -509,6 +509,12 @@ const TOPIC_ALIASES = [
   // in 1 day" - Alex Solti's Claude read that line off his screen after he had bought and told him
   // his campaign would stop. No title says "licence"; the trial topic is where it is answered.
   [[/\b(licen[cs]es?|subscription)\b/, /\b(linked ?helper|lh|expir\w*|trial|ok|bought|buy|renew\w*)\b/], 'LINKED HELPER - THE TRIAL'],
+  // topping up the campaign (5 Nov 2026): "show me how to top up my campaign", "how do I top up?", "add a new
+  // search to Linked Helper", "my campaign has run out of people". The title deliberately avoids the word "top"
+  // - "keep on top of follow-ups" was scoring onto it and stealing the daily list - so the subject is keyed here.
+  [[/\btop(ping|ped)?\b/, /\bup\b/], 'KEEPING YOUR CAMPAIGN FED'],
+  [[/\bsearch(es)?\b/, /\b(add|new|another|fresh|more|paste)\b/, /\b(campaign|linked ?helper|lh)\b/], 'KEEPING YOUR CAMPAIGN FED'],
+  [[/\b(run|ran|running) out\b/, /\b(people|campaign|queue|invites?)\b/], 'KEEPING YOUR CAMPAIGN FED'],
 ];
 
 function findPlaybookTopic(topics, query) {

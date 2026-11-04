@@ -318,6 +318,121 @@ def fetch_job(conf, job):
     report_file(conf, job.get("id"), report)
 
 
+# ----------------------------------------------------------------------------------- top-ups
+#
+# CAMPAIGN TOP-UPS (5 Nov 2026). The same agent, on the same polling rule, also collects a
+# TOP-UP: a LinkedIn / Sales Navigator search link the owner gave their Claude (or pasted on the
+# top-up page) to put more people into their campaign. Before this, "time to top up the search"
+# in the Monday numbers email left the clicks to the client, and clients forgot them. Now
+# lh-topup.py puts the search into the campaign as Linked Helper's own auto-collect step, makes
+# sure the campaign is running, and this agent reports progress until the collect has finished -
+# that final report is the email the owner gets. One top-up at a time; a newer one replaces it.
+
+TOPUP_SCRIPT = next((p for p in ("/usr/local/bin/lh-topup.py",
+                                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "lh-topup.py"))
+                     if os.path.exists(p)), "/usr/local/bin/lh-topup.py")
+TOPUP_PROGRESS_SECONDS = 120      # how often the server hears how the collect is going
+TOPUP_STALL_MINUTES = 15          # no new person this long, and LH not on the step = finished
+TOPUP_MAX_HOURS = 20              # a huge search runs into LH's daily page limit; stop reporting here
+topup_busy = threading.Lock()
+
+
+def topup_cmd(*args):
+    """Run lh-topup.py and parse its one JSON line. Never raises."""
+    try:
+        r = subprocess.run([sys.executable, TOPUP_SCRIPT, *[str(a) for a in args]],
+                           capture_output=True, text=True, timeout=300)
+        line = (r.stdout or "").strip().splitlines()
+        return json.loads(line[-1]) if line else {"ok": False, "error": "no output from lh-topup.py: %s" % (r.stderr or "")[-200:]}
+    except Exception as e:
+        return {"ok": False, "error": "lh-topup.py failed: %s" % str(e)[:200]}
+
+
+def collect_topup(conf):
+    """Ask the server whether a top-up is waiting. Returns the job, or None. Never raises."""
+    url = conf.get("REPORT_URL", "").rstrip("/") + "/topups"
+    req = urllib.request.Request(url, headers={"x-lh-machine-secret": conf.get("REPORT_SECRET", "")})
+    try:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
+            return json.loads(r.read().decode()).get("topup") or None
+    except urllib.error.HTTPError as e:
+        if e.code != 404:          # 404 = a server that predates this; nothing to say
+            print(f"top-up poll rejected ({e.code})", flush=True)
+    except Exception as e:
+        print(f"top-up poll failed (non-fatal): {e}", flush=True)
+    return None
+
+
+def report_topup(conf, job_id, report):
+    """Tell the server. Returns False when the server says this job is no longer live (replaced)."""
+    url = conf.get("REPORT_URL", "").rstrip("/") + "/topups"
+    body = json.dumps(dict(report, id=job_id)).encode()
+    req = urllib.request.Request(url, data=body, headers={
+        "Content-Type": "application/json", "x-lh-machine-secret": conf.get("REPORT_SECRET", "")})
+    try:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
+            return json.loads(r.read().decode()).get("live", True) is not False
+    except Exception as e:
+        print(f"top-up report failed (non-fatal): {e}", flush=True)
+        return True
+
+
+def topup_job(conf, job):
+    """One top-up, start to finish, on its own thread: apply, then report progress until done."""
+    if not topup_busy.acquire(blocking=False):
+        print("top-up %s skipped - one is already running" % job.get("id"), flush=True)
+        return
+    try:
+        job_id = job.get("id")
+        applied = topup_cmd("apply", job.get("campaign_id"), job.get("url"))
+        if not applied.get("ok"):
+            print("top-up %s refused: %s" % (job_id, applied.get("error")), flush=True)
+            report_topup(conf, job_id, {"ok": False, "stage": "final", "error": applied.get("error") or "apply failed"})
+            return
+        print("top-up %s: %s auto-collect step %s in campaign %s" % (
+            job_id, applied.get("how"), applied.get("action_id"), applied.get("campaign_id")), flush=True)
+        if not report_topup(conf, job_id, dict(applied, stage="applied")):
+            return
+        started = time.time()
+        quiet_since = started
+        while True:
+            time.sleep(TOPUP_PROGRESS_SECONDS)
+            st = topup_cmd("status", applied["campaign_id"], applied["action_id"], applied["since"])
+            if not st.get("ok"):
+                print("top-up %s status failed: %s" % (job_id, st.get("error")), flush=True)
+                continue
+            elapsed_h = (time.time() - started) / 3600
+            finished = None
+            if st.get("collecting_now"):
+                quiet_since = time.time()
+            elif st.get("last_collect_at") and (st.get("minutes_since_last") or 0) >= TOPUP_STALL_MINUTES:
+                finished = "collect finished - nothing new for %d minutes" % st["minutes_since_last"]
+            elif not st.get("last_collect_at") and time.time() - quiet_since > TOPUP_STALL_MINUTES * 60:
+                finished = "Linked Helper did not start collecting within %d minutes" % TOPUP_STALL_MINUTES
+            if st.get("finished_normally"):
+                finished = "collect finished"
+            elif st.get("postpone_reason") and st.get("postpone_reason") != "Waiter" and not st.get("collecting_now"):
+                # Page credits or a LinkedIn limit: Linked Helper stops and carries on by itself later.
+                finished = "Linked Helper paused the collect (%s) - it carries on by itself when the daily page limit resets" % st["postpone_reason"]
+            if elapsed_h >= TOPUP_MAX_HOURS and not finished:
+                finished = "still collecting after %d hours - a very large search; it carries on by itself" % TOPUP_MAX_HOURS
+            stage = "final" if finished else "progress"
+            live = report_topup(conf, job_id, dict(st, stage=stage, how=applied.get("how"),
+                                                   waiting_before=applied.get("waiting_before"),
+                                                   finished_because=finished))
+            if finished or not live:
+                print("top-up %s %s: %s collected" % (job_id, "done" if finished else "superseded", st.get("collected")), flush=True)
+                return
+    except Exception as e:
+        print("top-up thread failed: %s" % e, flush=True)
+        try:
+            report_topup(conf, job.get("id"), {"ok": False, "stage": "final", "error": "the machine's top-up step failed part-way (%s)" % str(e)[:160]})
+        except Exception:
+            pass
+    finally:
+        topup_busy.release()
+
+
 def main():
     conf = load_conf()
     if not conf.get("REPORT_URL"):
@@ -346,6 +461,12 @@ def main():
                 job = collect_file(conf)
                 if job:
                     threading.Thread(target=fetch_job, args=(conf, job), daemon=True).start()
+                # A top-up is only asked for when none is running - the server would hand the same
+                # job back and the thread would refuse it, which is noise.
+                if not topup_busy.locked():
+                    topup = collect_topup(conf)
+                    if topup:
+                        threading.Thread(target=topup_job, args=(conf, topup), daemon=True).start()
         except Exception as e:
             # The loop must outlive anything - a dead agent is a silently broken clipboard.
             print(f"cycle error (continuing): {e}", flush=True)
