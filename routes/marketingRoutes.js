@@ -434,10 +434,26 @@ module.exports = function mountMarketingSite(app) {
     const first = client ? (client.clientFirstName || String(client.clientName || '').split(/\s+/)[0]) : '';
     const c = encodeURIComponent(clientId);
     const k = encodeURIComponent(String((req.method === 'POST' ? req.body : req.query).k || ''));
+    // One campaign is the method, so the box alone is the normal page. A client running several
+    // (Guy himself, Sam) gets a dropdown rather than a refusal.
+    let campaignField = '';
+    if (!done) {
+      try {
+        const pick = await require('../services/lhTopUp').pickCampaign(clientId);
+        if (pick.choose && pick.choose.length > 1) {
+          const chosen = String((req.body || {}).campaign || '');
+          campaignField = `
+          <label for="campaign">Which campaign</label>
+          <select id="campaign" name="campaign" style="font:16px Georgia,serif;padding:8px;margin-bottom:14px;max-width:100%">
+            ${pick.choose.map((x) => `<option value="${escHtml(x.id)}"${String(x.id) === chosen ? ' selected' : ''}>${escHtml(x.name || `Campaign ${x.id}`)}${x.paused ? ' (paused)' : ''}</option>`).join('')}
+          </select>`;
+        }
+      } catch (_e) { /* the POST will say what is wrong */ }
+    }
     const form = done ? '' : `
         <form method="post" action="/site/top-up">
           <input type="hidden" name="c" value="${escHtml(clientId)}">
-          <input type="hidden" name="k" value="${escHtml(String((req.method === 'POST' ? req.body : req.query).k || ''))}">
+          <input type="hidden" name="k" value="${escHtml(String((req.method === 'POST' ? req.body : req.query).k || ''))}">${campaignField}
           <label for="url">Your search link - copied whole from the address bar (LinkedIn people search, Sales Navigator search, or a Sales Navigator lead list)</label>
           <textarea id="url" name="url" placeholder="https://www.linkedin.com/sales/search/people?..." required>${escHtml(req.method === 'POST' && kind === 'bad' ? (req.body || {}).url : '')}</textarea>
           <button type="submit">Add these people to my campaign</button>
@@ -462,7 +478,7 @@ module.exports = function mountMarketingSite(app) {
       if (!clientId) return renderTopUp(req, res);
       const client = await require('../services/clientService').getClientById(clientId);
       if (!client) return renderTopUp(req, res, { message: 'That client record could not be found - reply to your Monday email and I will sort it.', kind: 'bad' });
-      const r = await require('../services/lhTopUp').requestTopUp({ client, url: (req.body || {}).url, requestedBy: 'top-up page' });
+      const r = await require('../services/lhTopUp').requestTopUp({ client, url: (req.body || {}).url, campaign: (req.body || {}).campaign, requestedBy: 'top-up page' });
       logger.info(`[site] top-up ${r.ok ? 'queued' : 'refused'} for ${clientId}`);
       if (!r.ok) return renderTopUp(req, res, { message: escHtml(r.text).replace(/\n/g, '<br>'), kind: 'bad' });
       return renderTopUp(req, res, { message: `<b>Queued.</b> ${escHtml(r.text.split('\n\n')[0].replace(/^Queued\.\s*/, ''))}`, kind: 'good', done: true });
