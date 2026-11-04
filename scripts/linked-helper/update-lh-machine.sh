@@ -66,12 +66,20 @@ echo "== 6. campaign top-ups (lh-topup.py + the clipboard agent that collects th
 # lh-topup.py imports lh-campaigns.py; Guy's own machine never had the builder installed, so both go on.
 install -m 755 "$SRC_DIR/lh-campaigns.py" /usr/local/bin/lh-campaigns.py
 install -m 755 "$SRC_DIR/lh-topup.py" /usr/local/bin/lh-topup.py
-if cmp -s "$SRC_DIR/lh-clipboard.py" /usr/local/bin/lh-clipboard.py; then
+# Guy's own machine (the first build, 1 Sep 2026) predates the clipboard agent and never had the
+# service - the top-ups ride on that agent, so a machine without the unit gets it here.
+if [ ! -f /etc/systemd/system/lh-clipboard.service ]; then
+  sed "s/^User=lh$/User=$LH_USER/" "$SRC_DIR/lh-clipboard.service" > /etc/systemd/system/lh-clipboard.service
+  systemctl daemon-reload
+  systemctl enable lh-clipboard.service >/dev/null 2>&1
+  echo "clipboard agent service created (this machine never had one)"
+fi
+if cmp -s "$SRC_DIR/lh-clipboard.py" /usr/local/bin/lh-clipboard.py && systemctl is-active --quiet lh-clipboard.service; then
   echo "clipboard agent already current"
 else
   [ -f /usr/local/bin/lh-clipboard.py ] && cp -p /usr/local/bin/lh-clipboard.py /usr/local/bin/lh-clipboard.py.before-update
   install -m 755 "$SRC_DIR/lh-clipboard.py" /usr/local/bin/lh-clipboard.py
-  systemctl restart lh-clipboard.service 2>/dev/null && echo "clipboard agent replaced and restarted" || echo "clipboard agent replaced (no lh-clipboard.service here)"
+  systemctl restart lh-clipboard.service && echo "clipboard agent replaced and restarted"
 fi
 python3 -c "import websockets" 2>/dev/null || apt-get install -y -qq python3-websockets >/dev/null
 echo "installed"
