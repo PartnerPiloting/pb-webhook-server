@@ -150,15 +150,17 @@ function finishedEmail({ firstName, job, coachName, machineLink }) {
       'Reply to this email and I\'ll sort it out, or send a fresh search link and try again.',
     ];
   }
+  const { signoffName } = require('./lhSignoutWatch');
+  const signed = signoffName(coachName);
   const text = [
     `Hi ${first},`, ...body,
     machineLink ? `To look at the campaign: ${machineLink}` : 'To look at the campaign, ask your Claude to "open my Linked Helper machine".',
-    `Cheers,\n${coachName}`,
+    `Cheers,\n${signed}`,
   ].join('\n\n');
   const html = [
     `<p>Hi ${esc(first)},</p>`, ...body.map((p) => `<p>${esc(p)}</p>`),
     machineLink ? `<p><a href="${esc(machineLink)}">Open your Linked Helper machine</a></p>` : '<p>To look at the campaign, ask your Claude to "open my Linked Helper machine".</p>',
-    `<p>Cheers,<br>${esc(coachName)}</p>`,
+    `<p>Cheers,<br>${esc(signed)}</p>`,
   ].join('\n');
   return { subject: job.status === 'done' ? `Your campaign top-up - ${Number(d.collected || 0)} added to ${camp}` : `Your campaign top-up didn't go through`, text, html };
 }
