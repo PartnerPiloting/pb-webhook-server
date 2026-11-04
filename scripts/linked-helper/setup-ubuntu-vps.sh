@@ -355,6 +355,8 @@ echo "== campaign builder (run AFTER the LinkedIn login - step 5 below) =="
 # client's webhook address filled from /etc/linked-helper-machine.conf. Idempotent by
 # campaign name. Proven on Guy's machine 11 Sep 2026; see docs/linked-helper-machine-setup.md.
 install -m 755 "$SRC_DIR/lh-campaigns.py" /usr/local/bin/lh-campaigns.py
+# Campaign top-ups from a search link (5 Nov 2026) - run by lh-clipboard.py when the server has one waiting.
+install -m 755 "$SRC_DIR/lh-topup.py" /usr/local/bin/lh-topup.py
 install -m 755 "$SRC_DIR/lh-build-campaigns.sh" /usr/local/bin/lh-build-campaigns.sh
 install -d -m 755 /usr/local/share/linked-helper/campaigns
 install -m 644 "$SRC_DIR"/campaigns/*.json /usr/local/share/linked-helper/campaigns/

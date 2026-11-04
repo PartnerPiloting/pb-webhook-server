@@ -36,6 +36,7 @@ const { registerCaptureControlTools } = require('./captureControlMcp');
 const { registerWingguyContactsTools } = require('./wingguyContactsMcp');
 const { registerMachineClipboardTools } = require('./machineClipboardMcp');
 const { registerWingguyInboxTools } = require('./wingguyInboxMcp');
+const { registerWingguyTopUpTools } = require('./wingguyTopUpMcp');
 const connectorSeen = require('./connectorSeenStore');
 
 const BASE = '/mcp2';
@@ -490,6 +491,8 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
   registerMachineClipboardTools(server, coachClientId);
   // Guy's own inbox ("go through my inbox" - sort, check live, archive on his yes). Coach only.
   registerWingguyInboxTools(server, coachClientId);
+  // Campaign top-ups ("top up my campaign with this search" - the search goes to their machine).
+  registerWingguyTopUpTools(server, coachClientId);
 
   return server;
 }

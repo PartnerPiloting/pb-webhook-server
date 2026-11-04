@@ -1,0 +1,101 @@
+<style>
+  /* The editorial shell the one-pagers use (routes/onePagerRoutes.js) - the same shell as
+     /your-campaign, because this page is that page's two-minute reminder. Single-theme. */
+  :root {
+    color-scheme: light;
+    --ground:   #e9e2d3;
+    --card:     #fbf9f3;
+    --ink:      #2c2823;
+    --ink-deep: #221f1a;
+    --ink-soft: #6f6558;
+    --ink-mid:  #4a423a;
+    --rule:     #e2dccd;
+    --dark:     #211d18;
+    --gold:     #c49a5e;
+    --gold-ink: #9a6a2f;
+    --cream:    #f3ede1;
+  }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif; -webkit-font-smoothing: antialiased; }
+  .op-page { padding: 28px 16px 52px; }
+  .op { max-width: 640px; margin: 0 auto 22px; background: var(--card); border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.10); }
+  .op-mast { background: var(--dark); padding: 34px 40px 30px; }
+  .op-eb { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--gold); margin: 0 0 12px; }
+  .op-wm { font-size: 30px; margin: 0; font-weight: 400; }
+  .op-wm a { color: var(--cream); text-decoration: none; }
+  .op-c { padding: 34px 40px 8px; }
+  .op-t { font-size: 28px; line-height: 1.25; margin: 0 0 12px; color: var(--ink-deep); font-weight: 400; text-wrap: balance; }
+  .op-dek { font-style: italic; color: var(--ink-soft); font-size: 18px; line-height: 1.5; margin: 0 0 20px; text-wrap: balance; }
+  .op-r { border: 0; border-top: 1px solid var(--rule); margin: 0 0 22px; }
+  .op-body p { font-size: 17px; line-height: 1.66; margin: 0 0 1.15rem; }
+  .op-body h2 { font-size: 21px; line-height: 1.3; margin: 1.9rem 0 .4rem; color: var(--ink-deep); font-weight: 400; text-wrap: balance; }
+  .op-body strong, .op-body b { font-weight: 700; }
+  .op-body a { color: var(--gold-ink); }
+  .op-body ul, .op-body ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  .op-body li { font-size: 17px; line-height: 1.6; margin: 0 0 .5rem; }
+  .aside { margin: 1.6rem 0; padding: 14px 18px 4px; border: 1px solid var(--rule); border-left: 3px solid var(--gold); border-radius: 3px; background: var(--cream); }
+  .op-body .aside p { font-size: 16px; line-height: 1.6; margin: 0 0 .7rem; color: var(--ink-mid); }
+  .flow { margin: 1.3rem 0 1.7rem; padding: 0; list-style: none; }
+  .flow li { position: relative; margin: 0 0 22px; padding: 11px 16px; border: 1px solid var(--rule); border-radius: 4px; background: #fff; font-size: 16px; line-height: 1.45; }
+  .flow li:not(:last-child)::after { content: ""; position: absolute; left: 28px; bottom: -17px; border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 10px solid var(--gold); }
+  .flow b { display: block; color: var(--ink-deep); }
+  .flow span { color: var(--ink-soft); font-size: 15px; }
+  .flow .yours { border-color: var(--gold); background: var(--cream); }
+  .flow-key { font-size: 14px; color: var(--ink-soft); margin: -0.6rem 0 1.6rem; }
+  .op-foot { padding: 18px 40px 6px; border-top: 1px solid var(--rule); margin-top: 1.6rem; font-size: 14px; line-height: 1.6; color: var(--ink-soft); }
+  .op-foot a { color: var(--gold-ink); }
+  .op-sign { margin: .9rem 0 0; }
+  .op-bar { background: var(--dark); height: 34px; }
+  @media (max-width: 520px) { .op-mast, .op-c, .op-foot { padding-left: 22px; padding-right: 22px; } .op-t { font-size: 24px; } .op-wm { font-size: 26px; } }
+</style>
+
+<div class="op-page">
+  <article class="op">
+
+    <header class="op-mast">
+      <p class="op-eb">Network building, rethought</p>
+      <p class="op-wm"><a href="/">(I know a) Guy</a></p>
+    </header>
+
+    <div class="op-c">
+      <h1 class="op-t">How your campaign works - the two-minute reminder</h1>
+      <p class="op-dek">Campaigns run for months, and we all forget what the pieces are. This is the whole thing on one page.</p>
+      <hr class="op-r">
+
+      <div class="op-body">
+
+        <ol class="flow">
+          <li class="yours"><b>You search on LinkedIn or Sales Navigator</b><span>The people you'd like to know - 2nd and 3rd degree connections only.</span></li>
+          <li class="yours"><b>You give the search link to Wingguy</b><span>Paste it on the top-up page in your Monday email, or tell your Claude "top up my campaign with this search".</span></li>
+          <li><b>Linked Helper collects the people</b><span>On your machine, page by page, into your one campaign. Anyone already in your list is skipped.</span></li>
+          <li><b>They're invited to connect</b><span>A few a day, with your note, inside LinkedIn's limits.</span></li>
+          <li><b>Everyone who accepts lands in your Wingguy database</b><span>Through the webhook - scored, with their profile read.</span></li>
+          <li class="yours"><b>Thanks for Connecting, and the CRM</b><span>You thank the ones worth thanking. Wingguy drafts, you send.</span></li>
+        </ol>
+        <p class="flow-key">The white boxes happen by themselves. The gold ones are yours.</p>
+
+        <h2>Your Monday email</h2>
+        <p>Every Monday you get your numbers: how many invitations went out last week, how many were accepted, how many people are left to invite, and roughly how long that lasts at your pace. When it says <b>time to top up the search</b>, that's the only thing it ever asks of you.</p>
+
+        <h2>Topping up</h2>
+        <p>Build a fresh search, copy the link from the address bar, and either paste it on the top-up page (the link is in your Monday email) or say to your Claude <b>top up my campaign with this search</b> and paste it there. Wingguy puts the people into your campaign, makes sure it's running, and emails you when Linked Helper has finished collecting and how many it added.</p>
+        <p>Two things to check yourself once it has: open the campaign and make sure the people look right for you, and that they're 2nd or 3rd degree connections - Linked Helper can't invite someone you're already connected to. Not sure who to search for? <a href="/pick-your-people">How to pick your people on LinkedIn</a>.</p>
+
+        <div class="aside">
+          <p><b>Why the number collected is always less than the search shows.</b> Linked Helper remembers everyone already in your campaign and skips them. A search that says 300 might add 180. That's normal, not a fault.</p>
+          <p><b>Why a big search takes a day or two.</b> Linked Helper reads about 95 pages of a search a day to stay inside LinkedIn's limits. When it hits that, it keeps everyone it has and carries on tomorrow by itself.</p>
+        </div>
+
+        <h2>Who gets the numbers</h2>
+        <p>The numbers, the top-up and the Monday email only work for a Linked Helper machine I look after - that's what makes the connection to your campaign. If you run Linked Helper on your own computer, nothing can reach it from here: your numbers are on Linked Helper's own dashboard, and topping up is pasting the search into your campaign yourself. Ask your Claude "help me with my first campaign" and it walks you through it.</p>
+
+      </div>
+
+      <footer class="op-foot">
+        <p>The longer version, with why each step is there: <a href="/your-campaign">One campaign, and the message that matters</a>. Haven't opened your machine yet? <a href="/open-your-machine">Here's how to get in</a>.</p>
+        <p class="op-sign">- (I know a) Guy</p>
+      </footer>
+    </div>
+
+    <div class="op-bar"></div>
+  </article>
+</div>

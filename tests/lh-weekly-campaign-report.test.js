@@ -99,11 +99,11 @@ check("Guy's digest: top-ups listed first, clients in name order, stale machines
   ], { now, date: '2026-10-19' });
   assert.deepStrictEqual(d.topUps, ['Guy Wilson - Contact Financial Planners']);
   assert.strictEqual(d.subject, 'Monday campaign numbers - 2026-10-19 (1 needs a top-up)');
-  const order = ['== Amy Quiet', '== Guy Wilson', '== Zed Client'].map((h) => d.text.indexOf(h));
-  assert.ok(order[0] > 0 && order[0] < order[1] && order[1] < order[2], 'name order');
-  assert.ok(d.text.includes('Machine has not reported since'), 'stale flag');
-  assert.ok(d.text.includes('No live campaigns.'));
-  assert.ok(d.html.includes('<b>Fractional in profile</b>'));
+  assert.ok(d.text.includes("Amy Quiet: their machine hasn't reported since"), 'stale machine is a job');
+  // 5 Nov 2026: the per-client detail is gone - Guy's email is the action list only.
+  assert.ok(!d.text.includes('== '), 'no per-client sections');
+  assert.ok(!d.html.includes('<b>Fractional in profile</b>'), 'no campaign detail');
+  assert.ok(d.text.includes('3 client machines reported.'));
   assert.ok(!/[–—]/.test(d.text + d.html), 'no em or en dashes');
 });
 
@@ -123,26 +123,47 @@ check("Guy's digest OPENS with what to do, most urgent first, then the detail (2
   assert.ok(/^- Guy Wilson: new search for "Contact Financial Planners" - 2 people left, less than a week\.$/.test(lines[2]), lines[2]);
   assert.ok(/^- Sam Noble: new search for "Almost out" - 30 people left, less than a week\.$/.test(lines[3]), lines[3]);
   assert.ok(d.text.includes('Worth a glance:\n- Steve Nelson: "On hold" is paused with 449 people waiting'), 'paused is a glance, not a job');
-  assert.ok(d.text.indexOf('----------') > d.text.indexOf('Worth a glance'), 'detail comes after');
   assert.ok(d.html.startsWith('<h3 style="margin-bottom:4px">What you need to do:</h3>'));
 
   const calm = w.buildDigest([{ clientId: 'Z', clientName: 'Zed', reportedAt: fresh, campaigns: [frac] }], { now });
   assert.ok(calm.text.startsWith('Nothing to do this week'), calm.text.slice(0, 60));
 });
 
-check("the client's own email: first name, their campaigns, a top-up nudge only when needed, Guy's sign-off", () => {
-  const e = w.clientEmail({ clientFirstName: 'Rick', clientName: 'Rick Wong', coachName: 'Guy Wilson', campaigns: [planners, frac] });
-  assert.strictEqual(e.subject, 'Your campaign numbers this week');
-  assert.ok(e.text.startsWith('Hi Rick,'));
+check("the client's own email: reminder link on top, their campaigns, a top-up exit only when needed, Guy's sign-off (5 Nov 2026)", () => {
+  const e = w.clientEmail({ clientFirstName: 'Rick', clientName: 'Rick Wong', coachName: 'Guy Wilson', campaigns: [planners, frac], topUpLink: 'https://knowaguy.com.au/top-up?c=Rick&k=abc' });
+  assert.strictEqual(e.subject, 'Your campaign numbers this week - time to top up');
+  assert.ok(e.text.startsWith('Hi Rick,\n\nReminder of how this works: https://knowaguy.com.au/how-campaigns-work'), e.text.slice(0, 120));
   assert.ok(e.text.includes('Contact Financial Planners\n- Last week: 9 invitations sent, 4 accepted.'));
-  assert.ok(e.text.includes('a fresh search keeps the invitations going'));
+  assert.ok(e.text.includes('To top up "Contact Financial Planners": build a fresh search'), 'names the campaign that needs it');
+  assert.ok(e.text.includes('paste it here: https://knowaguy.com.au/top-up?c=Rick&k=abc'), 'the top-up page link');
+  assert.ok(e.text.includes('say "top up my campaign with this search"'), 'the sentence for Claude');
+  assert.ok(e.text.includes('Anyone already in your list is skipped'), 'the honest skip rule');
+  assert.ok(e.text.includes('https://knowaguy.com.au/pick-your-people'));
+  assert.ok(e.html.includes('<a href="https://knowaguy.com.au/top-up?c=Rick&amp;k=abc">paste it here</a>'));
   assert.ok(e.text.endsWith('Cheers,\n(I know a) Guy'));
-  assert.ok(!w.clientEmail({ clientFirstName: 'Rick', coachName: 'Guy Wilson', campaigns: [frac] }).text.includes('fresh search'));
+  const calm = w.clientEmail({ clientFirstName: 'Rick', coachName: 'Guy Wilson', campaigns: [frac] });
+  assert.strictEqual(calm.subject, 'Your campaign numbers this week');
+  assert.ok(!calm.text.includes('To top up'), 'no top-up block when nothing needs it');
+  assert.ok(!calm.text.includes('pick-your-people'));
   assert.ok(e.text.includes('ask your Claude to "open my Linked Helper machine"'), 'no link on record - the Claude fallback');
   const linked = w.clientEmail({ clientFirstName: 'Rick', coachName: 'Guy Wilson', campaigns: [frac], machineLink: 'https://m.example/rick' });
   assert.ok(linked.text.includes('To open your Linked Helper machine: https://m.example/rick'));
   assert.ok(linked.html.includes('<a href="https://m.example/rick">Open your Linked Helper machine</a>'));
   assert.ok(!/[–—]/.test(e.text + e.html), 'no em or en dashes');
+});
+
+check("paused campaigns collapse to one quiet line; all paused says so plainly (Roland's sample, 5 Nov 2026)", () => {
+  const p1 = { ...frac, id: 1, name: 'Campaign 1', paused: true, waiting: 773 };
+  const p2 = { ...frac, id: 2, name: 'Legal ICP', paused: true, waiting: 0 };
+  const live = { ...frac, id: 3, name: 'Legal ICP 50-201', waiting: 29, invited_7d: 99, invited_28d: 300, accepted_7d: 27 };
+  const e = w.clientEmail({ clientFirstName: 'Roland', coachName: 'Guy Wilson', campaigns: [p1, p2, live] });
+  assert.ok(e.text.includes("Here's how your Linked Helper campaign went last week."), 'singular - one live campaign');
+  assert.ok(e.text.includes('2 older campaigns are paused and quiet (Campaign 1, Legal ICP) - nothing going out, nothing to do.'));
+  assert.ok(!e.text.includes('Paused - nothing is going out, and acceptances'), 'no full paused blocks');
+  assert.ok(e.text.indexOf('Legal ICP 50-201\n') < e.text.indexOf('older campaigns'), 'live numbers first');
+  const all = w.clientEmail({ clientFirstName: 'Steve', coachName: 'Guy Wilson', campaigns: [p1] });
+  assert.ok(all.text.includes('All your campaigns are paused (Campaign 1)'));
+  assert.ok(all.text.includes('press Start'));
 });
 
 const NOW2 = Date.parse('2026-10-19T07:00:00+10:00');
@@ -179,13 +200,12 @@ check('only TICKED clients are sent theirs; coach copied and replied to; skips r
   assert.strictEqual(logged[0].channel, 'lh-weekly-numbers');
 });
 
-check("Guy's digest says who was sent theirs, who was skipped, and marks unticked clients", () => {
+check("Guy's digest says who was sent theirs and who was skipped - a skip is a job, not a footnote", () => {
   const d = w.buildDigest([row('Ticked', {}), row('Unticked', { mondayCampaignEmail: false })],
     { now: NOW2, sent: ['Ticked'], skipped: ['Other - no email address on their record'] });
   assert.ok(d.text.includes('Sent their own email: Ticked.'));
-  assert.ok(d.text.includes('Ticked but NOT sent:\n- Other - no email address on their record'));
-  assert.ok(d.text.includes('== Unticked (not ticked - only you see this) =='));
-  assert.ok(d.text.includes('== Ticked =='));
+  assert.ok(d.text.includes("- Their own email didn't go: Other - no email address on their record"));
+  assert.ok(!d.text.includes('== '), 'no per-client sections (5 Nov 2026)');
 });
 
 check("Chat's on-request section (wingguy_get_client): the Monday lines, dated, flagged when old", () => {
