@@ -7,6 +7,8 @@ const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = requ
 const { isCoachOwnEmail } = require('../../../utils/coachOwnEmails');
 const { trimRunOnEmail } = require('../../../utils/runOnEmail');
 const { gluedPrefix } = require('../../../utils/emailGluedPrefix');
+const { checkCaptureDates, captureAlertEmail, shouldAlert } = require('../../../utils/captureDateGuard');
+const { sendAlertEmail } = require('../../../services/emailNotificationService');
 const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
@@ -1145,7 +1147,13 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
         leadScoringStatus: record.get('Scoring Status') || '',
         dateScored: record.get('Date Scored') || null,
         dateAdded: record.get('Date Added') || null,
-        lastContactDate: record.get('Last Contact Date') || null
+        lastContactDate: record.get('Last Contact Date') || null,
+        // The lead page's "Connected <date>" line reads this; without it a lead opened from a
+        // LinkedIn link showed "Not connected yet" (Craig Carolan, connected 14 Oct, on 4 Nov 2026).
+        dateConnected: record.get('Date Connected') || null,
+        followUpDate: record.get('Follow-Up Date') || '',
+        email: record.get('Email') || '',
+        phone: record.get('Phone') || ''
       };
 
       logger.info('LinkedIn Routes: Found lead:', leadData.firstName, leadData.lastName);
@@ -2509,6 +2517,37 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
           : processedContent;
         noteUpdateResult = updateSection(currentNotes, section, mergedContent, { replace: true });
         updates['Notes'] = noteUpdateResult.notes;
+
+        // Date guard (utils/captureDateGuard.js): a capture whose dates look wrong is still saved -
+        // the text is real and a human can fix a date - but it is never saved SILENTLY. The newest
+        // message of a Send capture must be today's; nothing may be dated in the future; no message
+        // may sit under two dates. Any breach: a warn line here and one email to the coach per lead
+        // per day. (Craig Carolan's reply saved as 19 Oct on 4 Nov 2026 - four months of this with
+        // nobody told.)
+        if (section === 'linkedin' && parsedResult && Array.isArray(parsedResult.messages)) {
+          try {
+            // Today in the coach's own timezone (the parser's reference date is block-scoped above).
+            let clientToday = new Date();
+            try { if (req.client?.timezone) clientToday = new Date(new Date().toLocaleString('en-US', { timeZone: req.client.timezone })); } catch (_) { /* server time */ }
+            // Only an on-Send capture (the extension says so) promises that the newest message is
+            // today's; a conversation pasted in by hand may legitimately be old.
+            const problems = checkCaptureDates({
+              messages: parsedResult.messages, today: clientToday, mergedSection: mergedContent,
+              justSent: req.body.capturedOnSend === true,
+            });
+            if (problems.length) {
+              const leadName = `${currentLead.fields['First Name'] || ''} ${currentLead.fields['Last Name'] || ''}`.trim();
+              logger.warn(`LinkedIn Routes: capture dates look wrong for ${leadName} (${leadId}): ${problems.map((p) => p.code).join(', ')} - ${problems[0].detail}`);
+              if (shouldAlert(`${req.client.clientId}:${leadId}`)) {
+                const mail = captureAlertEmail({ leadName, clientName: req.client.clientName, problems });
+                sendAlertEmail(mail.subject, mail.html, null, { text: mail.text })
+                  .catch((e) => logger.warn(`LinkedIn Routes: capture-date alert email failed: ${e.message}`));
+              }
+            }
+          } catch (e) {
+            logger.warn(`LinkedIn Routes: capture date guard failed (non-fatal): ${e.message}`);
+          }
+        }
 
         // Cease-on-send for the warm-then-quiet cohort (owner's call, 2026-08-10): a send to
         // someone who once replied, never had a meeting, and has been quiet 4+ weeks IS the

@@ -722,15 +722,24 @@ function mergeAndSortMessages(existingContent, newContent, newestFirst = true) {
     // Combine all messages
     const allMessages = [...existingMessages, ...newMessages];
 
-    // Remove duplicates based on exact line content
-    const seen = new Set();
-    const uniqueMessages = allMessages.filter(msg => {
-        if (seen.has(msg.line)) {
-            return false;
-        }
-        seen.add(msg.line);
-        return true;
-    });
+    // Remove duplicates. The SAME message is the same text at the same clock time - its date stamp
+    // is not part of its identity, because the date is the part a capture gets wrong: when the
+    // browser extension misses LinkedIn's day label above a message, the message is saved under the
+    // previous label's date, and a later capture that reads the label stores the right date. Keyed
+    // on the whole line (as this was until 4 Nov 2026) both copies survived - Kate Hughes' reply sat
+    // on her record as 11 July AND 21 August - and the wrong one could never be corrected. Now the
+    // two copies collapse to one and the LATER date wins: a borrowed date is always the earlier one.
+    const sameMessageKey = (msg) => {
+        const m = msg.line.match(/^\d{2}-\d{2}-\d{2}\s+(\d{1,2}:\d{2}\s*[AP]M)\s*-\s/i);
+        return m ? `${m[1].toUpperCase().replace(/\s+/g, ' ')}|${normalizeMessageText(msg.line)}` : `line|${msg.line}`;
+    };
+    const byKey = new Map();
+    for (const msg of allMessages) {
+        const key = sameMessageKey(msg);
+        const kept = byKey.get(key);
+        if (!kept || msg.dateTime.getTime() > kept.dateTime.getTime()) byKey.set(key, msg);
+    }
+    const uniqueMessages = allMessages.filter(msg => byKey.get(sameMessageKey(msg)) === msg);
 
     // Retire clipped copies: a scrape that read a collapsed "…see more" bubble, or a capped
     // export, stores the same message cut short. When one message's text is a long prefix of

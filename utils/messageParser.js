@@ -128,23 +128,25 @@ function parseFlexibleDate(dateStr, referenceDate = new Date()) {
     
     const trimmed = dateStr.trim();
     const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-    
-    // Full date (month first): "Dec 4, 2025" or "Nov 29"
-    const monthDayYear = /^([A-Z][a-z]{2})\s+(\d{1,2})(?:,?\s*(\d{4}))?$/i;
+    // Month names may be short or in full ("Oct 19" / "October 19") - the first three letters decide.
+    const monthOf = (name) => months[String(name || '').toLowerCase().slice(0, 3)];
+
+    // Full date (month first): "Dec 4, 2025", "Nov 29", "October 19"
+    const monthDayYear = /^([A-Z][a-z]{2,8})\.?\s+(\d{1,2})(?:,?\s*(\d{4}))?$/i;
     const match = trimmed.match(monthDayYear);
-    if (match) {
-        const month = months[match[1].toLowerCase()];
+    if (match && monthOf(match[1]) !== undefined) {
+        const month = monthOf(match[1]);
         const day = parseInt(match[2], 10);
         const year = match[3] ? parseInt(match[3], 10) : referenceDate.getFullYear();
         return new Date(year, month, day);
     }
-    
-    // Full date (day first - Gmail format): "2 Jan" or "2 Jan 2026"
-    const dayMonthYear = /^(\d{1,2})\s+([A-Z][a-z]{2})(?:,?\s*(\d{4}))?$/i;
+
+    // Full date (day first - Gmail format): "2 Jan", "2 Jan 2026", "19 October 2026"
+    const dayMonthYear = /^(\d{1,2})\s+([A-Z][a-z]{2,8})\.?(?:,?\s*(\d{4}))?$/i;
     const match2 = trimmed.match(dayMonthYear);
-    if (match2) {
+    if (match2 && monthOf(match2[2]) !== undefined) {
         const day = parseInt(match2[1], 10);
-        const month = months[match2[2].toLowerCase()];
+        const month = monthOf(match2[2]);
         const year = match2[3] ? parseInt(match2[3], 10) : referenceDate.getFullYear();
         return new Date(year, month, day);
     }
@@ -212,7 +214,8 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
     let currentMessage = [];
     
     // Patterns
-    const datePattern = /^([A-Z][a-z]{2}\s+\d{1,2}(?:,?\s*\d{4})?|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Today|Yesterday)$/i;
+    // A day heading: "Oct 19", "Oct 19, 2025", "October 19", "19 Oct 2025", a weekday, Today, Yesterday.
+    const datePattern = /^((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:,?\s*\d{4})?|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?(?:,?\s*\d{4})?|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Today|Yesterday)$/i;
     const senderTimePattern = /^(.+?)\s+(\d{1,2}:\d{2}\s*[AP]M)$/i;
     const sentMessagePattern = /sent the following message/i;
     const viewProfilePattern = /^View .+'s profile/i;
