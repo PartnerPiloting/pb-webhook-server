@@ -1598,29 +1598,44 @@
       if (buf && buf.parts.length) out.push({ sender: buf.sender || 'Unknown', text: buf.parts.join('\n'), day: buf.day, time: buf.time });
       buf = null;
     };
-    for (const node of convo.querySelectorAll('time, a[href*="/in/"], p')) {
+    // Every element in document order, not just <time>/<a>/<p>: a day label is recognised by what it
+    // says (dayLabelOf) wherever LinkedIn put it, outside the message text itself. See dayLabels.
+    const labelsSeen = [], unreadable = [];
+    const setDay = (label) => { if (label !== curDay) labelsSeen.push(label); curDay = label; };
+    for (const node of convo.querySelectorAll('*')) {
       if (insideWingguy(node) || node.closest(selStr('composer_box'))) continue;
       if (node.tagName === 'TIME') {
         const t = cleanText(node.textContent);
         const m = t.match(/\d{1,2}:\d{2}\s*(?:AM|PM)?/i);
         if (m) lastTime = m[0].replace(/\s+/g, ' ');
-        else if (t && t.length < 30) curDay = t;
+        else if (t) { const label = dayLabelOf(t); if (label) setDay(label); else if (t.length < 30) unreadable.push(t); }
         flush();
         continue;
       }
-      if (node.tagName === 'A') {
+      if (node.tagName === 'A' && /\/in\//.test(node.getAttribute('href') || '')) {
         let t = cleanText(node.getAttribute('aria-label') || node.textContent);
         const vm = t.match(/^view\s+(.+?)[’']s\s+profile$/i);
         if (vm) t = vm[1];
         if (looksLikeName(t) && !/profile/i.test(t)) { if (buf && buf.sender !== t) flush(); lastSender = t; }
         continue;
       }
-      const text = cleanText(node.textContent);
-      if (!text) continue;
-      if (buf && buf.parent === node.parentElement) buf.parts.push(text);
-      else { flush(); buf = { sender: lastSender, day: curDay, time: lastTime, parent: node.parentElement, parts: [text] }; }
+      if (node.tagName === 'P') {
+        const text = cleanText(node.textContent);
+        if (!text) continue;
+        if (buf && buf.parent === node.parentElement) buf.parts.push(text);
+        else { flush(); buf = { sender: lastSender, day: curDay, time: lastTime, parent: node.parentElement, parts: [text] }; }
+        continue;
+      }
+      // Any other LEAF whose text is a day label, outside a message paragraph ("Today" as a message is
+      // a message). This is the read that does not depend on LinkedIn's element choice.
+      if (node.childElementCount === 0 && !node.closest('p')) {
+        const label = dayLabelOf(node.textContent);
+        if (label) { setDay(label); flush(); }
+      }
     }
     flush();
+    if (unreadable.length) console.warn('[Wingguy] day labels I could not read (dates may be inherited):', unreadable);
+    console.log('[Wingguy] thread day labels (new-UI):', labelsSeen);
     return out;
   }
 
@@ -1643,49 +1658,97 @@
     }
     lastScrapeScoped = !!container;
     const root = container || document;
-    // Walk message items AND the day-heading separators in order, so each message can carry the day it
-    // fell under (real dates on the record) plus its time. Sender/time carry forward across a group's
-    // continuation bubbles (only the first bubble shows the name/time).
-    const nodes = deepQueryAll(selStr('message_item'), root);
+    // Walk EVERY element in document order. A message row carries text, sender and time; a day label
+    // sets the day every later row falls under (real dates on the record). Sender/time carry forward
+    // across a group's continuation bubbles (only the first bubble shows the name/time). A day label
+    // is recognised by what it says (dayLabelOf) as well as by LinkedIn's heading class, so a markup
+    // change cannot silently blind the scrape to "Today" again (Craig Carolan, 2026-11-04 - see the
+    // dayLabels block).
+    const nodes = deepQueryAll('*', root);
+    const rowSel = selStr('message_item_row'), headSel = selStr('message_time_heading'), bodySel = selStr('message_body');
+    const matches = (node, sel) => { try { return node.matches(sel); } catch (_) { return false; } };
     const out = [];
     const msgItems = [];
+    const labelsSeen = [], unreadable = [];
     let lastSender = '', curDay = '', lastTime = '';
     nodes.forEach((node) => {
-      if (!node.matches) return;
-      const isItem = node.matches(selStr('message_item_row'));
-      if (!isItem) {
-        if (node.matches(selStr('message_time_heading'))) {
-          const d = cleanText(node.textContent);
-          if (d && d.length < 30) curDay = d;   // e.g. "JUN 17" / "Today"
-        }
+      if (!node.matches || insideWingguy(node)) return;
+      if (matches(node, rowSel)) {
+        msgItems.push(node);
+        const name = senderForItem(node); if (name) lastSender = name;
+        const time = timeForItem(node); if (time) lastTime = time;
+        const bodyEl = node.querySelector(bodySel);
+        // blockText, not textContent: a line break must stay a word boundary (Craig Carolan, 2026-10-19).
+        const text = cleanText(blockText(bodyEl));
+        if (text) out.push({ sender: lastSender || 'Unknown', text, day: curDay, time: lastTime });
         return;
       }
-      msgItems.push(node);
-      const name = senderForItem(node); if (name) lastSender = name;
-      const time = timeForItem(node); if (time) lastTime = time;
-      const bodyEl = node.querySelector(selStr('message_body'));
-      // blockText, not textContent: a line break must stay a word boundary (Craig Carolan, 2026-10-19).
-      const text = cleanText(blockText(bodyEl));
-      if (text) out.push({ sender: lastSender || 'Unknown', text, day: curDay, time: lastTime });
+      // A day label: LinkedIn's heading element, or any LEAF whose text is a day label and that is
+      // not inside a message body (a message that just says "Today" is a message, not a heading).
+      const isHeading = matches(node, headSel);
+      if (!isHeading && node.childElementCount !== 0) return;
+      const t = cleanText(node.textContent);
+      if (!t || t.length > 30) return;
+      if (!isHeading && node.closest(bodySel)) return;
+      const label = dayLabelOf(t);
+      if (!label) { if (isHeading) unreadable.push(t); return; }
+      if (label === curDay) return;
+      labelsSeen.push(label);
+      curDay = label;
+      // A heading rendered INSIDE the row it belongs to comes after that row in document order, so
+      // the row's message was pushed under the previous day - give it this one.
+      const row = node.closest(rowSel);
+      if (row && msgItems[msgItems.length - 1] === row && out.length) out[out.length - 1].day = label;
     });
+    if (unreadable.length) console.warn('[Wingguy] day labels I could not read (dates may be inherited):', unreadable);
     console.log('[Wingguy] thread scrape:', {
       scopedTo: container ? (String(container.className || '').split(' ')[0] || 'container') : 'NONE→document',
       items: msgItems.length, firstSender: out[0] && out[0].sender, firstTime: out[0] && out[0].time,
+      dayLabels: labelsSeen,
     });
     if (out.length && out.every((m) => m.sender === 'Unknown')) dumpSenderDiag(msgItems);
     return out;
   }
 
-  // How many days since the LAST message in a scraped thread, read from the day label LinkedIn puts
-  // above it ("Today", "Yesterday", a weekday name for the past week, "JUN 17", "Jun 17, 2025").
-  // null when the label is missing or in a shape we don't recognise - callers must treat null as
-  // "don't know", never as "fresh" or "stale". Pure; `now` is injectable for tests.
+  // ---- dayLabels (pure; tested by tests/wingguy-extension-day-labels.test.js) ----
+  // LinkedIn puts a day label above the first message of each day: "Today", "Yesterday", a weekday
+  // name for the past week, "Oct 19", "Oct 19, 2025". The thread scrape used to recognise a label
+  // only by LinkedIn's class names, and on 2026-11-04 the "Today" above Craig Carolan's reply was not
+  // picked up, so his message and Guy's answer were saved under the previous label's date (19 Oct) -
+  // a record that read as "nothing has happened for two weeks", and the inbox check told Guy the
+  // reply had not arrived. Five other leads carried a borrowed date like that going back to July.
+  // So a label is now recognised by WHAT IT SAYS, in any element, and handed to the server in the one
+  // shape its parser gates on ("Today", "Monday", "Oct 19", "Oct 19, 2025"). A label the scrape
+  // cannot read is logged, never silently inherited.
   const WG_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
   const WG_WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const WG_QUIET_THREAD_DAYS = 14; // silent this long = a reconnect, and the reconnect opens on their latest post
-  function threadQuietDays(thread, now = new Date()) {
-    const last = Array.isArray(thread) && thread.length ? thread[thread.length - 1] : null;
-    const label = last && last.day ? String(last.day).trim().toLowerCase().replace(/\s+/g, ' ') : '';
+  const WG_MONTH_RE = '(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?';
+  function canonMonthDay(mon, day, year) {
+    const mi = WG_MONTHS.indexOf(String(mon || '').toLowerCase().slice(0, 3));
+    const d = Number(day);
+    if (mi < 0 || !(d >= 1 && d <= 31)) return '';
+    const name = WG_MONTHS[mi][0].toUpperCase() + WG_MONTHS[mi].slice(1);
+    return `${name} ${d}${year ? `, ${year}` : ''}`;
+  }
+  // The canonical day label for a piece of text, or '' when the text is not a day label at all.
+  function dayLabelOf(text) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!t || t.length > 30) return '';
+    const low = t.toLowerCase().replace(/\s*,\s*/g, ', ');
+    if (low === 'today') return 'Today';
+    if (low === 'yesterday') return 'Yesterday';
+    const wd = WG_WEEKDAYS.indexOf(low);
+    if (wd >= 0) return low[0].toUpperCase() + low.slice(1);
+    let m = low.match(new RegExp(`^${WG_MONTH_RE} (\\d{1,2})(?:,? (\\d{4}))?$`));   // "Oct 19", "October 19, 2025"
+    if (m) return canonMonthDay(m[1], m[2], m[3]);
+    m = low.match(new RegExp(`^(\\d{1,2}) ${WG_MONTH_RE}(?:,? (\\d{4}))?$`));      // "19 Oct", "19 October 2025"
+    if (m) return canonMonthDay(m[2], m[1], m[3]);
+    return '';
+  }
+  // Days between a day label and `now` (0 = today). null when the label is missing or unreadable -
+  // callers must treat null as "don't know", never as "fresh" or "stale". `now` is injectable.
+  function dayLabelDaysAgo(rawLabel, now = new Date()) {
+    const label = (dayLabelOf(rawLabel) || String(rawLabel || '').trim().replace(/\s+/g, ' ')).toLowerCase();
     if (!label) return null;
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const dayMs = 86400000;
@@ -1704,6 +1767,32 @@
     if (!m[3] && when > today) when = new Date(today.getFullYear() - 1, month, Number(m[2]));
     const days = Math.round((today - when) / dayMs);
     return days >= 0 ? days : null;
+  }
+  // A Send capture runs 1.8s after the human pressed Send, so the newest message in the thread is
+  // the one just sent and its day is today whatever label the page did or did not show. When the
+  // newest message was sent by the COACH and its label is missing or resolves to another day, stamp
+  // it Today and return what the label said, so the caller can say so in the console. A newest
+  // message from the LEAD is left alone - it may genuinely be older (the just-sent one has not
+  // rendered yet), and a guess there would plant the very kind of wrong date this exists to stop.
+  function stampNewestAsToday(thread, leadName, now = new Date()) {
+    if (!Array.isArray(thread) || !thread.length) return null;
+    const last = thread[thread.length - 1];
+    if (dayLabelDaysAgo(last.day, now) === 0) return null;
+    const sender = String(last.sender || '').toLowerCase();
+    const leadFirst = String(leadName || '').trim().toLowerCase().split(/\s+/)[0];
+    if (!sender || sender === 'unknown' || (leadFirst && leadFirst.length > 1 && sender.includes(leadFirst))) return null;
+    const was = last.day || '';
+    last.day = 'Today';
+    return was || '(no label)';
+  }
+  // ---- end dayLabels ----
+
+  // How many days since the LAST message in a scraped thread, read from the day label LinkedIn puts
+  // above it. null when the label is missing or in a shape we don't recognise.
+  const WG_QUIET_THREAD_DAYS = 14; // silent this long = a reconnect, and the reconnect opens on their latest post
+  function threadQuietDays(thread, now = new Date()) {
+    const last = Array.isArray(thread) && thread.length ? thread[thread.length - 1] : null;
+    return last && last.day ? dayLabelDaysAgo(last.day, now) : null;
   }
 
   // Code-side routing (deterministic, no AI): it's a REPLY only when the PROSPECT has actually said
@@ -2040,13 +2129,20 @@
   // Mirror the legacy formatConversationForApi shape so the server-side parser handles it identically.
   // (We don't carry per-message timestamps yet, so emit a neutral time — the parser tolerates it and
   // message order is preserved from the DOM. Timestamp fidelity is a later refinement.)
-  function formatThreadForApi(thread) {
+  // `leadName` lets the newest-message backstop tell the coach's just-sent message from the lead's.
+  function formatThreadForApi(thread, opts = {}) {
+    // Backstop (dayLabels block): the message just sent is today's, whatever the page said.
+    const was = stampNewestAsToday(thread, opts.leadName);
+    if (was) console.warn(`[Wingguy] the day label on the newest message read as "${was}" - stamped Today, since it was just sent. LinkedIn's day labels may have changed shape; check the record's dates.`);
     const out = [];
     let lastDay = '';
     for (const m of thread) {
       const sender = (m.sender || 'Unknown').trim();
       const time = (m.time && /\d{1,2}:\d{2}/.test(m.time)) ? m.time : '12:00 PM';
-      if (m.day && m.day !== lastDay) { out.push(m.day); lastDay = m.day; } // day header → real dates on the record
+      // Day header → real dates on the record, in the one shape the server's parser reads. A label it
+      // cannot read is left out (the scrape has already logged it) rather than glued into the text.
+      const day = dayLabelOf(m.day);
+      if (day && day !== lastDay) { out.push(day); lastDay = day; }
       out.push(`${sender} sent the following message at ${time}`);
       out.push(`${sender}   ${time}`);
       out.push(m.text || '');
@@ -2242,7 +2338,7 @@
         return;
       }
 
-      const content = formatThreadForApi(thread);
+      const content = formatThreadForApi(thread, { leadName: hdr.name });
 
       const lookup = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: profileUrl });
       const leads = (lookup && lookup.leads) || [];
@@ -2586,7 +2682,7 @@
               pick.email,
               pick.phone
             );
-            await bg({ type: 'QUICK_UPDATE', leadId, content: formatThreadForApi(thread), section: 'linkedin', ...extras });
+            await bg({ type: 'QUICK_UPDATE', leadId, content: formatThreadForApi(thread, { leadName: pick.firstName }), section: 'linkedin', ...extras });
             console.log(`[Wingguy] rescue-saved ${thread.length} messages to ${pick.name}`, extras);
             const verb = isNew ? `✓ Added ${pick.name} and saved` : '✓ Saved';
             const to = isNew ? '' : ` to ${pick.name}`;

@@ -1006,6 +1006,9 @@ async function handleQuickUpdate(leadId, content, section = 'linkedin', extras =
       section,
       content,
       parseRaw: true,
+      // Every quick-update from here is a capture made because the human pressed Send, so the
+      // newest message is today's - the server's date guard checks exactly that (4 Nov 2026).
+      capturedOnSend: true,
       email: extras.email,
       phone: extras.phone
     })

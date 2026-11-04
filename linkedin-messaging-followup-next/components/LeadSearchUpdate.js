@@ -67,9 +67,18 @@ const LeadSearchUpdate = () => {
       setIsLoading(true);
       
       try {
-        // Look up lead by LinkedIn URL
-        const lead = await getLeadByLinkedInUrl(query);
-        
+        // Look up lead by LinkedIn URL, then load the FULL record the same way a click in the search
+        // list does. The URL lookup returns a thin copy (no Date Connected, no AI fields), and the
+        // modal read "Not connected yet" off it for a lead connected weeks earlier (Craig Carolan,
+        // 4 Nov 2026). Falls back to the thin copy if the full read fails.
+        const found = await getLeadByLinkedInUrl(query);
+        let lead = found;
+        try {
+          if (found && found.id) lead = { ...found, ...(await getLeadById(found.id)) };
+        } catch (e) {
+          console.warn('Full lead read after URL lookup failed, using basic information:', e?.message);
+        }
+
         // Check if request is still current
         if (requestId !== currentSearchRef.current) {
           console.log(`🔍 LinkedIn URL lookup ignored: "${query}" (ID: ${requestId}) - newer request active`);
