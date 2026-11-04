@@ -205,6 +205,18 @@ async function gatherPersonContext(mailProvider, coach, item, tenant) {
       }
     } catch (_) { /* dossier store down — triage works from the messages alone */ }
   }
+  // AFTER A CALL (Guy 4 Nov 2026): the dossier above is rebuilt AFTER the triage each night, so it
+  // cannot know about a call that happened today. Read the call itself - its summary and the
+  // closing stretch of the transcript, where "let's reconnect when..." is said. Placed FIRST so the
+  // new call leads the ground-truth block; older recaps follow.
+  const meetingId = item.signals && item.signals.callMeetingId;
+  if (item.tier === 'aftercall' && meetingId) {
+    try {
+      const leadName = `${item.lead.first || ''} ${item.lead.last || ''}`.trim();
+      const lines = await require('./recentCalls').callForTriage(meetingId, { leadName });
+      if (lines && lines.length) out.callOutcome = [...lines, ...out.callOutcome];
+    } catch (_) { /* the call is unreadable - triage works from what else it has */ }
+  }
   return out;
 }
 
@@ -241,6 +253,8 @@ function reconcileParkDate(parkDate, advice, who) {
 const TRIAGE_SYSTEM = `You triage a coach's follow-up queue. For each person you get the engine's mechanical signal (tier/why), what was ACTUALLY said recently (email snippets and/or LinkedIn lines, oldest first; THEM = the person, YOU = the coach), and — for people the coach has met — a CALL OUTCOME + SENT RECORD block from the call-transcript store and the mailbox. Read the words — the mechanical signal is often wrong about what is owed.
 
 GROUND TRUTH ORDER: the CALL OUTCOME + SENT RECORD block, when present, OUTRANKS the message snippets. A decision about someone the coach has MET flows from what was said on the call, not from the email shadow around it. And check the SENT record before declaring anything owed: a promise the record shows already delivered is DONE — never re-propose it. In particular, a coach's wrap email sent on or after the call day usually IS the promised "more detail" — read the last email's text (given below the sent list) before declaring any send-material promise outstanding; if that email covers the promised ground, the promise is fulfilled and the ball is with the other person.
+
+AFTER A CALL (ENGINE SIGNAL "aftercall"): the coach had a recorded call with this person in the last few days, and THE CALL block shows it. Decide from how the call was LEFT, reading BOTH sides - what the coach said counts as much as what they said. When either of them named a time to pick it up ("let's reconnect in about three weeks", "get back to me after my trip"), that is a "park": work the date out from the CALL DATE, and when the coach said they will be away ("I'm overseas until the end of the month"), the date must fall after the coach is back - pick the later of the two, then lean a few days later as usual. A promise the coach made on the call (send pricing, send an article, make an intro) that the sent record does not show done is a "draft". A clean "not ready, I'll be in touch if it doesn't work out" with no time named is a "drop" (they come back to you). A call that ended with a booked next meeting is "clear". The transcript can hold a different person earlier on the same recording - judge only the stretch where THIS person is speaking.
 
 CLIPPED RECORDS: snippets are cut at a fixed length, and LinkedIn lines may end with "…[record clipped]". A cut means OUR COPY of the record stops there — NEVER that the sender stopped mid-sentence, trailed off, or that a message "appears cut off". Never build a verdict on where a clipped line ends.
 
@@ -385,7 +399,9 @@ function entrySig(item) {
   // s3 (2026-09-26, the Owen Senior morning): re-prep so every stored recommendation gains the
   // one-sided-thread doctrine — a pleasantry-only replier who ignored the pitch gets "drop" or
   // "one nudge, then let go", never an open-ended "I'd follow up".
-  return `s4|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}|${s.acceptedSlot || ''}`;
+  // lastCallMs (2026-11-04, AFTER A CALL): appended ONLY when present, so every stored entry
+  // without a call keeps its exact signature and nothing re-preps on the day this ships.
+  return `s4|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}|${s.acceptedSlot || ''}${s.lastCallMs ? `|c${s.lastCallMs}` : ''}`;
 }
 
 /**

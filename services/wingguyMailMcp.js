@@ -206,6 +206,9 @@ const CAL_LOOKAHEAD_DAYS = 60;
 // names a dated slot costs the extra reads of the coach's offer around it.
 const ACCEPT_LOOKBACK_DAYS = 21;
 const ACCEPT_MAX_THREADS = 30;
+// "After a call" (Guy 4 Nov 2026): how long a recorded call keeps someone in front of the triage.
+// A week covers a weekend plus a slow-to-file recording; past it, the normal message tiers take over.
+const AFTERCALL_DAYS = 7;
 
 // "DD-MM-YY H:MM AM - <Sender Name> - <text>" — the line format inside the Notes LinkedIn block.
 const LI_MSG_RE = /^(\d{2})-(\d{2})-(\d{2})\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*(.+?)\s*-\s*/i;
@@ -315,7 +318,7 @@ function computeMailSignals(messages, leadEmails) {
  * ranking logic is unit-testable. `nowMs`/`todayMidMs` passed in (Date.now is unavailable in some
  * sandboxes and keeps this deterministic for tests).
  */
-function classifyLead(lead, { lastInboundMs, lastOutboundMs, everInbound, nowMs, todayMidMs }) {
+function classifyLead(lead, { lastInboundMs, lastOutboundMs, everInbound, lastCallMs, nowMs, todayMidMs }) {
   // Deferral tier reads the engine-written `Reconnect On` date. Until that field exists on the bases
   // and the content-read populates it, lead.reconnectOn is null everywhere → no deferral surfaces
   // (deliberate: the rotted legacy Follow-Up Date must NOT drive the engine).
@@ -350,6 +353,21 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, everInbound, nowMs,
     return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: -inboundDays, gated };
   }
   if (deferralLive) return { tier: 'deferral', why: `reconnect date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
+  // AFTER A CALL (Guy 4 Nov 2026, the Bernard Kassab call): a recorded call is a conversation, but
+  // only messages ever made someone appear here - so "let's reconnect in three weeks" said ON a call
+  // reached nobody until a message timer fired, and the triage (which already reads calls and
+  // already proposes park dates) never saw them in time. A call in the last AFTERCALL_DAYS now puts
+  // the person in front of the triage, which reads how it was left and recommends park / draft /
+  // drop / clear like any other entry. Nothing is written - Park stays the human's click.
+  // Not for someone already parked (their date is the decision), and not for a dropped person unless
+  // the call came AFTER the drop (a call is a call, the same waiver line as a reply).
+  if (lastCallMs) {
+    const callDays = Math.floor((nowMs - lastCallMs) / MS_DAY);
+    const ceasedBefore = lead.cease && (!lead.ceaseAtMs || lastCallMs <= lead.ceaseAtMs);
+    if (callDays >= 0 && callDays <= AFTERCALL_DAYS && !reconnectFuture && !ceasedBefore) {
+      return { tier: 'aftercall', why: `you had a call ${callDays === 0 ? 'today' : callDays === 1 ? 'yesterday' : callDays + 'd ago'} - how was it left?`, sortKey: -callDays, gated: false };
+    }
+  }
   if (cadenceOverdue) {
     // No upper bound (Guy 2026-08-24): the old 45d ceiling made leads silently time out of view
     // in the crack between this sweep and the point-in-time backlog audit (Louis Nonis, 54d quiet,
@@ -829,8 +847,8 @@ async function runLeadRepliedSince({ lead_email, since_iso } = {}, tenant = TENA
 // Ranking = closeness-to-broken-promise (the settled 2026-07-21 design): a DUE DATED PROMISE
 // outranks a recent reply — forgetting "I said I'd ping you today" costs more than a slow answer.
 // (Was reply-first until 2026-07-24, which buried ten due promises below the prepared fold.)
-const TIER_ORDER = { unbooked: 0, deferral: 1, reply: 2, cadence: 3 };
-const TIER_LABEL = { unbooked: '📌 TIME AGREED, NOT BOOKED', reply: '↩ REPLY OWED', deferral: '📅 DEFERRAL DUE', cadence: '⏳ WENT QUIET' };
+const TIER_ORDER = { unbooked: 0, deferral: 1, reply: 2, aftercall: 3, cadence: 4 };
+const TIER_LABEL = { unbooked: '📌 TIME AGREED, NOT BOOKED', reply: '↩ REPLY OWED', deferral: '📅 DEFERRAL DUE', aftercall: '📞 AFTER A CALL', cadence: '⏳ WENT QUIET' };
 
 /**
  * "They said yes to a time and nothing is in your diary" — the I/O half (the pure half is
@@ -1030,6 +1048,15 @@ async function computeFollowupSweep({ window_days, accepted_check } = {}, tenant
     }
   }
 
+  // --- 2c. Recent recorded calls (the AFTER A CALL tier - see classifyLead) ---
+  // Switched per client (services/recentCalls.aftercallOn); off = an empty map = the sweep is
+  // exactly what it was before. Keyed by Airtable record id, the link the transcript store keeps.
+  let recentCalls = new Map();
+  const recentCallsMod = require('./recentCalls');
+  if (recentCallsMod.aftercallOn(tenant)) {
+    recentCalls = await recentCallsMod.recentCallsByLead(tenant, { days: AFTERCALL_DAYS, nowMs });
+  }
+
   // --- 3. Merge LinkedIn history, classify, rank ---
   const surfaced = [];
   let gatedCadence = 0;
@@ -1072,10 +1099,12 @@ async function computeFollowupSweep({ window_days, accepted_check } = {}, tenant
       if (li.inbound) lastInboundMs = Math.max(lastInboundMs || 0, li.ms);
       else lastOutboundMs = Math.max(lastOutboundMs || 0, li.ms);
     }
+    const call = recentCalls.get(lead.recId) || null;
     const c = classifyLead(lead, {
       lastInboundMs: lastInboundMs || null,
       lastOutboundMs: lastOutboundMs || null,
       everInbound: linkedInEverInbound(lead.notes, lead, me),
+      lastCallMs: call ? call.ms : null,
       nowMs, todayMidMs,
     });
     if (!c) continue;
@@ -1084,7 +1113,9 @@ async function computeFollowupSweep({ window_days, accepted_check } = {}, tenant
     // signals = the exact facts this classification was computed from. The incremental brief
     // (wingguyFollowupBrief) fingerprints each person on these: same signals = nothing happened =
     // the stored story is still true; any change = re-prep. Deterministic — dates, not judgement.
-    surfaced.push({ lead, ...c, signals: { lastInboundMs: lastInboundMs || 0, lastOutboundMs: lastOutboundMs || 0 } });
+    const signals = { lastInboundMs: lastInboundMs || 0, lastOutboundMs: lastOutboundMs || 0 };
+    if (c.tier === 'aftercall' && call) { signals.lastCallMs = call.ms; signals.callMeetingId = call.meetingId; }
+    surfaced.push({ lead, ...c, signals });
   }
   surfaced.sort((a, b) => (TIER_ORDER[a.tier] - TIER_ORDER[b.tier]) || (b.sortKey - a.sortKey));
 
@@ -1197,7 +1228,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       lines.join('\n') +
       (more > 0 ? `\n(${more} more behind these — call again with limit to show all.)` : '') +
       `\n[diagnostics — do not relay unless asked: ${counts.leadsScanned} leads scanned; ${mailInfo.count} emails/${emailDays}d${mailInfo.partialError ? ' ⚠PARTIAL' : (mailInfo.truncated ? ' ⚠capped' : '')}, LinkedIn full history; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach${calChecked ? ` + ${bookedSuppressed} already-booked` : ''}. ` +
-      `TIME AGREED, NOT BOOKED = you offered dated slots, they named one in their reply (≤${ACCEPT_LOOKBACK_DAYS}d, any thread incl. cc'd people), and no event with them sits in your calendar on or after that reply - send the invite (this check runs in the OVERNIGHT brief and the queue, not in this live sweep); REPLY OWED = a lead replied last on a 1:1 thread (≤${REPLY_LIVE_DAYS}d), ball in your court — intro/group threads (3+ parties) are NOT counted; DEFERRAL DUE = a stamped Reconnect On date has arrived (≤${DEFERRAL_LIVE_DAYS}d past), ranks above cadence; WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}d+ ago on a 1:1 thread (no upper limit — only a reply, a park, or Cease FUP removes someone), connected/replied leads only, freshest silence first. A FUTURE Reconnect On parks a lead from cadence until then. Calendar cross-check ${calChecked ? 'ON (already-booked leads dropped)' : '⚠ SKIPPED this run (calendar read failed) — verify already-booked before nudging'}.]`,
+      `TIME AGREED, NOT BOOKED = you offered dated slots, they named one in their reply (≤${ACCEPT_LOOKBACK_DAYS}d, any thread incl. cc'd people), and no event with them sits in your calendar on or after that reply - send the invite (this check runs in the OVERNIGHT brief and the queue, not in this live sweep); REPLY OWED = a lead replied last on a 1:1 thread (≤${REPLY_LIVE_DAYS}d), ball in your court — intro/group threads (3+ parties) are NOT counted; DEFERRAL DUE = a stamped Reconnect On date has arrived (≤${DEFERRAL_LIVE_DAYS}d past), ranks above cadence; AFTER A CALL = a recorded call with them in the last ${AFTERCALL_DAYS}d (switched on per client) - the overnight brief reads how it was left and recommends park/draft/drop;WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}d+ ago on a 1:1 thread (no upper limit — only a reply, a park, or Cease FUP removes someone), connected/replied leads only, freshest silence first. A FUTURE Reconnect On parks a lead from cadence until then. Calendar cross-check ${calChecked ? 'ON (already-booked leads dropped)' : '⚠ SKIPPED this run (calendar read failed) — verify already-booked before nudging'}.]`,
   };
 }
 
