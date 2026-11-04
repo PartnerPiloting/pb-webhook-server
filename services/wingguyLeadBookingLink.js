@@ -37,7 +37,8 @@
  *
  * Supported today: calendly.com/<profile>/<event>[?...], tidycal.com/<profile>/<booking-type> and
  * TimeTrade (my.timetrade.com/book/<code>, my-schedule.timetrade.com/app/<td>/workflows/<wf>/...) and
- * Microsoft Bookings "Bookings with me" pages (outlook.office.com/bookwithme/user/<id>@<domain>).
+ * Microsoft Bookings "Bookings with me" pages (outlook.office.com/bookwithme/user/<id>@<domain>) and
+ * OnceHub booking pages (go.oncehub.com/<PageName>).
  * Other providers (cal.com, HubSpot) parse as { provider:null } and the caller says so.
  *
  * TIMETRADE (Steve Brossman, 14 Oct 2026: "https://bit.ly/StevePPcall"; proven with plain curl the same
@@ -99,7 +100,28 @@
  *   AVAILABLE items are free RANGES, cut here into starts every timeSlotInterval of the service length.
  *   Several visible meeting types and no /s/<code> in the link -> falls open (never choose for the lead).
  *   Bookings BUSINESS pages (outlook.office365.com/book/<Name>@<domain>/, owa/calendar/.../bookings/)
- *   are recognised but not read - they choose between staff, and none has been seen from a lead yet.
+ *   are recognised but not read - they choose between staff, and none has been seen from a lead yet. *
+ * ONCEHUB (Ivan Ang, 4 Nov 2026: "https://go.oncehub.com/IvanAng" in his signature; worked out in Guy's
+ * Chrome, then every call repeated from the page with cookies OMITTED and no "id" header - all answered).
+ * Plain unauthenticated JSON POSTs on go.oncehub.com/api/:
+ *
+ *   POST get-data/GetLandingPageLayout  { linkname: "<page name>", tzstring: "<IANA>" [, serviceid] }
+ *       -> { status: 200, userId (67-char token), settingsId, meetmeLinkId, team, PooledAvailabilityType,
+ *            TimeZone (OnceHub's own number - 17 = Brisbane), serviceId (set when the link pre-picks one),
+ *            userInfo: { name }, errorstring }
+ *   POST get-data/GetServiceDetail  { settingsId }
+ *       -> { serviceDetails: [{ serviceId, serviceName, serviceStatus, serviceDuration (a CODE, not
+ *            minutes - 6 was 30 min, 4 was 20 min) }] }
+ *   POST get-availability/calc-ts  { userId, settingsId, serviceId, meetmelinkid, teamId, pooledType,
+ *            timeZoneId, startDate, endDate }   (dates are epoch ms)
+ *       -> { success: true, data: { slots: { "2026-10-6": { duration: 30, am: [{ startTime (epoch ms,
+ *            true UTC), timeStr }], pm: [...] } } } }
+ *       The day keys count months from ZERO ("2026-10-6" is 6 NOVEMBER) - never read dates from the
+ *       keys; startTime is the truth. The length comes from each day's "duration".
+ *   Several meeting types and no pre-picked one: the reader takes the one that is plainly a first chat
+ *   (coffee / intro / chat / discovery / meet) when EXACTLY ONE is, and says which it read; otherwise it
+ *   falls open like the others (Guy, 4 Nov 2026 - Ivan's page: "Virtual Coffee Meeting" and
+ *   "Confidential Strategy Session").
  */
 
 const { DateTime } = require('luxon');
@@ -109,8 +131,8 @@ const CALENDLY_MAX_RANGE_DAYS = MAX_RANGE_DAYS;
 const FETCH_TIMEOUT_MS = 8000;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 
-const PROVIDER_LABELS = { calendly: 'Calendly', tidycal: 'TidyCal', timetrade: 'TimeTrade', msbookings: 'Microsoft Bookings', google: 'Google appointment' };
-const READABLE = 'Calendly, TidyCal, TimeTrade or Microsoft Bookings only';
+const PROVIDER_LABELS = { calendly: 'Calendly', tidycal: 'TidyCal', timetrade: 'TimeTrade', msbookings: 'Microsoft Bookings', oncehub: 'OnceHub', google: 'Google appointment' };
+const READABLE = 'Calendly, TidyCal, TimeTrade, Microsoft Bookings or OnceHub only';
 // Microsoft Bookings: the hosts a "Bookings with me" / Bookings page is served from.
 const MS_BOOKINGS_HOSTS = new Set(['outlook.office.com', 'outlook.office365.com', 'outlook.live.com', 'bookings.cloud.microsoft']);
 const MS_BOOKINGS_API = 'https://bookings.cloud.microsoft/BookingsService/api/V1/bookingBusinessesc2';
@@ -129,6 +151,9 @@ const WINDOWS_TZ = {
   'Eastern Standard Time': 'America/New_York', 'Central Standard Time': 'America/Chicago', 'Mountain Standard Time': 'America/Denver', 'Pacific Standard Time': 'America/Los_Angeles',
   UTC: 'UTC',
 };
+const ONCEHUB_API = 'https://go.oncehub.com/api';
+// Meeting-type names that plainly mean "a first chat" - the one OnceHub type the reader may pick.
+const FIRST_CHAT_RE = /\b(coffee|intro|introduction|introductory|chat|discovery|meet(?:\s+and\s+|\s*&\s*)greet|get(?:ting)?\s+to\s+know)\b/i;
 const GOOGLE_REASON = `a Google Calendar appointment page - Google only serves its slots to a browser, so Wingguy cannot read it (${READABLE})`;
 // Hosts that only ever redirect somewhere else. LinkedIn's own lnkd.in is one: it wraps links in posts.
 const SHORTENER_HOSTS = new Set(['bit.ly', 'bitly.com', 'tinyurl.com', 'ow.ly', 'buff.ly', 'rebrand.ly', 'cutt.ly', 'is.gd', 't.ly', 'rb.gy', 'tiny.cc', 'shorturl.at', 'lnkd.in', 'bl.ink', 's.id']);
@@ -149,7 +174,7 @@ function providerLabel(provider) {
  * URL". A bare host+path is returned with https:// put back so every caller sees one shape.
  */
 function findBookingLink(text) {
-  const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com\/|tidycal\.com\/|(?:[a-z0-9-]+\.)?timetrade\.com\/(?:book|app)\/|calendar\.app\.google\/|calendar\.google\.com\/(?:calendar\/)?appointments\/|(?:outlook\.office(?:365)?\.com|outlook\.live\.com|bookings\.cloud\.microsoft)\/(?:bookwithme\/user\/|book\/|owa\/calendar\/[^\s/]+\/booking))[^\s<>"')\]]+/i);
+  const m = String(text || '').match(/(?:https?:\/\/)?(?:www\.)?(?:calendly\.com\/|tidycal\.com\/|(?:[a-z0-9-]+\.)?timetrade\.com\/(?:book|app)\/|calendar\.app\.google\/|calendar\.google\.com\/(?:calendar\/)?appointments\/|(?:outlook\.office(?:365)?\.com|outlook\.live\.com|bookings\.cloud\.microsoft)\/(?:bookwithme\/user\/|book\/|owa\/calendar\/[^\s/]+\/booking)|go\.oncehub\.com\/)[^\s<>"')\]]+/i);
   if (!m) return null;
   let raw = m[0];
   // Microsoft Bookings (Michael Farag, 2026-11-03): the owner's domain is mixed case (52ndSolution.net)
@@ -167,6 +192,15 @@ function findBookingLink(text) {
   // fetched a page that does not exist). Slugs on Calendly and TidyCal are lower case, so the path
   // ends at the first capital letter after the host. Google's codes are mixed case (Rt3HARJvfXUBpviz7)
   // and TimeTrade's are upper case (my.timetrade.com/book/V4KFJ), so those are left as matched.
+  // OnceHub page names are mixed case too (go.oncehub.com/IvanAng): keep the first path segment whole
+  // and drop anything after it except a ?serviceid= that pre-picks a meeting type.
+  if (/^(?:https?:\/\/)?go\.oncehub\.com\//i.test(raw)) {
+    const oh = raw.match(/^(?:https?:\/\/)?go\.oncehub\.com\/([A-Za-z0-9_.-]+)(?:\/[^?\s]*)?(\?[^\s]*)?/i);
+    if (!oh) return null;
+    const name = oh[1].replace(/[.]+$/, '');
+    const sid = oh[2] && oh[2].match(/[?&]serviceid=([A-Za-z0-9=_-]+)/i);
+    return `https://go.oncehub.com/${name}${sid ? `?serviceid=${sid[1]}` : ''}`;
+  }
   if (!/calendar\.(?:app\.)?google|timetrade\.com/i.test(raw)) raw = raw.replace(/^((?:https?:\/\/)?[^/]+\/[^A-Z]*)[A-Z].*$/, '$1');
   raw = raw.replace(/[.,;:!?]+$/, '');
   return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -176,7 +210,7 @@ function findBookingLink(text) {
 function parseBookingLink(url) {
   let u;
   const str = String(url || '').trim();
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(str) ? str : (/^(?:www\.)?(?:calendly\.com|tidycal\.com|(?:[a-z0-9-]+\.)?timetrade\.com|calendar\.app\.google|calendar\.google\.com|outlook\.office(?:365)?\.com|outlook\.live\.com|bookings\.cloud\.microsoft)\//i.test(str) || isShortLink(str) ? `https://${str}` : str);
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(str) ? str : (/^(?:www\.)?(?:calendly\.com|tidycal\.com|(?:[a-z0-9-]+\.)?timetrade\.com|calendar\.app\.google|calendar\.google\.com|outlook\.office(?:365)?\.com|outlook\.live\.com|bookings\.cloud\.microsoft|go\.oncehub\.com)\//i.test(str) || isShortLink(str) ? `https://${str}` : str);
   try { u = new URL(withScheme.replace(/＠/g, '@')); } catch (_) { return { provider: null, url, reason: 'not a URL' }; }
   const host = u.hostname.replace(/^www\./, '').toLowerCase();
   if (MS_BOOKINGS_HOSTS.has(host)) return parseMsBookings(u, url);
@@ -198,6 +232,12 @@ function parseBookingLink(url) {
   // Recognised, never read - see the header. No slugs, so readBookingLink falls open without a call.
   if (host === 'calendar.app.google' || (host === 'calendar.google.com' && /^\/(?:calendar\/)?appointments\//i.test(u.pathname))) {
     return { provider: 'google', url, reason: GOOGLE_REASON };
+  }
+  if (host === 'go.oncehub.com') {
+    const parts = u.pathname.split('/').filter(Boolean);
+    if (!parts[0] || /^(?:api|m|signin|login|support)$/i.test(parts[0])) return { provider: 'oncehub', url, reason: 'a OnceHub address that is not a booking page - ask for the booking link' };
+    const sid = u.searchParams.get('serviceid') || u.searchParams.get('serviceId') || null;
+    return { provider: 'oncehub', url, profileSlug: parts[0], eventSlug: sid };
   }
   if (host === 'calendly.com') {
     const parts = u.pathname.split('/').filter(Boolean);
@@ -370,6 +410,7 @@ async function readBookingLink(url, { timezone = 'Australia/Brisbane', rangeStar
     if (parsed.provider === 'tidycal') return await readTidyCal(parsed, { timezone, start, end, fetchImpl });
     if (parsed.provider === 'timetrade') return await readTimeTrade(parsed, { timezone, start, end, fetchImpl });
     if (parsed.provider === 'msbookings') return await readMsBookings(parsed, { timezone, start, end, fetchImpl });
+    if (parsed.provider === 'oncehub') return await readOnceHub(parsed, { timezone, start, end, fetchImpl });
     return await readCalendly(parsed, { timezone, start, end, fetchImpl });
   } catch (e) {
     return { ok: false, reason: `could not read the link (${e && e.name === 'AbortError' ? 'timed out' : (e && e.message) || 'error'})` };
@@ -692,6 +733,100 @@ async function readMsBookings(parsed, { timezone, start, end, fetchImpl }) {
     ownerName: info.displayName || '',
     durationMins,
     leadTimezone: WINDOWS_TZ[info.businessTimeZone] || null,
+    slots: [...new Set(slots)].sort(),
+  };
+}
+
+async function ohPost(path, body, fetchImpl) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS) : null;
+  try {
+    // The page sends an "id" header (time-random-random); the API answered without it on 4 Nov 2026,
+    // but it is cheap to look like the page.
+    const id = `${Date.now()}-${Math.floor(1e6 * Math.random())}-${Math.floor(1e6 * Math.random())}`;
+    const res = await fetchImpl(`${ONCEHUB_API}/${path}`, { method: 'POST', headers: { Accept: 'application/json, text/plain, */*', 'Content-Type': 'application/json', id, Origin: 'https://go.oncehub.com', 'User-Agent': UA }, body: JSON.stringify(body), signal: ctrl ? ctrl.signal : undefined });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (_) { /* not json */ }
+    return { status: res.status, text: String(text || ''), body: json };
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+/**
+ * Which OnceHub meeting type to read. A link that pre-picks one wins; one live type is read; several
+ * -> the one that is plainly a first chat when exactly one is (Guy, 4 Nov 2026), else none.
+ * Returns { service, chosen } or { reason }.
+ */
+function pickOnceHubService(services, wantedId) {
+  const live = (services || []).filter((s) => s && s.serviceId && (s.serviceStatus == null || Number(s.serviceStatus) === 1));
+  if (wantedId) {
+    const hit = (services || []).find((s) => s && String(s.serviceId) === String(wantedId));
+    return hit ? { service: hit, chosen: false } : { reason: 'the OnceHub link names a meeting type the page no longer offers' };
+  }
+  if (live.length === 1) return { service: live[0], chosen: false };
+  if (!live.length) return { reason: 'the OnceHub page offers no meeting types' };
+  const firstChat = live.filter((s) => FIRST_CHAT_RE.test(String(s.serviceName || '')));
+  if (firstChat.length === 1) return { service: firstChat[0], chosen: true };
+  return { reason: `the OnceHub page offers ${live.length} meeting types (${live.map((s) => `"${s.serviceName}"`).join(', ')}) and asks the visitor to choose one before it shows times` };
+}
+
+async function readOnceHub(parsed, { timezone, start, end, fetchImpl }) {
+  // 1. The page: who owns it and the ids every later call keys on.
+  const lpBody = { linkname: parsed.profileSlug, tzstring: timezone };
+  if (parsed.eventSlug) lpBody.serviceid = parsed.eventSlug;
+  const lp = await ohPost('get-data/GetLandingPageLayout', lpBody, fetchImpl);
+  const page = lp.body;
+  if (lp.status !== 200 || !page || typeof page !== 'object') return { ok: false, reason: `OnceHub page lookup failed (HTTP ${lp.status})` };
+  if (!page.userId || !page.settingsId) return { ok: false, reason: page.errorstring ? `OnceHub says: ${page.errorstring}` : 'OnceHub did not recognise that booking page' };
+  // 2. The meeting types on the page.
+  const sd = await ohPost('get-data/GetServiceDetail', { settingsId: page.settingsId }, fetchImpl);
+  const services = sd.body && Array.isArray(sd.body.serviceDetails) ? sd.body.serviceDetails : null;
+  if (sd.status !== 200 || !services) return { ok: false, reason: `OnceHub meeting types failed (HTTP ${sd.status})` };
+  const pick = pickOnceHubService(services, parsed.eventSlug || page.serviceId || null);
+  if (!pick.service) return { ok: false, reason: pick.reason };
+  const service = pick.service;
+  // 3. Open start times over the coach's window (whole days in the coach's clock).
+  const fromMs = DateTime.fromISO(start, { zone: timezone }).startOf('day').toMillis();
+  const toMs = DateTime.fromISO(end, { zone: timezone }).endOf('day').toMillis();
+  const slots = [];
+  let durationMins = null;
+  for (let chunkStart = start; chunkStart <= end;) {
+    const chunkEnd = [addDays(chunkStart, MAX_RANGE_DAYS - 1), end].sort()[0];
+    const av = await ohPost('get-availability/calc-ts', {
+      userId: page.userId,
+      settingsId: page.settingsId,
+      serviceId: service.serviceId,
+      meetmelinkid: page.meetmeLinkId || '',
+      teamId: page.team != null ? page.team : -1,
+      pooledType: page.PooledAvailabilityType != null ? page.PooledAvailabilityType : -1,
+      timeZoneId: page.TimeZone != null ? page.TimeZone : 17,
+      startDate: DateTime.fromISO(chunkStart, { zone: timezone }).startOf('day').toMillis(),
+      endDate: DateTime.fromISO(chunkEnd, { zone: timezone }).endOf('day').toMillis(),
+    }, fetchImpl);
+    const data = av.body && av.body.data;
+    if (av.status !== 200 || !av.body || av.body.success === false || !data || typeof data.slots !== 'object') return { ok: false, reason: `OnceHub availability failed (HTTP ${av.status})` };
+    for (const day of Object.values(data.slots || {})) {
+      if (!day || typeof day !== 'object') continue;
+      if (!durationMins && Number(day.duration) > 0) durationMins = Number(day.duration);
+      // am / pm (and any other part of the day OnceHub adds) - every array of { startTime }.
+      for (const list of Object.values(day)) {
+        if (!Array.isArray(list)) continue;
+        for (const spot of list) {
+          const ms = Number(spot && spot.startTime);
+          if (Number.isFinite(ms) && ms >= fromMs && ms <= toMs) slots.push(new Date(ms).toISOString());
+        }
+      }
+    }
+    chunkStart = addDays(chunkEnd, 1);
+  }
+  return {
+    ok: true,
+    provider: 'oncehub',
+    eventName: service.serviceName || '',
+    eventChosen: pick.chosen || undefined,
+    ownerName: (page.userInfo && page.userInfo.name) || '',
+    durationMins: durationMins || 30,
+    leadTimezone: null, // OnceHub reports its own zone number, not an IANA name
     slots: [...new Set(slots)].sort(),
   };
 }
