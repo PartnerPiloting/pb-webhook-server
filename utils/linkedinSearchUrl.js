@@ -63,9 +63,27 @@ function checkSearchUrl(input) {
     else out.problem = 'that is not a LinkedIn link';
     return out;
   }
+  if (out.kind === 'sn-search-page') { url = stripViewMarkers(url); out.url = url; }
   out.degrees = degreesIn(url, out.kind);
   out.ok = true;
   return out;
+}
+
+/**
+ * A Sales Navigator link copied from a saved search carries lastViewedAt, and with it Sales
+ * Navigator lists only the people NEW since that moment - the header still says the full count.
+ * Guy's BDM search, 5 Nov 2026: header 795, "Page 3 of 3", 68 people listed; the same saved
+ * search without lastViewedAt walked every page. sessionId and page are the copier's own
+ * browsing state and go too. The saved search id and the query stay untouched.
+ */
+function stripViewMarkers(url) {
+  const hashAt = url.indexOf('#');
+  const hash = hashAt >= 0 ? url.slice(hashAt) : '';
+  const base = hashAt >= 0 ? url.slice(0, hashAt) : url;
+  const qAt = base.indexOf('?');
+  if (qAt < 0) return url;
+  const kept = base.slice(qAt + 1).split('&').filter((part) => part && !/^(lastViewedAt|sessionId|page)=/i.test(part));
+  return base.slice(0, qAt) + (kept.length ? `?${kept.join('&')}` : '') + hash;
 }
 
 /**
