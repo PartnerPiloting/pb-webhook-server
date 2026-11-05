@@ -284,6 +284,12 @@ def cmd_apply(cid, url, allow_no_invite=False):
         print(json.dumps({"ok": False, "error": "the auto-collect step did not appear in the campaign", "how": how}))
         return 1
 
+    time.sleep(3)
+    with lhc.db(c) as con:
+        baseline = con.execute(
+            "SELECT count(*) FROM person_in_campaigns_history WHERE campaign_id = ? AND action_id = ? AND result_status = 1",
+            (cid, action_id)).fetchone()[0]
+
     unpaused = False
     if paused_before:
         p = lhc.live_call(c, "campaigns.setCampaignPaused", [cid, False, li])
@@ -292,24 +298,29 @@ def cmd_apply(cid, url, allow_no_invite=False):
     with lhc.db(c) as con:
         d3 = lhc.campaign_detail(con, cid)
     out = {"ok": True, "how": how, "campaign_id": cid, "campaign_name": d["name"], "action_id": action_id,
-           "head_ok": head_ok, "waiting_before": before, "since": since, "link": link,
+           "head_ok": head_ok, "waiting_before": before, "since": since, "baseline": int(baseline), "link": link,
            "paused_before": paused_before, "unpaused": unpaused, "paused_now": bool(d3["is_paused"]),
            "account": who}
     print(json.dumps(out))
     return 0 if not d3["is_paused"] else 1
 
 
-def cmd_status(cid, action_id, since):
+def cmd_status(cid, action_id, since, baseline=0):
     lhc = load_campaigns_module()
     c = lhc.conf()
     with lhc.db(c) as con:
         d, actions = chain(lhc, con, cid)
         invite_ids = invite_action_ids(actions)
         waiting = waiting_on_invite(con, cid, invite_ids)
-        collected = con.execute(
+        total = con.execute(
+            "SELECT count(*) FROM person_in_campaigns_history WHERE campaign_id = ? AND action_id = ? AND result_status = 1",
+            (cid, action_id)).fetchone()[0]
+        collected_since = con.execute(
             "SELECT count(*), max(result_created_at) FROM person_in_campaigns_history "
             "WHERE campaign_id = ? AND action_id = ? AND result_status = 1 AND result_created_at > ?",
             (cid, action_id, since)).fetchone()
+        # People the collect actually added = rows beyond the baseline taken right after apply.
+        collected = (max(0, int(total) - int(baseline or 0)), collected_since[1] if int(total) > int(baseline or 0) else None)
         skipped = con.execute(
             "SELECT count(*) FROM person_in_campaigns_history "
             "WHERE campaign_id = ? AND action_id = ? AND result_status = -1 AND result_created_at > ?",
@@ -342,7 +353,7 @@ def cmd_status(cid, action_id, since):
         except ValueError:
             pass
     out = {"ok": True, "campaign_id": cid, "campaign_name": d["name"], "action_id": action_id, "since": since,
-           "collected": int(collected[0]), "skipped": int(skipped), "last_collect_at": last,
+           "collected": int(collected[0]), "rows_total": int(total), "baseline": int(baseline or 0), "skipped": int(skipped), "last_collect_at": last,
            "minutes_since_last": stalled_min, "degrees": degrees, "waiting_now": waiting,
            "paused": bool(d["is_paused"]), "collecting_now": collecting_now(lhc, c, action_id),
            "postpone_reason": reason, "postpone_data": (row["postpone_reason_data"] if row else None),
@@ -358,6 +369,7 @@ def main():
     s = sub.add_parser("apply"); s.add_argument("campaign_id", type=int); s.add_argument("url")
     s.add_argument("--allow-no-invite", action="store_true", help="tests only: a campaign with no invite step")
     s = sub.add_parser("status"); s.add_argument("campaign_id", type=int); s.add_argument("action_id", type=int); s.add_argument("since")
+    s.add_argument("--baseline", type=int, default=0, help="history rows on the step right after apply (apply prints it)")
     a = p.parse_args()
     try:
         if a.cmd == "check":
@@ -365,7 +377,7 @@ def main():
         if a.cmd == "apply":
             return cmd_apply(a.campaign_id, a.url, a.allow_no_invite)
         if a.cmd == "status":
-            return cmd_status(a.campaign_id, a.action_id, a.since)
+            return cmd_status(a.campaign_id, a.action_id, a.since, a.baseline)
     except Exception as e:  # one JSON line, always - the agent parses stdout
         print(json.dumps({"ok": False, "error": str(e)[:400]}))
         return 1
