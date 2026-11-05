@@ -7,7 +7,7 @@ const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = requ
 const { isCoachOwnEmail } = require('../../../utils/coachOwnEmails');
 const { trimRunOnEmail } = require('../../../utils/runOnEmail');
 const { gluedPrefix } = require('../../../utils/emailGluedPrefix');
-const { checkCaptureDates, captureAlertEmail, shouldAlert } = require('../../../utils/captureDateGuard');
+const { checkCaptureDates, captureAlertEmail, shouldAlert, dropForgedToday, isDroppedMessage } = require('../../../utils/captureDateGuard');
 const { sendAlertEmail } = require('../../../services/emailNotificationService');
 const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
@@ -2512,6 +2512,31 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
         // 24 Jul 2026). mergeAndSortMessages dedupes and keeps the longer copy when the same
         // message appears both clipped and full.
         const existingSection = getSection(currentNotes, section);
+
+        // A "sent today" date from an extension that cannot prove a send is checked before it
+        // touches the record (utils/captureDateGuard.js dropForgedToday - Ashley Knowles, 5 Nov
+        // 2026). 0.3.40+ says whether a send was proven (sendProven); 0.3.38/0.3.39 always claim
+        // capturedOnSend and never send sendProven, which is how they are recognised.
+        const sendProven = typeof req.body.sendProven === 'boolean' ? req.body.sendProven : null;
+        if (section === 'linkedin' && parsedResult && Array.isArray(parsedResult.messages)) {
+          try {
+            let clientNow = new Date();
+            try { if (req.client?.timezone) clientNow = new Date(new Date().toLocaleString('en-US', { timeZone: req.client.timezone })); } catch (_) { /* server time */ }
+            const forged = dropForgedToday({
+              incoming: processedContent, existingSection, coachName: req.client?.clientName || '', now: clientNow,
+              suspect: req.body.capturedOnSend === true && sendProven === null,
+            });
+            if (forged.action === 'dropped') {
+              processedContent = forged.content;
+              // The auto-cease below must not see it either: it would read as a reconnect just sent.
+              parsedResult.messages = parsedResult.messages.filter((m) => !isDroppedMessage(m, forged.dropped));
+              logger.warn(`LinkedIn Routes: refused a "sent today" date for lead ${leadId} (${req.client.clientId}): "${String(forged.dropped.text).slice(0, 60)}" - ${forged.reason}. Old extension (no sendProven).`);
+            }
+          } catch (e) {
+            logger.warn(`LinkedIn Routes: forged-today check failed (non-fatal): ${e.message}`);
+          }
+        }
+
         const mergedContent = existingSection
           ? mergeAndSortMessages(existingSection, processedContent)
           : processedContent;
@@ -2533,7 +2558,9 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
             // today's; a conversation pasted in by hand may legitimately be old.
             const problems = checkCaptureDates({
               messages: parsedResult.messages, today: clientToday, mergedSection: mergedContent,
-              justSent: req.body.capturedOnSend === true,
+              // 0.3.40+ states it; an older extension's capturedOnSend is always true, so it proves
+              // nothing and is not taken as a promise.
+              justSent: sendProven === true,
             });
             if (problems.length) {
               const leadName = `${currentLead.fields['First Name'] || ''} ${currentLead.fields['Last Name'] || ''}`.trim();

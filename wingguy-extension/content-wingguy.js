@@ -2369,6 +2369,9 @@
         return;
       }
 
+      // Did a send really add a message? Told to the server with every save (0.3.40), so it never
+      // has to take "this was just sent" on trust again.
+      const sendProven = newestIsNewSince(captureBaseline, thread);
       const content = formatThreadForApi(thread, { leadName: hdr.name, sentSince: captureBaseline });
 
       const lookup = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: profileUrl });
@@ -2417,7 +2420,7 @@
 
       const extras = profferedExtras(thread, leadFirst, leadLast, lead.email, lead.phone);
       if (extras.email || extras.phone) console.log('[Wingguy] lead proffered contact details →', extras);
-      const qres = await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', ...extras });
+      const qres = await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', sendProven, ...extras });
       console.log(`[Wingguy] captured ${thread.length} messages to ${who}`);
       dismissCaptureRescue(); // a stale card from an earlier miss must not outlive a clean save
       // An auto-cease is never silent: the server just decided this send was the warm-then-quiet
@@ -2443,7 +2446,7 @@
             const lk = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: p.profileUrl });
             const l = ((lk && lk.leads) || [])[0];
             if (!l) { missing.push(p.name); continue; }
-            await bg({ type: 'QUICK_UPDATE', leadId: l.id, content, section: 'linkedin' });
+            await bg({ type: 'QUICK_UPDATE', leadId: l.id, content, section: 'linkedin', sendProven });
             savedTo.push(`${l.firstName || ''} ${l.lastName || ''}`.trim() || p.name);
           } catch (e) { console.log('[Wingguy] group save failed for', p.name, e.message); missing.push(p.name); }
         }
@@ -2713,7 +2716,7 @@
               pick.email,
               pick.phone
             );
-            await bg({ type: 'QUICK_UPDATE', leadId, content: formatThreadForApi(thread, { leadName: pick.firstName, sentSince: captureBaseline }), section: 'linkedin', ...extras });
+            await bg({ type: 'QUICK_UPDATE', leadId, content: formatThreadForApi(thread, { leadName: pick.firstName, sentSince: captureBaseline }), section: 'linkedin', sendProven: newestIsNewSince(captureBaseline, thread), ...extras });
             console.log(`[Wingguy] rescue-saved ${thread.length} messages to ${pick.name}`, extras);
             const verb = isNew ? `✓ Added ${pick.name} and saved` : '✓ Saved';
             const to = isNew ? '' : ` to ${pick.name}`;
