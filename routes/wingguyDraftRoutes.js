@@ -151,7 +151,9 @@ async function pushEntry(tenant, it, opts = {}) {
     const mailTools = opts.mailTools || require('../services/wingguyMailMcp').TOOL_DEFS;
     const def = mailTools.find((d) => d.name === 'wingguy_create_draft');
     if (!def) return { ok: false, error: 'The draft tool is not available.' };
-    const out = await def.run(pushArgs(it, opts.text), tenant);
+    // banned_words_ok: this is a person pressing Push on wording already on their screen - there
+    // is no writer here to reword a refusal, so the chat-only banned-words check stays out of it.
+    const out = await def.run({ ...pushArgs(it, opts.text), banned_words_ok: true }, tenant);
     if (out && out.isError) return { ok: false, error: String(out.text || 'The draft was not created.') };
     return { ok: true, already: false };
   } catch (e) {

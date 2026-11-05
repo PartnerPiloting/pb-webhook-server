@@ -463,7 +463,7 @@ async function runBannedWords({ add, remove } = {}, tenant = TENANT) {
   lines.push(enforced.length
     ? `Banned words for ${tenant} (${enforced.length}), checked in code: ${enforced.map((t) => `"${t}"`).join(', ')}.`
     : `${tenant} has no banned words yet.`);
-  lines.push('WHAT THIS DOES - tell the human in plain words: a LinkedIn message Wingguy drafts in the /wg window cannot contain one of these. The draft is checked before they see it and written again if a banned word is in it. Whole words only, any capitalisation ("folks" does not catch "folksy" - add each form they mean). Emails are NOT checked in code yet: the list is still given to whoever writes the email, as before.');
+  lines.push('WHAT THIS DOES - tell the human in plain words: a LinkedIn message Wingguy drafts in the /wg window cannot contain one of these. The draft is checked before they see it and written again if a banned word is in it. Whole words only, any capitalisation ("folks" does not catch "folksy" - add each form they mean). An email drafted in chat is checked the same way: the draft is refused and reworded before it reaches their Drafts folder. Not checked: an email scheduled to send later, and a draft pushed with a button from the follow-ups or draft page.');
   if (value.trim() && value.trim() !== enforced.join(', ')) {
     lines.push(`The list as they typed it (anything that is a description rather than a word or short phrase is passed to the drafter as text, not checked in code):\n${value.trim()}`);
   }
