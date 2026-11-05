@@ -93,7 +93,7 @@ async function requestTopUp({ client, url, campaign: named = '', requestedBy = n
   const note = degreeNote(check);
   const lines = [
     `Queued. Your Linked Helper machine picks it up within about five minutes and puts the search into "${campaign.name || `Campaign ${campaign.id}`}"${campaign.paused ? ', and starts the campaign (it is paused right now)' : ''}.`,
-    'Linked Helper then reads the search page by page - a few minutes for a small search, a few hours for a big one, and it pauses overnight if the search is very large. You get an email when it has finished, with how many people it added.',
+    'Your other campaigns pause while it collects and start again by themselves, so you usually have the answer within half an hour - a very big search takes longer, and pauses overnight if it is huge. You get an email when it has finished, with how many people it added. If the number is not what you expected, change the search and send the new link straight away.',
     'Two things to check yourself once it has: open the campaign and make sure the people look right for you, and that they are 2nd or 3rd degree connections - Linked Helper cannot invite someone you are already connected to. Anyone from this search who was already in your list is skipped, so the number collected will be less than the search shows.',
   ];
   if (note) lines.push(note);
