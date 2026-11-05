@@ -638,9 +638,45 @@ async function finishOutbound({ tenant, prepared, cc, result, replyToMessageId }
   return { ledgerLine, followUpLine, introLine };
 }
 
-async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply_to_message_id, resend_ok } = {}, tenant = TENANT) {
+/**
+ * BANNED WORDS IN AN EMAIL DRAFT (6 Nov 2026). The LinkedIn draft doors refuse a draft that uses a
+ * word on the client's banned list (services/wingguyChat.js); this is the same check for an email
+ * drafted in chat. It lives HERE and not in prepareOutbound on purpose: prepareOutbound is also
+ * the door for scheduled sends, where a refusal has no writer to rewrite it and would quietly
+ * stop a client's weekly email. A draft made in chat is refused back to the model, which rewords
+ * it on the spot.
+ *
+ * Returns the hit ({ term, found }) or null. Never throws - a list that cannot be read is no list.
+ */
+async function bannedWordInEmail({ subject, html_body, to, cc } = {}, tenant = TENANT, deps = {}) {
+  try {
+    const store = deps.store !== undefined ? deps.store : ledgerStore();
+    if (!store) return null;
+    const banned = require('../utils/bannedWords');
+    const rows = await store.getVariables({ tenantId: tenant });
+    const row = (rows || []).find((r) => r && r.var_key === 'never_say_words');
+    const terms = banned.parseBannedList(row ? row.value : '');
+    if (!terms.length) return null;
+    // A word in a recipient's own name is theirs, not the coach's ("Honest Burgers", "Guy Folks").
+    const exempt = [...(Array.isArray(to) ? to : []), ...(Array.isArray(cc) ? cc : [])]
+      .map((p) => String((p && p.name) || '')).filter(Boolean).join('\n');
+    return banned.findBannedWord(banned.emailCheckText(subject, html_body, htmlToText), terms, { exempt });
+  } catch (e) {
+    console.warn(`[wingguyMailMcp] banned-words read failed for ${tenant} (drafting continues): ${e.message}`);
+    return null;
+  }
+}
+
+async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply_to_message_id, resend_ok, banned_words_ok } = {}, tenant = TENANT) {
   const prepared = await prepareOutbound({ to, subject, html_body, resend_ok }, tenant);
   if (prepared.error) return { text: prepared.error, isError: true };
+  if (!banned_words_ok) {
+    const hit = await bannedWordInEmail({ subject: prepared.subject, html_body: prepared.detected.html, to, cc }, tenant);
+    if (hit) {
+      console.warn(`WINGGUY-BANNED-WORD-GUARD refused "${hit.found}" (email draft) for ${tenant}`);
+      return { text: require('../utils/bannedWords').bannedWordEmailRefusal(hit), isError: true };
+    }
+  }
   const { coach, recipients, detected, leadEmails, store } = prepared;
   subject = prepared.subject;
 
@@ -1486,6 +1522,9 @@ const REPLY_ID_DESC =
 const RESEND_OK_DESC =
   'Optional: set true ONLY when deliberately re-sending an asset this lead already received (e.g. they asked for the link again). Without it the asset-usage gate refuses a draft that repeats an asset to the same lead.';
 
+const BANNED_OK_DESC =
+  'Optional: set true ONLY when a draft was refused for using a word on the human\'s banned-words list AND the human wrote that exact wording themselves or has told you to keep it. Otherwise reword the email and call again without it.';
+
 const TOOL_DEFS = [
   {
     name: 'wingguy_create_draft',
@@ -1500,6 +1539,7 @@ const TOOL_DEFS = [
       reply_to: z.array(z.object({ email: z.string(), name: z.string().optional() })).optional().describe('Optional Reply-To {email, name}.'),
       reply_to_message_id: z.string().optional().describe(REPLY_ID_DESC),
       resend_ok: z.boolean().optional().describe(RESEND_OK_DESC),
+      banned_words_ok: z.boolean().optional().describe(BANNED_OK_DESC),
     },
     jsonSchema: {
       type: 'object',
@@ -1512,6 +1552,7 @@ const TOOL_DEFS = [
         reply_to: { type: 'array', description: 'Optional Reply-To {email, name}.', items: { type: 'object', properties: { email: { type: 'string' }, name: { type: 'string' } }, required: ['email'] } },
         reply_to_message_id: { type: 'string', description: REPLY_ID_DESC },
         resend_ok: { type: 'boolean', description: RESEND_OK_DESC },
+        banned_words_ok: { type: 'boolean', description: BANNED_OK_DESC },
       },
       required: ['to', 'subject', 'html_body'],
     },
@@ -2516,4 +2557,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { prepareOutbound, finishOutbound, registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };
+module.exports = { prepareOutbound, bannedWordInEmail, finishOutbound, registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };

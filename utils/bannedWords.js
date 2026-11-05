@@ -149,3 +149,24 @@ function removeFromList(value, words) {
 }
 
 module.exports = { parseBannedList, findBannedWord, bannedWordRefusal, addToList, removeFromList, cleanTerm };
+
+/**
+ * The text of an email that the ban applies to: the subject plus the body the coach is sending.
+ * Left out on purpose - quoted material (a <blockquote> is someone else's words, or the thread
+ * being replied to) and web addresses (a link is not something the coach "said").
+ * `toText` turns HTML into plain text (the mail door's own htmlToText).
+ */
+function emailCheckText(subject, html, toText) {
+  let body = String(html || '').replace(/<blockquote[\s\S]*?<\/blockquote>/gi, ' ');
+  body = typeof toText === 'function' ? toText(body) : body.replace(/<[^>]+>/g, ' ');
+  const text = `${String(subject || '')}\n${body}`;
+  return text.replace(/\bhttps?:\/\/\S+/gi, ' ').replace(/\bwww\.\S+/gi, ' ').replace(/\S+@\S+\.\S+/g, ' ');
+}
+
+/** What Claude is told when an email draft is refused. */
+function bannedWordEmailRefusal(hit, who = 'their') {
+  return `Draft NOT created - the email uses "${hit.found}", which is on ${who} banned-words list ("${hit.term}"). That list is absolute. Rewrite the email without it - say the same thing another way, do not swap in a near-twin of the word - and call wingguy_create_draft again. Do not make a fuss about it to the human: one short line that you reworded it is enough. ONLY if the human wrote that exact wording themselves, or tells you to keep it, call again with banned_words_ok: true.`;
+}
+
+module.exports.emailCheckText = emailCheckText;
+module.exports.bannedWordEmailRefusal = bannedWordEmailRefusal;
