@@ -425,6 +425,51 @@ async function runVariables({ set_key, set_value, description } = {}, tenant = T
   return { text: `Wingguy variables for ${tenant}:\n${lines.join('\n')}${recordNote}` };
 }
 
+// The banned-words list (never_say_words), by word instead of by overwrite. "Never use folks
+// again" said in Claude used to become a wording change to a voice instruction - a soft hint the
+// drafter mostly followed and nothing checked (David Gould, 5 Nov 2026). This is the door that
+// puts the word on the list the drafting window enforces in code (utils/bannedWords.js).
+const BANNED_KEY = 'never_say_words';
+function asWordList(v) {
+  if (Array.isArray(v)) return v.map((x) => String(x || '').trim()).filter(Boolean);
+  if (v === undefined || v === null) return [];
+  return String(v).split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
+}
+async function runBannedWords({ add, remove } = {}, tenant = TENANT) {
+  const banned = require('../utils/bannedWords');
+  const vars = await store.getVariables({ tenantId: tenant });
+  const row = (vars || []).find((v) => v && v.var_key === BANNED_KEY);
+  const before = row && row.value != null ? String(row.value) : '';
+  const adds = asWordList(add);
+  const removes = asWordList(remove);
+  const notes = [];
+  let value = before;
+  if (adds.length || removes.length) {
+    const a = banned.addToList(value, adds);
+    value = a.value;
+    const r = banned.removeFromList(value, removes);
+    value = r.value;
+    if (value !== before) {
+      await store.setVariable({ tenantId: tenant, varKey: BANNED_KEY, value, actor: `mcp:${tenant}` });
+    }
+    if (a.added.length) notes.push(`Added: ${a.added.map((t) => `"${t}"`).join(', ')}.`);
+    if (a.already.length) notes.push(`Already on the list: ${a.already.map((t) => `"${t}"`).join(', ')}.`);
+    if (r.removed.length) notes.push(`Removed: ${r.removed.map((t) => `"${t}"`).join(', ')}.`);
+    if (r.missing.length) notes.push(`Not on the list, so nothing to remove: ${r.missing.map((t) => `"${t}"`).join(', ')}.`);
+  }
+  const enforced = banned.parseBannedList(value);
+  const lines = [];
+  if (notes.length) lines.push(notes.join(' '));
+  lines.push(enforced.length
+    ? `Banned words for ${tenant} (${enforced.length}), checked in code: ${enforced.map((t) => `"${t}"`).join(', ')}.`
+    : `${tenant} has no banned words yet.`);
+  lines.push('WHAT THIS DOES - tell the human in plain words: a LinkedIn message Wingguy drafts in the /wg window cannot contain one of these. The draft is checked before they see it and written again if a banned word is in it. Whole words only, any capitalisation ("folks" does not catch "folksy" - add each form they mean). Emails are NOT checked in code yet: the list is still given to whoever writes the email, as before.');
+  if (value.trim() && value.trim() !== enforced.join(', ')) {
+    lines.push(`The list as they typed it (anything that is a description rather than a word or short phrase is passed to the drafter as text, not checked in code):\n${value.trim()}`);
+  }
+  return { text: lines.join('\n\n') };
+}
+
 async function runAssets({ set_key, set_url, set_kind, retire } = {}, tenant = TENANT) {
   let recordNote = '';
   if (set_key !== undefined && set_key !== null && String(set_key).trim()) {
@@ -1078,7 +1123,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_rule_propose',
-    description: 'STEP 1 of changing a Wingguy rule ("update my instructions" / "update my rules"). Pure read — writes NOTHING. Returns the current-vs-proposed diff, the neighbouring rules in the same context/type (eyeball them for contradictions), and the expected_version that wingguy_rule_commit requires. If the client is about to save their own version of a STANDARD shared instruction, it says so and prints the standard body they would be replacing — show the human both and check the standard does not already cover it. If the instruction is FIXED, it refuses here and explains why. Show the proposal to the human and get an explicit yes before committing.' + VOCAB + THREE_KINDS,
+    description: 'STEP 1 of changing a Wingguy rule ("update my instructions" / "update my rules"). Pure read — writes NOTHING. Returns the current-vs-proposed diff, the neighbouring rules in the same context/type (eyeball them for contradictions), and the expected_version that wingguy_rule_commit requires. If the client is about to save their own version of a STANDARD shared instruction, it says so and prints the standard body they would be replacing — show the human both and check the standard does not already cover it. If the instruction is FIXED, it refuses here and explains why. Show the proposal to the human and get an explicit yes before committing. NOT FOR A BANNED WORD: "never use folks again" / "stop saying X" goes to wingguy_banned_words, which is checked in code - never write a banned word into an instruction.' + VOCAB + THREE_KINDS,
     zodSchema: {
       rule_key: z.string().describe('Stable kebab-case key. For a NEW rule, coin a descriptive one (e.g. "booking-earliest-start")'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
@@ -1189,6 +1234,22 @@ const TOOL_DEFS = [
       },
     },
     run: runVariables,
+  },
+  {
+    name: 'wingguy_banned_words',
+    description: 'The human\'s BANNED WORDS - the words and phrases they never use. Call this whenever they say a word or phrase must not be used again: "never use folks again", "stop saying reach out", "don\'t ever write synergy", "ban that word", "I hate the word leverage", "add X to my banned words", "what are my banned words?", "you can use X again". THIS, not wingguy_rule_propose: a banned word is not a change to an instruction\'s wording - written into an instruction it is only a hint the drafter may miss, while on this list it is checked in code and a LinkedIn draft containing it is refused and rewritten before they ever see it. Pass add (words to ban) and/or remove (words to allow again); omit both to just show the list. Adding never disturbs what is already there. No confirmation step is needed - they have just told you the word - but say back exactly what was added. If they ask for something that is not a word or short phrase ("no long sentences", "never sound salesy"), that IS an instruction: use wingguy_rule_propose for it.',
+    zodSchema: {
+      add: z.array(z.string()).optional().describe('Words or short phrases to ban, one per item, exactly as they should not appear (e.g. ["folks", "reach out"])'),
+      remove: z.array(z.string()).optional().describe('Words or short phrases to take OFF the banned list'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        add: { type: 'array', items: { type: 'string' }, description: 'Words or short phrases to ban, one per item, exactly as they should not appear (e.g. ["folks", "reach out"])' },
+        remove: { type: 'array', items: { type: 'string' }, description: 'Words or short phrases to take OFF the banned list' },
+      },
+    },
+    run: runBannedWords,
   },
   {
     name: 'wingguy_assets',
