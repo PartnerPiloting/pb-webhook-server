@@ -37,8 +37,8 @@ function lift(startMarker, endMarker) {
   return src.slice(a, b);
 }
 const block = lift('// ---- dayLabels (pure;', '// ---- end dayLabels ----');
-const { dayLabelOf, dayLabelDaysAgo, stampNewestAsToday } = new Function(
-  block + '\nreturn { dayLabelOf, dayLabelDaysAgo, stampNewestAsToday };'
+const { dayLabelOf, dayLabelDaysAgo, stampNewestAsToday, threadNewestKey, newestIsNewSince } = new Function(
+  block + '\nreturn { dayLabelOf, dayLabelDaysAgo, stampNewestAsToday, threadNewestKey, newestIsNewSince };'
 )();
 
 let passed = 0;
@@ -118,12 +118,40 @@ test('6. a correctly-labelled newest message is left alone', () => {
   assert.strictEqual(stampNewestAsToday([], 'Craig', wed), null);
 });
 
+// Ashley Knowles, 5 Nov 2026: he opened Pierre Fourie's thread, where the newest message was his
+// own from 4 Feb. 0.3.38 stamped it Today on the open, the record said "5 Nov 9:55 AM", and Wingguy
+// refused to draft the reconnect. The stamp is now allowed only when a send added a message.
+console.log('newestIsNewSince (the stamp needs proof of a send)');
+const pierre = () => [
+  { sender: 'Pierre Fourie', text: 'Happy to catch up over Teams, but probably in the new year.', day: 'Dec 11, 2025', time: '4:33 PM' },
+  { sender: 'Ashley Knowles', text: 'Hi Pierre, hope your start to the year is going well!', day: 'Feb 4', time: '9:55 AM' },
+];
+test('8. opening a thread (no send seen) never allows the stamp', () => {
+  assert.strictEqual(newestIsNewSince(null, pierre()), false);
+  assert.strictEqual(newestIsNewSince(undefined, pierre()), false);
+});
+test('9. Enter that sent nothing (newest message unchanged) never allows the stamp', () => {
+  const baseline = { key: threadNewestKey(pierre()) };
+  assert.strictEqual(newestIsNewSince(baseline, pierre()), false);
+  const reflowed = pierre(); reflowed[1].text = 'Hi Pierre,  hope your start\nto the year is going well!';
+  assert.strictEqual(newestIsNewSince(baseline, reflowed), false, 'whitespace differences are not a new message');
+});
+test('10. a real send (a new newest message) allows the stamp', () => {
+  const baseline = { key: threadNewestKey(pierre()) };
+  const after = [...pierre(), { sender: 'Ashley Knowles', text: 'Hi Pierre, saw the masterclass you shared.', day: 'Feb 4', time: '10:06 AM' }];
+  assert.strictEqual(newestIsNewSince(baseline, after), true);
+  assert.strictEqual(newestIsNewSince({ key: '' }, after), true, 'first message in an empty thread');
+  assert.strictEqual(newestIsNewSince(baseline, []), false, 'nothing read = nothing to stamp');
+});
+
 console.log('shipping file');
 test('7. both scrapes and the formatter use the helpers', () => {
   assert.ok(/function scrapeNewUiThread[\s\S]*?dayLabelOf\(/.test(src), 'new-UI scrape uses dayLabelOf');
   assert.ok(/function scrapeOpenThread[\s\S]*?dayLabelOf\(/.test(src), 'classic scrape uses dayLabelOf');
-  assert.ok(/function formatThreadForApi[\s\S]*?stampNewestAsToday\(/.test(src), 'formatter runs the backstop');
-  assert.ok(/formatThreadForApi\(thread, \{ leadName: hdr\.name \}\)/.test(src), 'the Send capture passes the lead name');
+  assert.ok(src.includes('newestIsNewSince(opts.sentSince, thread) ? stampNewestAsToday(thread, opts.leadName) : null'), 'the backstop runs only behind the proof-of-send gate');
+  assert.ok(src.includes('formatThreadForApi(thread, { leadName: hdr.name, sentSince: captureBaseline })'), 'the capture passes the lead name and the send baseline');
+  assert.ok(src.includes('scheduleCapture(el, true)') && src.includes('scheduleCapture(target, true)'), 'both send paths mark the capture as a send');
+  assert.ok(/if \(thread\.length\) scheduleCapture\([^;]*: null\);/.test(src), 'the on-open capture is not marked as a send');
   assert.ok(/thread day labels/.test(src), 'the labels read are logged for the next diagnosis');
 });
 
