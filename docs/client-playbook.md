@@ -615,9 +615,11 @@ people look right for you, or who's already in your list. So before you copy the
 down the first page of results on LinkedIn and make sure they're the people you'd like to know. Anyone from the search who was already in your list is
 skipped, so the number collected is always less than the search shows. That's normal.
 
-**How long it takes.** Linked Helper reads the search page by page - minutes for a few hundred people.
-It only lets itself load about 95 pages a day to stay inside LinkedIn's limits, so a very big search
-carries on by itself the next day. You'll get the email when it's done either way.
+**How long it takes.** Usually within half an hour. While Linked Helper collects, your other campaigns
+pause, then start again by themselves. Linked Helper only lets itself load about 95 pages a day to stay
+inside LinkedIn's limits, so a very big search carries on by itself the next day. You'll get the email
+when it's done either way. If the number added isn't what you expected, change the search and send me
+the new link straight away.
 
 **Choosing who to search for** is the part people actually forget, and it's a different skill from
 topping up: https://knowaguy.com.au/pick-your-people
