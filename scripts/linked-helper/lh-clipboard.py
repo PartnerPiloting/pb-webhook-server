@@ -378,6 +378,16 @@ def report_topup(conf, job_id, report):
         return True
 
 
+def topup_pushed_out(next_run_at):
+    """True when the step's start time is still ahead of us (Linked Helper postponed it)."""
+    try:
+        from datetime import datetime, timezone
+        t = datetime.fromisoformat(str(next_run_at).replace("Z", "+00:00"))
+        return (t - datetime.now(timezone.utc)).total_seconds() > 120
+    except Exception:
+        return False
+
+
 def topup_job(conf, job):
     """One top-up, start to finish, on its own thread: apply, then report progress until done."""
     if not topup_busy.acquire(blocking=False):
@@ -415,7 +425,12 @@ def topup_job(conf, job):
                 finished = "Linked Helper did not start collecting within %d hours" % TOPUP_START_WAIT_HOURS
             if st.get("finished_normally"):
                 finished = "collect finished"
-            elif st.get("postpone_reason") and st.get("postpone_reason") != "Waiter" and not st.get("collecting_now"):
+            elif (st.get("postpone_reason") and st.get("postpone_reason") != "Waiter" and not st.get("collecting_now")
+                  and topup_pushed_out(st.get("next_run_at"))):
+                # Only a start time Linked Helper has pushed into the FUTURE is a pause. A start time
+                # that has already passed means the step is due and waiting its turn behind other
+                # campaigns - apply itself leaves it that way ("Manually", start = now). 5 Nov 2026:
+                # campaign 47 was reported "finished, 0 added" two minutes in, before it had run.
                 # Page credits or a LinkedIn limit: Linked Helper stops and carries on by itself later.
                 finished = "Linked Helper paused the collect (%s) - it carries on by itself when the daily page limit resets" % st["postpone_reason"]
             if elapsed_h >= TOPUP_MAX_HOURS and not finished:
