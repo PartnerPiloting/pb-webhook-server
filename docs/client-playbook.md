@@ -394,6 +394,16 @@ the networking itself. "I'm building my network. I've got a couple of things in 
 really want is to link with people who value two-way collaboration." That's a real proposition, it's
 honest, and it works - see the topic on what you do.
 
+**Coming back for a top-up.** Same conversation, shorter. Open a chat and say **help me work out who to
+search for**, then tell Claude three things: who you searched for last time, how those people turned
+out, and whether you're on Premium or Sales Navigator. Then ask for a different slice - another city, a
+neighbouring job title, a different industry that serves the same clients. If you're on Premium, say
+"no more than five boolean operators". On Sales Navigator you have fifteen. Count them before you use
+the search.
+
+Don't aim for a perfect list. You want capable people you'd be glad to know, and most of them won't be
+clients. The scoring sorts out who's worth a conversation after they've connected.
+
 ---
 
 ## WHY LINKED HELPER - and not the slick cloud tools

@@ -25,6 +25,20 @@
       ]
     },
     {
+      "phrase": "help me work out who to search for",
+      "tool": "wingguy_learn",
+      "topic": "FINDING YOUR AUDIENCE WITH CLAUDE",
+      "where": [
+        "docs/client-playbook.md",
+        "content/site/pick-your-people.html",
+        "services/lhTopUp.js"
+      ],
+      "near_misses": [
+        { "text": "who should I search for next on LinkedIn", "expect": "FINDING YOUR AUDIENCE WITH CLAUDE" },
+        { "text": "help me write a boolean search", "expect": "FINDING YOUR AUDIENCE WITH CLAUDE" }
+      ]
+    },
+    {
       "phrase": "show me how to top up my campaign",
       "tool": "wingguy_learn",
       "topic": "KEEPING YOUR CAMPAIGN FED",
