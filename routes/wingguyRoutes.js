@@ -28,6 +28,7 @@ const express = require('express');
 const CONNECTOR_BASE_URL = (process.env.CONNECTOR_BASE_URL || 'https://pb-webhook-server.onrender.com').replace(/\/$/, '');
 const { createLogger } = require('../utils/contextLogger');
 const setupAssistJson = require('../utils/setupAssistJson');
+const threadDates = require('../utils/threadDates');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { getAnthropicClient, getAnthropicClientForKey, resolveClientAnthropic, anthropicLane, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError, claudeModelId } = require('../config/anthropicClient');
 const rulesSource = require('../services/wingguyRulesSource');
@@ -281,20 +282,26 @@ const CONVO_MAX_MESSAGES = 60;   // most recent N messages (bounds tokens on lon
 const CONVO_CHAR_CAP = 8000;
 
 // Format the scraped thread as "Sender: text" lines, oldest→newest, labelling who the prospect is
-// so the model knows which side is Guy. Accepts an array of { sender, text }.
-function buildConversationBlock(conversation = [], prospectName = '', group = null) {
+// so the model knows which side is Guy. Accepts an array of { sender, text, day }.
+// DATES (5 Nov 2026, David Gould): the extension sends LinkedIn's day label on every message and
+// this used to drop it, so a 2018 message read like this morning's. Each line now carries its date
+// and a worked-out "newest message was N years ago" note sits on top (utils/threadDates.js).
+// opts.timeZone = the coach's timezone, for "today"; opts.now is for tests.
+function buildConversationBlock(conversation = [], prospectName = '', group = null, opts = {}) {
   if (!Array.isArray(conversation)) return '';
   const msgs = conversation
-    .map((m) => ({ sender: String((m && m.sender) || '').trim(), text: String((m && m.text) || '').trim() }))
+    .map((m) => ({ sender: String((m && m.sender) || '').trim(), text: String((m && m.text) || '').trim(), day: String((m && m.day) || '').trim() }))
     .filter((m) => m.text);
   if (!msgs.length) return '';
   const recent = msgs.slice(-CONVO_MAX_MESSAGES);
-  const body = recent.map((m) => `${m.sender || 'Unknown'}: ${m.text}`).join('\n').slice(-CONVO_CHAR_CAP);
+  const today = threadDates.todayIn((opts && opts.timeZone) || 'Australia/Brisbane', (opts && opts.now) || new Date());
+  const body = recent.map((m) => `${threadDates.linePrefix(m, today)}${m.sender || 'Unknown'}: ${m.text}`).join('\n').slice(-CONVO_CHAR_CAP);
+  const datesNote = threadDates.threadDatesNote(recent, today);
   const others = group && Array.isArray(group.participants) ? group.participants.map((p) => p.name).filter(Boolean) : [];
   const who = others.length
     ? `\n(GROUP conversation: the senders other than Guy are ${others.join(', ')}. Draft Guy's next message to ${prospectName || others[0]} unless Guy says otherwise — and address it to them by name, since more than one person will read it.)`
     : (prospectName ? `\n(The other person is ${prospectName}; the other sender is Guy — draft Guy's next message.)` : '');
-  return `${body}${who}`;
+  return `${datesNote ? `${datesNote}\n\n` : ''}${body}${who}`;
 }
 
 // GROUP threads (2026-09-02, Ann → Dimitri introduction): the extension sends the whole roster
@@ -692,7 +699,7 @@ module.exports = function mountWingguy(app) {
     }
     // Pass any open thread through too — templates that are follow-up replies (e.g. \frac) react to
     // their warm reply; templates that don't reference it (e.g. \tks) simply ignore it.
-    const convoBlock = buildConversationBlock(conversation, profile && profile.name);
+    const convoBlock = buildConversationBlock(conversation, profile && profile.name, null, { timeZone: req.client && req.client.timezone });
 
     // Pre-flip observation: render what the store WOULD say for this draft and log one
     // WINGGUY-SHADOW line. Fire-and-forget — never blocks or breaks the live draft.
@@ -765,7 +772,7 @@ module.exports = function mountWingguy(app) {
 
     const { profile, conversation } = req.body || {};
     const profileBlock = buildProfileBlock(profile);
-    const convoBlock = buildConversationBlock(conversation, profile && profile.name);
+    const convoBlock = buildConversationBlock(conversation, profile && profile.name, null, { timeZone: req.client && req.client.timezone });
     if (!convoBlock) {
       return res.status(400).json({ ok: false, error: 'No conversation supplied to reply to.' });
     }
@@ -939,7 +946,7 @@ module.exports = function mountWingguy(app) {
         deps: { client: chatClient },
         // Reuse the route's grounding-block formatting so the agent sees the same shape as the other endpoints.
         profileBlock: buildProfileBlock(enriched),
-        convoBlock: buildConversationBlock(conversation, enriched && enriched.name, enriched && enriched.group),
+        convoBlock: buildConversationBlock(conversation, enriched && enriched.name, enriched && enriched.group, { timeZone: coach.timezone || coach.timeZone }),
         profileThin: profileIsThin(enriched),
       });
       if (!result.ok) return res.status(502).json({ ok: false, error: result.error });
@@ -2205,3 +2212,4 @@ module.exports = function mountWingguy(app) {
   app.use('/api/wingguy', router);
 };
 module.exports.buildProfileBlock = buildProfileBlock;
+module.exports.buildConversationBlock = buildConversationBlock;
