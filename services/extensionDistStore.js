@@ -228,4 +228,54 @@ async function darkMachinesForCoach(coachClientId) {
   }
 }
 
-module.exports = { recordCheckin, latestPerClient, latestForClient, darkMachineAlerts, darkMachinesForCoach, DARK_AFTER_MS };
+/**
+ * WHAT VERSION IS ACTUALLY RUNNING (5 Nov 2026). The check-in table says what an updater put on
+ * disk or what a client downloaded - not what their browser is running (Chrome keeps the old copy
+ * until the card is reloaded, and a download may never be extracted). From 0.3.41 the extension
+ * sends its version with every request, and this keeps one row per client per version with the
+ * first and last time it was seen. Its own table, so the check-in ledger and the dark-machine
+ * alert (which read "latest row per client") are not disturbed.
+ *
+ * Throttled in memory to one write per client+version per 30 minutes. Never throws.
+ */
+const SEEN_EVERY_MS = 30 * 60 * 1000;
+const seenAt = new Map();
+let seenSchemaEnsured = false;
+async function recordSeen({ clientId, version }) {
+  const p = getPool();
+  if (!p || !clientId || !version) return false;
+  const key = `${clientId}|${version}`;
+  const now = Date.now();
+  if (seenAt.has(key) && now - seenAt.get(key) < SEEN_EVERY_MS) return false;
+  seenAt.set(key, now);
+  let client;
+  try {
+    client = await p.connect();
+    if (!seenSchemaEnsured) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS wingguy_extension_seen (
+          client_id     TEXT        NOT NULL,
+          version       TEXT        NOT NULL,
+          first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+          PRIMARY KEY (client_id, version)
+        )
+      `);
+      seenSchemaEnsured = true;
+    }
+    await client.query(
+      `INSERT INTO wingguy_extension_seen (client_id, version) VALUES ($1, $2)
+       ON CONFLICT (client_id, version) DO UPDATE SET last_seen_at = now()`,
+      [String(clientId), String(version).slice(0, 40)]
+    );
+    return true;
+  } catch (e) {
+    seenAt.delete(key);
+    log.warn(`extension-seen write failed: ${e.message}`);
+    return false;
+  } finally {
+    if (client) client.release();
+  }
+}
+
+module.exports = { recordCheckin, recordSeen, latestPerClient, latestForClient, darkMachineAlerts, darkMachinesForCoach, DARK_AFTER_MS };

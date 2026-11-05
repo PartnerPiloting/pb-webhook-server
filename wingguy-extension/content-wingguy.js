@@ -2272,6 +2272,9 @@
     // a refusal must never throw the conversation away (Deon, 2026-07-28).
     let thread = [];
     let hdr = { profileUrl: '', name: '' };
+    // The server has paused this version from saving (a known fault) - save nothing, say so once.
+    // The server refuses the save as well; this just spares the round trip and the rescue card.
+    if (extStatus && extStatus.paused) { notePausedSave(extStatus.toast); return; }
     try {
       // We need the person's /in/ URL to look the lead up. Pin the capture to the conversation the SEND
       // came from — never trust the page URL while any thread is open. The old gate asked "is the
@@ -2421,6 +2424,12 @@
       const extras = profferedExtras(thread, leadFirst, leadLast, lead.email, lead.phone);
       if (extras.email || extras.phone) console.log('[Wingguy] lead proffered contact details →', extras);
       const qres = await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', sendProven, ...extras });
+      // The server paused this version between the panel opening and this save: nothing was saved.
+      if (qres && qres.paused) {
+        extStatus = { ...(extStatus || {}), ok: true, paused: true, toast: qres.message }; extStatusAt = Date.now();
+        notePausedSave(qres.message);
+        return;
+      }
       console.log(`[Wingguy] captured ${thread.length} messages to ${who}`);
       dismissCaptureRescue(); // a stale card from an earlier miss must not outlive a clean save
       // An auto-cease is never silent: the server just decided this send was the warm-then-quiet
@@ -2803,6 +2812,7 @@
           </div>
           <button class="wingguy-x" title="Close (Esc)" id="wingguy-close">×</button>
         </div>
+        <div class="wingguy-version-notice" id="wingguy-version-notice" hidden></div>
         <div class="wingguy-modal-body" id="wingguy-body"></div>
       </div>
     `;
@@ -2870,6 +2880,52 @@
     return body;
   }
 
+  // ---- "how is my version?" (0.3.41) ------------------------------------------------------
+  // The server knows which version it is handing out and whether this one has a known fault; the
+  // extension only asks and shows the answer. The wording, and the decision to pause a version
+  // from saving, live on the server (content/extension-policy.json) so they can change without a
+  // new extension - the point being that a client who updates by hand is never left running a
+  // faulty version silently, and never has to be emailed "update urgently" (Guy, 5 Nov 2026).
+  // No answer, or an answer with no notice, shows nothing at all.
+  let extStatus = null;
+  let extStatusAt = 0;
+  const EXT_STATUS_MAX_AGE_MS = 30 * 60 * 1000;
+  async function refreshExtStatus() {
+    if (extStatus && Date.now() - extStatusAt < EXT_STATUS_MAX_AGE_MS) return extStatus;
+    try {
+      const data = await bg({ type: 'WG_EXT_STATUS' });
+      if (data && data.ok) { extStatus = data; extStatusAt = Date.now(); }
+    } catch (_) { /* no answer = no notice */ }
+    return extStatus;
+  }
+  function renderVersionNotice() {
+    const slot = document.getElementById('wingguy-version-notice');
+    if (!slot) return;
+    const notice = extStatus && extStatus.notice;
+    slot.textContent = '';
+    if (!notice || !notice.text) { slot.hidden = true; return; }
+    slot.hidden = false;
+    slot.classList.toggle('wingguy-version-notice-pause', notice.tone === 'pause');
+    const text = document.createElement('span');
+    text.textContent = notice.text;       // server wording, shown as text - never as HTML
+    slot.appendChild(text);
+    if (notice.action === 'open-install' && notice.button) {
+      const btn = document.createElement('button');
+      btn.className = 'wingguy-link wingguy-version-notice-btn';
+      btn.textContent = notice.button;
+      btn.addEventListener('click', () => { bg({ type: 'OPEN_INSTALL_PAGE' }).catch(() => {}); });
+      slot.appendChild(btn);
+    }
+  }
+  // A paused version says so once per page, not on every send.
+  let pausedToastShown = false;
+  function notePausedSave(message) {
+    console.log('[Wingguy] this version is paused from saving conversations - nothing was saved');
+    if (pausedToastShown) return;
+    pausedToastShown = true;
+    showCaptureToast(message || 'Not saved - Wingguy needs updating first. Open Wingguy to get it.', true);
+  }
+
   async function openPanel() {
     if (standDown) return;                  // a newer copy owns this tab; it will answer this /wg
     overlayShell();
@@ -2884,6 +2940,10 @@
     try { auth = await bg({ type: 'CHECK_AUTH' }); } catch (_) { auth = null; }
     if (!auth) { renderRefreshCard(); return; }
     if (!auth.authenticated) { renderConnectCard(); return; }
+
+    // Ask the server how this version stands and show its notice, if any. Not awaited: a slow or
+    // missing answer must never hold the panel up.
+    refreshExtStatus().then(renderVersionNotice).catch(() => {});
 
     // Who is Wingguy signed in as, and is that the person on this LinkedIn? Asked BEFORE the page
     // is read, because the read is what saves the thread and creates leads. Only a definite "no"

@@ -128,6 +128,20 @@
   font-size: 12.5px;
   line-height: 1.45;
 }
+/* "How is my version?" - the server's notice, between the panel head and body (0.3.41). Calm by
+   default; the pause tone is for a version the server has stopped from saving. */
+.wingguy-version-notice {
+  margin: 0;
+  padding: 8px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--wingguy-border);
+  color: var(--wingguy-ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.wingguy-version-notice[hidden] { display: none; }
+.wingguy-version-notice-pause { background: #fff7ed; border-bottom-color: #fdba74; }
+.wingguy-version-notice-btn { margin-left: 8px; font-weight: 600; text-decoration: underline; }
 .wingguy-section-label { margin: 12px 0 6px; font-weight: 600; font-size: 12.5px; color: var(--wingguy-muted); text-transform: uppercase; letter-spacing: 0.03em; }
 
 /* Mode switch (auto-detected first-touch vs reply; human-overridable) — compact, in the header */

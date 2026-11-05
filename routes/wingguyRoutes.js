@@ -31,6 +31,8 @@ const setupAssistJson = require('../utils/setupAssistJson');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { getAnthropicClient, getAnthropicClientForKey, resolveClientAnthropic, anthropicLane, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError, claudeModelId } = require('../config/anthropicClient');
 const rulesSource = require('../services/wingguyRulesSource');
+const extensionPolicy = require('../services/extensionPolicy');
+const { recordSeen, latestForClient } = require('../services/extensionDistStore');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
 const { runWingguyChatTurn } = require('../services/wingguyChat');
@@ -609,6 +611,35 @@ module.exports = function mountWingguy(app) {
       });
     }
     next();
+  });
+
+  // Which extension version is really running in this client's browser (0.3.41+ sends it with
+  // every request). Noted for the fleet view; never blocks or fails a request.
+  router.use((req, res, next) => {
+    try {
+      const v = extensionPolicy.cleanVersion(req.get(extensionPolicy.VERSION_HEADER));
+      if (v && req.client && req.client.clientId) recordSeen({ clientId: req.client.clientId, version: v }).catch(() => {});
+    } catch (_) { /* never in the way */ }
+    next();
+  });
+
+  // "How is my version?" - asked by the panel each time it opens. The answer carries the notice
+  // to show (wording in content/extension-policy.json) and whether this version is paused from
+  // saving. See services/extensionPolicy.js for why.
+  router.get('/extension-status', async (req, res) => {
+    let lane = 'portal';
+    try {
+      const row = await latestForClient(req.client.clientId);
+      if (row && !(row.agent === 'portal' || row.action === 'downloaded')) lane = 'updater';
+    } catch (_) { /* portal wording is the safe default */ }
+    res.json({
+      ok: true,
+      ...extensionPolicy.extensionStatus({
+        version: req.get(extensionPolicy.VERSION_HEADER),
+        current: extensionPolicy.currentVersion(),
+        lane,
+      }),
+    });
   });
 
   // The quick-pick button set for the panel.

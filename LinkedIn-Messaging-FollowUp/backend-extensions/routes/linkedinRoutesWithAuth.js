@@ -8,6 +8,7 @@ const { isCoachOwnEmail } = require('../../../utils/coachOwnEmails');
 const { trimRunOnEmail } = require('../../../utils/runOnEmail');
 const { gluedPrefix } = require('../../../utils/emailGluedPrefix');
 const { checkCaptureDates, captureAlertEmail, shouldAlert, dropForgedToday, isDroppedMessage } = require('../../../utils/captureDateGuard');
+const extensionPolicy = require('../../../services/extensionPolicy');
 const { sendAlertEmail } = require('../../../services/emailNotificationService');
 const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
@@ -2426,7 +2427,17 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
     const { section, content, replaceNotes, followUpDate, email, phone, priority, parseRaw = true, tags, ceaseFup } = req.body;
-    
+
+    // A paused extension version does not save conversations (services/extensionPolicy.js): a
+    // faulty version must not be able to write to a record while its owner gets round to the
+    // update. Answered as a plain 200 the extension reads and explains, not as an error. Only
+    // 0.3.41+ sends its version, so this never touches the portal's own saves or older extensions.
+    const extVersion = extensionPolicy.cleanVersion(req.get(extensionPolicy.VERSION_HEADER));
+    if (extVersion && section === 'linkedin' && content && extensionPolicy.isPaused(extVersion)) {
+      logger.warn(`LinkedIn Routes: save refused - extension ${extVersion} is paused (${req.client.clientId}, lead ${leadId})`);
+      return res.json(extensionPolicy.pausedSaveResponse());
+    }
+
     // If replaceNotes is provided, skip section validation (full replacement mode)
     if (replaceNotes !== undefined) {
       logger.info('LinkedIn Routes: Full notes replacement mode');

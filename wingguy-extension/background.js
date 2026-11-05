@@ -361,6 +361,25 @@ function handleMessage(message, sender, sendResponse) {
   }
 
   // Wingguy: fetch the campaign quick-pick template set
+  // "How is my version?" - the server answers with the notice to show and whether this version
+  // is paused from saving. Never an error the panel has to explain: no answer = no notice.
+  if (message.type === 'WG_EXT_STATUS') {
+    wingguyGetExtensionStatus()
+      .then(data => sendResponse({ success: true, data }))
+      .catch(() => sendResponse({ success: true, data: null }));
+    return true;
+  }
+
+  // The notice's button: open this client's own install page in the Portal.
+  if (message.type === 'OPEN_INSTALL_PAGE') {
+    chrome.storage.local.get(['environment', 'portalToken'], (data) => {
+      const base = PORTAL_ENDPOINTS[data.environment || 'production'] || PORTAL_ENDPOINTS.production;
+      const url = `${base}my-wingguy/install${data.portalToken ? `?token=${encodeURIComponent(data.portalToken)}` : ''}`;
+      chrome.tabs.create({ url, active: true }, () => sendResponse({ success: true }));
+    });
+    return true;
+  }
+
   if (message.type === 'WINGGUY_GET_TEMPLATES') {
     wingguyGetTemplates()
       .then(data => sendResponse({ success: true, data }))
@@ -815,6 +834,14 @@ async function getWingguyApiBase() {
 }
 
 // Wingguy: GET /api/wingguy/templates
+async function wingguyGetExtensionStatus() {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/extension-status`, { method: 'GET', headers });
+  if (!response.ok) throw new Error(`extension-status failed: ${response.status}`);
+  return response.json();
+}
+
 async function wingguyGetTemplates() {
   const apiBase = await getWingguyApiBase();
   const headers = await getAuthHeaders();
@@ -962,6 +989,13 @@ async function getAuthHeaders() {
       if (data.devKey) {
         headers['x-dev-key'] = data.devKey;
       }
+
+      // Which version is really running in this browser, on every request (0.3.41). The server
+      // uses it to show the "new version ready" notice, to work round a known fault in a version,
+      // and to pause a faulty one from saving - see services/extensionPolicy.js. Chrome keeps
+      // running the old copy until the card is reloaded, so this is the only true answer to
+      // "what is this client on".
+      try { headers['x-wingguy-version'] = chrome.runtime.getManifest().version; } catch (_) { /* header is optional */ }
 
 
       resolve(headers);
