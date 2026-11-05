@@ -30,6 +30,25 @@ const wingguyLeads = require('./wingguyLeads');
 const { coachOwnEmails } = require('../utils/coachOwnEmails');
 const wingguyRules = require('./wingguyRulesMcp');
 const { noUpfrontThinking, stripThinkingBlocks } = require('../config/wingguyThinking');
+const bannedWords = require('../utils/bannedWords');
+
+// BANNED WORDS, ENFORCED (6 Nov 2026, David Gould's "folks"). The client's never_say_words list was
+// only ever text in the rulebook; nothing checked the draft. Both draft doors now refuse a draft
+// that uses a listed word and the model writes it again. At most MAX_BANNED_REFUSALS per turn, so
+// a list that fights the client's own campaign wording costs two extra rounds, never a loop.
+const MAX_BANNED_REFUSALS = 2;
+/** The client's enforceable banned words. Never throws - no list is an empty list. */
+async function loadBannedTerms(clientId, getVariablesFn) {
+  try {
+    const getVars = getVariablesFn || require('./wingguyRulesStore').getVariables;
+    const rows = await getVars({ tenantId: clientId });
+    const row = (rows || []).find((r) => r && r.var_key === 'never_say_words');
+    return bannedWords.parseBannedList(row ? row.value : '');
+  } catch (e) {
+    console.warn(`WINGGUY-BANNED-WORD-GUARD could not read the list for ${clientId}: ${e.message}`);
+    return [];
+  }
+}
 
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5-5';
 // No upfront thinking for this agentic booking chat: it's latency-sensitive (interactive panel) and the tool
@@ -44,7 +63,7 @@ const CHAT_MAX_TOKENS = 3000;
 const MAX_TOOL_ITERATIONS = 8;     // safety cap on the agent loop
 
 // The rules-store tools the panel carries ("update my rules" from the drafting window).
-const PANEL_RULE_TOOLS = new Set(['wingguy_rules_list', 'wingguy_rule_get', 'wingguy_rule_propose', 'wingguy_rule_commit', 'wingguy_rule_revert', 'wingguy_rule_reset_to_standard']);
+const PANEL_RULE_TOOLS = new Set(['wingguy_rules_list', 'wingguy_rule_get', 'wingguy_rule_propose', 'wingguy_rule_commit', 'wingguy_rule_revert', 'wingguy_rule_reset_to_standard', 'wingguy_banned_words']);
 
 const AGENT_TOOLS = [
   {
@@ -1164,6 +1183,19 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   // (CODE) from this thread's previous coach message. Identity comes STORE-FIRST from the tenant's
   // own variables (their setup-page sign-off), config voice prefs as fallback — see getVoiceIdentity.
   const vp = await getVoiceIdentity(coach.clientId, deps.getVariables);
+  // Banned words (see loadBannedTerms). A word in the lead's own name, headline or company is
+  // allowed through - banning "solutions" must not stop a message to someone at Acme Solutions.
+  const bannedTerms = await loadBannedTerms(coach.clientId, deps.getVariables);
+  const bannedExempt = [profile.name, profile.headline, profile.company, profile.companyName].filter(Boolean).join('\n');
+  let bannedRefusals = 0;
+  const bannedWordCheck = (text, where) => {
+    if (!bannedTerms.length || bannedRefusals >= MAX_BANNED_REFUSALS) return null;
+    const hit = bannedWords.findBannedWord(text, bannedTerms, { exempt: bannedExempt });
+    if (!hit) return null;
+    bannedRefusals += 1;
+    console.warn(`WINGGUY-BANNED-WORD-GUARD refused "${hit.found}"${where ? ` (${where})` : ''} for ${coach.clientId} → ${profile.name || 'lead'} [${bannedRefusals}/${MAX_BANNED_REFUSALS}]`);
+    return { ok: false, error: bannedWords.bannedWordRefusal(hit, String(coach.clientName || 'the coach').trim().split(/\s+/)[0]) };
+  };
   // Sign-off: a campaign's own sign-off (e.g. `\tks` = "Talk soon / I know a (Guy)") is the "full" form; the
   // trim-don't-re-add logic in chooseSignoff still applies on top (a thread where Guy already went plain stays
   // plain). `\frac` has no template signoff, so it uses the voice-prefs "(I know a) Guy" full form. Guy's call 2026-07-01.
@@ -1360,6 +1392,8 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           console.warn(`WINGGUY-WITHDRAWN-GUARD refused "${blame}" (times intro) for ${coach.clientId} → ${profile.name || 'lead'}`);
           return { ok: false, error: withdrawnRefusal(blame, profile.name, withdrawn) };
         }
+        const banned = bannedWordCheck(`${unescapeModelNewlines(input && input.intro)}\n${unescapeModelNewlines(input && input.outro)}`, 'times intro');
+        if (banned) return banned;
       }
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
       // so none of those depend on the model getting it right.
@@ -1718,6 +1752,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     }
     if (name === 'propose_message') {
       const draft = unescapeModelNewlines(input && input.message).trim();
+      {
+        const banned = bannedWordCheck(draft, '');
+        if (banned) return banned;
+      }
       // NEVER PROMISE TO BOOK THROUGH THE LEAD'S LINK (Sam Trattles, 2026-10-09). He sent a TidyCal
       // link the reader could not handle yet; the panel drafted "I'll grab a slot through your link
       // now" and left Guy booking by hand on a page Wingguy cannot see. Guy never books through a
