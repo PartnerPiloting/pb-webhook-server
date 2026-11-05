@@ -38,6 +38,14 @@ check('Sales Navigator search: both URL dialects read; a saved search gets a sof
   const b = checkSearchUrl('https://www.linkedin.com/sales/search/people?query=(relationship:List(S,O))');
   assert.strictEqual(b.degrees.known, true);
   assert.strictEqual(b.degrees.first, false);
+  // A saved-search link's lastViewedAt limits Sales Navigator to people new since then (5 Nov 2026).
+  const marked = checkSearchUrl('https://www.linkedin.com/sales/search/people?lastViewedAt=1793186313783&savedSearchId=2004301140&sessionId=gYCt%3D%3D');
+  assert.strictEqual(marked.url, 'https://www.linkedin.com/sales/search/people?savedSearchId=2004301140');
+  const paged = checkSearchUrl('https://www.linkedin.com/sales/search/people?page=3&query=(relationship:List(S,O))&sessionId=x');
+  assert.strictEqual(paged.url, 'https://www.linkedin.com/sales/search/people?query=(relationship:List(S,O))');
+  assert.ok(paged.degrees.second && paged.degrees.third);
+  const plain = 'https://www.linkedin.com/search/results/people/?keywords=cfo&page=2';
+  assert.strictEqual(checkSearchUrl(plain).url, plain);
   const saved = checkSearchUrl('https://www.linkedin.com/sales/search/people?savedSearchId=123');
   assert.strictEqual(saved.ok, true);
   assert.strictEqual(saved.degrees.known, false);
