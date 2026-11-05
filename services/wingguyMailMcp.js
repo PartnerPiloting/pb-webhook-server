@@ -579,7 +579,7 @@ async function prepareOutbound({ to, subject, html_body, resend_ok } = {}, tenan
  * the asset ledger, the follow-up stamp and the introduction log. Best-effort throughout - the
  * email exists, so a logging miss returns a warning line, never a failure. Returns the lines.
  */
-async function finishOutbound({ tenant, prepared, cc, result }) {
+async function finishOutbound({ tenant, prepared, cc, result, replyToMessageId }) {
   const { coach, recipients, subject, html, detected, leadEmails, store } = prepared;
   // --- Ledger write ---
   let ledgerLine = '';
@@ -614,11 +614,23 @@ async function finishOutbound({ tenant, prepared, cc, result }) {
   // Referrals row, marked made once the send shows up (services/wingguyIntroductions.js).
   let introLine = '';
   try {
+    // A reply: who was on the email being answered. Both parties already on it = someone else's
+    // introduction, not the coach's. A failed read leaves it unknown and the draft is judged as before.
+    let repliedTo = null;
+    if (replyToMessageId) {
+      try {
+        const orig = await mailProvider.getMessage(coach, replyToMessageId);
+        if (orig && orig.ok && orig.message) repliedTo = { from: orig.message.from, to: orig.message.to, cc: orig.message.cc };
+      } catch (e) {
+        console.warn(`[wingguyMailMcp] could not read the replied-to message for the introduction check (non-fatal): ${e.message}`);
+      }
+    }
     introLine = await require('./wingguyIntroductions').logIntroductionDraft({
       tenant, coach,
       recipients: [...recipients, ...mailProvider.toParticipants(cc)],
       subject, text: htmlToText(html), threadId: result.threadId,
       selfEmails: coachOwnEmails(coach),
+      repliedTo,
     });
   } catch (e) {
     introLine = `⚠ This looks like an introduction but it was NOT logged (${e.message}) - log it with wingguy_referrals action=log direction="From Guy".\n`;
@@ -661,10 +673,13 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     }
   }
 
-  const { ledgerLine, followUpLine, introLine } = await finishOutbound({ tenant, prepared, cc, result });
+  const { ledgerLine, followUpLine, introLine } = await finishOutbound({ tenant, prepared, cc, result, replyToMessageId: reply_to_message_id });
 
   const toStr = recipients.map((r) => r.email).join(', ');
   const bccStr = mailProvider.toParticipants(bcc).map((r) => r.email).join(', ');
+  // Cc is named so a reply-all can be seen to have kept everyone on it (it was left off this line
+  // until 5 Nov 2026, so a Cc could not be confirmed from the reply).
+  const ccStr = mailProvider.toParticipants(cc).map((r) => r.email).join(', ');
   const threadLine = reply_to_message_id
     ? `Threaded REPLY to message ${reply_to_message_id}${result.threadId ? ` (thread ${result.threadId})` : ''} — it sits in the existing conversation, not as a new email.\n`
     : '';
@@ -680,7 +695,7 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
       ledgerLine +
       followUpLine +
       introLine +
-      `To: ${toStr}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${subject}\n` +
+      `To: ${toStr}${ccStr ? ` · Cc: ${ccStr}` : ''}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${subject}\n` +
       `It is sitting in the Drafts folder of the email account connected to Wingguy (Outlook, Gmail, whichever was linked - not necessarily Gmail). Open it there, give it a final read, and send. Links are stored exactly as written.`,
   };
 }

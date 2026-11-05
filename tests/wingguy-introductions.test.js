@@ -84,6 +84,25 @@ check('two people on the same freemail domain can still be introduced', () => {
   assert.strictEqual(r.other.name, 'Jane Smith');
 });
 
+check('a reply-all on an email both were already on -> someone else\'s introduction, not logged', () => {
+  // Ashley (client) introduced Tom to Guy; Guy replies to Tom, cc Ashley (5 Nov 2026).
+  assert.strictEqual(intros.detectIntroduction({
+    recipients: [{ email: 'jane@acme.example', name: 'Jane Smith' }, { email: 'dean@hobin.example' }],
+    subject: 'Re: Introducing Guy', text: 'Well, now you know a Guy.', selfEmails: self, clients,
+    repliedTo: { from: 'Dean Hobin <Dean@Hobin.example>', to: 'jane@acme.example, guy@knowaguy.example', cc: '' },
+  }), null);
+});
+
+check('a reply that brings in someone who was not on the email is still an introduction', () => {
+  const r = intros.detectIntroduction({
+    recipients: [{ email: 'dean@hobin.example' }, { email: 'jane@acme.example', name: 'Jane Smith' }],
+    subject: 'Re: Thursday', text: 'Dean, I want you to meet Jane.', selfEmails: self, clients,
+    repliedTo: { from: 'Dean Hobin <dean@hobin.example>', to: 'guy@knowaguy.example', cc: '' },
+  });
+  assert.ok(r, 'still an introduction');
+  assert.strictEqual(r.other.name, 'Jane Smith');
+});
+
 check('three people -> not paired up', () => {
   assert.strictEqual(intros.detectIntroduction({
     recipients: [{ email: 'dean@hobin.example' }, { email: 'owen@pyrah.example' }, { email: 'jane@acme.example' }],
