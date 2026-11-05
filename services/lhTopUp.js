@@ -94,7 +94,7 @@ async function requestTopUp({ client, url, campaign: named = '', requestedBy = n
   const lines = [
     `Queued. Your Linked Helper machine picks it up within about five minutes and puts the search into "${campaign.name || `Campaign ${campaign.id}`}"${campaign.paused ? ', and starts the campaign (it is paused right now)' : ''}.`,
     'Your other campaigns pause while it collects and start again by themselves, so you usually have the answer within half an hour - a very big search takes longer, and pauses overnight if it is huge. You get an email when it has finished, with how many people it added. If the number is not what you expected, change the search and send the new link straight away.',
-    'Two things to check yourself once it has: open the campaign and make sure the people look right for you, and that they are 2nd or 3rd degree connections - Linked Helper cannot invite someone you are already connected to. Anyone from this search who was already in your list is skipped, so the number collected will be less than the search shows.',
+    'Anyone from this search who was already in your list is skipped, so the number collected will be less than the search shows.',
   ];
   if (note) lines.push(note);
   return { ok: true, text: lines.join('\n\n'), jobId: job.jobId, campaign };
@@ -142,7 +142,7 @@ function finishedEmail({ firstName, job, coachName, machineLink }) {
       collected ? 'The number added is usually less than the search shows - anyone from the search who was already in your list is skipped, and that is normal.' : 'Nobody new was added. Most often that means everyone in the search was already in your list - a fresh search with different filters will find new people.',
       degreesLine(d.degrees),
       d.finished_because && /credit|limit|day/i.test(d.finished_because) ? 'Linked Helper reads about 95 pages of a search a day to stay inside LinkedIn\'s limits, so a very large search carries on tomorrow by itself.' : null,
-      'Two things worth a look: open the campaign and check the people look right for you, and that they are 2nd or 3rd degree connections - Linked Helper cannot invite anyone you are already connected to.',
+      'Want different people next time? Change the search on LinkedIn - 2nd and 3rd degree only - and send the new link.',
     ].filter(Boolean);
   } else {
     body = [
