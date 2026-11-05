@@ -38,6 +38,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 
 CANDIDATES = (
@@ -362,6 +363,83 @@ def cmd_status(cid, action_id, since, baseline=0):
     return 0
 
 
+# ---- holding the other campaigns while a top-up collects (Guy, 5 Nov 2026) ----
+# Linked Helper works one campaign step at a time. On Guy's machine a collect sat behind four other
+# campaigns for two hours; with those paused it started in about fifteen minutes. A client who pastes
+# a link should hear back within the half hour, so the agent pauses every OTHER running campaign for
+# the length of the collect and switches exactly those back on afterwards.
+# The note on disk is written BEFORE anything is paused: if the agent or the machine dies mid-collect,
+# the note is what puts the campaigns back. A campaign the owner paused themselves is never in it.
+HOLD_FILE = os.path.expanduser("~/.wingguy-topup-hold.json")
+
+
+def read_hold():
+    try:
+        with open(HOLD_FILE, encoding="utf-8") as f:
+            h = json.load(f)
+        return h if isinstance(h, dict) else None
+    except Exception:
+        return None
+
+
+def cmd_hold(cid):
+    lhc = load_campaigns_module()
+    c = lhc.conf()
+    with lhc.db(c) as con:
+        li, _who = lhc.li_account_db_id(con, c)
+        rows = [dict(r) for r in lhc.campaign_rows(con)]
+    running = [r for r in rows if not r["is_archived"] and not r["is_paused"] and int(r["id"]) != int(cid)]
+    earlier = read_hold() or {}
+    ids = sorted(set(int(x) for x in (earlier.get("paused") or [])) | set(int(r["id"]) for r in running))
+    names = dict(earlier.get("names") or {})
+    names.update({str(r["id"]): r["name"] for r in running})
+    note = {"for_campaign": int(cid), "paused": ids, "names": names, "at": earlier.get("at") or iso_now()}
+    tmp = HOLD_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(note, f)
+    os.replace(tmp, HOLD_FILE)
+    failed = []
+    for r in running:
+        p = lhc.live_call(c, "campaigns.setCampaignPaused", [int(r["id"]), True, li])
+        if not p.get("ok"):
+            failed.append({"id": int(r["id"]), "error": str(p.get("error"))[:120]})
+    print(json.dumps({"ok": True, "paused": ids, "names": names, "failed": failed}))
+    return 0
+
+
+def cmd_release():
+    note = read_hold()
+    if not note or not note.get("paused"):
+        try:
+            os.remove(HOLD_FILE)
+        except OSError:
+            pass
+        print(json.dumps({"ok": True, "started": [], "still_paused": []}))
+        return 0
+    lhc = load_campaigns_module()
+    c = lhc.conf()
+    with lhc.db(c) as con:
+        li, _who = lhc.li_account_db_id(con, c)
+    for cid in note["paused"]:
+        lhc.live_call(c, "campaigns.setCampaignPaused", [int(cid), False, li])
+    time.sleep(2)
+    with lhc.db(c) as con:
+        state = {int(r["id"]): r for r in lhc.campaign_rows(con)}
+    # An archived or deleted campaign has nothing left to restore; anything else must be running again.
+    still = [int(cid) for cid in note["paused"]
+             if int(cid) in state and state[int(cid)]["is_paused"] and not state[int(cid)]["is_archived"]]
+    started = [int(cid) for cid in note["paused"] if int(cid) not in still]
+    if still:
+        note["paused"] = still
+        with open(HOLD_FILE, "w", encoding="utf-8") as f:
+            json.dump(note, f)
+        print(json.dumps({"ok": False, "error": "could not switch every campaign back on", "started": started, "still_paused": still}))
+        return 1
+    os.remove(HOLD_FILE)
+    print(json.dumps({"ok": True, "started": started, "still_paused": []}))
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -370,8 +448,15 @@ def main():
     s.add_argument("--allow-no-invite", action="store_true", help="tests only: a campaign with no invite step")
     s = sub.add_parser("status"); s.add_argument("campaign_id", type=int); s.add_argument("action_id", type=int); s.add_argument("since")
     s.add_argument("--baseline", type=int, default=0, help="history rows on the step right after apply (apply prints it)")
+    s = sub.add_parser("hold", help="pause every OTHER running campaign while this one collects")
+    s.add_argument("campaign_id", type=int)
+    sub.add_parser("release", help="switch back on exactly what hold paused")
     a = p.parse_args()
     try:
+        if a.cmd == "hold":
+            return cmd_hold(a.campaign_id)
+        if a.cmd == "release":
+            return cmd_release()
         if a.cmd == "check":
             return cmd_check(a.url)
         if a.cmd == "apply":

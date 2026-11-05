@@ -335,6 +335,9 @@ TOPUP_PROGRESS_SECONDS = 120      # how often the server hears how the collect i
 TOPUP_STALL_MINUTES = 15          # no new person this long, and LH not on the step = finished
 TOPUP_START_WAIT_HOURS = 6        # how long a collect may queue behind other campaign steps before we give up waiting
 TOPUP_MAX_HOURS = 20              # a huge search runs into LH's daily page limit; stop reporting here
+TOPUP_HOLD_MINUTES = 30           # other campaigns stay paused at most this long for one top-up
+TOPUP_HELD_POLL_SECONDS = 45      # look more often while they are paused - every minute held is invites not sent
+TOPUP_HOLD_FILE = os.path.expanduser("~/.wingguy-topup-hold.json")   # lh-topup.py writes it; same path there
 topup_busy = threading.Lock()
 
 
@@ -378,6 +381,19 @@ def report_topup(conf, job_id, report):
         return True
 
 
+def topup_release(why):
+    """Switch back on whatever a top-up paused. Safe to call when nothing is held. Never raises."""
+    if not os.path.exists(TOPUP_HOLD_FILE):
+        return True
+    r = topup_cmd("release")
+    if r.get("ok"):
+        print("top-up hold released (%s): campaigns %s running again" % (why, r.get("started")), flush=True)
+        return True
+    print("top-up hold NOT released (%s): %s still paused - %s; will try again"
+          % (why, r.get("still_paused"), r.get("error")), flush=True)
+    return False
+
+
 def topup_pushed_out(next_run_at):
     """True when the step's start time is still ahead of us (Linked Helper postponed it)."""
     try:
@@ -406,8 +422,21 @@ def topup_job(conf, job):
             return
         started = time.time()
         quiet_since = started
+        # Clear the road: pause the other running campaigns so Linked Helper reaches this collect in
+        # minutes, not hours. Released when the collect finishes, after TOPUP_HOLD_MINUTES whichever
+        # comes first, and in the finally below whatever else happens.
+        held = topup_cmd("hold", applied["campaign_id"])
+        holding = bool(held.get("ok") and held.get("paused"))
+        if holding:
+            print("top-up %s: holding campaigns %s while it collects" % (job_id, held.get("paused")), flush=True)
+        elif not held.get("ok"):
+            print("top-up %s: could not hold the other campaigns (%s) - collecting in turn" % (job_id, held.get("error")), flush=True)
+        last_report = started
         while True:
-            time.sleep(TOPUP_PROGRESS_SECONDS)
+            time.sleep(TOPUP_HELD_POLL_SECONDS if holding else TOPUP_PROGRESS_SECONDS)
+            if holding and time.time() - started > TOPUP_HOLD_MINUTES * 60:
+                topup_release("%d minute limit" % TOPUP_HOLD_MINUTES)
+                holding = False
             st = topup_cmd("status", applied["campaign_id"], applied["action_id"], applied["since"],
                            "--baseline", applied.get("baseline") or 0)
             if not st.get("ok"):
@@ -436,6 +465,12 @@ def topup_job(conf, job):
             if elapsed_h >= TOPUP_MAX_HOURS and not finished:
                 finished = "still collecting after %d hours - a very large search; it carries on by itself" % TOPUP_MAX_HOURS
             stage = "final" if finished else "progress"
+            if finished and holding:
+                topup_release("collect finished")
+                holding = False
+            if not finished and time.time() - last_report < TOPUP_PROGRESS_SECONDS - 5:
+                continue                      # held: we look often, but the server hears at the usual pace
+            last_report = time.time()
             live = report_topup(conf, job_id, dict(st, stage=stage, how=applied.get("how"),
                                                    waiting_before=applied.get("waiting_before"),
                                                    finished_because=finished))
@@ -449,6 +484,7 @@ def topup_job(conf, job):
         except Exception:
             pass
     finally:
+        topup_release("top-up thread ended")
         topup_busy.release()
 
 
@@ -483,6 +519,9 @@ def main():
                 # A top-up is only asked for when none is running - the server would hand the same
                 # job back and the thread would refuse it, which is noise.
                 if not topup_busy.locked():
+                    # A hold note with no top-up running = the agent or the machine died mid-collect.
+                    # Put those campaigns back before anything else (also runs on every start-up).
+                    topup_release("left over from an interrupted top-up")
                     topup = collect_topup(conf)
                     if topup:
                         threading.Thread(target=topup_job, args=(conf, topup), daemon=True).start()
