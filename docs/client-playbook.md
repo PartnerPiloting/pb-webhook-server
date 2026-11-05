@@ -611,8 +611,8 @@ finished collecting - with how many people it added.
 **What I can and can't check from the link.** I can see it's a people search, and usually whether it
 includes 1st-degree connections - if it does, I'll say so and ask for a fresh link, because the
 campaign can't invite someone you're already connected to. What I can't see from a link is whether the
-people look right for you, or who's already in your list. So once the collect has finished, open the
-campaign and look at the first page of people. Anyone from the search who was already in your list is
+people look right for you, or who's already in your list. So before you copy the link, look
+down the first page of results on LinkedIn and make sure they're the people you'd like to know. Anyone from the search who was already in your list is
 skipped, so the number collected is always less than the search shows. That's normal.
 
 **How long it takes.** Linked Helper reads the search page by page - minutes for a few hundred people.

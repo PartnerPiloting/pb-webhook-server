@@ -73,7 +73,7 @@ check('the words for each job state', () => {
   assert.ok(topup.describeJob({ ...base, status: 'failed', detail: { error: 'no invite step' } }).includes('did not work - no invite step'));
 });
 
-check('the finished email: count, the skip rule, the degree line, the two checks; a failure says why', () => {
+check('the finished email: count, the skip rule, the degree line, the next-time line; a failure says why', () => {
   const job = { jobId: 't1', campaignId: 40, campaignName: 'Legal ICP', status: 'done', detail: { collected: 180, waiting_now: 209, degrees: { DISTANCE_2: 171, DISTANCE_1: 9 } } };
   const m = topup.finishedEmail({ firstName: 'Roland', job, coachName: 'Guy', machineLink: 'https://m.example/r' });
   assert.strictEqual(m.subject, 'Your campaign top-up - 180 added to Legal ICP');
@@ -81,7 +81,8 @@ check('the finished email: count, the skip rule, the degree line, the two checks
   assert.ok(m.text.includes('added 180 people from your search to "Legal ICP", so 209 people are now waiting'));
   assert.ok(m.text.includes('already in your list is skipped'));
   assert.ok(m.text.includes('9 of them are already 1st-degree connections'));
-  assert.ok(m.text.includes('2nd or 3rd degree'));
+  assert.ok(m.text.includes('Change the search on LinkedIn - 2nd and 3rd degree only'));
+  assert.ok(!m.text.includes('open the campaign'), 'the check happens on LinkedIn, not in Linked Helper');
   assert.ok(m.text.includes('https://m.example/r'));
   assert.ok(!/[–—]/.test(m.text + m.html), 'no em or en dashes');
   const zero = topup.finishedEmail({ firstName: 'Matt', job: { ...job, detail: { collected: 0 } }, coachName: 'Guy' });
