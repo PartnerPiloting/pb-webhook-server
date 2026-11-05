@@ -333,6 +333,7 @@ TOPUP_SCRIPT = next((p for p in ("/usr/local/bin/lh-topup.py",
                      if os.path.exists(p)), "/usr/local/bin/lh-topup.py")
 TOPUP_PROGRESS_SECONDS = 120      # how often the server hears how the collect is going
 TOPUP_STALL_MINUTES = 15          # no new person this long, and LH not on the step = finished
+TOPUP_START_WAIT_HOURS = 6        # how long a collect may queue behind other campaign steps before we give up waiting
 TOPUP_MAX_HOURS = 20              # a huge search runs into LH's daily page limit; stop reporting here
 topup_busy = threading.Lock()
 
@@ -397,7 +398,8 @@ def topup_job(conf, job):
         quiet_since = started
         while True:
             time.sleep(TOPUP_PROGRESS_SECONDS)
-            st = topup_cmd("status", applied["campaign_id"], applied["action_id"], applied["since"])
+            st = topup_cmd("status", applied["campaign_id"], applied["action_id"], applied["since"],
+                           "--baseline", applied.get("baseline") or 0)
             if not st.get("ok"):
                 print("top-up %s status failed: %s" % (job_id, st.get("error")), flush=True)
                 continue
@@ -407,8 +409,10 @@ def topup_job(conf, job):
                 quiet_since = time.time()
             elif st.get("last_collect_at") and (st.get("minutes_since_last") or 0) >= TOPUP_STALL_MINUTES:
                 finished = "collect finished - nothing new for %d minutes" % st["minutes_since_last"]
-            elif not st.get("last_collect_at") and time.time() - quiet_since > TOPUP_STALL_MINUTES * 60:
-                finished = "Linked Helper did not start collecting within %d minutes" % TOPUP_STALL_MINUTES
+            elif not st.get("last_collect_at") and time.time() - started > TOPUP_START_WAIT_HOURS * 3600:
+                # Linked Helper runs one campaign step at a time, so a collect can sit behind other
+                # campaigns for a good while (campaign 47, 5 Nov 2026: 30+ minutes behind a filter step).
+                finished = "Linked Helper did not start collecting within %d hours" % TOPUP_START_WAIT_HOURS
             if st.get("finished_normally"):
                 finished = "collect finished"
             elif st.get("postpone_reason") and st.get("postpone_reason") != "Waiter" and not st.get("collecting_now"):
