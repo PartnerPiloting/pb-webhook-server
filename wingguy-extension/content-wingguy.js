@@ -1785,6 +1785,23 @@
     last.day = 'Today';
     return was || '(no label)';
   }
+  // "Just sent" has to be PROVEN, not assumed. The save also runs when a thread is merely opened,
+  // and Enter in the composer is a new line for anyone who sends by button - in both cases the
+  // newest message can be months old. 0.3.38 stamped it Today regardless: Ashley Knowles opened a
+  // thread whose last message was his own from 4 Feb, it was saved as "5 Nov 9:55 AM", and Wingguy
+  // then refused to draft a reconnect because he had "messaged this morning" (5 Nov 2026). So the
+  // newest message is fingerprinted when a send is detected, and the stamp is allowed only when
+  // the newest message at save time is a different one. No baseline (an open) = never stamp.
+  function threadNewestKey(thread) {
+    const last = Array.isArray(thread) && thread.length ? thread[thread.length - 1] : null;
+    if (!last) return '';
+    return `${String(last.sender || '').trim().toLowerCase()}|${String(last.text || '').replace(/\s+/g, '')}`;
+  }
+  function newestIsNewSince(baseline, thread) {
+    if (!baseline || typeof baseline.key !== 'string') return false;
+    const now = threadNewestKey(thread);
+    return !!now && now !== baseline.key;
+  }
   // ---- end dayLabels ----
 
   // How many days since the LAST message in a scraped thread, read from the day label LinkedIn puts
@@ -2131,8 +2148,9 @@
   // message order is preserved from the DOM. Timestamp fidelity is a later refinement.)
   // `leadName` lets the newest-message backstop tell the coach's just-sent message from the lead's.
   function formatThreadForApi(thread, opts = {}) {
-    // Backstop (dayLabels block): the message just sent is today's, whatever the page said.
-    const was = stampNewestAsToday(thread, opts.leadName);
+    // Backstop (dayLabels block): the message just sent is today's, whatever the page said - but
+    // only when a send really added a message (opts.sentSince), never on an open or a bare Enter.
+    const was = newestIsNewSince(opts.sentSince, thread) ? stampNewestAsToday(thread, opts.leadName) : null;
     if (was) console.warn(`[Wingguy] the day label on the newest message read as "${was}" - stamped Today, since it was just sent. LinkedIn's day labels may have changed shape; check the record's dates.`);
     const out = [];
     let lastDay = '';
@@ -2218,7 +2236,16 @@
   // else is open. A bubble that popped up from someone else (Dan) was being captured in place of the
   // thread just sent to (Peter), and the rescue card then talked about the wrong person (Guy, 2026-10-06).
   let lastSendWho = null;
-  function scheduleCapture(anchorEl) {
+  // The newest message as it stood when the first send of this burst was detected (null = no send
+  // seen, e.g. the capture was scheduled by opening the thread). captureBaseline is the copy the
+  // running capture uses. See newestIsNewSince.
+  let sendBaseline = null;
+  let captureBaseline = null;
+  function scheduleCapture(anchorEl, wasSend) {
+    if (wasSend && !sendBaseline) {
+      try { sendBaseline = { key: threadNewestKey(scrapeOpenThread(anchorEl && anchorEl.isConnected ? anchorEl : undefined)) }; }
+      catch (e) { console.log('[Wingguy] could not fingerprint the thread before the send (non-fatal):', e.message); }
+    }
     lastSendAnchor = anchorEl || null;
     lastSendWho = null;
     try {
@@ -2233,7 +2260,11 @@
     // leading debounce would snapshot after the FIRST and miss the final message. Resetting the timer on
     // each send means we snapshot once the burst has settled and the last message has rendered.
     if (captureTimer) clearTimeout(captureTimer);
-    captureTimer = setTimeout(() => { captureTimer = null; captureConversationToPortal(); }, 1800);
+    captureTimer = setTimeout(() => {
+      captureTimer = null;
+      captureBaseline = sendBaseline; sendBaseline = null;
+      captureConversationToPortal();
+    }, 1800);
   }
 
   async function captureConversationToPortal() {
@@ -2338,7 +2369,7 @@
         return;
       }
 
-      const content = formatThreadForApi(thread, { leadName: hdr.name });
+      const content = formatThreadForApi(thread, { leadName: hdr.name, sentSince: captureBaseline });
 
       const lookup = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: profileUrl });
       const leads = (lookup && lookup.leads) || [];
@@ -2486,7 +2517,7 @@
   function onSendClick(e) {
     const path = (e.composedPath && e.composedPath()) || [e.target];
     for (const el of path) {
-      if (looksLikeSendButton(el)) { console.log('[Wingguy] send button clicked'); scheduleCapture(el); return; }
+      if (looksLikeSendButton(el)) { console.log('[Wingguy] send button clicked'); scheduleCapture(el, true); return; }
     }
   }
   // LinkedIn also sends on Enter (without Shift) from the composer.
@@ -2495,7 +2526,7 @@
     const target = deepActiveElement();
     if (!isEditableEl(target) || insideWingguy(target)) return;
     if (!isMessageEditableSafe(target)) return;
-    scheduleCapture(target);
+    scheduleCapture(target, true);
   }
 
   // Brief, unobtrusive toast for capture feedback (separate from the panel; bottom-centre).
@@ -2682,7 +2713,7 @@
               pick.email,
               pick.phone
             );
-            await bg({ type: 'QUICK_UPDATE', leadId, content: formatThreadForApi(thread, { leadName: pick.firstName }), section: 'linkedin', ...extras });
+            await bg({ type: 'QUICK_UPDATE', leadId, content: formatThreadForApi(thread, { leadName: pick.firstName, sentSince: captureBaseline }), section: 'linkedin', ...extras });
             console.log(`[Wingguy] rescue-saved ${thread.length} messages to ${pick.name}`, extras);
             const verb = isNew ? `✓ Added ${pick.name} and saved` : '✓ Saved';
             const to = isNew ? '' : ` to ${pick.name}`;
