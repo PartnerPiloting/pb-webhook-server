@@ -139,7 +139,7 @@ function finishedEmail({ firstName, job, coachName, machineLink }) {
     const waiting = d.waiting_now;
     body = [
       `Your top-up has finished. Linked Helper added ${collected} ${collected === 1 ? 'person' : 'people'} from your search to "${camp}"${waiting !== null && waiting !== undefined ? `, so ${waiting} ${waiting === 1 ? 'person is' : 'people are'} now waiting to be invited` : ''}.`,
-      collected ? 'The number added is usually less than the search shows - anyone from the search who was already in your list is skipped, and that is normal.' : 'Nobody new was added. Most often that means everyone in the search was already in your list - a fresh search with different filters will find new people.',
+      collected ? 'The number added is usually less than the search shows - anyone from the search who was already in your list is skipped, and that is normal.' : 'Nobody new was added. Most often that means everyone in the search was already in your list - a fresh search with different filters will find new people. Need a fresh angle? Open a Claude chat and say "help me work out who to search for".',
       degreesLine(d.degrees),
       d.finished_because && /credit|limit|day/i.test(d.finished_because) ? 'Linked Helper reads about 95 pages of a search a day to stay inside LinkedIn\'s limits, so a very large search carries on tomorrow by itself.' : null,
       'Want different people next time? Change the search on LinkedIn - 2nd and 3rd degree only - and send the new link.',

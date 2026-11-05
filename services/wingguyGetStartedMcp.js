@@ -509,6 +509,12 @@ const TOPIC_ALIASES = [
   // in 1 day" - Alex Solti's Claude read that line off his screen after he had bought and told him
   // his campaign would stop. No title says "licence"; the trial topic is where it is answered.
   [[/\b(licen[cs]es?|subscription)\b/, /\b(linked ?helper|lh|expir\w*|trial|ok|bought|buy|renew\w*)\b/], 'LINKED HELPER - THE TRIAL'],
+  // choosing who to search for (5 Nov 2026): "help me work out who to search for", "who should I search
+  // for next on LinkedIn", "help me write a boolean search". The title says "audience", which nobody types.
+  // Sits ABOVE the top-up aliases so "who do I search for to add to my campaign" lands on the thinking,
+  // not the plumbing.
+  [[/\bwho\b/, /\bsearch(ing)?\b/], 'FINDING YOUR AUDIENCE WITH CLAUDE'],
+  [[/\bbooleans?\b/], 'FINDING YOUR AUDIENCE WITH CLAUDE'],
   // topping up the campaign (5 Nov 2026): "show me how to top up my campaign", "how do I top up?", "add a new
   // search to Linked Helper", "my campaign has run out of people". The title deliberately avoids the word "top"
   // - "keep on top of follow-ups" was scoring onto it and stealing the daily list - so the subject is keyed here.
