@@ -266,7 +266,7 @@ function handleMessage(message, sender, sendResponse) {
   // Quick update lead with conversation (email/phone: contact details the lead proffered in the
   // thread — the server treats them as the new primary, folding a displaced email into Alt Emails)
   if (message.type === 'QUICK_UPDATE') {
-    handleQuickUpdate(message.leadId, message.content, message.section, { email: message.email, phone: message.phone })
+    handleQuickUpdate(message.leadId, message.content, message.section, { email: message.email, phone: message.phone, sendProven: message.sendProven === true })
       .then(result => sendResponse({ success: true, data: result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -1006,9 +1006,12 @@ async function handleQuickUpdate(leadId, content, section = 'linkedin', extras =
       section,
       content,
       parseRaw: true,
-      // Every quick-update from here is a capture made because the human pressed Send, so the
-      // newest message is today's - the server's date guard checks exactly that (4 Nov 2026).
-      capturedOnSend: true,
+      // Whether a send really added a message to the thread (content script: newestIsNewSince).
+      // A save also runs when a thread is merely opened, so this is stated, never assumed - 0.3.38
+      // assumed it and re-dated old messages as today (Ashley Knowles, 5 Nov 2026). The server
+      // treats a save with no sendProven at all as coming from that older extension.
+      sendProven: extras.sendProven === true,
+      capturedOnSend: extras.sendProven === true,
       email: extras.email,
       phone: extras.phone
     })

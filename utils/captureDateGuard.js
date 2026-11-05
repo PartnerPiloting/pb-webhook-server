@@ -97,6 +97,82 @@ function checkCaptureDates({ messages, today, mergedSection = '', justSent = tru
     return problems;
 }
 
+/**
+ * dropForgedToday - refuse a "sent today" date the server can tell is false.
+ *
+ * Extension 0.3.38 and 0.3.39 stamp the newest message Today (0.3.38 on every save, including a
+ * thread merely being opened) and always claim the save was made on Send. Ashley Knowles opened a
+ * thread whose newest message was his own from 4 Feb; it was saved as "05-11-26 9:55 AM", Wingguy
+ * refused to draft his reconnect because he had "messaged this morning", and the lead was
+ * auto-ceased as if he had just sent the reconnect (5 Nov 2026). A client can sit on an old
+ * extension for weeks, so the record is protected here, where every save passes.
+ *
+ * Only the newest message is ever looked at, only when it is the coach's own and dated today, and
+ * only on a save from an extension that cannot prove a send (`suspect`). Then:
+ *   1. The record already holds the same message under an OLDER date -> it is an old message.
+ *      Drop the incoming copy; the record keeps the real date.
+ *   2. The record already holds it under today's date -> nothing to do.
+ *   3. Never seen before -> believe it only if its clock time is within a few minutes of now (a
+ *      message just sent shows the time it was sent). Otherwise drop it: a date known to be
+ *      unproven is not stored. The message is saved the next time it is captured honestly.
+ *
+ * Pure. `now` is the current time in the coach's own timezone.
+ * @returns {{content:string, action:'none'|'dropped', reason?:string, dropped?:{date,time,sender,text}}}
+ */
+const FORMATTED_LINE = /^(\d{2}-\d{2}-\d{2})\s+(\d{1,2}:\d{2}\s*[AP]M)\s+-\s+(.*?)\s+-\s+(.+)$/i;
+const squash = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const clock = (s) => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
+const TWIN_MIN_CHARS = 40;          // below this, two different messages can share their whole text ("Yes", "Thanks!")
+const JUST_SENT_BEFORE_MIN = 15;    // a just-sent message's clock time is at most this far behind now
+const JUST_SENT_AFTER_MIN = 2;      // ...or this far ahead (clock skew between LinkedIn and the server)
+
+function dropForgedToday({ incoming, existingSection = '', coachName = '', now, suspect = false } = {}) {
+    const none = { content: incoming, action: 'none' };
+    const coach = squash(coachName);
+    if (!suspect || !incoming || !coach) return none;
+    const at = now instanceof Date && !isNaN(now.getTime()) ? now : new Date();
+    const todayStamp = toStamp(at);
+
+    const lines = String(incoming).split('\n');
+    let newest = null;
+    lines.forEach((line, index) => {
+        const m = line.trim().match(FORMATTED_LINE);
+        if (!m) return;
+        const when = stampToDate(m[1], m[2]);
+        if (when && (!newest || when.getTime() > newest.when.getTime())) newest = { index, when, date: m[1], time: m[2], sender: m[3], text: m[4] };
+    });
+    if (!newest || newest.date !== todayStamp) return none;
+    const sender = squash(newest.sender);
+    if (!(sender === coach || sender.startsWith(coach) || coach.startsWith(sender))) return none;
+
+    const text = squash(newest.text);
+    let onFileToday = false, onFileOlder = '';
+    for (const line of String(existingSection || '').split('\n')) {
+        const m = line.trim().match(FORMATTED_LINE);
+        if (!m || squash(m[4]) !== text) continue;
+        if (!(clock(m[2]) === clock(newest.time) || text.length >= TWIN_MIN_CHARS)) continue;
+        if (m[1] === todayStamp) onFileToday = true; else if (!onFileOlder) onFileOlder = m[1];
+    }
+
+    const drop = (reason) => ({
+        content: lines.filter((_, i) => i !== newest.index).join('\n'),
+        action: 'dropped',
+        reason,
+        dropped: { date: newest.date, time: newest.time, sender: newest.sender, text: newest.text },
+    });
+    if (onFileOlder) return drop(`already on the record dated ${onFileOlder}`);
+    if (onFileToday) return none;
+    const minutesBehind = (at.getTime() - newest.when.getTime()) / 60000;
+    if (minutesBehind <= JUST_SENT_BEFORE_MIN && minutesBehind >= -JUST_SENT_AFTER_MIN) return none;
+    return drop(`stamped today ${newest.time} but saved at ${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')} - not a message just sent`);
+}
+
+/** Does a parsed message (the parser's {date,time,sender,message}) match a dropped line? */
+function isDroppedMessage(msg, dropped) {
+    if (!msg || !dropped) return false;
+    return msg.date === dropped.date && clock(msg.time) === clock(dropped.time) && squash(msg.message) === squash(dropped.text);
+}
+
 function clip(text) {
     const t = String(text || '').replace(/\s+/g, ' ').trim();
     return t.length > 70 ? `${t.slice(0, 67)}...` : t;
@@ -142,4 +218,4 @@ function shouldAlert(key, now = Date.now()) {
 }
 function resetAlertThrottle() { _alerted.clear(); }
 
-module.exports = { checkCaptureDates, captureAlertEmail, shouldAlert, resetAlertThrottle, toStamp };
+module.exports = { checkCaptureDates, captureAlertEmail, shouldAlert, resetAlertThrottle, toStamp, dropForgedToday, isDroppedMessage };
