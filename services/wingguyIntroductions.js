@@ -6,7 +6,8 @@
 // wingguy_create_draft as ONE email to both people, so that is where it is caught:
 //
 //   1. DRAFT  - runCreateDraft calls logIntroductionDraft. A draft to exactly two people (To + Cc,
-//      the coach's own addresses aside, and not two colleagues on the same company domain) that
+//      the coach's own addresses aside, not two colleagues on the same company domain, and not a
+//      reply on an email both were already on - that is someone else's introduction) that
 //      reads like an introduction, where at least one of the
 //      two is one of the coach's clients, becomes a Referrals row: From Guy, Stage Promised, note
 //      "drafted, not sent yet". A draft that is never sent therefore never counts as made.
@@ -66,7 +67,7 @@ function clientEmails(c) {
  *   selfEmails - the coach's own addresses (a copy to yourself is not a party)
  *   clients    - the coach's own clients only
  */
-function detectIntroduction({ recipients, subject, text, selfEmails, clients }) {
+function detectIntroduction({ recipients, subject, text, selfEmails, clients, repliedTo }) {
   const seen = new Set();
   const parties = [];
   for (const r of recipients || []) {
@@ -77,6 +78,15 @@ function detectIntroduction({ recipients, subject, text, selfEmails, clients }) 
   }
   // Exactly two: one person to another. A group email is not an introduction we can pair up.
   if (parties.length !== 2) return null;
+  // A reply on an email both of them were already on is not the coach introducing anyone - they
+  // are already in the conversation. The case: Ashley Knowles introduced Tom Smith TO Guy ("Introducing
+  // Guy Wilson", 5 Nov 2026); Guy's reply-all was logged as Guy introducing Tom to Ashley. A reply
+  // that brings in someone who was NOT on the email ("Rick, meet Bob") still counts.
+  if (repliedTo) {
+    const onIt = new Set(String([repliedTo.from, repliedTo.to, repliedTo.cc].filter(Boolean).join(' '))
+      .toLowerCase().match(/[^\s<>,;"']+@[^\s<>,;"']+/g) || []);
+    if (parties.every((p) => onIt.has(p.email))) return null;
+  }
   // Two people at the same company are colleagues, not strangers being introduced: a client's wrap
   // email with their boss on cc (Josh Tunstall + Matthew Armour, procurespot.com, 12 Oct 2026) was
   // logged as an introduction three times. Freemail (gmail etc.) proves nothing, so it is exempt.
@@ -153,14 +163,14 @@ async function query(sql, params) {
 // tool's reply, or '' when this is not an introduction. Throws only on real failures, which the
 // caller turns into a warning line.
 
-async function logIntroductionDraft({ tenant, coach, recipients, subject, text, threadId, selfEmails }) {
+async function logIntroductionDraft({ tenant, coach, recipients, subject, text, threadId, selfEmails, repliedTo }) {
   const clientService = require('./clientService');
   const referrals = require('./referralService');
   const all = await clientService.getAllClients();
   const mine = (all || []).filter((c) => c.coach && c.coach === tenant);
   if (!mine.length) return ''; // only a coach's introductions are tracked
 
-  const intro = detectIntroduction({ recipients, subject, text, selfEmails, clients: mine });
+  const intro = detectIntroduction({ recipients, subject, text, selfEmails, clients: mine, repliedTo });
   if (!intro) return '';
 
   // The same introduction drafted twice (a redraft) reuses the row that is still waiting.

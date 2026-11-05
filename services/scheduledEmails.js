@@ -669,7 +669,7 @@ async function deliver(row, deps = {}) {
   if (!res.ok) return updateRow(row.id, { status: 'failed', result: String(res.error || 'send failed').slice(0, 500) });
 
   const sentAt = deps.now || Date.now();
-  const lines = await mail.finishOutbound({ tenant: row.tenantId, prepared, cc: row.cc, result: res });
+  const lines = await mail.finishOutbound({ tenant: row.tenantId, prepared, cc: row.cc, result: res, replyToMessageId: row.replyToMessageId });
   const extra = [];
   if (row.kind === 'weekly' && row.clientId) {
     // The planner's memory: this week's email went (so no repeats, no second "first email").
