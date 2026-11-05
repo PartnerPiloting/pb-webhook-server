@@ -1,0 +1,12 @@
+{
+  "_about": "What the server tells a client's browser extension about its own version. The extension (0.3.41+) sends its version with every request and shows whatever notice comes back, so this wording and the pause list change with a deploy - no new extension needed. services/extensionPolicy.js reads this; tests/extension-policy.test.js checks it.",
+  "_pause": "To stop a faulty version saving conversations: add its exact version string to pausedVersions, commit, push. Drafting keeps working; only saving to the lead record stops, and the client sees the paused notice with the update button. Remove it again once nobody is on that version.",
+  "pausedVersions": [],
+  "notices": {
+    "portalBehind": "A new version of Wingguy is ready - about 30 seconds to update.",
+    "updaterBehind": "A new version of Wingguy is on its way to this computer and arrives by itself within the hour. To start using it, reload the Wingguy card on your browser's extensions page.",
+    "paused": "This version of Wingguy has a fault, so it has stopped saving conversations to your records until it is updated. Drafting still works. The update takes about 30 seconds.",
+    "pausedToast": "Not saved - Wingguy needs a 30-second update first. Open Wingguy to get it.",
+    "button": "Get the new version"
+  }
+}
