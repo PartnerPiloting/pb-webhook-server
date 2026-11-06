@@ -420,6 +420,22 @@ const routes = require('../routes/clientTouchRoutes');
     assert.deepStrictEqual(planner.recentEvents(fresh, at).map((e) => e.key), ['today-first-records']);
     assert.ok(!('today-first-records' in planner.todayFirstSeen({ 'today-first-records': '2026-10-22T00:00:00Z' }, null)));
   });
+  await check('people accepting = invitations going out, when the machine cannot see their Linked Helper (Josh, Paul Faix - 6 Nov 2026)', () => {
+    // Machine box filled: it wins, whatever the connections say.
+    assert.deepStrictEqual(planner.invitationsGoing('2026-11-05T01:00:00Z', null), { at: '2026-11-05T01:00:00Z', seenBy: 'machine', connections: null });
+    // Josh: cloud Linked Helper, box empty, 18 accepted this fortnight -> going out.
+    const josh = planner.invitationsGoing(null, { count: 18, newestAt: '2026-11-05T00:00:00.000Z' });
+    assert.strictEqual(josh.at, '2026-11-05T00:00:00.000Z'); assert.strictEqual(josh.seenBy, 'connections');
+    const line = planner.invitationsLine({ lastInviteSent: josh.at, invitesSeenBy: josh.seenBy, recentConnections: josh.connections });
+    assert.match(line, /^going out - 18 people accepted/); assert.match(line, /do not say it has stopped/);
+    // Michael / Ashley: one hand-added lead is not a campaign.
+    assert.strictEqual(planner.invitationsGoing(null, { count: 1, newestAt: '2026-11-05T00:00:00.000Z' }).at, null);
+    assert.strictEqual(planner.invitationsGoing(null, { count: 2, newestAt: '2026-11-05T00:00:00.000Z' }).at, null);
+    // Base unreadable: no guess.
+    assert.strictEqual(planner.invitationsGoing(null, null).at, null);
+    assert.strictEqual(planner.invitationsLine({ lastInviteSent: null }), 'NOT going out yet');
+    assert.strictEqual(planner.invitationsLine({ lastInviteSent: '2026-11-05T01:00:00Z', invitesSeenBy: 'machine' }), 'going out (last one 2026-11-05)');
+  });
   await check('"drafting regularly" = /wg on 10+ people over 4+ days, and it lands on train-it-dont-fix-it', () => {
     assert.ok(planner.isDraftingRegularly({ people: 10, days: 4 }));
     assert.ok(!planner.isDraftingRegularly({ people: 9, days: 6 }), 'too few people');

@@ -125,6 +125,50 @@ async function bouncedAddresses(coachClientId) {
   return new Set(r.map((x) => x.a));
 }
 
+// Are their invitations going out? 'Last Invite Sent' is written ONLY by our machine's campaign
+// report, read off Linked Helper's local database. A client whose Linked Helper the machine cannot
+// see - a CLOUD Linked Helper account (Joshua Tunstall, Guy's choice 30 Oct 2026) or their own
+// Linked Helper on their own computer (Paul Faix) - has that box empty for ever, and the planner,
+// the brief and the fact guard all said "invitations NOT going out" while people were accepting
+// every day (Josh: 18 new connections 30 Oct - 5 Nov; Paul: 79 in three weeks). Guy, 6 Nov 2026:
+// no more red herrings. So: people accepting = invitations going out. Every acceptance lands in
+// their leads base by the Linked Helper webhook with Date Connected stamped. Three or more in the
+// last fortnight, not one: a lead added by hand is stamped Date Connected too (Michael Spicer's
+// only one is Guy, Ashley's only one is a manual add), and one or two prove nothing.
+const CONNECTIONS_WINDOW_DAYS = 14;
+const CONNECTIONS_PROOF = 3;
+
+/** New connections in the client's base in the last fortnight: { count, newestAt } or null when unreadable. */
+async function recentConnections(client) {
+  if (!client.airtableBaseId) return null;
+  try {
+    const base = clientService.getClientBase(client.airtableBaseId);
+    const recs = await base('Leads').select({
+      filterByFormula: `IS_AFTER({Date Connected}, DATEADD(NOW(), -${CONNECTIONS_WINDOW_DAYS}, 'days'))`,
+      sort: [{ field: 'Date Connected', direction: 'desc' }], maxRecords: 50, fields: ['Date Connected'],
+    }).firstPage();
+    const v = recs[0] && recs[0].get('Date Connected');
+    const t = v ? new Date(v) : null;
+    return { count: recs.length, newestAt: t && !Number.isNaN(t.getTime()) ? t.toISOString() : null };
+  } catch (e) {
+    logger.warn(`connections probe for ${client.clientId} skipped: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Invitations going out, and how we know. The machine's own 'Last Invite Sent' wins; with none, enough
+ * recent acceptances prove it (the newest acceptance stands in for the date - an invitation went at
+ * least that recently). Returns { at, seenBy: 'machine' | 'connections', connections } or
+ * { at: null, ... }. Pure.
+ */
+function invitationsGoing(machineLastInvite, recent) {
+  const connections = recent ? recent.count : null;
+  if (machineLastInvite) return { at: machineLastInvite, seenBy: 'machine', connections };
+  if (recent && recent.count >= CONNECTIONS_PROOF && recent.newestAt) return { at: recent.newestAt, seenBy: 'connections', connections };
+  return { at: null, seenBy: null, connections };
+}
+
 /**
  * When did the client's Today tab FIRST have records? = the earliest Date Connected in their base
  * (ISO date), or null when it has none (or the base cannot be read). "First" means the real first:
@@ -303,13 +347,23 @@ function lastTouches(record) {
 
 const OWED_NOTE_KEY = 'owed-note';
 
+/** The live-fact words for invitations - says how we know, so nobody reads a blank machine box as "stopped". Pure. */
+function invitationsLine(f) {
+  if (!f.lastInviteSent) return 'NOT going out yet';
+  const day = String(f.lastInviteSent).slice(0, 10);
+  if (f.invitesSeenBy === 'connections') {
+    return `going out - ${f.recentConnections} people accepted in the last ${CONNECTIONS_WINDOW_DAYS} days, newest ${day} (their Linked Helper is one our machine cannot read, so there are no campaign numbers - do not say it has stopped)`;
+  }
+  return `going out (last one ${day})`;
+}
+
 /** The live-fact lines the opening is allowed to rely on. */
 function factLines(f, signals = {}, card = null) {
   const lines = [];
   signals = signals || {};
   // Their standing with Guy today - a brief once read a September card failure as "status unconfirmed".
   if (f.status) lines.push(`Client record: Status ${f.status}${f.coachingStatus ? `, coaching ${f.coachingStatus}` : ''} (current - any earlier pause or failed payment is over if this says Active)`);
-  lines.push(`Invitations:${f.lastInviteSent ? `going out (last one ${String(f.lastInviteSent).slice(0, 10)})` : 'NOT going out yet'}${signals.paused ? ` - campaign PAUSED with ${signals.pausedWaiting} people waiting` : ''}`);
+  lines.push(`Invitations:${invitationsLine(f)}${signals.paused ? ` - campaign PAUSED with ${signals.pausedWaiting} people waiting` : ''}`);
   if ((signals.lines || []).length) lines.push(`Campaign numbers: ${signals.lines.join(' | ')}`);
   lines.push(`Last call with Guy: ${f.daysSinceLastCall === null ? 'none on record' : `${f.daysSinceLastCall} days ago`}${card && card.nextSession ? `; next session booked ${String(card.nextSession.at).slice(0, 10)}` : '; nothing booked'}`);
   lines.push(`Today tab: ${f.todayHasRecords ? 'has records' : 'no records yet'}`);
@@ -355,12 +409,16 @@ async function factsFor(client, card, ctx) {
   const seenKey = `events:${client.clientId}`;
   let firstSeen = {};
   try { firstSeen = JSON.parse((await planStore.getState(seenKey)) || '{}'); } catch (_) { firstSeen = {}; }
-  const [todayFirstAt, cancelsAt, drafting] = await Promise.all([todayFirstRecordAt(client), stripeCancellationAt(client, ctx.stripeDeps || {}), draftingLastFortnight(client)]);
+  const [todayFirstAt, cancelsAt, drafting, recent] = await Promise.all([
+    todayFirstRecordAt(client), stripeCancellationAt(client, ctx.stripeDeps || {}), draftingLastFortnight(client),
+    client.lastInviteSent ? Promise.resolve(null) : recentConnections(client),
+  ]);
+  const invites = invitationsGoing(client.lastInviteSent || null, recent);
   const today = !!todayFirstAt;
   firstSeen = todayFirstSeen(firstSeen, todayFirstAt);
   const nowIso = new Date(now).toISOString();
   const mark = (k) => { if (!firstSeen[k]) firstSeen[k] = nowIso; };
-  if (signals.runningLow && client.lastInviteSent) {
+  if (signals.runningLow && invites.at) {
     // A recurring event: it can fire again once the previous one is older than the resend window.
     const d = daysSince(firstSeen['campaign-running-low'], now);
     if (d === null || d > picker.REINFORCE_AFTER_WEEKS * 7) firstSeen['campaign-running-low'] = nowIso;
@@ -368,7 +426,7 @@ async function factsFor(client, card, ctx) {
   if (signals.acceptancesSlow) mark('acceptances-slow');
   // When their invitations started: nothing records it (the earliest connection is often an old
   // imported one - Alex's goes back to 2015), so the first day the planner sees invitations going out.
-  if (client.lastInviteSent) mark('invitations-going');
+  if (invites.at) mark('invitations-going');
   if (isDraftingRegularly(drafting)) mark('drafting-regularly');
   const usedDays = daysSince(card.lastUsedAt, now);
   if (usedDays !== null && usedDays >= 21 && signals.live > 0 && !signals.paused) mark('busy');
@@ -406,7 +464,9 @@ async function factsFor(client, card, ctx) {
     bounced: address ? ctx.bounced.has(address) : false,
     skipUntil: skip ? skip.until : null,
     skipThisWeek: false,
-    lastInviteSent: client.lastInviteSent || null,
+    lastInviteSent: invites.at,
+    invitesSeenBy: invites.seenBy,
+    recentConnections: invites.connections,
     seriesStartDate: card.seriesStart || null,
     daysSinceLastCall: dSession,
     daysSinceLastSubstantial,
@@ -1892,6 +1952,8 @@ module.exports = {
   cancellationFrom,
   leaveOffList,
   todayFirstSeen,
+  invitationsGoing,
+  invitationsLine,
   isDraftingRegularly,
   lastTouches,
   whatChanged,
