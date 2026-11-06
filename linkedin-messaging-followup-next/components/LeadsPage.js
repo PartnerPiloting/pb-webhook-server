@@ -1,5 +1,5 @@
 "use client";
-// The Leads tab of the three-tab portal (Owen's layout, 7 Oct 2026): everything about finding or
+// The "Your CRM" tab (was "Leads" until Guy renamed it 7 Nov 2026) of the three-tab portal (Owen's layout, 7 Oct 2026): everything about finding or
 // fixing a person's record, as opposed to talking to them (that is Today). Search sits first
 // because looking someone up is the thing people come here for; the other lead screens are a row
 // of doors above it. The old URLs (/, /new-leads, /top-scoring-leads) all still work.

@@ -47,7 +47,7 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
   // resolves; `under` lists the old paths each tab stays lit for, so /followups keeps Today lit.
   const todayNav = [
     { name: 'Today', href: '/today', icon: SunIcon, description: 'Your networking, top to bottom', minLevel: 1, under: ['/today', '/followups', '/follow-up', '/thanks-for-connecting'] },
-    { name: 'Leads', href: '/leads', icon: MagnifyingGlassIcon, description: 'Look someone up, new leads', minLevel: 1, fn: 'Lead Search & Update', under: ['/leads', '/', '/new-leads', '/top-scoring-leads'] },
+    { name: 'Your CRM', href: '/leads', icon: MagnifyingGlassIcon, description: 'Everyone you know, look someone up', minLevel: 1, fn: 'Lead Search & Update', under: ['/leads', '/', '/new-leads', '/top-scoring-leads'] },
     { name: 'Setup and help', href: '/setup', icon: CogIcon, description: 'How it works, your setup', minLevel: 1, under: ['/setup', '/start-here', '/my-wingguy', '/settings'] },
   ];
   const nav = todayLayout ? todayNav : [

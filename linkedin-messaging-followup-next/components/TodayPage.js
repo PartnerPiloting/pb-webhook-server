@@ -194,7 +194,7 @@ function TodayInner() {
 
       {order.length === 0 && (
         <div className="bg-white border rounded-lg p-6 text-center text-gray-600">
-          Nothing is switched on for this page yet. Your leads are under <Link className="text-blue-700 hover:underline" href={`/leads?${qs}`}>Leads</Link>.
+          Nothing is switched on for this page yet. Your leads are in <Link className="text-blue-700 hover:underline" href={`/leads?${qs}`}>Your CRM</Link>.
         </div>
       )}
 
