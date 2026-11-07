@@ -206,6 +206,27 @@ check('hours change on a paused campaign says it stays paused, and covers every 
   assert.deepStrictEqual(queued[0].payload.step_ids, [9]);
 });
 
+check('an hours change moves only the sending steps - the webhook step is left alone', async () => {
+  queued.length = 0;
+  await tool.runSettings({ action: 'hours', campaign: 'HEQS', hours: [{ days: 'weekdays', from: '08:00', to: '18:00' }], confirm: true }, 'Alex-Solti');
+  assert.deepStrictEqual(queued[0].payload.step_ids, [7]);   // not 8, the webhook
+});
+
+check('bringing a campaign down is allowed even when the others are already over 100', () => {
+  const H = { days: 'weekdays', windows: [['09:00', '17:00']] };
+  assert.strictEqual(s.planPace(40, H, 220, 60).ok, true);          // 60 -> 40 while others send 220
+  const up = s.planPace(80, H, 220, 60);
+  assert.strictEqual(up.ok, false);
+  assert.ok(up.problem.includes('Bring one of those down first'), up.problem);
+  assert.ok(!/-\d/.test(up.problem), 'no negative numbers in the words');
+});
+
+check('show does not list plumbing steps\' hours', async () => {
+  const r = await tool.runSettings({}, 'Alex-Solti');
+  assert.ok(!r.text.includes('Send person to webhook'), r.text);
+  assert.ok(!r.text.includes('each step has its own'), r.text);
+});
+
 check('no campaign named and two campaigns with messages -> asks which', async () => {
   const r = await tool.runSettings({ action: 'message', message: 'Hi {firstName}' }, 'Alex-Solti');
   // Only one RUNNING campaign sends a message, so that one is the default.

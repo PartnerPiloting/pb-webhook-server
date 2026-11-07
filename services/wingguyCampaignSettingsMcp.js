@@ -145,7 +145,7 @@ async function runSettings(args = {}, tenant = TENANT) {
     if (!p) return { text: `${who}"${camp.name}" doesn't send invitations, so there's no pace to set.`, isError: true };
     const othersWeek = (snap.campaigns || []).filter((x) => x.id !== camp.id && !x.paused)
       .map(settings.paceOf).filter((x) => x && x.week !== null).reduce((a, x) => a + x.week, 0);
-    const plan = settings.planPace(args.per_week, p.step.hours, othersWeek);
+    const plan = settings.planPace(args.per_week, p.step.hours, othersWeek, p.week);
     if (!plan.ok) return { text: `${who}Not changed - ${plan.problem}.`, isError: true };
     if (plan.batch === p.batch && plan.waitMin === p.waitMin) return { text: `${who}That's what it's set to already.` };
     kind = 'pace';
@@ -163,8 +163,11 @@ async function runSettings(args = {}, tenant = TENANT) {
   } else {
     const h = settings.checkHours(args.hours);
     if (!h.ok) return { text: `${who}Not changed - ${h.problem}.`, isError: true };
-    const steps = camp.steps || [];
-    const nowWords = !steps.length ? 'none' : settings.sameHours(steps)
+    // Only the steps that send something move. Visit / filter / webhook steps run all day by
+    // design and stay that way (first machine test, 7 Nov 2026, moved them - wrong).
+    const steps = settings.sendingSteps(camp);
+    if (!steps.length) return { text: `${who}"${camp.name}" doesn't send anything to people, so there are no hours to set here.`, isError: true };
+    const nowWords = settings.sameHours(steps)
       ? settings.hoursWords(steps[0].hours)
       : steps.map((s) => `${settings.stepWords(s.type)} ${settings.hoursWords(s.hours)}`).join('; ');
     kind = 'hours';
@@ -174,7 +177,7 @@ async function runSettings(args = {}, tenant = TENANT) {
       `${who}Here's the change to the working hours of "${camp.name}" (${tzName} time):`,
       `NOW: ${nowWords}`,
       `NEW: ${h.words}`,
-      `It applies to every step in the campaign (${steps.length}), so they all keep in step.`,
+      steps.length > 1 ? `It applies to the invitation and the ${steps.length - 1} follow-up message${steps.length > 2 ? 's' : ''} together, so they keep in step.` : null,
       /Sydney|Melbourne|Hobart|Canberra|Adelaide|Currie|Broken_Hill|Auckland/i.test(String(snap.tz || c.timezone || ''))
         ? 'One thing to know: Linked Helper keeps hours on a fixed clock, so when daylight saving starts or ends they shift by an hour - ask me to set them again then.' : null,
       restartWords,

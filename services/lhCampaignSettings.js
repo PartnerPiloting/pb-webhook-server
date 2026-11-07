@@ -37,6 +37,16 @@ function stepWords(type) {
   return STEP_WORDS[type] || String(type || 'step').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
 }
 
+/**
+ * The steps a client means by "my campaign": the ones that send something to a person. The rest
+ * (visit, filter, webhook, waiter, auto-collect) are plumbing that runs all day by design - an
+ * hours change must leave them alone (Guy's machine, 7 Nov 2026: the first test moved the visit
+ * step from all day to the invite hours, which would have starved the campaign of profiles).
+ */
+function sendingSteps(campaign) {
+  return (campaign.steps || []).filter((s) => STEP_WORDS[s.type]);
+}
+
 /** The node tree -> { variants: ["Hi {firstName}, ..."], vars: ['firstName'] }. null when not a message. */
 function templateToText(t) {
   if (!t || typeof t !== 'object') return null;
@@ -294,13 +304,17 @@ const REFRESHER = "A quick refresher: Linked Helper sends a small bunch, waits, 
  * the client never types a batch size. `othersWeek` = what their OTHER running campaigns already
  * send; the total stays under the limit. Returns { ok, batch, waitMin, week, perDay } or { ok:false, problem }.
  */
-function planPace(perWeek, hours, othersWeek = 0) {
+function planPace(perWeek, hours, othersWeek = 0, currentWeek = null) {
   const want = Math.round(Number(perWeek));
   if (!Number.isFinite(want) || want < 1) return { ok: false, problem: 'say how many a week you want - a number from 1 to 100' };
-  if (want + othersWeek > WEEKLY_LIMIT) {
-    return { ok: false, problem: othersWeek
-      ? `that would make ${want + othersWeek} a week with your other campaigns, and LinkedIn allows about ${WEEKLY_LIMIT}. The most this one can have is ${WEEKLY_LIMIT - othersWeek}`
-      : `LinkedIn allows about ${WEEKLY_LIMIT} a week, so that's the most I'll set` };
+  // Bringing a campaign DOWN is always allowed, whatever the others add up to - that is how the
+  // total gets back under the limit. Only going up is checked against the 100.
+  if (want > WEEKLY_LIMIT) return { ok: false, problem: `LinkedIn allows about ${WEEKLY_LIMIT} a week, so that's the most I'll set` };
+  const reduction = currentWeek !== null && Number.isFinite(currentWeek) && want <= currentWeek;
+  if (!reduction && want + othersWeek > WEEKLY_LIMIT) {
+    const room = WEEKLY_LIMIT - othersWeek;
+    if (room <= 0) return { ok: false, problem: `your other running campaigns already add up to about ${othersWeek} a week, which is over LinkedIn's ${WEEKLY_LIMIT} on their own. Bring one of those down first - this one can only come down for now` };
+    return { ok: false, problem: `that would make ${want + othersWeek} a week with your other campaigns, and LinkedIn allows about ${WEEKLY_LIMIT}. The most this one can have is ${room}` };
   }
   const wins = windowsByDay(hours);
   const workDays = Object.values(wins).filter((w) => w.length);
@@ -363,14 +377,16 @@ function describeCampaigns(snapshot, { campaign = null } = {}) {
         lines.push(`  ${cap(stepWords(s.type))}:\n${indent(t.variants[0] || '(blank - invitations go out with no note)', 4)}`);
       }
     }
-    const steps = c.steps || [];
-    if (p && sameHours(steps)) {
-      // already said above as Days and times
-    } else if (steps.length && sameHours(steps)) {
-      lines.push(`  Working hours: ${hoursWords(steps[0].hours)}`);
-    } else {
-      lines.push('  Working hours (each step has its own):');
-      for (const s of steps) lines.push(`    ${cap(stepWords(s.type))}: ${hoursWords(s.hours)}`);
+    // Hours: the sending steps are what the client means. Plumbing steps (visit, filter, webhook)
+    // run all day by design and are not shown - they would only confuse.
+    const sending = sendingSteps(c);
+    if (!sending.length) {
+      const steps = c.steps || [];
+      if (steps.length) lines.push(`  Working hours: ${sameHours(steps) ? hoursWords(steps[0].hours) : 'each step has its own'}`);
+    } else if (!p) {
+      lines.push(`  Days and times: ${sameHours(sending) ? hoursWords(sending[0].hours) : sending.map((s) => `${stepWords(s.type)} ${hoursWords(s.hours)}`).join('; ')}`);
+    } else if (!sameHours(sending)) {
+      for (const s of sending.filter((x) => x.type !== 'InvitePerson')) lines.push(`  ${cap(stepWords(s.type))} goes out: ${hoursWords(s.hours)}`);
     }
     return lines.join('\n');
   });
@@ -414,7 +430,7 @@ function pickMessageStep(campaign, which) {
 
 module.exports = {
   templateToText, textToTemplate, checkMessage, cleanMessage, sentLength,
-  checkHours, hoursWords, describeCampaigns, pickCampaign, pickMessageStep, stepWords, sameHours,
+  checkHours, hoursWords, describeCampaigns, pickCampaign, pickMessageStep, stepWords, sameHours, sendingSteps,
   walkWeek, paceOf, paceWords, totalWords, planPace, waitWords, aDay,
   INVITE_NOTE_MAX, INVITE_NOTE_FREE, WEEKLY_LIMIT,
 };
