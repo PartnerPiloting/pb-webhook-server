@@ -357,6 +357,8 @@ echo "== campaign builder (run AFTER the LinkedIn login - step 5 below) =="
 install -m 755 "$SRC_DIR/lh-campaigns.py" /usr/local/bin/lh-campaigns.py
 # Campaign top-ups from a search link (5 Nov 2026) - run by lh-clipboard.py when the server has one waiting.
 install -m 755 "$SRC_DIR/lh-topup.py" /usr/local/bin/lh-topup.py
+# Campaign message + working hours from Claude (7 Nov 2026) - run by the same clipboard agent.
+install -m 755 "$SRC_DIR/lh-settings.py" /usr/local/bin/lh-settings.py
 install -m 755 "$SRC_DIR/lh-build-campaigns.sh" /usr/local/bin/lh-build-campaigns.sh
 install -d -m 755 /usr/local/share/linked-helper/campaigns
 install -m 644 "$SRC_DIR"/campaigns/*.json /usr/local/share/linked-helper/campaigns/

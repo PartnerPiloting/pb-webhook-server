@@ -19,7 +19,7 @@ const store = require('./wingguyRulesStore');
 const TENANT = (process.env.RECALL_COACH_CLIENT_ID || store.DEFAULT_TENANT).trim();
 
 /** Who is this about? The caller, or (coach only) one of their coached clients. */
-async function resolveTarget(query, tenant) {
+async function resolveTarget(query, tenant, verb = 'top up') {
   const clientService = require('./clientService');
   const all = await clientService.getAllClients();
   const self = (all || []).find((c) => c.clientId === tenant);
@@ -29,7 +29,7 @@ async function resolveTarget(query, tenant) {
   const isSelf = !q || (self && (self.clientId.toLowerCase() === q || selfName === q || (!coaches && selfName.includes(q))));
   if (!coaches || isSelf) {
     if (!self) return { error: `Couldn't find your own client record ("${tenant}").` };
-    if (!isSelf) return { error: 'You can only top up your own campaign - another person\'s is not reachable from here. Leave the client out and it goes to yours.' };
+    if (!isSelf) return { error: `You can only ${verb} your own campaign - another person's is not reachable from here. Leave the client out and it goes to yours.` };
     return { client: self, own: true };
   }
   const mine = (all || []).filter((c) => c.coach && c.coach === tenant);
@@ -124,4 +124,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // Stamp every sentence a client is told to type into the description (content/client-phrases.json).
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { registerWingguyTopUpTools, legacyToolList, legacyToolCall, TOOL_DEFS, runTopUp };
+module.exports = { registerWingguyTopUpTools, legacyToolList, legacyToolCall, TOOL_DEFS, runTopUp, resolveTarget };

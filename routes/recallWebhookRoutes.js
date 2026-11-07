@@ -1315,6 +1315,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
           ...require('../services/wingguyInboxMcp').legacyToolList(),
           // Campaign top-ups (top up my campaign with this search) - shared defs with /mcp2.
           ...require('../services/wingguyTopUpMcp').legacyToolList(),
+          // Campaign message + working hours (change my campaign message) - shared defs with /mcp2.
+          ...require('../services/wingguyCampaignSettingsMcp').legacyToolList(),
         ],
       },
     });
@@ -1337,7 +1339,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
         || await require('../services/captureControlMcp').legacyToolCall(toolName, args)
         || await require('../services/machineClipboardMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyInboxMcp').legacyToolCall(toolName, args)
-        || await require('../services/wingguyTopUpMcp').legacyToolCall(toolName, args);
+        || await require('../services/wingguyTopUpMcp').legacyToolCall(toolName, args)
+        || await require('../services/wingguyCampaignSettingsMcp').legacyToolCall(toolName, args);
       if (result) return res.json({ jsonrpc: '2.0', id, result });
     }
 
