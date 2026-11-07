@@ -201,6 +201,134 @@ function checkHours(input) {
   return { ok: true, spec: out.length === 1 ? out[0] : out, words: hoursWords(out.length === 1 ? out[0] : out) };
 }
 
+// -------------------------------------------------------------------------------------- pace
+//
+// WHY (Guy, 7 Nov 2026): "LinkedIn only allows around 100 connection requests a week. Linked Helper
+// is set up to spread them over the week... I have to explain how the bunch size and time out work
+// every time, and they get it, but then they won't get it when they come back." So nobody is asked
+// to do the sum. The machine reports the real batch size and wait; this walks the week with the real
+// hours and says what will actually go out - a day and a week. Several campaigns share the one 100.
+
+const WEEKLY_LIMIT = 100;   // LinkedIn's connection-request limit, Guy's number (7 Nov 2026)
+const MAX_BATCH = 50;       // never set a single bunch bigger than this - it looks like a machine
+
+/** Local windows per day index from the machine's hours spec: {0..6: [[s,e],...]} in minutes. */
+function windowsByDay(spec) {
+  const out = {};
+  for (let d = 0; d < 7; d++) out[d] = [];
+  if (spec === 'always') { for (let d = 0; d < 7; d++) out[d].push([0, 1439]); return out; }
+  for (const one of (Array.isArray(spec) ? spec : (spec ? [spec] : []))) {
+    for (const d of daysList(one.days)) for (const [a, b] of (one.windows || [])) out[d].push([toMin(a), Math.min(toMin(b), 1439)]);
+  }
+  for (let d = 0; d < 7; d++) out[d].sort((x, y) => x[0] - y[0]);
+  return out;
+}
+
+/**
+ * Walk one week. Linked Helper sends a bunch of `batch` at the start of a working window, waits
+ * `waitMin`, and sends the next bunch when the wait is up - if that lands outside the hours, the
+ * next bunch goes at the next window's start. Returns { perDay:[7], week, days (working days) }.
+ * batch <= 0 means no cap in Linked Helper - reported as null (its own throttle decides).
+ * MODEL, not yet watched on a real machine (7 Nov 2026) - check against lh.db on Guy's box.
+ */
+function walkWeek({ hours, batch, waitMin }) {
+  const wins = windowsByDay(hours);
+  const days = Object.values(wins).filter((w) => w.length).length;
+  if (!Number.isFinite(batch) || batch <= 0 || !Number.isFinite(waitMin)) return { perDay: null, week: null, days };
+  const WEEK = 7 * 1440;
+  const open = (m) => { const x = m % 1440; return wins[Math.floor((m % WEEK) / 1440)].some(([a, b]) => x >= a && x <= b); };
+  // Two passes, so a wait that straddles Sunday night settles before the week we count.
+  let next = 0;
+  let counts = null;
+  for (let pass = 0; pass < 2; pass++) {
+    counts = [0, 0, 0, 0, 0, 0, 0];
+    for (let t = pass * WEEK; t < (pass + 1) * WEEK; t++) {
+      if (t >= next && open(t)) { counts[Math.floor((t % WEEK) / 1440)] += batch; next = t + Math.max(1, waitMin); }
+    }
+  }
+  return { perDay: counts, week: counts.reduce((a, b) => a + b, 0), days };
+}
+
+/** One campaign's pace, from its invite step. null when it has no invite step. */
+function paceOf(campaign) {
+  const step = (campaign.steps || []).find((s) => s.type === 'InvitePerson');
+  if (!step) return null;
+  const batch = Number(step.batch);
+  const waitMin = Math.round(Number(step.wait_ms || 0) / 60000);
+  const w = walkWeek({ hours: step.hours, batch, waitMin });
+  return { step, batch, waitMin, ...w };
+}
+
+function aDay(p) {
+  const working = (p.perDay || []).filter((n) => n > 0);
+  return working.length ? Math.round(working.reduce((a, b) => a + b, 0) / working.length) : 0;
+}
+
+function paceWords(p) {
+  if (!p) return null;
+  if (p.week === null) return 'How many: no limit set in Linked Helper, so it sends as many as LinkedIn allows';
+  return `How many: about ${aDay(p)} a day, so about ${p.week} a week`;
+}
+
+/** The line at the top when campaigns run - they share the one 100. */
+function totalWords(campaigns) {
+  const running = campaigns.filter((c) => !c.paused).map((c) => ({ c, p: paceOf(c) })).filter((x) => x.p);
+  if (!running.length) return null;
+  const known = running.filter((x) => x.p.week !== null);
+  const total = known.reduce((a, x) => a + x.p.week, 0);
+  const uncapped = running.length - known.length;
+  const head = running.length > 1
+    ? `Between your ${running.length} running campaigns you're set to send about ${total} invitations a week${uncapped ? ' (plus one with no limit set)' : ''}.`
+    : `You're set to send about ${total} invitations a week.`;
+  let verdict;
+  if (total > WEEKLY_LIMIT) verdict = ` LinkedIn's limit is about ${WEEKLY_LIMIT}, so Linked Helper will stop part-way through the week - ${running.length > 1 ? 'whichever campaign gets going first takes most of the 100 and the rest get little' : 'the last part of the week sends nothing'}. Worth bringing it down.`;
+  else if (total >= WEEKLY_LIMIT * 0.9) verdict = ` That's LinkedIn's limit (about ${WEEKLY_LIMIT}), which is right where you want it.`;
+  else verdict = ` LinkedIn allows about ${WEEKLY_LIMIT}, so there's room to send more if you want.`;
+  return head + verdict;
+}
+
+const REFRESHER = "A quick refresher: Linked Helper sends a small bunch, waits, then sends the next bunch. When the wait runs past your finishing time, the next bunch goes out tomorrow. That's how it spreads your invitations over the week.";
+
+/**
+ * Pick a batch + wait that gives about `perWeek` invitations across this step's working days, so
+ * the client never types a batch size. `othersWeek` = what their OTHER running campaigns already
+ * send; the total stays under the limit. Returns { ok, batch, waitMin, week, perDay } or { ok:false, problem }.
+ */
+function planPace(perWeek, hours, othersWeek = 0) {
+  const want = Math.round(Number(perWeek));
+  if (!Number.isFinite(want) || want < 1) return { ok: false, problem: 'say how many a week you want - a number from 1 to 100' };
+  if (want + othersWeek > WEEKLY_LIMIT) {
+    return { ok: false, problem: othersWeek
+      ? `that would make ${want + othersWeek} a week with your other campaigns, and LinkedIn allows about ${WEEKLY_LIMIT}. The most this one can have is ${WEEKLY_LIMIT - othersWeek}`
+      : `LinkedIn allows about ${WEEKLY_LIMIT} a week, so that's the most I'll set` };
+  }
+  const wins = windowsByDay(hours);
+  const workDays = Object.values(wins).filter((w) => w.length);
+  if (!workDays.length) return { ok: false, problem: 'the campaign has no working hours, so nothing would go out - set the days and times first' };
+  const minutesADay = Math.min(...workDays.map((w) => w.reduce((a, [x, y]) => a + (y - x), 0)));
+  const perDay = Math.ceil(want / workDays.length);
+  let best = null;
+  // Bunches a day: at most three (a morning, a midday and an afternoon lot - the pattern Guy sets up
+  // by hand), never more than one every two hours, never more than people wanted.
+  // Never over what they asked for (and so never over the limit): the closest week total under it wins.
+  for (let bunches = Math.max(1, Math.min(3, Math.floor(minutesADay / 120) || 1, perDay)); bunches >= 1; bunches--) {
+    const waitMin = bunches === 1 ? minutesADay + 60 : Math.floor(minutesADay / bunches) + 1;
+    for (let batch = Math.min(MAX_BATCH, Math.ceil(perDay / bunches)); batch >= 1; batch--) {
+      const w = walkWeek({ hours, batch, waitMin });
+      if (w.week <= want) { if (!best || w.week > best.week) best = { batch, waitMin, ...w }; break; }
+    }
+    if (best && best.week === want) break;
+  }
+  if (!best) return { ok: false, problem: "couldn't find a bunch size and wait that fits those hours - try longer hours or fewer a week" };
+  return { ok: true, ...best };
+}
+
+function waitWords(min) {
+  if (min >= 1440) return `${Math.round(min / 1440)} day${min >= 2880 ? 's' : ''}`;
+  if (min >= 60) { const h = Math.round(min / 6) / 10; return `${h} hour${h >= 2 ? 's' : ''}`; }
+  return `${min} minutes`;
+}
+
 // ---------------------------------------------------------------------------------- snapshot
 
 /** Does the snapshot say this step's hours differ from the campaign's other steps? */
@@ -216,8 +344,14 @@ function sameHours(steps) {
 function describeCampaigns(snapshot, { campaign = null } = {}) {
   const camps = (snapshot.campaigns || []).filter((c) => !campaign || c.id === campaign.id);
   if (!camps.length) return 'No campaigns on the machine.';
+  const total = campaign ? null : totalWords(camps);
   const blocks = camps.map((c) => {
     const lines = [`"${c.name}"${c.paused ? ' - PAUSED' : ' - running'}`];
+    const p = paceOf(c);
+    if (p) {
+      lines.push(`  Days and times: ${hoursWords(p.step.hours)}`);
+      lines.push(`  ${paceWords(p)}${c.paused ? ' (when running)' : ''}`);
+    }
     const msgSteps = (c.steps || []).filter((s) => s.template);
     if (!msgSteps.length) lines.push('  Message: this campaign sends no message (it only visits or collects).');
     for (const s of msgSteps) {
@@ -230,7 +364,9 @@ function describeCampaigns(snapshot, { campaign = null } = {}) {
       }
     }
     const steps = c.steps || [];
-    if (steps.length && sameHours(steps)) {
+    if (p && sameHours(steps)) {
+      // already said above as Days and times
+    } else if (steps.length && sameHours(steps)) {
       lines.push(`  Working hours: ${hoursWords(steps[0].hours)}`);
     } else {
       lines.push('  Working hours (each step has its own):');
@@ -238,7 +374,8 @@ function describeCampaigns(snapshot, { campaign = null } = {}) {
     }
     return lines.join('\n');
   });
-  return blocks.join('\n\n');
+  const hasPace = camps.some((c) => paceOf(c));
+  return [total, ...blocks, hasPace ? REFRESHER : null].filter(Boolean).join('\n\n');
 }
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -278,5 +415,6 @@ function pickMessageStep(campaign, which) {
 module.exports = {
   templateToText, textToTemplate, checkMessage, cleanMessage, sentLength,
   checkHours, hoursWords, describeCampaigns, pickCampaign, pickMessageStep, stepWords, sameHours,
-  INVITE_NOTE_MAX, INVITE_NOTE_FREE,
+  walkWeek, paceOf, paceWords, totalWords, planPace, waitWords, aDay,
+  INVITE_NOTE_MAX, INVITE_NOTE_FREE, WEEKLY_LIMIT,
 };

@@ -97,17 +97,41 @@ check('the machine\'s hours read as words', () => {
   assert.strictEqual(s.hoursWords([{ days: ['mon', 'tue', 'wed'], windows: [['09:00', '17:30']] }]), 'Mon-Wed 9am-5:30pm');
 });
 
+check('walking the week: 25 every 6½ hours, 9-5 weekdays = 50 a day, 250 a week', () => {
+  const w = s.walkWeek({ hours: { days: 'weekdays', windows: [['09:00', '17:00']] }, batch: 25, waitMin: 390 });
+  assert.deepStrictEqual(w.perDay, [0, 50, 50, 50, 50, 50, 0]);
+  assert.strictEqual(w.week, 250);
+});
+
+check('no cap in Linked Helper reads as unknown, not zero', () => {
+  assert.strictEqual(s.walkWeek({ hours: 'always', batch: -1, waitMin: 0 }).week, null);
+});
+
+check('planning 100 a week over 9-5 weekdays lands on 100, never over', () => {
+  const p = s.planPace(100, { days: 'weekdays', windows: [['09:00', '17:00']] });
+  assert.strictEqual(p.ok, true, p.problem);
+  assert.strictEqual(p.week, 100);
+  assert.ok(p.batch <= 50);
+});
+
+check('planning refuses more than 100 across all campaigns', () => {
+  const p = s.planPace(60, { days: 'weekdays', windows: [['09:00', '17:00']] }, 50);
+  assert.strictEqual(p.ok, false);
+  assert.ok(p.problem.includes('The most this one can have is 50'), p.problem);
+  assert.strictEqual(s.planPace(120, 'always').ok, false);
+});
+
 // ------------------------------------------------------------------ the chat tool, stubbed
 
 const SNAP = {
   tz: 'Australia/Brisbane', offset_min: 600,
   campaigns: [
     { id: 49, name: 'HEQS Builder Leads', paused: false, steps: [
-      { id: 7, type: 'InvitePerson', template: INVITE, template_hash: 'abc', hours: { days: ['mon', 'tue', 'wed', 'thu', 'fri'], windows: [['09:00', '17:00']] } },
+      { id: 7, type: 'InvitePerson', template: INVITE, template_hash: 'abc', batch: 25, wait_ms: 390 * 60000, hours: { days: ['mon', 'tue', 'wed', 'thu', 'fri'], windows: [['09:00', '17:00']] } },
       { id: 8, type: 'SendPersonToWebhook', template: null, hours: { days: ['mon', 'tue', 'wed', 'thu', 'fri'], windows: [['09:00', '17:00']] } },
     ] },
     { id: 50, name: 'Travel- Pre Retires', paused: true, steps: [
-      { id: 9, type: 'InvitePerson', template: INVITE, template_hash: 'def', hours: 'always' },
+      { id: 9, type: 'InvitePerson', template: INVITE, template_hash: 'def', batch: 10, wait_ms: 8 * 3600000, hours: 'always' },
     ] },
   ],
 };
@@ -132,7 +156,29 @@ check('show lists both campaigns, paused one marked, hours in words', async () =
   assert.ok(r.text.includes('"HEQS Builder Leads" - running'), r.text);
   assert.ok(r.text.includes('"Travel- Pre Retires" - PAUSED'));
   assert.ok(r.text.includes('Hi {firstName}, great to connect.'));
-  assert.ok(r.text.includes('Working hours: Mon-Fri 9am-5pm'));
+  assert.ok(r.text.includes('Days and times: Mon-Fri 9am-5pm'), r.text);
+  assert.ok(r.text.includes('How many: about 50 a day, so about 250 a week'), r.text);
+  assert.ok(r.text.includes("You're set to send about 250 invitations a week. LinkedIn's limit is about 100"), r.text);
+  assert.ok(r.text.includes('A quick refresher'));
+});
+
+check('pace change previews in a-day / a-week words, then queues batch + wait', async () => {
+  queued.length = 0;
+  const r = await tool.runSettings({ action: 'pace', campaign: 'HEQS', per_week: 100 }, 'Alex-Solti');
+  assert.ok(r.text.includes('NOW: about 50 a day, about 250 a week'), r.text);
+  assert.ok(r.text.includes('NEW: about 20 a day, about 100 a week'), r.text);
+  assert.strictEqual(queued.length, 0);
+  const r2 = await tool.runSettings({ action: 'pace', campaign: 'HEQS', per_week: 100, confirm: true }, 'Alex-Solti');
+  assert.ok(r2.text.startsWith('Sent.'), r2.text);
+  assert.strictEqual(queued[0].kind, 'pace');
+  assert.strictEqual(queued[0].payload.step_id, 7);
+  assert.ok(queued[0].payload.batch > 0 && queued[0].payload.wait_ms > 0);
+});
+
+check('pace over the limit is refused', async () => {
+  const r = await tool.runSettings({ action: 'pace', campaign: 'HEQS', per_week: 150 }, 'Alex-Solti');
+  assert.ok(r.text.includes('Not changed'), r.text);
+  assert.ok(r.text.includes('100'));
 });
 
 check('a message change previews first and queues nothing', async () => {

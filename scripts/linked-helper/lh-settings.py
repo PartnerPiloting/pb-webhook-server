@@ -10,6 +10,7 @@ change for this machine, which this script makes.
 
 HOW - the same data layer lh-campaigns.py and lh-topup.py drive (DevTools -> callWrite):
   message  people.actions.createActionVersion with the step's config, messageTemplate swapped
+  pace     the same call with coolDown + maxActionResultsPerIteration (batch size + wait) swapped
            (the same call the top-up uses to change its search link, proven 5 Nov 2026)
   hours    workingHours.saveWorkingHours per step (lh-campaigns.py `hours`, proven Sep 2026)
 Every change: pause the campaign if it is running, change, read it back from lh.db, and start it
@@ -79,6 +80,9 @@ def step_out(lhc, a, off):
         "template": t if isinstance(t, dict) else None,
         "template_hash": template_hash(t) if isinstance(t, dict) else None,
         "hours": lhc.rows_to_recipe_hours(a["hours"], off) if a.get("hours") else None,
+        # Pace: how many in one go, and the wait (ms) before the next go. -1 batch = no cap.
+        "batch": a.get("maxActionResultsPerIteration"),
+        "wait_ms": a.get("coolDown"),
     }
 
 
@@ -132,6 +136,29 @@ def change_message(lhc, c, li, d, job):
     return {"ok": True, "step_id": step["id"], "template_hash": template_hash(got)}
 
 
+def change_pace(lhc, c, li, d, job):
+    """Batch size + wait on one step (the invite). Same call as the message: a new action version."""
+    step = find_step(d, job.get("step_id"))
+    if not step:
+        return {"ok": False, "error": "that step is no longer in the campaign"}
+    batch = int(job["batch"])
+    wait_ms = int(job["wait_ms"])
+    if batch < 1 or batch > 500 or wait_ms < 0:
+        return {"ok": False, "error": "batch or wait out of range"}
+    config = {"actionType": step["actionType"], "overridePlatform": step.get("overridePlatform"),
+              "actionSettings": step.get("actionSettings") or {}, "coolDown": wait_ms,
+              "maxActionResultsPerIteration": batch}
+    r = lhc.live_call(c, "people.actions.createActionVersion", [{"actionId": step["id"], "config": config, "liAccount": li}])
+    if not r.get("ok"):
+        return {"ok": False, "error": "Linked Helper refused the new pace: " + str(r.get("error"))[:300]}
+    time.sleep(2)
+    with lhc.db(c) as con:
+        now = find_step(lhc.campaign_detail(con, d["id"]), step["id"])
+    if not now or int(now.get("maxActionResultsPerIteration") or 0) != batch or int(now.get("coolDown") or 0) != wait_ms:
+        return {"ok": False, "error": "Linked Helper took the change but the step does not show the new batch and wait"}
+    return {"ok": True, "step_id": step["id"], "batch": batch, "wait_ms": wait_ms}
+
+
 def change_hours(lhc, c, li, d, job):
     off = lhc.local_offset_minutes()
     schedule = lhc.build_working_hours(job["hours"], off)
@@ -166,7 +193,7 @@ def cmd_apply(path):
     with open(path, encoding="utf-8") as f:
         job = json.load(f)
     kind = job.get("kind")
-    if kind not in ("message", "hours"):
+    if kind not in ("message", "hours", "pace"):
         print(json.dumps({"ok": False, "error": "unknown change %r" % kind}))
         return 1
     lhc = load_campaigns_module()
@@ -189,7 +216,7 @@ def cmd_apply(path):
                 return 1
             paused_by_us = True
             time.sleep(2)
-        out = change_message(lhc, c, li, d, job) if kind == "message" else change_hours(lhc, c, li, d, job)
+        out = {"message": change_message, "hours": change_hours, "pace": change_pace}[kind](lhc, c, li, d, job)
     finally:
         if paused_by_us:
             r = lhc.live_call(c, "campaigns.setCampaignPaused", [cid, False, li])

@@ -96,6 +96,8 @@ function cleanSnapshot(body = {}) {
         template: x.template && typeof x.template === 'object' ? x.template : null,
         template_hash: s(x.template_hash, 40),
         hours: x.hours === undefined ? null : x.hours,
+        batch: Number.isFinite(Number(x.batch)) ? Number(x.batch) : null,
+        wait_ms: Number.isFinite(Number(x.wait_ms)) ? Number(x.wait_ms) : null,
       })),
     })),
   };

@@ -102,8 +102,8 @@ async function runSettings(args = {}, tenant = TENANT) {
     return { text: `${who}${asOf}\n\n${settings.describeCampaigns(snap, { campaign: pick.campaign || null })}${pending}${staleNote}` };
   }
 
-  if (action !== 'message' && action !== 'hours') {
-    return { text: 'action must be show, message, hours or status.', isError: true };
+  if (!['message', 'hours', 'pace'].includes(action)) {
+    return { text: 'action must be show, message, hours, pace or status.', isError: true };
   }
   const pick = settings.pickCampaign(snap, args.campaign);
   if (pick.error) return { text: who + pick.error, isError: true };
@@ -140,6 +140,26 @@ async function runSettings(args = {}, tenant = TENANT) {
       step.type === 'InvitePerson' ? 'Only people invited from now on get the new note - invitations already sent keep the old one.' : 'People who already got this message keep the old one; it applies to whoever the campaign reaches next.',
       restartWords,
     ];
+  } else if (action === 'pace') {
+    const p = settings.paceOf(camp);
+    if (!p) return { text: `${who}"${camp.name}" doesn't send invitations, so there's no pace to set.`, isError: true };
+    const othersWeek = (snap.campaigns || []).filter((x) => x.id !== camp.id && !x.paused)
+      .map(settings.paceOf).filter((x) => x && x.week !== null).reduce((a, x) => a + x.week, 0);
+    const plan = settings.planPace(args.per_week, p.step.hours, othersWeek);
+    if (!plan.ok) return { text: `${who}Not changed - ${plan.problem}.`, isError: true };
+    if (plan.batch === p.batch && plan.waitMin === p.waitMin) return { text: `${who}That's what it's set to already.` };
+    kind = 'pace';
+    payload = { step_id: p.step.id, batch: plan.batch, wait_ms: plan.waitMin * 60000 };
+    summary = `About ${plan.week} invitations a week`;
+    const nowLine = p.week === null ? 'no limit set - as many as LinkedIn allows' : `about ${settings.aDay(p)} a day, about ${p.week} a week`;
+    preview = [
+      `${who}Here's the change to how many "${camp.name}" sends:`,
+      `NOW: ${nowLine}`,
+      `NEW: about ${settings.aDay(plan)} a day, about ${plan.week} a week (${settings.hoursWords(p.step.hours)})`,
+      othersWeek ? `With your other running campaigns that makes about ${othersWeek + plan.week} a week in total - LinkedIn allows about ${settings.WEEKLY_LIMIT}.` : null,
+      `Behind the scenes that's ${plan.batch} at a time with ${settings.waitWords(plan.waitMin)} between - you don't need to remember that.`,
+      restartWords,
+    ].filter(Boolean);
   } else {
     const h = settings.checkHours(args.hours);
     if (!h.ok) return { text: `${who}Not changed - ${h.problem}.`, isError: true };
@@ -204,8 +224,8 @@ async function emailFailure(clientId, row, deps = {}) {
 }
 
 const DESCRIPTION =
-  "See and change the MESSAGE a Linked Helper campaign sends (the invitation note, or the message after someone accepts) and the WORKING HOURS it runs - without opening the Linked Helper machine. The door for \"show me my campaign message\", \"what does my invite say?\", \"change my message\", \"tweak my connection note\", \"what are my working hours?\", \"change my hours to 8 till 6\", \"run on Saturdays too\", \"did my change go through?\". " +
-  "action: 'show' (default) = what each campaign sends and when it runs, from the machine's latest report - show it as it reads; 'message' = a new message for one step (pass the WHOLE new message as message, with names written {firstName} exactly as shown); 'hours' = new working hours (hours = a list of {days, from, to} in the person's own local time, 24-hour clock: days is 'weekdays', 'weekends', 'all' or a list like ['mon','tue']); 'status' = what happened to the latest change. " +
+  "See and change what a Linked Helper campaign does - the MESSAGE it sends (the invitation note, or the message after someone accepts), the DAYS AND TIMES it runs, and HOW MANY invitations a week it sends - without opening the Linked Helper machine. The door for \"show me my campaign settings\", \"show me my campaign message\", \"what does my invite say?\", \"change my message\", \"tweak my connection note\", \"what are my working hours?\", \"change my hours to 8 till 6\", \"run on Saturdays too\", \"how many am I sending?\", \"slow it down\", \"send 50 a week\", \"did my change go through?\". " +
+  "action: 'show' (default) = every campaign's days, times, how many a day and a week, and its message, from the machine's latest report, with a one-line total against LinkedIn's limit of about 100 a week - show it as it reads, then ask if they'd like to change any of it; 'message' = a new message for one step (pass the WHOLE new message as message, with names written {firstName} exactly as shown); 'hours' = new days and times (hours = a list of {days, from, to} in the person's own local time, 24-hour clock: days is 'weekdays', 'weekends', 'all' or a list like ['mon','tue']); 'pace' = how many a week (per_week, a number up to 100 - Wingguy works out the bunch size and wait itself, never ask them for those); 'status' = what happened to the latest change. " +
   "ALWAYS PREVIEW FIRST: call 'message' or 'hours' WITHOUT confirm, show the person the NOW / NEW it returns, and only after they say yes call again with exactly the same arguments plus confirm:true. Never pass confirm:true on the first call or on your own judgement. " +
   "Help them write the message if they ask - keep their voice, keep {firstName}. The tool refuses a message that is too long for LinkedIn, uses a name placeholder Linked Helper won't fill, or uses one of their banned words - pass the reason on and offer a fix. The machine pauses the campaign, changes it, checks it took, and starts it again only if it was running. " +
   "Only works for a machine Wingguy looks after; someone running Linked Helper on their own computer is told so. No client named = the caller's own campaigns; a coach can name one of their own clients. Never tell anyone to open the machine to do this, never go to Airtable.";
@@ -215,7 +235,8 @@ const TOOL_DEFS = [
     name: 'wingguy_campaign_settings',
     description: DESCRIPTION,
     zodSchema: {
-      action: z.enum(['show', 'message', 'hours', 'status']).optional().describe("show (default), message, hours or status."),
+      action: z.enum(['show', 'message', 'hours', 'pace', 'status']).optional().describe("show (default), message, hours, pace or status."),
+      per_week: z.number().optional().describe('pace only: how many invitations a week they want, up to 100.'),
       campaign: z.string().optional().describe('The campaign name, when they have more than one.'),
       step: z.string().optional().describe("message only, when the campaign sends two: 'invitation' or 'after they accept'."),
       message: z.string().optional().describe('message only: the WHOLE new message, names as {firstName}.'),
@@ -230,7 +251,8 @@ const TOOL_DEFS = [
     jsonSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['show', 'message', 'hours', 'status'], description: 'show (default), message, hours or status.' },
+        action: { type: 'string', enum: ['show', 'message', 'hours', 'pace', 'status'], description: 'show (default), message, hours, pace or status.' },
+        per_week: { type: 'number', description: 'pace only: how many invitations a week they want, up to 100.' },
         campaign: { type: 'string', description: 'The campaign name, when they have more than one.' },
         step: { type: 'string', description: "message only, when the campaign sends two: 'invitation' or 'after they accept'." },
         message: { type: 'string', description: 'message only: the WHOLE new message, names as {firstName}.' },
