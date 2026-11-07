@@ -424,4 +424,37 @@ router.post('/webhooks/lh-machine/:clientId/topups', express.json({ limit: '16kb
   return res.json({ ok: true, live: !!row, status: row ? row.status : null });
 });
 
+/**
+ * Campaign message + working hours (services/lhCampaignSettingsStore.js, 7 Nov 2026). Polled by
+ * lh-clipboard.py on the same rule as top-ups. settings-snapshot = the machine's current message +
+ * hours for every live campaign (sent when it changes); settings-changes GET hands over the one
+ * change the owner confirmed in Claude, POST is the machine saying how it went.
+ */
+router.post('/webhooks/lh-machine/:clientId/settings-snapshot', express.json({ limit: '256kb' }), async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  const saved = await require('../services/lhCampaignSettingsStore').saveSnapshot(client.clientId, req.body || {});
+  return res.json({ ok: saved });
+});
+
+router.get('/webhooks/lh-machine/:clientId/settings-changes', async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  const change = await require('../services/lhCampaignSettingsStore').takeForMachine(client.clientId);
+  if (change) log.info(`LH-MACHINE ${client.clientId} collected settings change ${change.id} (${change.kind}, campaign ${change.campaign_id})`);
+  return res.json({ ok: true, change });
+});
+
+router.post('/webhooks/lh-machine/:clientId/settings-changes', express.json({ limit: '32kb' }), async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const row = await require('../services/lhCampaignSettingsStore').reportFromMachine(client.clientId, clip(body.id, 40), body);
+  if (row && row.status === 'failed') {
+    require('../services/wingguyCampaignSettingsMcp').emailFailure(client.clientId, row)
+      .catch((e) => log.error(`LH-MACHINE settings failure email for ${client.clientId} failed: ${e.message}`));
+  }
+  return res.json({ ok: true, status: row ? row.status : null });
+});
+
 module.exports = router;

@@ -66,6 +66,8 @@ echo "== 6. campaign top-ups (lh-topup.py + the clipboard agent that collects th
 # lh-topup.py imports lh-campaigns.py; Guy's own machine never had the builder installed, so both go on.
 install -m 755 "$SRC_DIR/lh-campaigns.py" /usr/local/bin/lh-campaigns.py
 install -m 755 "$SRC_DIR/lh-topup.py" /usr/local/bin/lh-topup.py
+# Campaign message + working hours from Claude (7 Nov 2026) - run by the same clipboard agent.
+install -m 755 "$SRC_DIR/lh-settings.py" /usr/local/bin/lh-settings.py
 # Guy's own machine (the first build, 1 Sep 2026) predates the clipboard agent and never had the
 # service - the top-ups ride on that agent, so a machine without the unit gets it here.
 if [ ! -f /etc/systemd/system/lh-clipboard.service ]; then

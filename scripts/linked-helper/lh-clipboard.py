@@ -38,12 +38,14 @@ middle of every move. What it will and will not keep:
   - a web page is refused and said to be one: that is what a link that needs a sign-in returns.
 The outcome is reported back, because "queued" is not "arrived" and only this machine knows.
 """
+import hashlib
 import os
 import json
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -488,6 +490,103 @@ def topup_job(conf, job):
         topup_busy.release()
 
 
+# ------------------------------------------------------------------- campaign settings
+#
+# CAMPAIGN MESSAGE + WORKING HOURS (Guy, 7 Nov 2026). Clients want to see the message their
+# campaign sends and the hours it runs, and change them, without opening this machine. Two parts,
+# on the same polling rule as everything above:
+#   - a SNAPSHOT of every live campaign's steps (message + hours) goes to the server whenever it
+#     changes, so "show me my campaign message" is answered at once from the server;
+#   - a CHANGE the owner confirmed in Claude waits on the server; lh-settings.py makes it (pause,
+#     change, read back, start again only if it was running) and the outcome is reported.
+
+SETTINGS_SCRIPT = next((p for p in ("/usr/local/bin/lh-settings.py",
+                                    os.path.join(os.path.dirname(os.path.abspath(__file__)), "lh-settings.py"))
+                        if os.path.exists(p)), "/usr/local/bin/lh-settings.py")
+SNAPSHOT_EVERY_SECONDS = 300          # look for changes made inside Linked Helper this often
+SNAPSHOT_RESEND_SECONDS = 6 * 3600    # send an unchanged snapshot again this often, so its date stays fresh
+settings_busy = threading.Lock()
+snapshot_state = {"hash": None, "sent_at": 0.0, "looked_at": 0.0}
+
+
+def settings_cmd(*args):
+    """Run lh-settings.py and parse its one JSON line. Never raises."""
+    try:
+        r = subprocess.run([sys.executable, SETTINGS_SCRIPT, *[str(a) for a in args]],
+                           capture_output=True, text=True, timeout=300)
+        line = (r.stdout or "").strip().splitlines()
+        return json.loads(line[-1]) if line else {"ok": False, "error": "no output from lh-settings.py: %s" % (r.stderr or "")[-200:]}
+    except Exception as e:
+        return {"ok": False, "error": "lh-settings.py failed: %s" % str(e)[:200]}
+
+
+def settings_post(conf, path, body):
+    url = conf.get("REPORT_URL", "").rstrip("/") + path
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={
+        "Content-Type": "application/json", "x-lh-machine-secret": conf.get("REPORT_SECRET", "")})
+    try:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
+            r.read()
+        return True
+    except Exception as e:
+        print(f"settings post to {path} failed (non-fatal): {e}", flush=True)
+        return False
+
+
+def send_snapshot(conf, force=False):
+    """Read every campaign's message + hours; send it when it changed (or is getting old)."""
+    now = time.time()
+    if not force and now - snapshot_state["looked_at"] < SNAPSHOT_EVERY_SECONDS:
+        return
+    snapshot_state["looked_at"] = now
+    snap = settings_cmd("snapshot")
+    if not snap.get("ok"):
+        return
+    body = dict(snap)
+    body.pop("at", None)
+    h = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+    if not force and h == snapshot_state["hash"] and now - snapshot_state["sent_at"] < SNAPSHOT_RESEND_SECONDS:
+        return
+    if settings_post(conf, "/settings-snapshot", snap):
+        snapshot_state.update(hash=h, sent_at=now)
+
+
+def collect_settings_change(conf):
+    url = conf.get("REPORT_URL", "").rstrip("/") + "/settings-changes"
+    req = urllib.request.Request(url, headers={"x-lh-machine-secret": conf.get("REPORT_SECRET", "")})
+    try:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
+            return json.loads(r.read().decode()).get("change") or None
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            print(f"settings poll rejected ({e.code})", flush=True)
+    except Exception as e:
+        print(f"settings poll failed (non-fatal): {e}", flush=True)
+    return None
+
+
+def settings_job(conf, job):
+    if not settings_busy.acquire(blocking=False):
+        return
+    try:
+        fd, path = tempfile.mkstemp(suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(job, f)
+        try:
+            out = settings_cmd("apply", path)
+        finally:
+            os.remove(path)
+        print("settings change %s (%s): %s" % (job.get("id"), job.get("kind"),
+                                                 "done" if out.get("ok") else out.get("error")), flush=True)
+        settings_post(conf, "/settings-changes", dict(out, id=job.get("id")))
+        send_snapshot(conf, force=True)
+    except Exception as e:
+        settings_post(conf, "/settings-changes", {"id": job.get("id"), "ok": False,
+                                                  "error": "the machine's change step failed part-way (%s)" % str(e)[:160]})
+    finally:
+        settings_busy.release()
+
+
 def main():
     conf = load_conf()
     if not conf.get("REPORT_URL"):
@@ -525,6 +624,13 @@ def main():
                     topup = collect_topup(conf)
                     if topup:
                         threading.Thread(target=topup_job, args=(conf, topup), daemon=True).start()
+                # Campaign message + hours: a waiting change first, then the snapshot (its own pace).
+                if not settings_busy.locked() and not topup_busy.locked():
+                    change = collect_settings_change(conf)
+                    if change:
+                        threading.Thread(target=settings_job, args=(conf, change), daemon=True).start()
+                    else:
+                        send_snapshot(conf)
         except Exception as e:
             # The loop must outlive anything - a dead agent is a silently broken clipboard.
             print(f"cycle error (continuing): {e}", flush=True)
