@@ -190,14 +190,20 @@ function campaignLines(c) {
  * Guy, 2 Nov 2026: the old email opened with how it works ("Clients with 'Monday Campaign Email'
  * ticked were sent their own section") and he had to dig for the jobs. Detail stays underneath.
  */
-function actionList(rows, { now, skipped = [] }) {
+function actionList(rows, { now, skipped = [], sent = [] }) {
   const todo = [];
   const glance = [];
-  for (const t of skipped) todo.push({ rank: -2, text: `Their own email didn't go: ${t}` });
+  // "No live campaigns" (everything paused, e.g. Steve) is not a job for Guy - it would repeat weekly.
+  for (const t of skipped) if (!/no live campaigns/.test(t)) todo.push({ rank: -2, text: `Their own email didn't go: ${t}` });
+  // Guy, 9 Nov 2026: "I don't want to babysit them anymore except for myself." A client who got their
+  // own Monday email has their numbers and the top-up link - their campaigns are theirs. Guy sees
+  // campaign lines only for his own and for anyone whose email did not go, so nothing falls through.
+  const gotOwn = new Set(sent.map((s) => String(s).replace(/ \(dry run.*\)$/, '')));
   for (const r of rows) {
     if (r.reportedAt && now - Date.parse(r.reportedAt) > STALE_MS) {
       todo.push({ rank: -1, text: `${r.clientName}: their machine hasn't reported since ${dateWords(r.reportedAt)} - check it is running.` });
     }
+    if (gotOwn.has(r.clientName)) continue;
     for (const c of (r.campaigns || []).map(campaignLines)) {
       if (c.topUp) {
         const left = c.waiting ? `${plural(c.waiting, 'person', 'people')} left, ${weeksWords(c.weeks)}` : 'nobody left to invite';
@@ -226,14 +232,16 @@ function dateWords(iso, timeZone = 'Australia/Brisbane') {
 function buildDigest(rows, { now = Date.now(), date = '', sent = [], skipped = [] } = {}) {
   const topUps = [];
   const sorted = [...rows].sort((a, b) => String(a.clientName).localeCompare(String(b.clientName)));
+  const gotOwn = new Set(sent.map((s) => String(s).replace(/ \(dry run.*\)$/, '')));
   for (const r of sorted) {
+    if (gotOwn.has(r.clientName)) continue; // their top-up is in their own email
     (r.campaigns || []).map(campaignLines).filter((c) => c.topUp).forEach((c) => topUps.push(`${r.clientName} - ${c.name}`));
   }
 
   // Guy, 5 Nov 2026: the per-client detail had become noise - the only lines he ever acted on were
   // "X has nobody left" and "Y's email didn't go", and any client's numbers are a question away in
   // chat (wingguy_campaign_numbers). So the email is the action list and the sent/skipped line, nothing else.
-  const { todo, glance } = actionList(sorted, { now, skipped });
+  const { todo, glance } = actionList(sorted, { now, skipped, sent });
   const todoHead = todo.length ? 'What you need to do:' : 'Nothing to do this week - every campaign has people for at least 3 more weeks.';
   const sentLine = sent.length ? `Sent their own email: ${sent.join(', ')}.` : 'No client was sent their own email this week.';
   const tail = `${rows.length} client machine${rows.length === 1 ? '' : 's'} reported. Any client's numbers: ask Chat for "Roland's campaign numbers".`;

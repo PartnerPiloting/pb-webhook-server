@@ -129,6 +129,25 @@ check("Guy's digest OPENS with what to do, most urgent first, then the detail (2
   assert.ok(calm.text.startsWith('Nothing to do this week'), calm.text.slice(0, 60));
 });
 
+check("a client who got their own email drops out of Guy's jobs; one whose email didn't go stays (9 Nov 2026)", () => {
+  const now = Date.parse('2026-11-09T07:00:00+10:00');
+  const fresh = '2026-11-09T06:55:00+10:00';
+  const out = { ...frac, id: 5, name: 'Legal ICP', waiting: 0, invited_7d: 97, invited_28d: 380 };
+  const paused = { ...frac, id: 6, name: 'Campaign 1', paused: true, waiting: 773 };
+  const d = w.buildDigest([
+    { clientId: 'Roland', clientName: 'Roland Illyes', reportedAt: fresh, campaigns: [out, paused] },
+    { clientId: 'Rick', clientName: 'Rick Wong', reportedAt: fresh, campaigns: [{ ...out, name: 'Bus Advisor' }] },
+    { clientId: 'Guy-Wilson', clientName: 'Guy Wilson', reportedAt: fresh, campaigns: [planners] },
+  ], { now, date: '2026-11-09', sent: ['Roland Illyes'], skipped: ['Rick Wong - no email address on their record', 'Steve Nelson - no live campaigns'] });
+  assert.ok(!d.text.includes('Roland Illyes: new search'), 'Roland has his own email');
+  assert.ok(!d.text.includes('Campaign 1'), "Roland's paused campaign is his too");
+  assert.ok(d.text.includes('Guy Wilson: new search'), "Guy's own stays");
+  assert.ok(d.text.includes('Rick Wong: new search'), "Rick's email didn't go, so his top-up stays with Guy");
+  assert.ok(d.text.includes("Their own email didn't go: Rick Wong"), 'and why');
+  assert.ok(!d.text.includes('Steve Nelson'), 'all-paused is not a weekly job');
+  assert.deepStrictEqual(d.topUps.sort(), ['Guy Wilson - Contact Financial Planners', 'Rick Wong - Bus Advisor']);
+});
+
 check("the client's own email: reminder link on top, their campaigns, a top-up exit only when needed, Guy's sign-off (5 Nov 2026)", () => {
   const e = w.clientEmail({ clientFirstName: 'Rick', clientName: 'Rick Wong', coachName: 'Guy Wilson', campaigns: [planners, frac], topUpLink: 'https://knowaguy.com.au/top-up?c=Rick&k=abc' });
   assert.strictEqual(e.subject, 'Your campaign numbers this week - time to top up');
