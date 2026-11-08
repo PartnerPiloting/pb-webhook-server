@@ -551,7 +551,11 @@ function buildDigest(results, { date, dryRun = false }) {
   lines.push(`Learning from edits - ${date}${dryRun ? ' (DRY RUN - nothing changed)' : ''}`, '');
   for (const r of changed) {
     lines.push(`${r.clientName}:`);
-    for (const c of r.changes) lines.push(`  - ${c.ruleKey}${c.isNew ? ' (new)' : ''}: "${c.instruction}" (${c.pairIds.length} edits, ${c.people} people)${c.emailed === false ? ' - NOT emailed' : ''}`);
+    for (const c of r.changes) {
+      lines.push(`  - ${c.ruleKey}${c.isNew ? ' (new)' : ''}: "${c.instruction}" (${c.pairIds.length} edits, ${c.people} people)${c.emailed === false ? ' - NOT emailed' : ''}`);
+      // Guy's own changes carry their undo link here - he gets no separate "picked up" note.
+      if (r.inDigest && c.undoToken) lines.push(`    Not right? Undo it: ${undoUrl(c.undoToken)}`);
+    }
   }
   if (!changed.length) lines.push('No clear patterns this week - nothing changed.');
   const looked = results.filter((r) => !r.skipped && !r.changes.length);
@@ -595,7 +599,12 @@ async function runWeekly({ force = false, dryRun = false, tenant, quiet = false,
     try {
       // A dry run does not even settle email drafts (that files pairs and closes ledger rows).
       const r = await learnForClient(c, { dryRun, deps: dryRun ? { skipSettle: true, ...deps } : deps });
-      if (!dryRun && r.changes.length) {
+      // Guy's own changes go in his digest only - a second "picked up something" note to the same
+      // inbox was a duplicate (9 Nov 2026).
+      const admin = String(process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim().toLowerCase();
+      if (!dryRun && !quiet && r.changes.length && String(c.clientEmailAddress || '').trim().toLowerCase() === admin) {
+        r.inDigest = true;
+      } else if (!dryRun && r.changes.length) {
         try { const e = await emailClient(c, r.changes, deps); r.changes.forEach((x) => { x.emailed = e.sent; }); }
         catch (e) { r.changes.forEach((x) => { x.emailed = false; }); log.error(`edit-learner: email to ${c.clientId} failed: ${e.message}`); }
       }

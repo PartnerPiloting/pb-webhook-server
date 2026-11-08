@@ -65,6 +65,10 @@ function isBounceMessage(m) {
   if (!m) return false;
   const from = String(m.fromEmail || '').trim();
   const subject = String(m.subject || '');
+  // A "Delay" notice means the mail is still being retried - it is not a bounce. David Gould was
+  // told Greg Pritchard's mailbox did not exist off a "Delivery Status Notification (Delay)" (8 Nov
+  // 2026). If it really fails, the Failure notice that follows is caught then.
+  if (/\bdelay(ed)?\b/i.test(subject)) return false;
   return BOUNCE_SENDER_RE.test(from) || BOUNCE_SUBJECT_RE.test(subject);
 }
 
@@ -201,11 +205,9 @@ async function sweepTenant(coach, { since, mailProvider, inbound, pool, send, no
         const textBody = bodyToText(html);
         const to = String(coach.clientEmailAddress || '').trim() || null;
         await send(subject, html, to, { text: textBody });
-        // Guy gets a copy only when the address is a lead's - that is where a glued address or a
-        // mis-sent invite of ours shows up. A client's own mail to a dead address (Alex to his BNI
-        // chapter, 27 Oct 2026) is theirs to fix, and copying it to Guy was just noise.
-        const admin = String(process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim().toLowerCase();
-        if (lead && to && to.toLowerCase() !== admin) await send(`[${coach.clientId}] ${subject}`, html, null, { text: textBody });
+        // No copy to Guy (9 Nov 2026): the client gets the alert and it is theirs to fix - his copy of
+        // David Gould's bounce was inbox noise. A client with no address on file still reaches Guy,
+        // because send() falls back to the admin address.
         await pool.query(`UPDATE wingguy_bounce_alerts SET lead_record_id = $4, lead_name = $5 WHERE coach_client_id = $1 AND message_id = $2 AND address = $3`,
           [coach.clientId, String(m.id), address, lead ? lead.id : null, leadName || null]);
         alerted++;

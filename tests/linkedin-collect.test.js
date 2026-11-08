@@ -112,7 +112,7 @@ const iso = (ms) => new Date(ms).toISOString();
     assert.strictEqual(removed, false);
     assert.ok(db.calls.some((c) => /notified_ending_at/.test(c.sql)));
   });
-  await check('day 30: last collect and top-up FIRST, then switch off, clear the record, email', async () => {
+  await check('day 30: last collect and top-up FIRST, then switch off, clear the record - and no email when it all went to plan (9 Nov 2026)', async () => {
     const db = monthDb({ tenant_id: 'Pat-Client', account_id: 'li-1', state: 'complete', messages: 900, notified_ending_at: iso(T0 - 5 * D) }); lc._setPool(db);
     const order = []; const mails = []; let cleared = null;
     const r = await lc.monthEnd(conn(31, { reconnect: 'Yes' }), { nowMs: T0, deps: {
@@ -123,10 +123,11 @@ const iso = (ms) => new Date(ms).toISOString();
       updateMaster: async (f) => { order.push('clear record'); cleared = f; },
       sendAlertEmail: async (s, h, to, o) => { order.push('email'); mails.push(o.text); },
     } });
-    assert.deepStrictEqual(order, ['collect relations=true', 'read', 'leads', 'switch off li-1', 'clear record', 'email']);
+    assert.deepStrictEqual(order, ['collect relations=true', 'read', 'leads', 'switch off li-1', 'clear record']);
     assert.deepStrictEqual(cleared, { 'Unipile LinkedIn Account ID': null });
     assert.strictEqual(r.ok, true);
-    assert.ok(mails[0].includes('read 12 conversations and added 4 people'));
+    assert.strictEqual(mails.length, 0);
+    assert.ok(r.lastTopUp.includes('read 12 conversations and added 4 people'));
   });
   await check('it will never switch off the mail-and-calendar connection', async () => {
     lc._setPool(monthDb(null));

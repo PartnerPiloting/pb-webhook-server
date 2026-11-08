@@ -416,7 +416,10 @@ async function sendClientEmails(rows, deps = {}, now = Date.now()) {
       const sendClient = deps.sendClientEmail || require('./emailNotificationService').sendMailgunEmail;
       await sendClient({
         from: addr.includes('<') ? addr : `${coachName} <${addr}>`,
-        to, cc: coachEmail, 'h:Reply-To': coachEmail,
+        to, 'h:Reply-To': coachEmail,
+        // A coach is copied - except Guy, whose Monday campaign numbers already cover every client
+        // (a cc of Roland's email was a duplicate in his inbox, 9 Nov 2026). Replies still reach him.
+        ...(coachEmail.toLowerCase() === String(process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com').trim().toLowerCase() ? {} : { cc: coachEmail }),
         subject: cm.subject, text: cm.text, html: cm.html,
       });
       sent.push(r.clientName);

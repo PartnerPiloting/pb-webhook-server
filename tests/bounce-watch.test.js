@@ -62,6 +62,10 @@ check('4. an ordinary email is not a bounce', () => {
   assert.ok(!bw.isBounceMessage({ fromEmail: 'craig.carolan@infocus.com.au', subject: 'Re: catching up' }));
   assert.ok(!bw.isBounceMessage({ fromEmail: 'noreply@calendar.google.com', subject: 'Accepted: Craig Carolan & Guy Wilson' }));
 });
+check('4c. a Delay notice is not a bounce - the mail is still being retried (David Gould, 8 Nov 2026)', () => {
+  assert.ok(!bw.isBounceMessage({ fromEmail: 'mailer-daemon@googlemail.com', subject: 'Delivery Status Notification (Delay)' }));
+  assert.ok(!bw.isBounceMessage({ fromEmail: 'postmaster@outlook.com', subject: 'Delivery delayed: Catch up' }));
+});
 
 // ── A fake world for the sweep ───────────────────────────────────────────────────────────────────
 function fakeWorld() {
@@ -126,8 +130,7 @@ function fakeWorld() {
     assert.ok(/Craig Carolan/.test(coachMail.subject), 'subject names the lead (matched via the corrected address)');
     assert.ok(/record already has a different address/.test(coachMail.html) && /craig\.carolan@infocus\.com\.au<\/strong>/.test(coachMail.html), 'body says the record is already right and points at the invite');
     assert.ok(!/Fix it on Craig Carolan's record/.test(coachMail.html), 'no "fix the record" step when the record is already right');
-    const adminCopy = w.sent.find((s) => s.to === null);
-    assert.ok(adminCopy && /^\[guy\]/.test(adminCopy.subject), 'Guy gets a copy tagged with the tenant');
+    assert.strictEqual(w.sent.filter((s) => s.to === null).length, 0, 'no copy to Guy - the client has it (9 Nov 2026)');
     const before = w.sent.length;
     const r2 = await bw.sweepBounces(deps);
     assert.strictEqual(r2.alerted, 0, 'already-reported bounce is not re-alerted');

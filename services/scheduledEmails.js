@@ -239,6 +239,7 @@ function rowOut(r) {
     clientId: r.client_id || null, parties: r.parties ? r.parties.split(',') : [], note: r.note || null,
     sendAt: new Date(r.send_at).getTime(), status: r.status, holdReason: r.hold_reason || null, result: r.result || null,
     messageId: r.message_id || null, createdAt: new Date(r.created_at).getTime(), sentAt: r.sent_at ? new Date(r.sent_at).getTime() : null,
+    updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : null,
   };
 }
 
@@ -741,13 +742,17 @@ async function sendSummary(tenantId, now, deps = {}) {
     for (const r of rows.filter((x) => x.status === 'sent')) {
       for (const p of [...r.to, ...r.cc]) {
         try {
-          const res = await mp.findMessages(coach, { from: p.email, receivedAfter: Math.floor(r.sentAt / 1000), limit: 1 });
+          // Only replies from the last day - an old reply was already in an earlier summary.
+          const res = await mp.findMessages(coach, { from: p.email, receivedAfter: Math.floor(Math.max(r.sentAt, now - DAY) / 1000), limit: 1 });
           if (res.ok && res.messages && res.messages.length) replies.push(`${p.name || p.email} replied to "${r.subject}"`);
         } catch (_) { /* skip */ }
       }
     }
   }
-  if (!sentToday.length && !held.length && !replies.length) return false;
+  // Only when something CHANGED today (Guy, 9 Nov 2026: the same "6 held" came three days running -
+  // noise). A held email already reported stays on the inbox tool's "waiting for your OK" list.
+  const newlyHeld = held.filter((r) => !r.updatedAt || r.updatedAt > now - DAY);
+  if (!sentToday.length && !newlyHeld.length && !replies.length) return false;
   const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const list = (title, items) => (items.length ? `<p><b>${title}</b></p><ul>${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '');
   const away = await getAway(tenantId);

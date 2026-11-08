@@ -458,7 +458,9 @@ async function monthEnd(client, { nowMs = Date.now(), dryRun = false, deps = {} 
     await update({ 'Unipile LinkedIn Account ID': null });
     await stamp('disconnected_at');
     await db.query("UPDATE linkedin_collect_status SET state = 'complete' WHERE tenant_id = $1", [tenantId]);
-    await mail('ended', { lastTopUp });
+    // Guy was already told the end date a few days before ("ends on ..."). A switch-off that went to
+    // plan needs nothing from him, so it is silent (9 Nov 2026); only a failed last collect is mailed.
+    if (!last.ok) await mail('ended', { lastTopUp });
     return { step, ok: true, unipile: outcome, lastTopUp };
   } catch (e) { return { step, ok: false, error: e.message }; }
 }

@@ -372,6 +372,7 @@ async function runDailyCheck({ force = false } = {}) {
         alertEmailHtml(landmarks, thin),
       );
       emailed = !!(r && r.success);
+      if (emailed && !force) await setState(client, 'last_issue', now.date);
       log.info(`wingguy-monitor daily: ${landmarks.length} landmark + ${thin.length} thin finding(s), email ${emailed ? 'sent' : 'FAILED'}`);
     } else {
       log.info('wingguy-monitor daily: all green, no email');
@@ -387,6 +388,12 @@ async function runWeeklyHeartbeat({ force = false } = {}) {
     if (!force) {
       if (now.weekday !== 'Mon' || now.hour < RUN_HOUR) return { ran: false, reason: 'not Monday morning' };
       if ((await getState(client, 'last_heartbeat')) === now.date) return { ran: false, reason: 'already sent today' };
+      // The issue email already proves the monitor is alive - an "all green" beside it, in the same
+      // minute, contradicted it (9 Nov 2026).
+      if ((await getState(client, 'last_issue')) === now.date) {
+        await setState(client, 'last_heartbeat', now.date);
+        return { ran: false, reason: 'issue email sent today' };
+      }
     }
     const sum = await weeklySummary(client);
     const r = await sendAlertEmail(`Wingguy monitor: all green this week (${now.date})`, heartbeatEmailHtml(sum));
