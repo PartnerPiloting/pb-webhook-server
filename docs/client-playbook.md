@@ -1479,6 +1479,11 @@ notes of your meetings.
 
 Six steps, about ten minutes, and the one that trips people up is number three.
 
+**First, check where your calls happen.** Fathom is solid on Zoom. On Google Meet and Teams it is
+not - it has dropped out of calls part way through, and on Teams it has never recorded for me at
+all. So if most of your calls are on Meet or Teams, tell me before you set this up - there's a
+better recorder for you, and we'll sort it together.
+
 Signing up is not the same as being set up. Fathom records through a small program running on your
 computer - the desktop app. Without it you have an account that records nothing, and you don't find
 out until you go looking for a transcript that isn't there. That's exactly how it went for one of the
@@ -1488,8 +1493,9 @@ group: account made, calendar connected, no app, and three weeks of calls that n
    That matters - it's the calendar Fathom watches to know which meetings to join.
 2. **Connect your calendar** when it asks. If it doesn't ask, it's in Settings.
 3. **Install the desktop app.** In Settings, scroll down to Fathom apps and click Download for
-   Windows (or Mac). Run the installer. When it's right, the Fathom icon is sitting in your system
-   tray, down by the clock. Not there means nothing gets recorded - so check.
+   Windows or Download for Mac. Run the installer. When it's right, you can see the Fathom icon -
+   on Windows it's in the system tray, down by the clock; on a Mac it's in the menu bar, top right
+   of the screen near the clock. Not there means nothing gets recorded - so check.
 4. **Admit it.** On a Zoom call, "your name's Fathom Notetaker" turns up in the waiting room. Let it
    in. On someone else's call, ask the host to - most don't blink.
 5. **Connect it to Wingguy.** In Fathom: Settings, scroll down to API Access, Add +, Generate API
