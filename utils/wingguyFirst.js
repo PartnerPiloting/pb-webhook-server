@@ -37,7 +37,7 @@ function load() {
  */
 function runSheetRows(texts = load()) {
   return [
-    { key: 'preferences', label: 'Paste this at the END of the preferences box (Settings, then Customize) - never replace what is there', text: texts.preferences },
+    { key: 'preferences', label: 'Paste this at the END of the preferences box (Settings, then Your Claude, the Instructions box) - never replace what is there', text: texts.preferences },
     { key: 'preferences_short', label: 'If the box is full, the short form instead', text: texts.preferences_short },
     { key: 'memory_pointer', label: 'Type this in the chat, word for word', text: texts.memory_pointer },
     { key: 'canary', label: `Then open a NEW chat and type this - the first line of the reply must read "${texts.canary.first_line}"`, text: texts.canary.phrase },

@@ -51,7 +51,7 @@ in the Master Clients Base → "Portal Token" field).
 > and it answers from that before it thinks to ask Wingguy. Left alone, one day it gives you a
 > confident answer that's a month out of date, and you can't tell. Three quick things fix it:
 >
-> 1. Open **Settings** → **Customize** and find the preferences box. Paste this at the **end** of
+> 1. Open **Settings** → **Your Claude** and find the **Instructions** box. Paste this at the **end** of
 >    whatever is already there:
 >
 >    I use Wingguy - Guy Wilson's I Know A Guy system - through the Wingguy connector. For
@@ -59,7 +59,9 @@ in the Master Clients Base → "Portal Token" field).
 >    follow-ups, meetings booked through it, or how any of it works or is set up: call the
 >    Wingguy tools first, before answering - even if you think you already know the answer.
 >    Wingguy has the current version; anything you remember may be out of date. If Wingguy
->    doesn't cover it, say so and suggest I ask Guy.
+>    doesn't cover it, say so and suggest I ask Guy. Before writing any message, email or
+>    LinkedIn reply for me, read my Wingguy instructions first and follow them, and make the
+>    draft through Wingguy.
 >
 >    If the box is full, use this shorter line instead:
 >

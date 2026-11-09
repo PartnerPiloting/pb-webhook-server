@@ -71,9 +71,27 @@ async function runPreflight(clientId) {
         : `Active · ${roundTrip} · base ${client.airtableBaseId} · ${tz}`);
   } catch (e) { step(0, 'record ready', OWED, `probe failed: ${e.message}`); }
 
-  // ---- STEP 1: connector in their Claude (manual proof) -----------------------
-  step(1, 'connector', MANUAL,
-    `their URL = https://pb-webhook-server.onrender.com/mcp2/${client.portalToken || '(no token)'} - proof is Wingguy answering in THEIR Claude; new tools need Refresh Tool List + fresh chat`);
+  // ---- STEP 1: connector + "Wingguy first" in their Claude ----------------------
+  // Proved, not ticked (Guy, 9 Nov 2026: "make it unavoidable"). The "Wingguy first" check is a NEW
+  // chat in the client's own Claude typing the canary phrase (content/wingguy-first.json). If their
+  // Claude asks Wingguy, wingguy_learn serves the canary's topic and stamps it against this client -
+  // so a stamp is proof the connector works AND their Claude goes to Wingguy for it. No stamp =
+  // OWED, and the step names exactly what to do. It cannot see the Instructions box itself (nothing
+  // on our side can), so the step text still names the paste.
+  const connectorUrl = `https://pb-webhook-server.onrender.com/mcp2/${client.portalToken || '(no token)'}`;
+  try {
+    const wf = require('../utils/wingguyFirst').load();
+    const { load: loadPhrases, normalise } = require('../utils/clientPhrases');
+    const canary = loadPhrases().phrases.find((p) => normalise(p.phrase) === normalise(wf.canary.phrase));
+    const canaryTopic = String((canary && canary.topic) || '').toUpperCase();
+    const serves = canaryTopic ? await require('./wingguyLearningStore').topicServes(clientId) : [];
+    const hit = serves.find((s) => String(s.key || '').toUpperCase().startsWith(canaryTopic));
+    step(1, 'connector + Wingguy first', hit ? DONE : OWED,
+      hit ? `their Claude asked Wingguy for "${canaryTopic}" (last ${new Date(hit.last_at).toISOString().slice(0, 10)}) - connector works and Wingguy first is proven`
+        : `NOT PROVEN - in THEIR Claude: connector added (${connectorUrl}), the Wingguy-first text pasted into Settings → Your Claude → Instructions, then a NEW chat typing "${wf.canary.phrase}" - first line must read "${wf.canary.first_line}". This line turns DONE by itself once Wingguy answers it.`);
+  } catch (e) {
+    step(1, 'connector + Wingguy first', OWED, `probe failed: ${e.message} · their URL = ${connectorUrl}`);
+  }
 
   // ---- STEP 2: calendar + mailbox WIRING (the record, not the seam) ------------
   let calInfo = null;

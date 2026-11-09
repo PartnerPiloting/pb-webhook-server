@@ -331,7 +331,7 @@ first - so you always get the current answer, not something it remembered from a
 
 **The client does:**
 
-1. Opens **Settings** → **Customize** and finds the preferences box. Pastes this at the **end** of
+1. Opens **Settings** → **Your Claude** and finds the **Instructions** box. Pastes this at the **end** of
    whatever is already there, never replacing it:
 
    > I use Wingguy - Guy Wilson's I Know A Guy system - through the Wingguy connector. For anything
@@ -339,7 +339,8 @@ first - so you always get the current answer, not something it remembered from a
    > meetings booked through it, or how any of it works or is set up: call the Wingguy tools first,
    > before answering - even if you think you already know the answer. Wingguy has the current
    > version; anything you remember may be out of date. If Wingguy doesn't cover it, say so and
-   > suggest I ask Guy.
+   > suggest I ask Guy. Before writing any message, email or LinkedIn reply for me, read my Wingguy
+   > instructions first and follow them, and make the draft through Wingguy.
 
    If the box is full, this shorter line instead:
 

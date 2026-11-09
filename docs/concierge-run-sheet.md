@@ -134,11 +134,12 @@ Phase: The session - {{first}} is here
 Who: watches
 Minutes: 3
 Link: wingguy-first
+Proves: 1
 
 Why: {{first}}'s Claude has a memory of its own, and it answers from that memory before it thinks to ask Wingguy. Left alone, one day it gives {{first}} a confident, out-of-date answer about the machine or the method, and {{first}} can't tell. This step tells Claude, in three places, to ask Wingguy first.
 
 Do:
-- Guy: in {{first}}'s Claude open Settings, then Customize, then the preferences box. Paste the preferences text below at the END of whatever is already there - never replace what {{first}} wrote. If the box is full, use the short form.
+- Guy: in {{first}}'s Claude open Settings, then Your Claude, then the Instructions box. Paste the preferences text below at the END of whatever is already there - never replace what {{first}} wrote. If the box is full, use the short form.
 - Guy: back in the chat from step 6, type the memory line below word for word, and wait for Claude to say it will remember.
 - Guy: open a NEW chat and type the check line below. Read the first line of the reply out loud.
 - Guy: tell {{first}} the one habit - start every Wingguy chat with "where are we up to?". Only Wingguy can answer it, so it opens the door for the rest of that chat.
