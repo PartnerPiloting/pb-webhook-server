@@ -53,6 +53,10 @@ const MODULES = {
   'services/wingguyInboxMcp.js': require('../services/wingguyInboxMcp'),
   'services/wingguyTopUpMcp.js': require('../services/wingguyTopUpMcp'),
   'services/wingguyCampaignSettingsMcp.js': require('../services/wingguyCampaignSettingsMcp'),
+  'services/wingguyLeadsMcp.js': require('../services/wingguyLeadsMcp'),
+  'services/wingguyContactsMcp.js': require('../services/wingguyContactsMcp'),
+  'services/recallImportMcp.js': require('../services/recallImportMcp'),
+  'services/captureControlMcp.js': require('../services/captureControlMcp'),
 };
 
 function findTool(name) {

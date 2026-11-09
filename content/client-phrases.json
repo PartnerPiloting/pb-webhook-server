@@ -279,6 +279,104 @@
       "tool": "wingguy_campaign_numbers",
       "note": "In the client announcement email Guy sends by hand (2 Nov 2026) - not in a repo doc yet.",
       "where": []
+    },
+    {
+      "phrase": "who is Sarah and what's her email?",
+      "tool": "wingguy_find_person",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "add her as a lead",
+      "tool": "wingguy_create_lead",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "open my portal",
+      "tool": "wingguy_open_portal",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "remind me about Sarah",
+      "tool": "wingguy_dossier",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "show me my backlog",
+      "tool": "wingguy_backlog",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "email Sarah about Thursday",
+      "tool": "wingguy_create_draft",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "what did she say in her last email?",
+      "tool": "wingguy_read_message",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "offer him three times",
+      "tool": "wingguy_check_availability",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "here's the transcript from a call you missed",
+      "tool": "recall_import_transcript",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "what recordings are you holding?",
+      "tool": "wingguy_recordings",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "update my instructions",
+      "tool": "wingguy_rules_list",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "never use the word folks again",
+      "tool": "wingguy_banned_words",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "add this article to my library",
+      "tool": "wingguy_assets",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
+      "phrase": "am I set up?",
+      "tool": "wingguy_get_started",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
     }
   ],
   "near_misses": [

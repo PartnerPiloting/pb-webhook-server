@@ -149,3 +149,23 @@ machines are on the pull-updater lane and never appear in its output - reading i
 wrong. The real fleet is `public.wingguy_extension_checkins` in Postgres. Note `ship-extension.js`
 copies from the WORKING TREE and `dotenv` reads `.env` from the CWD, so run it only from a clean
 worktree at `origin/main` - from a stale checkout it ships an OLDER build and rolls clients back.
+
+## "What can I do with Wingguy?" - content/wingguy-capabilities.json
+
+The answer a client gets to that question (`wingguy_vision`) is generated from
+`content/wingguy-capabilities.json` by `utils/wingguyCapabilities.js`. It is the ONE list of
+everything a client can do, each line with the sentence to say and the tools behind it. Never
+hand-write capability lines into the tool.
+
+**Built a new tool? It needs a line there before it ships** - add it to the `tools` of the line
+that describes it, or write a new line with `"added": "<today>"` (it shows as **New** for 30 days,
+then drops the flag by itself), or put it in `not_shown` with the reason (Guy-only tools).
+
+```
+node tests/wingguy-capabilities.test.js
+```
+
+That reads the tools the connector really registers and fails on any the list does not know about,
+on any the list names that no longer exist, and on any sentence not in
+`content/client-phrases.json`. On 9 Nov 2026 the hand-written answer still said leads arrive by
+copy and paste and never mentioned the Linked Helper machine - this is why it is now a list.

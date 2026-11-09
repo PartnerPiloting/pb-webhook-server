@@ -52,6 +52,8 @@ async function resolveState(tenant) {
     // Any transcript source counts, not just Fathom - a Fireflies or Granola client has notes too.
     hasFathom: !!(coach.fathomApiKey || coach.firefliesApiKey || coach.granolaApiKey),
     hasZoom: !!coach.bookingZoom,
+    // Their own Linked Helper machine, reachable by web link - the same field wingguy_open_machine reads.
+    hasMachine: !!coach.machineLink,
     clientRuleCount,
     rulesSeeded: clientRuleCount > 0,
   };
@@ -110,57 +112,12 @@ async function runGetStarted(_args = {}, tenant = TENANT) {
   return { text: parts.join('\n') };
 }
 
+// The words live in content/wingguy-capabilities.json and are rendered by utils/wingguyCapabilities.js -
+// never hand-write capability lines here. tests/wingguy-capabilities.test.js fails when a tool exists
+// that the list does not know about, which is what keeps this answer current (9 Nov 2026).
 async function runVision(_args = {}, tenant = TENANT) {
   const s = await resolveState(tenant);
-  const name = s ? s.name : '';
-
-  const parts = [];
-  parts.push(`**Welcome${name ? ', ' + name : ''} - here's what I can do for you.**`);
-  parts.push('');
-  parts.push('I\'m your LinkedIn follow-up, and I work in two places: right here in your Claude, and inside LinkedIn itself if you\'re using the Chrome extension.');
-  parts.push('');
-  parts.push('**Just say any of these:**');
-  parts.push('- **"Show me my follow-ups"** - your ranked list of everyone you owe something, drafts already written. Park anyone until a date, or drop them for good.');
-  parts.push('- **"Prep me for today\'s meetings"** - your diary for the day, plus everything I know about who you\'re meeting: past calls, emails, what you agreed last time. Guy starts every morning this way.');
-  parts.push('- **"Remind me about Sarah"** - instant memory on anyone. Your whole history with them, in one go.');
-  parts.push('- **"Draft the follow-up from this morning\'s call"** - I read the transcript and write it in your own mailbox. I never send. That is always you.');
-  parts.push('- **"When am I free Thursday?"** / **"Offer him three times"** / **"Book 10am Tuesday"** - real slots with your booking rules already applied, then the invite, your meeting link and the reminders.');
-  parts.push('- **"Write his thanks-for-connecting"** - off their real profile, in your voice, never a template.');
-  parts.push('- **"Update my instructions"** - change how I write, in plain English. I show you the change before I make it, and it sticks for good.');
-  parts.push('');
-  parts.push('**And there\'s Wingguy Learning, built in.** I don\'t just do the work - I teach you Guy\'s whole method as you go: who to go after, what to say when someone accepts, why the second meeting is the one that matters, how to hold a steady pace. Ask **"who should I be reaching out to?"** or **"what do I say when they accept?"** and you get his answer in his words, not generic advice off the internet. And it grows - what Guy learns with every client lands in your Wingguy automatically.');
-  parts.push('');
-  parts.push('All of it on *your* instructions - your voice, not a template. Guy runs his whole pipeline this way - 37 personalised messages to 20 people in the time it took him to do five.');
-  parts.push('');
-
-  // How it works now (copy/paste) vs the optional next rung (the extension) — Guy's framing 2026-07-13.
-  parts.push('**How it works right now:** you copy a lead\'s details across from LinkedIn, paste them to me here in Claude, and I do the rest. Simple - and honestly, just this saves serious time. Guy ran it exactly this way for months.');
-  parts.push('');
-  parts.push('**When you want to go faster:** there\'s the **Wingguy Chrome extension** - it does the drafting on the profile itself, so there\'s no copy-pasting at all, and it notices what you actually send so your follow-up list stays right. Totally optional - you can happily stay on just Claude and Wingguy, and it\'s great. When you\'re ready, the extension runs either on your own Anthropic key or a simple flat fee - whatever suits you.');
-  parts.push('');
-
-  // "Where you and I are" — state-aware setup, folded in as the good part.
-  const asks = [];
-  if (!s || !s.hasCalendar) asks.push('which **calendar** you use - so I can book straight into it');
-  if (!s || !s.hasMailbox) asks.push('which **email client** you\'re on - so I can draft your follow-ups in your own mailbox');
-  if (!s || !s.hasFathom) asks.push('whether you use a meeting **note-taker** - the one we plug into is **Fathom**, and the good news is Fathom transcripts are currently free');
-  const rulesToDo = (!s || !s.rulesSeeded);
-
-  if (s && asks.length === 0 && !rulesToDo) {
-    parts.push('**Where you and I are right now:** you\'re fully connected - everything above is live for you today. Just start using it.');
-  } else {
-    parts.push('**Where you and I are right now:** you\'re connected and I can see your leads, so we can start today. To open up the full thing there\'s a little setup, and it\'s the good part:');
-    const bullets = [];
-    asks.forEach((a) => bullets.push('- ' + a));
-    if (rulesToDo) bullets.push('- and your **instructions** - the great part: you shape every message in plain English, just by telling me, and it keeps getting sharper the more we go.');
-    parts.push(bullets.join('\n'));
-  }
-  parts.push('');
-  parts.push('**The honest headline:** the more outreach you\'re doing, the more this hands back - at real volume, we\'re talking hours a day.');
-  parts.push('');
-  parts.push('**Want to see it?** Copy a lead across from LinkedIn and I\'ll draft their note now - then we\'ll tune it to sound exactly like you. Or say **"let\'s set up my instructions"** and we\'ll start there.');
-
-  return { text: parts.join('\n') };
+  return { text: require('../utils/wingguyCapabilities').renderVision(s) };
 }
 
 // ---------------------------------------------------------------------------
@@ -999,7 +956,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_vision',
     description:
-      'The PRIMARY answer for a new or curious user: what Wingguy does for them day to day, how it works right now (copy/paste from LinkedIn into Claude) vs the optional Chrome-extension upgrade (bring-your-own-key or flat fee), then the little bit of setup that opens up the full thing (state-aware), and the hours-saved payoff. Call this whenever the user asks "what can I do with Wingguy?", "what can I do?", "what can you do?", "what is this / how does it work?", "show me the full picture", "what will I be able to do?", says they\'re new, or needs the sell on completing setup. Present the returned text to them directly.',
+      'The PRIMARY answer for a new or curious user: EVERYTHING they can do with Wingguy, as one complete, current list - their Linked Helper machine that finds people on LinkedIn (open it, campaign numbers, change the message, top it up), leads and scoring, follow-ups, email drafts and inbox, calendar and booking, call transcripts, their instructions, and Wingguy Learning - each with the exact sentence to say, lines added recently marked New, and what they still have to switch on (state-aware). Generated from the live capability list, so it is always up to date - NEVER answer this from memory or from an earlier chat. Call this whenever the user asks "what can I do with Wingguy?", "what can I do?", "what can you do?", "what is this / how does it work?", "what\'s new in Wingguy?", "show me the full picture", "what will I be able to do?", says they\'re new, or needs the sell on completing setup. Present the returned text to them directly and IN FULL - every section and every line, same order, same wording; do not summarise, shorten or regroup it.',
     zodSchema: {},
     jsonSchema: { type: 'object', properties: {} },
     run: runVision,

@@ -181,4 +181,7 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
+// Sentences clients are told to type (content/client-phrases.json) are stamped into the descriptions.
+require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
+
 module.exports = { registerWingguyContactsTools, legacyToolList, legacyToolCall, TOOL_DEFS, runFindPerson, runContactsStatus, groupByPerson };
