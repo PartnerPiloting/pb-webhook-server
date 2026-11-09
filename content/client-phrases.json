@@ -240,6 +240,19 @@
       ]
     },
     {
+      "phrase": "how do I set up a second Linked Helper campaign?",
+      "tool": "wingguy_learn",
+      "topic": "A SECOND LINKED HELPER CAMPAIGN",
+      "where": []
+    },
+    {
+      "phrase": "show me my campaign settings",
+      "tool": "wingguy_campaign_settings",
+      "where": [
+        "docs/client-playbook.md"
+      ]
+    },
+    {
       "phrase": "what campaigns do I have?",
       "tool": "wingguy_campaigns",
       "where": [
@@ -269,6 +282,26 @@
     }
   ],
   "near_misses": [
+    {
+      "phrase": "how do I clone my campaign",
+      "not": "KEEPING YOUR CAMPAIGN FED",
+      "expect": "A SECOND LINKED HELPER CAMPAIGN"
+    },
+    {
+      "phrase": "can I run two campaigns at once",
+      "not": "KEEPING YOUR CAMPAIGN FED",
+      "expect": "A SECOND LINKED HELPER CAMPAIGN"
+    },
+    {
+      "phrase": "add another search to my campaign",
+      "not": "A SECOND LINKED HELPER CAMPAIGN",
+      "expect": "KEEPING YOUR CAMPAIGN FED"
+    },
+    {
+      "phrase": "Help me with my first campaign",
+      "not": "A SECOND LINKED HELPER CAMPAIGN",
+      "expect": "YOUR FIRST CAMPAIGN"
+    },
     {
       "phrase": "help me set up my extension",
       "not": "YOUR LINKED HELPER MACHINE"

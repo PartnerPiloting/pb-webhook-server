@@ -52,6 +52,7 @@ const MODULES = {
   'services/wingguyReconnectMcp.js': require('../services/wingguyReconnectMcp'),
   'services/wingguyInboxMcp.js': require('../services/wingguyInboxMcp'),
   'services/wingguyTopUpMcp.js': require('../services/wingguyTopUpMcp'),
+  'services/wingguyCampaignSettingsMcp.js': require('../services/wingguyCampaignSettingsMcp'),
 };
 
 function findTool(name) {

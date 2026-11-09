@@ -641,6 +641,92 @@ and I'll walk you through it.
 
 ---
 
+## A SECOND LINKED HELPER CAMPAIGN - WHEN IT'S WORTH IT, AND HOW TO CLONE ONE
+
+Sooner or later most people want a second Linked Helper campaign - a different crowd, a new line of
+work, or just to try something different and see if it does better. You can, and cloning (copying)
+the one you've got is the easy way. But first, the thing that catches everyone out.
+
+**All your Linked Helper campaigns share the same 100.** LinkedIn lets you send about 100 connection
+requests a week, and that's per LinkedIn account, not per campaign. So two Linked Helper campaigns
+don't double it - they share it. When the week's total hits LinkedIn's limit, Linked Helper simply
+stops sending until it's allowed again. That keeps your account safe, but it stops wherever it happens
+to be - often the campaign that starts earlier in the day takes most of the 100 and the other gets
+little or nothing.
+
+**A clone copies the settings too.** Clone a campaign that sends 100 a week and the clone is set to
+100 as well. Start both and you've asked for 200. So whenever you run two, you cut both back.
+
+**My advice: one at a time, unless you really need two.**
+- **More of the same kind of people?** That's not a new campaign, it's a new search in the Linked
+  Helper campaign you've got - see Keeping your campaign fed.
+- **Want to try a different approach?** Give your campaign two or three weeks and judge it. If you're
+  not happy, clone it, change what you want to change, and swap over (below).
+- **A genuinely different crowd** - say founders on one side and businesses supplying into defence on
+  the other - is when two at once makes sense, because each needs its own thank-you. Then split the
+  100 between them.
+
+**Cloning a campaign in Linked Helper**
+
+In your list of campaigns, choose **clone** on the campaign you want to copy. Linked Helper asks two
+questions. Tick both:
+- **Exclude profiles from current campaign** - everyone already in your first campaign goes on the
+  clone's skip list, so the clone never asks anyone you've already asked. Leave it unticked and the
+  clone can end up working through the same people twice.
+- **Copy Exclude list from current campaign into a new one** - your first campaign has its own skip
+  list (people you've told it to leave alone). This carries it across, so they stay left alone.
+
+Then, in the clone:
+1. **Rename it** to something you'll recognise. That name follows every person it brings in, and it's
+   how Wingguy knows which thank-you to use.
+2. **Change the invitation note** if this crowd needs a different one.
+3. **Put its search in:** open the clone, open the first step's Queue, choose Add and collect from your
+   search URL.
+4. **Set how many it sends** (below), then start it.
+5. **Give it its own thank-you** - see Campaign instructions.
+
+**Setting how many each campaign sends**
+
+**If I look after your Linked Helper machine,** you don't need to touch the settings yourself. In
+Claude, say **show me my campaign settings** and you'll see every Linked Helper campaign, how many
+each sends a week, and the total against LinkedIn's limit. Then say what you want - "send 60 a week on
+Founders and 40 on Defence" - and Wingguy works out the details, shows you the change, and makes it on
+your machine when you say yes.
+
+**If your Linked Helper runs on your own computer or in Linked Helper's cloud,** Claude can't reach it,
+so you set it by hand. Open the campaign's invite step. Three settings there decide how many go out:
+- **Action working hours** - which days, and from what time to what time, it's allowed to send.
+- **Bunch size** (under Bunch settings) - how many invitations it sends in one go.
+- **Timeout between bunches** (also under Bunch settings) - how long it waits after one bunch before
+  it's allowed to send the next.
+
+Here's how they work together. At the start of the day's hours, Linked Helper sends one bunch. Then
+it waits for the timeout. If the timeout is up while the hours are still open, it sends another bunch.
+If not, the next bunch goes out at the start of the next working day.
+
+**The easy way to keep the sums simple:** make the timeout longer than your daily hours. Then it sends
+exactly one bunch a day, and the sum is just **bunch size x working days = a week**. That's how I set
+yours up: a bunch size of 25, a 6-hour timeout, and four sending days (Tuesday, Wednesday, Thursday and
+Saturday mornings) - 25 x 4 = 100.
+
+**Splitting it between two campaigns** - two ways, both fine:
+- **Split the days.** Leave both on a bunch size of 25. Give the first campaign Tuesday and Wednesday
+  and the second Thursday and Saturday. That's 50 each, and they never get in each other's way.
+- **Split the bunch.** Keep all four days on both and change the bunch size - say 15 on one and 10 on
+  the other. That's 60 and 40.
+
+Either way, add them up before you press start: everything running should come to 100 a week or under.
+
+**Swapping from one campaign to another**
+
+Don't stop the old campaign the day you start the new one. People keep accepting invitations for a
+couple of weeks after they're sent, and the old campaign is what brings them through to your list. So
+turn the old one right down - about 5 a week - and give the new one the rest. After two weeks, archive
+the old one. If I look after your machine, that's "send 5 a week on the old one and 95 on the new one"
+in Claude.
+
+---
+
 ## YOUR LINKED HELPER MACHINE - SETTING IT UP IN TEN MINUTES
 
 Ten minutes, about $21.50 a month, and you can't break anything.

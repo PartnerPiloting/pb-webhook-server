@@ -521,6 +521,13 @@ const TOPIC_ALIASES = [
   [[/\btop(ping|ped)?\b/, /\bup\b/], 'KEEPING YOUR CAMPAIGN FED'],
   [[/\bsearch(es)?\b/, /\b(add|new|another|fresh|more|paste)\b/, /\b(campaign|linked ?helper|lh)\b/], 'KEEPING YOUR CAMPAIGN FED'],
   [[/\b(run|ran|running) out\b/, /\b(people|campaign|queue|invites?)\b/], 'KEEPING YOUR CAMPAIGN FED'],
+  // a second campaign / cloning (9 Nov 2026): four clients in three weeks - Alex "how do I clone a campaign",
+  // Roland "a cloned campaign", Joshua "which options to tick in the Clone campaign dialog", Dean "several
+  // searches at once". BELOW the top-up aliases on purpose: "add another search to my campaign" is a top-up.
+  [[/\bclon(e|es|ed|ing)\b/], 'A SECOND LINKED HELPER CAMPAIGN'],
+  // Linked Helper's own words for the pacing settings, which that topic explains: "bunch size", "timeout between bunches"
+  [[/\bbunch(es)?\b/], 'A SECOND LINKED HELPER CAMPAIGN'],
+  [[/\b(second|2nd|another|two|multiple|several)\b/, /\bcampaigns?\b/], 'A SECOND LINKED HELPER CAMPAIGN'],
 ];
 
 function findPlaybookTopic(topics, query) {
