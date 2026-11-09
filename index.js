@@ -2051,7 +2051,7 @@ try {
 }
 
 // "Network building, rethought" - the weekly email to Guy's list (services/listEditions.js): written
-// by the weekend, sent Wednesdays only once Guy approves it. LIST_EDITION_SEND=off (or the scheduled
+// by the weekend, sent every Wednesday unless Guy holds it (since 9 Nov 2026). LIST_EDITION_SEND=off (or the scheduled
 // send switches, as on staging) holds it; LIST_EDITION_TICK=off stops it.
 try {
     require('./services/listEditions.js').startListEditions();

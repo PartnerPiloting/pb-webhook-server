@@ -324,8 +324,9 @@ function coverageLines({ shown, offset, more, total, next }) {
 
 /**
  * Guy only: his own emails that will not go until he says so - one-offs on the Scheduled page, the
- * weekly client emails, and the weekly email to his list. Unapproved weekly ones lapse and never go,
- * so a run of his inbox is where he is reminded. Each source is read on its own; one failing never
+ * weekly client emails. Unapproved weekly client emails lapse and never go, so a run of his inbox is
+ * where he is reminded. The weekly email to his list is NOT here - since 9 Nov 2026 it goes unless he
+ * holds it, so it needs no OK. Each source is read on its own; one failing never
  * hides the others or the inbox.
  */
 async function waitingForOk(tenant) {
@@ -347,12 +348,6 @@ async function waitingForOk(tenant) {
     const week = actions.weekOrDefault();
     const rows = (await require('./clientTouchPlanStore').plansFor(week)).filter((r) => r.pick && (r.status === 'proposed' || r.status === 'held'));
     return rows.map((r) => `Weekly client email to ${String(r.clientId).replace(/-/g, ' ')} for ${actions.dayLabel(week)} - ${r.status === 'held' ? 'HELD' : 'not approved yet; it never goes unless approved'} (wingguy_weekly_emails client=${r.clientId}: show, approve, edit, skip)`);
-  });
-  await add('list', async () => {
-    const s = await require('./listEditions').statusText(tenant);
-    return s.edition && s.edition.status === 'draft'
-      ? [`Your list email "${s.edition.title}" for ${s.sendDate} - not approved yet; it never goes unless approved (wingguy_list_edition: show, approve, edit, hold)`]
-      : [];
   });
   return out;
 }

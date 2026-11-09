@@ -10,8 +10,10 @@
 //     people recognise, the idea, what is different now, one small thing to try - then the short
 //     fixed closer. The launch edition (and every newcomer's first email) is the fixed "what does
 //     better mean?" piece instead.
-//   - Guy approves it - in chat (wingguy_list_edition, first in "let's do this week's emails") or on
-//     the portal's Scheduled page. Nothing goes until he does. A nudge reaches him Monday afternoon.
+//   - It GOES EVERY WEEK unless Guy holds it (Guy, 9 Nov 2026 - it used to wait for his approval
+//     and lapse without it). He can read, edit, swap or hold it any time before it goes - in chat
+//     (wingguy_list_edition, first in "let's do this week's emails") or on the portal's Scheduled
+//     page. A heads-up reaches him Monday afternoon.
 //   - Wednesday from 9:30am Brisbane it goes one email per person ("Hi Sarah,"), a batch each tick,
 //     FROM guy@knowaguy.com.au through Mailgun with replies to Guy's own mailbox - so ~250 sends a
 //     week never bury his Gmail Sent folder (Guy, 26 Oct). Each send is recorded here per person.
@@ -56,10 +58,11 @@ const INTRO_TITLE = 'What does better mean?';
 const INTRO = [
   'Ask most people what a better network looks like and they\'ll say "bigger". I don\'t think that\'s it any more.',
   'AI has made things possible that weren\'t a year ago, and network building is one of them. Working out who\'s worth meeting. Getting to know them properly before you\'ve even spoken. Keeping hundreds of relationships warm without dropping any. One person can now do what used to take a team.',
-  'And a better network isn\'t for one thing. The same people can bring you clients, a side gig, the right collaborator, or simply good people around you.',
+  // Guy, 9 Nov 2026: network building should serve life, not just work.
+  'And a better network isn\'t just for work. The same people who bring you clients can give you back time - for family, for travel, for the experiences you\'ll remember.',
   "That's what I'm working on at {{link}}. Have a look, and when you're ready to talk about what better could mean for you, just hit reply.",
 ];
-const CLOSER = 'What would a better network mean for you - more clients, a side gig, the right people around you? With AI, more of that is possible than ever. That\'s what I work on at {{link}} - when you\'re ready to talk, just hit reply.';
+const CLOSER = 'What would a better network mean for you - the right clients, or more time for family, travel and the memories that matter? With AI, more of that is possible than ever. That\'s what I work on at {{link}} - when you\'re ready to talk, just hit reply.';
 const FOOTER = 'If you\'d prefer not to receive these, just reply "unsubscribe" and I\'ll take you off straight away - no hard feelings at all.';
 // With a link (every real send): {{unsub}} becomes the link. Guy, 31 Oct 2026.
 const FOOTER_LINKED = 'If you\'d prefer not to receive these, {{unsub}} or just reply "unsubscribe" - no hard feelings at all.';
@@ -145,12 +148,13 @@ function ideaQueue(usedIds = [], { all = library.ideas(), first = FIRST_IDEAS } 
 // ---------------------------------------------------------------------------------------------
 // Drafting (Claude)
 
-const LIST_SYSTEM = `You write this week's edition of "Network building, rethought" - a short weekly email from Guy Wilson (a network-building coach, I Know A Guy, Brisbane) to people he has enjoyed talking with: business owners, consultants, people with side gigs. Not clients - so nothing about any product, setup or system. Guy reads it before anything is sent.
+const LIST_SYSTEM = `You write this week's edition of "Network building, rethought" - a short weekly email from Guy Wilson (a network-building coach, I Know A Guy, Brisbane) to people he has enjoyed talking with: business owners, consultants, people with side gigs. Not clients - so nothing about any product, setup or system. It goes without Guy necessarily reading it first, so it must be right as written.
 - ONE idea, given to you. Tell it THROUGH NETWORK BUILDING - Guy's rule: the idea must be about building a network, never a stand-alone self-help thought. Four beats, in short paragraphs:
   1. A networking moment people recognise (a first coffee, a quiet contact, asking for help too late).
   2. The idea, in Guy's own words. A BOOK: name the book and author once ("Keith Ferrazzi makes the case in Never Eat Alone that..."). NEVER a direct quote and never quote marks around an author's words - say it in Guy's words. BETH BERGHAN'S EMAIL: tell it in Guy's words and do NOT name or credit her - a P.S. credit is added for you.
   3. What it means for their network now. Where it is honestly part of the idea, what has changed (for example you can now read someone's story before you meet). At most one sentence touching AI, and only when it fits - often none.
   4. One small thing to try this week, starting "This week," or similar.
+- NETWORK BUILDING SERVES LIFE, NOT JUST WORK (Guy, 9 Nov 2026). Where it honestly fits the idea, show the network giving people back time, family, travel, relationships and memories - not only clients and income. Often it is one sentence; some weeks it is the heart of the piece; when the idea is purely about work, leave it out rather than bolt it on. Never mention travel clubs, cruises or any travel product.
 - About 120-160 words in all. Plain, warm, first person, Australian English. Short spaced dashes ' - ' only, never an em or en dash. No exclamation marks. No links. No greeting and no sign-off - "Hi <name>," and the closing lines are added for you, and the closing lines already invite them to reply, so do not ask for a reply.
 - Never repeat the ideas listed under ALREADY SENT.
 Return ONE JSON object: {"title": "2-7 words, the idea as a short phrase, no brand name", "paragraphs": ["..."], "why": "one line for Guy: why this idea works for this list"}.`;
@@ -615,7 +619,7 @@ async function statusText(tenantId, nowMs = Date.now()) {
   const upcoming = ideaQueue(ed && ed.ideaId ? [...used] : used).slice(0, 2);
   const lines = [`${SERIES.toUpperCase()} - the weekly email to your list, ${dayLabel(sendDate)} from 9:30am Brisbane`];
   if (!ed) lines.push(`  Not written yet - it is written by ${dayLabel(addDays(sendDate, -BUILD_DAYS_AHEAD))}. Say "write this week's list edition" to do it now.`);
-  else lines.push(`  "${ed.title}" - ${({ draft: 'WAITING FOR YOU (it will not go until you approve it)', approved: 'approved - it goes on Wednesday', sending: 'going out now', sent: 'sent', held: 'held by you this week', missed: 'not approved in time - it did not go' })[ed.status] || ed.status}`);
+  else lines.push(`  "${ed.title}" - ${({ draft: 'ready - it goes on Wednesday unless you hold it', approved: 'approved - it goes on Wednesday', sending: 'going out now', sent: 'sent', held: 'held by you this week', missed: 'did not go (from before it went automatically)' })[ed.status] || ed.status}`);
   if (upcoming.length) lines.push(`  Coming up: ${upcoming.map((i) => `"${i.title}"`).join(' · ')}`);
   return { text: lines.join('\n'), edition: ed, sendDate };
 }
@@ -653,7 +657,7 @@ async function approve(tenantId, id) {
 }
 async function hold(tenantId, id) {
   const ed = await setStatus(tenantId, id, ['draft', 'approved', 'missed'], 'held');
-  return ed ? { ok: true, text: `Held - nothing goes to the list on ${dayLabel(ed.sendDate)}. Approve it again any time before then.` } : { ok: false, text: 'That edition cannot be held now.' };
+  return ed ? { ok: true, text: `Held - nothing goes to the list on ${dayLabel(ed.sendDate)}. Approve it any time before then to let it go after all.` } : { ok: false, text: 'That edition cannot be held now.' };
 }
 /** Guy's own words. paragraphs: a blank line between them. */
 async function edit(tenantId, id, { title, body } = {}) {
@@ -723,22 +727,23 @@ async function tick(nowMs = Date.now(), tenantId = TENANT) {
     try { ed = (await buildEdition(tenantId, sendDate)).edition; } catch (e) { console.error(`[listEditions] build failed: ${e.message}`); }
   }
   if (!ed) return;
-  // 2. Monday afternoon, still not approved: one nudge.
+  // 2. Monday afternoon, not looked at yet: one heads-up. It goes either way.
   const today = ymd(nowMs);
   if (ed.status === 'draft' && !ed.nudgedAt && dow(today) === NUDGE.day && p.hour >= NUDGE.hour && today === addDays(sendDate, -2)) {
     await q('UPDATE list_editions SET nudged_at = now() WHERE id = $1', [ed.id]);
-    await notifyGuy(tenantId, `This week's ${SERIES} edition is ready for you`, [
-      `"${ed.title}" goes to your list on ${dayLabel(sendDate)} - but only once you approve it.`,
-      'Approve it on the Scheduled page in your portal, or say "let\'s do this week\'s emails" to Claude.',
+    await notifyGuy(tenantId, `This week's ${SERIES} edition goes ${dayLabel(sendDate)}`, [
+      `"${ed.title}" goes to your list on ${dayLabel(sendDate)} from 9:30am. You don't need to do anything.`,
+      'To read it, change it or hold it this week: the Scheduled page in your portal, or say "let\'s do this week\'s emails" to Claude.',
     ].join('\n\n'));
   }
-  // 3. Send day.
+  // 3. Send day. Guy, 9 Nov 2026: it goes every week without his say-so - only a hold stops it.
   if (nowMs < sendAt) return;
-  if (ed.status === 'draft') {
-    if (p.hour >= 12) await setStatus(tenantId, ed.id, ['draft'], 'missed'); // approvable until noon, then it's next week's
-    return;
-  }
   if (!sendSwitchOn()) return;
+  if (ed.status === 'draft' || ed.status === 'missed') {
+    const go = await setStatus(tenantId, ed.id, ['draft', 'missed'], 'approved');
+    if (!go) return;
+    ed = go;
+  }
   if (ed.status === 'approved') {
     const moved = await setStatus(tenantId, ed.id, ['approved'], 'sending', ', sending_at = now()');
     if (!moved) return;

@@ -30,13 +30,18 @@ them without chasing anyone one by one, and an unsubscribe tells him where he st
 
 | When (Brisbane) | What happens |
 | --- | --- |
-| From the Saturday before | The edition is written and waits for Guy |
-| Any time before Wednesday noon | Guy approves - in chat (it comes first in "let's do this week's emails"; tool `wingguy_list_edition`) or on the portal's Scheduled page (Approve / Edit / Send me a test / Hold this week) |
-| Monday 3pm | One nudge email to Guy if it is still not approved |
+| From the Saturday before | The edition is written |
+| Any time before Wednesday 9:30am | Optional: Guy reads, edits, swaps or holds it - in chat (it comes first in "let's do this week's emails"; tool `wingguy_list_edition`) or on the portal's Scheduled page (Approve / Edit / Send me a test / Hold this week) |
+| Monday 3pm | One heads-up email to Guy if he has not looked at it - it goes either way |
 | Wednesday 9:30am | It goes, one email per person, 20 every 5 minutes |
 | When the last one has gone | A summary to Guy: how many sent, who was left off and why |
 
-Not approved by Wednesday noon = it does not go that week (status `missed`).
+**It goes every week without Guy's approval** (Guy, 9 Nov 2026) - only **Hold this week** stops it. Before 9 Nov an
+unapproved edition lapsed at Wednesday noon (status `missed`); that no longer happens.
+
+**Running thread (Guy, 9 Nov 2026):** network building serves life, not just work - time, family, travel,
+relationships, memories. The closer and the welcome piece carry it every week; the writer is told to weave it in
+where the idea honestly fits, and never to mention a travel product.
 
 ## Sending
 

@@ -365,6 +365,16 @@ design doc), and business ideas unrelated to the series (Guy's ideas.md).
 
 ## Existing pieces
 
+### ALL prospect pieces - network building serves life, not just work
+- 9 Nov 2026, Guy: "I'm big on making network building not just serve work, but serve life" -
+  memories, relationships, experiences, time with family, travel. "If we're going to put effort into
+  something like network building, then why not make it do multiple things?"
+  Placement agreed: the prospect endings first (every `<!-- ENDING:PROSPECT -->` block - the cheapest
+  way to reach every reader), then work it into each piece's body as it next comes up for revision,
+  only where it honestly fits. A lens, not a slogan - never the same sentence in every piece. Travel
+  as a life goal only, never a travel product. (The weekly list email already carries it: closer,
+  welcome piece and writer instruction, services/listEditions.js, 9 Nov 2026.) **Waiting**
+
 ### discovery-call-craft - "What to say in the discovery call"
 
 - *20 Oct 2026, Guy:* Book the first call for half an hour with another real call straight

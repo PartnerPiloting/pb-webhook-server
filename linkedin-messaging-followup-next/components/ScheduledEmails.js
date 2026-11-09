@@ -140,12 +140,12 @@ function EmailCard({ item, tone, onChanged }) {
 }
 
 const LIST_STATUS = {
-  draft: 'Waiting for you - it will not go until you approve it',
+  draft: 'Ready - it goes on the day shown unless you hold it',
   approved: 'Approved - it goes on the day shown',
   sending: 'Going out now',
   sent: 'Sent',
   held: 'Held this week - nothing goes',
-  missed: 'Not approved in time - it did not go',
+  missed: 'Did not go (from before it went automatically)',
 };
 
 /**
