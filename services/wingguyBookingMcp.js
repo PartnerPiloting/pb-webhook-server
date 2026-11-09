@@ -20,7 +20,7 @@ const { DateTime } = require('luxon');
 const wingguyCalendar = require('./wingguyCalendar');
 const leadBookingLink = require('./wingguyLeadBookingLink');
 const { resolveLeadTimezone } = require('./leadLocationResolver');
-const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+const { getBookingPrefsFor, normaliseBookingHours, describeBookingHours } = require('../config/wingguyBookingPrefs');
 // NOTE: coachingClientLookupService + clientService are required LAZILY inside runBookMeeting —
 // their Airtable config crashes at module load when env vars are absent (local test runs).
 
@@ -31,7 +31,7 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 // ---------------------------------------------------------------------------
 
 async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends, include_far_weeks, weekdays, lead_booking_link, not_before } = {}, tenant = TENANT, deps = {}) {
-  const prefs = getBookingPrefs(tenant);
+  const prefs = await getBookingPrefsFor(tenant);
   const avail = await wingguyCalendar.getAvailabilityForCoach(tenant, lead_location || '');
   // A stated earliest date ("away for the next 1.5 weeks", "after the 20th") outranks the nearness
   // rule: everything before it goes, and later weeks are plain days, not fallbacks.
@@ -125,6 +125,7 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
       `${windowLine}\n\n` +
       (leadLinkLine ? `${leadLinkLine}\n\n` : '') +
       `Offerable slots (coach rules already applied: hours, lunch, notice, weekdays). ` +
+      (prefs.ownBookingHours ? `The coach keeps THEIR OWN booking hours and every slot below already fits them - they replace any "10:00 start / weekdays only" wording you have seen: ${describeBookingHours(prefs).replace(/\n/g, '; ')}. ` : '') +
       `Coach timezone: ${filtered.yourTimezone}; lead timezone: ${filtered.leadTimezone}. ` +
       // Where the lead is based, or a loud flag that we're guessing — the coach must ALWAYS hear
       // which one it is (Guy 2026-07-13; the silent assume-coach's-tz fallback is the trap).
@@ -233,19 +234,16 @@ async function runListEvents({ range, date, end_date } = {}, tenant = TENANT, de
 }
 
 async function runCheckTime({ date, time, side, lead_location, duration_mins } = {}, tenant = TENANT) {
-  const prefs = getBookingPrefs(tenant);
+  const prefs = await getBookingPrefsFor(tenant);
   const r = await wingguyCalendar.checkProposedTime(tenant, {
     date, time, side: side || 'coach', leadLocation: lead_location || '', durationMins: duration_mins,
   });
   if (!r.ok) return { text: `Error: ${r.error}`, isError: true };
   const tz = r.yourTimezone || 'Australia/Brisbane';
-  const eMin = wingguyCalendar.hhmmToMin(prefs.earliestStart);
-  const lMin = wingguyCalendar.hhmmToMin(prefs.lastStart);
-  const cMin = wingguyCalendar.minutesInTz(r.startISO, tz);
-  const withinHours = (eMin == null || lMin == null || cMin == null) ? true : (cMin >= eMin && cMin <= lMin);
+  const hoursProblem = wingguyCalendar.bookingHoursProblem(r.startISO, tz, prefs);
   const hitsLunch = wingguyCalendar.inLunch(r.startISO, tz, prefs, r.durationMins);
   const flags = [];
-  if (!withinHours) flags.push('OUTSIDE the coach\'s booking hours — flag it and get an explicit yes before booking');
+  if (hoursProblem) flags.push(`OUTSIDE the coach's booking hours (${hoursProblem}) — flag it and get an explicit yes before booking`);
   if (hitsLunch) flags.push('hits the coach\'s lunch hold — flag it');
   if (r.clashes.length) flags.push(`CLASHES with: ${r.clashes.map((c) => `${c.summary} (${c.display})`).join('; ')}`);
   // A missing/unrecognised location used to make the Lead display silently echo the coach's clock,
@@ -412,10 +410,8 @@ function notFoundText(r, lead, date, coachTz, leadTz) {
 
 function hoursFlags(iso, tz, prefs, len) {
   const flags = [];
-  const eMin = wingguyCalendar.hhmmToMin(prefs.earliestStart);
-  const lMin = wingguyCalendar.hhmmToMin(prefs.lastStart);
-  const cMin = wingguyCalendar.minutesInTz(iso, tz);
-  if (eMin != null && lMin != null && cMin != null && (cMin < eMin || cMin > lMin)) flags.push('the new time is OUTSIDE the coach\'s booking hours — get an explicit yes for that too');
+  const hoursProblem = wingguyCalendar.bookingHoursProblem(iso, tz, prefs);
+  if (hoursProblem) flags.push(`the new time is OUTSIDE the coach's booking hours (${hoursProblem}) — get an explicit yes for that too`);
   if (wingguyCalendar.inLunch(iso, tz, prefs, len)) flags.push('the new time hits the coach\'s lunch hold');
   if (wingguyCalendar.isWeekendInTz(iso, tz) && prefs.excludeWeekends) flags.push('the new time is on a WEEKEND');
   return flags;
@@ -436,7 +432,7 @@ async function runRescheduleMeeting({ lead_name, lead_email, lead_location, curr
 
   const coachTz = coach.timezone || 'Australia/Brisbane';
   const leadTz = leadTzFor(lead.location);
-  const prefs = getBookingPrefs(tenant);
+  const prefs = await getBookingPrefsFor(tenant);
   const resched = deps.rescheduleMeetingGuarded || wingguyCalendar.rescheduleMeetingGuarded;
   const r = await resched(coach, {
     leadEmails: lead.emails,
@@ -540,7 +536,82 @@ const MEETING_LINK_DESC = 'ONE-OFF meeting link for THIS invite only ("book it o
 
 const RANGE_DESC = 'Which window to list: "today" (default), "tomorrow", "this_week" (Mon-Sun of the current week), or "next_week". Use this for relative phrases — it resolves them in the coach\'s OWN timezone, so never work out the dates yourself. For anything else, pass explicit date / end_date instead.';
 
+// ── The person's own booking hours (David Gould, 10 Nov 2026) ─────────────────────────────────
+// "My hours are Mon/Tue/Thu 5:30pm only, Wed 9-5:30, no Fridays, weekends 8:30-5, an hour between
+// calls, three a day at most" - said once in chat, kept in services/bookingHoursStore.js, and read by
+// every surface that offers or checks a time (wingguyCalendar via getBookingPrefsFor).
+async function runBookingHours({ action, monday, tuesday, wednesday, thursday, friday, saturday, sunday, gap_between_meetings_mins, max_meetings_per_day, daily_limit_is_hard } = {}, tenant = TENANT, deps = {}) {
+  const store = deps.store || require('./bookingHoursStore');
+  const act = String(action || 'show').toLowerCase();
+  if (act === 'reset') {
+    const had = await store.clearBookingHours(tenant);
+    const prefs = await getBookingPrefsFor(tenant, { getBookingHours: async () => null });
+    return { text: `${had ? 'Done - their own booking hours are cleared.' : 'They had no booking hours of their own saved.'} Times are now offered on the standard hours:\n${describeBookingHours(prefs)}` };
+  }
+  if (act === 'set') {
+    const current = (await store.getBookingHours(tenant)) || {};
+    const next = { ...current };
+    const given = { mon: monday, tue: tuesday, wed: wednesday, thu: thursday, fri: friday, sat: saturday, sun: sunday };
+    if (Object.values(given).some((v) => v !== undefined)) {
+      // A day not mentioned keeps what it had; with no saved week yet, an unmentioned day is OFF -
+      // the reply says so, so the person can correct it.
+      const week = { ...(current.week || {}) };
+      for (const [k, v] of Object.entries(given)) if (v !== undefined) week[k] = v;
+      next.week = week;
+    }
+    if (gap_between_meetings_mins !== undefined) next.bufferMins = gap_between_meetings_mins;
+    if (max_meetings_per_day !== undefined) next.maxMeetingsPerDay = max_meetings_per_day;
+    if (daily_limit_is_hard !== undefined) next.dailyLimitHard = daily_limit_is_hard;
+    const { value, errors } = normaliseBookingHours(next);
+    if (errors.length) return { text: `NOTHING SAVED - ${errors.join('; ')}. Ask the person to clarify, then try again.`, isError: true };
+    if (!value) return { text: 'NOTHING SAVED - no hours were given. Pass the days (e.g. monday="17:30", friday="off") and/or the gap and daily limit.', isError: true };
+    await store.setBookingHours(tenant, value);
+    const prefs = await getBookingPrefsFor(tenant, { getBookingHours: async () => value });
+    return { text: `Saved. From now on every time Wingguy offers - in chat and in the LinkedIn drafts - follows these:\n${describeBookingHours(prefs)}\n\nRead it back to them in plain words and ask them to say if any day is wrong (a day they did not mention shows as "no meetings").` };
+  }
+  const prefs = await getBookingPrefsFor(tenant);
+  return { text: `${prefs.ownBookingHours ? 'Their own booking hours' : 'They have no hours of their own saved, so times are offered on the standard hours'}:\n${describeBookingHours(prefs)}` };
+}
+
+const DAY_DESC = (day) => `${day}: "off" for no meetings that day; one time ("17:30" or "5:30pm") when a meeting may ONLY start then; or "first-last" START times ("9:00-17:00"). These are START times - when the person gives an end ("9 to 5:30"), the last start is the end minus their meeting length (a 30-minute meeting -> "9:00-17:00"). Omit to leave the day as it is.`;
+const BOOKING_HOURS_DESC = 'The person\'s OWN booking hours - which days they take meetings, the earliest and latest START time each day, the gap they keep between meetings, and how many meetings a day is the limit. Every time Wingguy offers a lead (wingguy_check_availability, the LinkedIn panel drafts) follows these. Use when they say "my hours are...", "I don\'t take calls on Fridays", "only offer 5:30 on Mondays", "leave an hour between calls", "no more than 3 a day", "what hours do you offer?", "it keeps offering the wrong times". action=show reads them back; action=set saves (only what is passed changes - days not passed keep their value); action=reset goes back to the standard hours. Read the result back to them in plain words. Never tell them to put their hours into an instruction instead - an instruction cannot stop a wrong time being offered; this can.';
+const BOOKING_HOURS_TOOL = {
+  name: 'wingguy_booking_hours',
+  description: BOOKING_HOURS_DESC,
+  zodSchema: {
+    action: z.enum(['show', 'set', 'reset']).optional().describe('show (default) | set | reset'),
+    monday: z.string().optional().describe(DAY_DESC('Monday')),
+    tuesday: z.string().optional().describe(DAY_DESC('Tuesday')),
+    wednesday: z.string().optional().describe(DAY_DESC('Wednesday')),
+    thursday: z.string().optional().describe(DAY_DESC('Thursday')),
+    friday: z.string().optional().describe(DAY_DESC('Friday')),
+    saturday: z.string().optional().describe(DAY_DESC('Saturday')),
+    sunday: z.string().optional().describe(DAY_DESC('Sunday')),
+    gap_between_meetings_mins: z.number().optional().describe('Minutes kept free before and after every meeting (0 = back-to-back is fine).'),
+    max_meetings_per_day: z.number().optional().describe('How many meetings in a day is the limit.'),
+    daily_limit_is_hard: z.boolean().optional().describe('true = a day already at the limit is never offered; false = it is a preference (lighter days first, a full day only when nothing else fits).'),
+  },
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      action: { type: 'string', enum: ['show', 'set', 'reset'], description: 'show (default) | set | reset' },
+      monday: { type: 'string', description: DAY_DESC('Monday') },
+      tuesday: { type: 'string', description: DAY_DESC('Tuesday') },
+      wednesday: { type: 'string', description: DAY_DESC('Wednesday') },
+      thursday: { type: 'string', description: DAY_DESC('Thursday') },
+      friday: { type: 'string', description: DAY_DESC('Friday') },
+      saturday: { type: 'string', description: DAY_DESC('Saturday') },
+      sunday: { type: 'string', description: DAY_DESC('Sunday') },
+      gap_between_meetings_mins: { type: 'number', description: 'Minutes kept free before and after every meeting (0 = back-to-back is fine).' },
+      max_meetings_per_day: { type: 'number', description: 'How many meetings in a day is the limit.' },
+      daily_limit_is_hard: { type: 'boolean', description: 'true = a day already at the limit is never offered; false = it is a preference (lighter days first, a full day only when nothing else fits).' },
+    },
+  },
+  run: runBookingHours,
+};
+
 const TOOL_DEFS = [
+  BOOKING_HOURS_TOOL,
   {
     name: 'wingguy_list_events',
     description: 'What is actually ON the coach\'s calendar for a day or a range ("what\'s on today?", "what does my week look like?", "am I free Thursday afternoon?", "what\'s my next meeting?"). ALSO the FIRST call for the daily "prep me for today\'s meetings" / "prepare me for my 2pm" - start here to get the meetings, then call wingguy_dossier per attendee for the history, past emails and what was agreed last time (pass the attendee\'s invite email as email= too — the lookup is surer and reaches Alt Emails). That phrase means the DIARY, never the follow-up queue. If the result carries a CALL RUN SHEET line, the prep OPENS with that link. Reads their real calendar live, whichever provider they use (Google, Nylas or Zoho) — so this is the RIGHT tool for the coach\'s own diary, and works for every client. This shows what is BOOKED; to find times to OFFER A LEAD use wingguy_check_availability instead (that one applies their booking rules). Read-only — it never changes anything. Defaults to today.',
@@ -743,4 +814,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { registerWingguyBookingTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCheckAvailability, runListEvents, runRescheduleMeeting, runCancelMeeting, clocksLine };
+module.exports = { registerWingguyBookingTools, legacyToolList, legacyToolCall, TOOL_DEFS, runBookingHours, runCheckAvailability, runListEvents, runRescheduleMeeting, runCancelMeeting, clocksLine };

@@ -19,7 +19,7 @@
 
 const { getAnthropicClient } = require('../config/anthropicClient');
 const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingguyTemplates');
-const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+const { getBookingPrefsFor, describeBookingHours } = require('../config/wingguyBookingPrefs');
 const { getVoicePrefs } = require('../config/wingguyVoicePrefs');
 const wingguyCalendar = require('./wingguyCalendar');
 const leadBookingLink = require('./wingguyLeadBookingLink');
@@ -340,13 +340,17 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, leadName
     `${clockLine ? `${clockLine}\n` : ''}` +
     `CRM RECORD: ${onFile ? 'this lead is already in Guy\'s CRM' : 'this lead is NOT in Guy\'s CRM yet — no record matched them (e.g. a new connection). If Guy wants them saved, use create_lead.'}\n` +
     `COACH NAME: ${coachName || 'Guy Wilson'}\n` +
-    `GUY'S BOOKING PREFERENCES (JSON): ${JSON.stringify(prefs)}`
+    `GUY'S BOOKING PREFERENCES (JSON): ${JSON.stringify(prefs)}` +
+    // A coach with their OWN hours (wingguy_booking_hours): the instructions' "10:00 start, 9:30 at a
+    // pinch, weekdays only" is Guy's default and does not apply - check_availability already returns
+    // only slots inside their hours (David Gould, 10 Nov 2026).
+    (prefs && prefs.ownBookingHours ? `\nTHIS COACH'S OWN BOOKING HOURS (they replace any 10:00 / 9:30 / weekdays-only wording in your instructions; check_availability already applies them): ${describeBookingHours(prefs).replace(/\n/g, '; ')}` : '')
   );
 }
 
 // The offer-time helpers (bounds, lunch, past/too-soon, slot formatting) live in wingguyCalendar —
 // ONE implementation shared with the claude.ai connector tools (the "one booking door", 2026-07-06).
-const { hhmmToMin, minutesInTz, inLunch, earliestOfferDate, dateStrInTz, fmtSlot, tzCity } = wingguyCalendar;
+const { inLunch, earliestOfferDate, dateStrInTz, fmtSlot, tzCity } = wingguyCalendar;
 
 // Message-level prompt caching (2026-07-15): each tool round-trip used to re-send the per-lead
 // context block + the ENTIRE conversation at full input price — the dominant line on the API bill
@@ -1178,7 +1182,8 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   // Mutable so create_lead can make a record mid-turn and the SAME turn's update_lead_email / book_meeting
   // then act on it (create → set email → book, all in one go).
   let currentLeadRecordId = leadRecordId;
-  const prefs = getBookingPrefs(coach.clientId);
+  // The coach's OWN hours when they saved some (wingguy_booking_hours), else the defaults.
+  const prefs = await (deps.getBookingPrefsFor || getBookingPrefsFor)(coach.clientId);
   // Per-tenant greeting + sign-off house style (VARIABLE), with the exact sign-off decided in code
   // (CODE) from this thread's previous coach message. Identity comes STORE-FIRST from the tenant's
   // own variables (their setup-page sign-off), config voice prefs as fallback — see getVoiceIdentity.
@@ -1437,8 +1442,6 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           error: `STOPPED — ${profile.name || 'this lead'}'s timezone is UNKNOWN (${why}). No time list was built and the draft was NOT touched. Do NOT write times into a draft yourself, and do not pick a clock for them. In order: (1) re-read the thread — if they named where they are or will be, call propose_times again with leadTimezoneOverride set to that IANA zone and tell Guy you took it from the thread; (2) otherwise ask Guy where they're based (for an introduction, suggest asking the person who introduced them) and, when he answers, call again with leadTimezoneOverride for that place and ask him to put the location on their record in the Portal so it sticks; (3) only if Guy explicitly says to use his own clock, call again with leadTimezoneOverride="${tz}".${jobLocationOffer(profile)}`,
         };
       }
-      const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
-      const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
       const len = prefs.meetingLengthMins || 30;
       const dropped = [];
       const kept = [];
@@ -1449,8 +1452,8 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         if (Date.parse(iso) <= nowMs) { dropped.push({ iso, why: 'already in the past' }); continue; }
         if (dateStrInTz(iso, tz) < earliestDate) { dropped.push({ iso, why: 'too soon - Guy gives at least one clear day\'s notice (set includeSoon only if he explicitly asked for today/tomorrow)' }); continue; }
         if (!input.includeWeekends && prefs.excludeWeekends && wingguyCalendar.isWeekendInTz(iso, tz)) { dropped.push({ iso, why: 'weekend - weekdays only unless Guy explicitly asks' }); continue; }
-        const cMin = minutesInTz(iso, tz);
-        if (cMin == null || cMin < eMin || cMin > lMin) { dropped.push({ iso, why: 'outside your booking hours' }); continue; }
+        const hoursProblem = wingguyCalendar.bookingHoursProblem(iso, tz, prefs);
+        if (hoursProblem) { dropped.push({ iso, why: hoursProblem }); continue; }
         if (!input.includeLunch && inLunch(iso, tz, prefs, len)) { dropped.push({ iso, why: 'lunch hold' }); continue; }
         kept.push(iso);
       }
@@ -1593,10 +1596,8 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // Soft, overridable flags (bounds + lunch are Guy's prefs, not hard rules) — surfaced so the
       // agent can warn, NOT to block.
       const tz = r.yourTimezone || 'Australia/Brisbane';
-      const eMin = hhmmToMin(prefs.earliestStart);
-      const lMin = hhmmToMin(prefs.lastStart);
-      const cMin = minutesInTz(r.startISO, tz);
-      const withinHours = (eMin == null || lMin == null || cMin == null) ? true : (cMin >= eMin && cMin <= lMin);
+      const hoursProblem = wingguyCalendar.bookingHoursProblem(r.startISO, tz, prefs);
+      const withinHours = !hoursProblem;
       const hitsLunch = inLunch(r.startISO, tz, prefs, r.durationMins);
       // CODE-OWNED clock facts (Shira, 2026-08-27): display/leadDisplay alone didn't stop the model
       // writing its own conversion in prose — it echoed a wrong "+2h" from an earlier thread message

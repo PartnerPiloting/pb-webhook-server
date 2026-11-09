@@ -34,7 +34,7 @@ const { getAnthropicClient, getAnthropicClientForKey, resolveClientAnthropic, an
 const rulesSource = require('../services/wingguyRulesSource');
 const extensionPolicy = require('../services/extensionPolicy');
 const { recordSeen, latestForClient } = require('../services/extensionDistStore');
-const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+const { getBookingPrefsFor } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
 const { runWingguyChatTurn } = require('../services/wingguyChat');
 const wingguyLeads = require('../services/wingguyLeads');
@@ -662,8 +662,8 @@ module.exports = function mountWingguy(app) {
 
   // Per-tenant booking preferences (the SEAM — Guy's defaults for now, Postgres later). The extension
   // reads these to pick which slots to offer; hard timezone/clash rules stay in the calendar code.
-  router.get('/booking-prefs', (req, res) => {
-    res.json({ ok: true, prefs: getBookingPrefs(req.client && req.client.clientId) });
+  router.get('/booking-prefs', async (req, res) => {
+    res.json({ ok: true, prefs: await getBookingPrefsFor(req.client && req.client.clientId) });
   });
 
   // Draft a personalised thanks-for-connecting message.

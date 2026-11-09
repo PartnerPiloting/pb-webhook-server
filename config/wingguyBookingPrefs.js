@@ -67,4 +67,149 @@ function getBookingPrefs(clientId) {
   return prefs;
 }
 
-module.exports = { getBookingPrefs, DEFAULT_PREFS };
+// ── Each person's OWN booking hours (David Gould, 10 Nov 2026) ──────────────────────────────────
+// The defaults above are Guy's. A person who keeps different hours saves them once (chat tool
+// wingguy_booking_hours -> services/bookingHoursStore.js) and every surface that offers or checks a
+// time reads them through getBookingPrefsFor. Shape after normalising:
+//   { week: { mon: { first: '17:30', last: '17:30' } | null, ... sun },   // null = no meetings that day
+//     bufferMins: 60, maxMeetingsPerDay: 3, dailyLimitHard: true }
+// `first`/`last` are the earliest and latest a meeting may START. Any part may be absent; an absent
+// part keeps the default. With `week` set, the week decides weekends too (excludeWeekends is off).
+
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_NAMES = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+
+// "5:30pm" / "17:30" / "9am" / "9" -> "17:30" | "09:00" | null
+function parseClock(input) {
+  const t = String(input == null ? '' : input).trim().toLowerCase().replace(/\s+/g, '').replace(/\./g, ':');
+  const m = t.match(/^(\d{1,2})(?::(\d{2}))?(am|pm)?$/);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = m[2] ? Number(m[2]) : 0;
+  if (min > 59) return null;
+  if (m[3]) {
+    if (h < 1 || h > 12) return null;
+    h = (h % 12) + (m[3] === 'pm' ? 12 : 0);
+  } else if (h > 23) return null;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+const clockMin = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+
+// One day: "off" | "17:30" (that start only) | "9:00-17:00" (first-last START) | { first, last }.
+// Returns { value } (null = no meetings) or { error }.
+function parseDay(input) {
+  if (input === null || input === false) return { value: null };
+  if (typeof input === 'object') {
+    const first = parseClock(input.first);
+    const last = parseClock(input.last == null ? input.first : input.last);
+    if (!first || !last) return { error: 'needs a first and last start time' };
+    if (clockMin(last) < clockMin(first)) return { error: `the last start (${last}) is before the first (${first})` };
+    return { value: { first, last } };
+  }
+  const t = String(input).trim().toLowerCase();
+  if (!t || /^(off|none|no|closed|no appointments|no meetings|-)$/.test(t)) return { value: null };
+  const parts = t.split(/\s*(?:-|–|—|\bto\b|\buntil\b)\s*/).filter(Boolean);
+  if (parts.length === 1) {
+    const one = parseClock(parts[0].replace(/^(at|start|only|starts?)\s*/, '').replace(/\s*(start|only|starts?)$/, ''));
+    return one ? { value: { first: one, last: one } } : { error: `couldn't read "${input}" as a time` };
+  }
+  if (parts.length === 2) return parseDay({ first: parts[0], last: parts[1] });
+  return { error: `couldn't read "${input}" - use "off", a single start time, or "first-last" start times` };
+}
+
+/**
+ * Check and tidy a saved/submitted hours object. Returns { value, errors } - value is null when
+ * nothing usable is left. Used on the way IN (the chat tool) and OUT (every read), so a bad row
+ * can only fall back to the defaults.
+ */
+function normaliseBookingHours(raw) {
+  const errors = [];
+  if (!raw || typeof raw !== 'object') return { value: null, errors };
+  const out = {};
+  if (raw.week && typeof raw.week === 'object') {
+    const week = {};
+    let any = false;
+    for (const k of DAY_KEYS) {
+      const given = Object.prototype.hasOwnProperty.call(raw.week, k) ? raw.week[k] : undefined;
+      if (given === undefined) { week[k] = null; continue; }
+      const r = parseDay(given);
+      if (r.error) { errors.push(`${DAY_NAMES[k]}: ${r.error}`); week[k] = null; continue; }
+      week[k] = r.value;
+      if (r.value) any = true;
+    }
+    if (any) out.week = week;
+    else if (!errors.length) errors.push('every day is off - that would leave no times to offer at all');
+  }
+  if (raw.bufferMins != null && raw.bufferMins !== '') {
+    const n = Number(raw.bufferMins);
+    if (Number.isFinite(n) && n >= 0 && n <= 240) out.bufferMins = Math.round(n);
+    else errors.push('the gap between meetings must be 0-240 minutes');
+  }
+  if (raw.maxMeetingsPerDay != null && raw.maxMeetingsPerDay !== '') {
+    const n = Number(raw.maxMeetingsPerDay);
+    if (Number.isInteger(n) && n >= 1 && n <= 20) out.maxMeetingsPerDay = n;
+    else errors.push('meetings a day must be a whole number from 1 to 20');
+  }
+  if (raw.dailyLimitHard != null) out.dailyLimitHard = !!raw.dailyLimitHard;
+  return { value: Object.keys(out).length ? out : null, errors };
+}
+
+/** Pure: lay saved hours over a prefs object. */
+function applyBookingHours(prefs, raw) {
+  const { value } = normaliseBookingHours(raw);
+  if (!value) return prefs;
+  const next = { ...prefs };
+  if (value.week) {
+    next.weekHours = value.week;
+    next.excludeWeekends = false;      // the week itself says which days are open
+    next.preferredStart = null;        // no Guy-style "10:00 preferred, 9:30 at a pinch" on top of it
+    const opens = DAY_KEYS.map((k) => value.week[k]).filter(Boolean);
+    next.earliestStart = opens.map((d) => d.first).sort()[0];
+    next.lastStart = opens.map((d) => d.last).sort().slice(-1)[0];
+  }
+  if (value.bufferMins != null) next.bufferMins = value.bufferMins;
+  if (value.maxMeetingsPerDay != null) next.maxMeetingsPerDay = value.maxMeetingsPerDay;
+  if (value.dailyLimitHard != null) next.dailyLimitHard = value.dailyLimitHard;
+  next.ownBookingHours = true;
+  return next;
+}
+
+function fmtClock(hhmm) {
+  const h = Number(hhmm.slice(0, 2));
+  const m = hhmm.slice(3);
+  return `${(h % 12) || 12}${m === '00' ? '' : `:${m}`}${h < 12 ? 'am' : 'pm'}`;
+}
+
+/** Plain-English summary for a person ("Monday: 5:30pm start only ..."). */
+function describeBookingHours(prefs) {
+  const lines = [];
+  if (prefs.weekHours) {
+    for (const k of DAY_KEYS) {
+      const d = prefs.weekHours[k];
+      lines.push(`${DAY_NAMES[k]}: ${!d ? 'no meetings' : d.first === d.last ? `${fmtClock(d.first)} start only` : `first start ${fmtClock(d.first)}, last start ${fmtClock(d.last)}`}`);
+    }
+  } else {
+    lines.push(`Weekdays${prefs.excludeWeekends ? ' only' : ' and weekends'}: first start ${fmtClock(prefs.earliestStart)}, last start ${fmtClock(prefs.lastStart)} (the standard hours)`);
+  }
+  lines.push(`Gap between meetings: ${prefs.bufferMins ? `${prefs.bufferMins} minutes` : 'none'}`);
+  lines.push(`Meetings a day: ${prefs.maxMeetingsPerDay}${prefs.dailyLimitHard ? ' - a hard limit, a full day is never offered' : ' - a preference, lighter days are offered first'}`);
+  return lines.join('\n');
+}
+
+/** Prefs for one person, with their own saved hours laid over the defaults. Never throws. */
+async function getBookingPrefsFor(clientId, deps = {}) {
+  const base = getBookingPrefs(clientId);
+  if (!clientId) return base;
+  try {
+    const read = deps.getBookingHours || require('../services/bookingHoursStore').getBookingHours;
+    return applyBookingHours(base, await read(clientId));
+  } catch (e) {
+    console.warn(`[bookingPrefs] own hours unavailable for ${clientId}: ${e.message} - using the defaults`);
+    return base;
+  }
+}
+
+module.exports = {
+  getBookingPrefs, getBookingPrefsFor, DEFAULT_PREFS,
+  normaliseBookingHours, applyBookingHours, describeBookingHours, parseClock, parseDay, DAY_KEYS,
+};

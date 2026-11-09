@@ -13,7 +13,7 @@
 
 const { DateTime } = require('luxon');
 const { resolveLeadTimezone } = require('./leadLocationResolver');
-const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+const { getBookingPrefsFor } = require('../config/wingguyBookingPrefs');
 const { createCalendarEvent, updateCalendarEventTime, deleteCalendarEvent, getMeetingsInWindow, googleAllDayNormalise } = require('./calendarProvider');
 
 const DEFAULT_TZ = 'Australia/Brisbane';
@@ -186,6 +186,31 @@ function buildDaysFromBusy({ busyEvents, dates, yourTimezone, leadTimezone, star
   });
 }
 
+// The hours the free/busy scan has to SEE. Guy's 9-17 stays the floor of the window, widened to take
+// in a person's own earliest start and latest start + meeting + gap (David Gould, 10 Nov 2026: his
+// only Monday slot is 5:30pm, which a 9-17 scan can never produce). Whole hours - the scan grid
+// starts on the hour and walks in 30-minute steps, so 8:30 and 5:30 starts both land on it.
+function scanHoursFor(prefs) {
+  const p = prefs || {};
+  const len = p.meetingLengthMins || 30;
+  const e = hhmmToMin(p.earliestStart);
+  const l = hhmmToMin(p.lastStart);
+  const startHour = e == null ? DAY_START_HOUR : Math.min(DAY_START_HOUR, Math.floor(e / 60));
+  const endHour = l == null ? DAY_END_HOUR : Math.min(24, Math.max(DAY_END_HOUR, Math.ceil((l + len) / 60)));
+  return { startHour, endHour };
+}
+
+// The real (busy, timed) events touching one coach-tz date, as { start, end } ISO - what the
+// gap-between-meetings check looks at. Kept per day on the availability result.
+function busyForDate(events, date, tz) {
+  const dayStart = DateTime.fromISO(`${date}T00:00`, { zone: tz }).toMillis();
+  const dayEnd = dayStart + 24 * 3600000;
+  return (events || [])
+    .filter((e) => !e.allDay && !e.isFree && e.start && e.end && String(e.start).includes('T'))
+    .map((e) => ({ start: new Date(e.start).toISOString(), end: new Date(e.end).toISOString() }))
+    .filter((b) => Date.parse(b.start) < dayEnd + 6 * 3600000 && Date.parse(b.end) > dayStart - 6 * 3600000);
+}
+
 // Returns { yourTimezone, leadTimezone, days: [{ date, day, freeSlots: [{ time, display, leadDisplay }] }] }
 // `time` is the slot's start as an ISO string — the agent passes it straight to book_meeting (no math).
 async function getAvailabilityForCoach(clientId, leadLocation = '') {
@@ -208,6 +233,8 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
   for (let i = 0; i < DAYS_TO_SCAN; i++) {
     dates.push(DateTime.fromISO(`${dateStr}T12:00`, { zone: yourTimezone }).plus({ days: i }).toFormat('yyyy-MM-dd'));
   }
+  const prefs = await getBookingPrefsFor(clientId);
+  const { startHour, endHour } = scanHoursFor(prefs);
 
   // Provider-seam client (no service-account share) → read busy events via their provider (Nylas or
   // a direct provider like Zoho) and build slots.
@@ -216,8 +243,8 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
     const windowEnd = DateTime.fromISO(`${dates[dates.length - 1]}T23:59`, { zone: yourTimezone }).toJSDate();
     const { events, error } = await getMeetingsInWindow(coachForCalendar(info), windowStart, windowEnd);
     if (error) throw new Error(`${providerForInfo(info)} availability read failed: ${error}`);
-    const nylasPrefs = getBookingPrefs(clientId);
-    const days = buildDaysFromBusy({ busyEvents: events, dates, yourTimezone, leadTimezone, lunch: nylasPrefs.lunch });
+    const days = buildDaysFromBusy({ busyEvents: events, dates, yourTimezone, leadTimezone, startHour, endHour, lunch: prefs.lunch })
+      .map((d) => ({ ...d, busy: busyForDate(events, d.date, yourTimezone) }));
     return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, leadTzCandidates, leadTzAssumedNote, days };
   }
 
@@ -225,17 +252,17 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
   // extra shared calendars, which merge into the busy set via one multi-item freebusy call).
   const calendarService = require('../config/calendarServiceAccount.js');
   const { days, error } = await calendarService.getBatchAvailability(
-    googleReadSet(info), dates, DAY_START_HOUR, DAY_END_HOUR, yourTimezone
+    googleReadSet(info), dates, startHour, endHour, yourTimezone
   );
   if (error) throw new Error(error);
 
-  const prefs = getBookingPrefs(clientId);
   const mapped = (days || []).map((d) => ({
     date: d.date,
     day: d.day,
     // How many REAL meetings Guy already has that day — drives the "least busy" bias AND the hard
     // daily cap, so it must mean client calls, not calendar blocks (see countRealMeetings).
-    meetingCount: countRealMeetings(d.events, yourTimezone, prefs),
+    meetingCount: countRealMeetings(d.events, yourTimezone, prefs, { startHour, endHour }),
+    busy: busyForDate(d.events, d.date, yourTimezone),
     freeSlots: (d.freeSlots || []).map((s) => ({
       time: s.time,
       display: s.display || s.displayRange,
@@ -246,14 +273,14 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
   return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, leadTzCandidates, leadTzAssumedNote, days: mapped };
 }
 
-// A "meeting" for the daily count = a BUSY event overlapping the booking-hours window (9–17) that
-// isn't the coach's own lunch block (an event STARTING inside his lunch hold). Counting everything
-// made maxMeetingsPerDay:4 mean "2 client calls" — the personal Lunch (in-window) and Dinner
-// (out-of-window, but returned for the day) blocks ate the cap, and the live one-booking-door check
-// (2026-07-06) showed only 3 offerable days in a 3-week window.
-function countRealMeetings(events, tz, prefs) {
-  const winStart = DAY_START_HOUR * 60;
-  const winEnd = DAY_END_HOUR * 60;
+// A "meeting" for the daily count = a BUSY event overlapping the booking-hours window (9–17, or the
+// person's own wider window) that isn't the coach's own lunch block (an event STARTING inside his
+// lunch hold). Counting everything made maxMeetingsPerDay:4 mean "2 client calls" — the personal
+// Lunch (in-window) and Dinner (out-of-window, but returned for the day) blocks ate the cap, and the
+// live one-booking-door check (2026-07-06) showed only 3 offerable days in a 3-week window.
+function countRealMeetings(events, tz, prefs, { startHour = DAY_START_HOUR, endHour = DAY_END_HOUR } = {}) {
+  const winStart = startHour * 60;
+  const winEnd = endHour * 60;
   const lunchStart = hhmmToMin(prefs && prefs.lunch && prefs.lunch.start);
   const lunchEnd = lunchStart != null ? lunchStart + ((prefs.lunch && prefs.lunch.durationMins) || 0) : null;
   return (events || []).filter((e) => {
@@ -377,12 +404,19 @@ async function clashingSlots(clientId, isos, durationMins) {
   const out = new Map();
   if (!list.length) return out;
   const info = await getCoachCalendarInfo(clientId);
-  const prefs = getBookingPrefs(clientId);
+  const prefs = await getBookingPrefsFor(clientId);
   const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
   const tz = info.timezone;
   const events = await busyEventsForDates(info, list.map((i) => dateStrInTz(i, tz)));
   for (const iso of list) {
-    const clashes = overlappingEvents(events, iso, len, tz);
+    let clashes = overlappingEvents(events, iso, len, tz);
+    // The person's own gap between meetings (bufferMins) - a time that sits too close to another
+    // meeting is not on offer either, so the backstop names it the same way.
+    const buf = Number(prefs.bufferMins) || 0;
+    if (!clashes.length && buf) {
+      clashes = overlappingEvents(events, new Date(Date.parse(iso) - buf * 60000).toISOString(), len + 2 * buf, tz)
+        .map((c) => ({ ...c, summary: `${c.summary} - inside the ${buf}-minute gap kept between meetings` }));
+    }
     if (clashes.length) out.set(iso, clashes);
   }
   return out;
@@ -416,7 +450,7 @@ async function checkProposedTime(clientId, { date, time, side = 'coach', leadLoc
   const tz = side === 'lead' ? leadTimezone : yourTimezone;
   const startISO = wallClockToISO(date, time, tz);
   if (!startISO) return { ok: false, error: `Couldn't read "${date} ${time}" as a time — give a date (YYYY-MM-DD) and a clock time (e.g. 14:00 or 2:00pm).` };
-  const prefs = getBookingPrefs(clientId);
+  const prefs = await getBookingPrefsFor(clientId);
   const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
   const clashes = await clashesForWindow(info, startISO, len);
   return {
@@ -438,7 +472,7 @@ async function checkProposedTime(clientId, { date, time, side = 'coach', leadLoc
 // guard). Returns [{ summary, display }].
 async function getClashesForISO(clientId, startISO, durationMins) {
   const info = await getCoachCalendarInfo(clientId);
-  const prefs = getBookingPrefs(clientId);
+  const prefs = await getBookingPrefsFor(clientId);
   const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
   if (isNaN(new Date(startISO).getTime())) return [];
   return clashesForWindow(info, startISO, len);
@@ -469,7 +503,7 @@ async function createBookingEvent(coach, { startISO, durationMins, leadEmail, le
   const start = new Date(startISO);
   if (isNaN(start.getTime())) return { ok: false, error: 'invalid startISO' };
 
-  const prefs = getBookingPrefs(coach.clientId);
+  const prefs = await getBookingPrefsFor(coach.clientId);
   const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
   const end = new Date(start.getTime() + len * 60000);
   const coachName = coach.clientName || 'Guy Wilson';
@@ -531,6 +565,53 @@ function withinBounds(slot, eMin, lMin) {
 function minutesInTz(iso, tz) {
   const s = new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
   return hhmmToMin(s);
+}
+// ── A person's own hours, checked on one slot (David Gould, 10 Nov 2026) ────────────────────────
+// ONE check for every surface - check_availability (never offer it), propose_times (backstop),
+// check_time and reschedule (warn) - the lesson from inLunch: when only one caller applies a rule,
+// the other one is the hole. Returns a plain reason, or null when the start time is fine.
+const WEEKDAY_KEY = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' };
+const WEEKDAY_LONG = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+function clock12(hhmm) {
+  const m = hhmmToMin(hhmm);
+  const h = Math.floor(m / 60);
+  const mm = String(m % 60).padStart(2, '0');
+  return `${(h % 12) || 12}${mm === '00' ? '' : `:${mm}`}${h < 12 ? 'am' : 'pm'}`;
+}
+function bookingHoursProblem(iso, tz, prefs) {
+  const cMin = minutesInTz(iso, tz);
+  if (cMin == null || !prefs) return null;
+  if (prefs.weekHours) {
+    const key = WEEKDAY_KEY[DateTime.fromMillis(Date.parse(iso)).setZone(tz).weekday];
+    const day = prefs.weekHours[key];
+    if (!day) return `${WEEKDAY_LONG[key]} is not one of the coach's meeting days`;
+    const f = hhmmToMin(day.first);
+    const l = hhmmToMin(day.last);
+    if (cMin < f || cMin > l) {
+      const hours = day.first === day.last ? `${clock12(day.first)} start only` : `starts ${clock12(day.first)}-${clock12(day.last)}`;
+      return `outside the coach's ${WEEKDAY_LONG[key]} hours (${hours})`;
+    }
+    return null;
+  }
+  const e = hhmmToMin(prefs.earliestStart);
+  const l = hhmmToMin(prefs.lastStart);
+  if (e != null && l != null && (cMin < e || cMin > l)) return 'outside the coach\'s booking hours';
+  return null;
+}
+// The gap a person wants between meetings: the busy block that sits closer than bufferMins to a
+// [start, start+len) meeting, or null. An overlap is a clash, not a gap - the clash guard names those.
+function gapProblem(iso, len, busy, bufferMins) {
+  const buf = Number(bufferMins) || 0;
+  if (!buf || !Array.isArray(busy) || !busy.length) return null;
+  const s = Date.parse(iso);
+  const e = s + (len || 30) * 60000;
+  return busy.find((b) => {
+    const bs = Date.parse(b.start);
+    const be = Date.parse(b.end);
+    if (!(Number.isFinite(bs) && Number.isFinite(be))) return false;
+    if (bs < e && be > s) return false;                   // overlapping = a clash, handled elsewhere
+    return bs < e + buf * 60000 && be > s - buf * 60000;  // inside the gap either side
+  }) || null;
 }
 // True if a slot START overlaps the coach's SOFT lunch hold, checked in the COACH's timezone.
 // Centralised so check_availability (don't even offer the slot) and propose_times (backstop) agree —
@@ -697,8 +778,15 @@ function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = 
     // Weekdays only was a model-side rule until the live one-booking-door check (2026-07-06) showed
     // Sat/Sun slots offered to a chat that trusts "rules already applied" — now code, like the rest.
     .filter((d) => includeWeekends || !prefs.excludeWeekends || !isWeekend(d.date))
-    .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => Date.parse(s.time) > nowMs && withinBounds(s, eMin, lMin) && (includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
+    // A person with their own week (prefs.weekHours) is checked per weekday; everyone else keeps the
+    // proven display-string bounds. The gap between meetings needs the day's busy blocks (d.busy).
+    .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => Date.parse(s.time) > nowMs
+      && (prefs.weekHours ? !bookingHoursProblem(s.time, aTz, prefs) : withinBounds(s, eMin, lMin))
+      && !gapProblem(s.time, aLen, d.busy, prefs.bufferMins)
+      && (includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
     .filter((d) => d.freeSlots.length)
+    // A HARD daily limit is the person's own choice (dailyLimitHard) - Guy's stays a preference, below.
+    .filter((d) => !(prefs.dailyLimitHard && (d.meetingCount || 0) >= maxPerDay))
     .slice(0, AVAIL_MAX_DAYS)
     // DAILY LOAD IS A PREFERENCE, NOT A CAP (Guy 2026-07-10, after the hard version emptied next
     // week and pulled an offer a fortnight out — the Vikas mis-offer). Days at/over
@@ -1034,6 +1122,9 @@ async function listEventsForCoach(clientId, { range, date, endDate } = {}) {
 }
 
 module.exports = {
+  bookingHoursProblem,
+  gapProblem,
+  scanHoursFor,
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, clashingSlots, overlappingEvents, buildDaysFromBusy, meetingPlatformLabel,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
   // reschedule / cancel a booked meeting (2026-10-05)

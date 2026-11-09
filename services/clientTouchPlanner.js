@@ -552,9 +552,9 @@ function callOfferHtml(slots) {
 /** Guy's free times, filtered by his booking preferences, read now. */
 async function callAvailability(coach, client) {
   const cal = require('./wingguyCalendar');
-  const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+  const { getBookingPrefsFor } = require('../config/wingguyBookingPrefs');
   const avail = await cal.getAvailabilityForCoach(coach.clientId, client.location || client.timezone || '');
-  const filtered = cal.filterAvailability(avail, getBookingPrefs(coach.clientId), { includeFarWeeks: true });
+  const filtered = cal.filterAvailability(avail, await getBookingPrefsFor(coach.clientId), { includeFarWeeks: true });
   return { filtered, tz: filtered.leadTimezone || filtered.yourTimezone || 'Australia/Brisbane' };
 }
 
