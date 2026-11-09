@@ -26,6 +26,7 @@ fake('clientService.js', { getClientById: async () => state.client, clearCache: 
 fake('linkedinCollect.js', { statusByTenant: async () => state.status });
 fake('conversationScore.js', {
   loadProfile: async () => ({ who: state.who, yearsBack: state.yearsBack || 0 }),
+  usdPer1000: () => 6,
   saveYearsBack: async (t, y) => { if (!(y >= 0 && y <= 30)) throw new Error('bad years'); state.yearsBack = y; state.calls.push(`years ${y}`); return { ok: true, yearsBack: y }; },
   saveWho: async (t, who) => { state.who = who; state.calls.push('save'); return { ok: true }; },
   scoreConversations: async (t, o) => {
@@ -87,6 +88,14 @@ const DESC = 'I advise mid-size builders on procurement and I am looking for peo
     const r = await runSetup({ step: 'save_description', description: DESC }, 'T');
     assert.strictEqual(state.who, DESC);
     assert.ok(/120 conversations to read now, about US\$0\.71/.test(r.text) && /yes/i.test(r.text));
+    assert.ok(/still arriving/.test(r.text) && /US\$6 for each further 1,000/.test(r.text), 'history still arriving: the per-1,000 figure comes from the real sum');
+  });
+  await check('with the history complete it never says more is still arriving', async () => {
+    state.status.T.state = 'complete';
+    const r = await runSetup({ step: 'save_description', description: DESC }, 'T');
+    assert.ok(!/still arriving|each further 1,000/.test(r.text), r.text);
+    assert.ok(/history is complete/.test(r.text) && /yes/i.test(r.text));
+    state.status.T.state = 'ready';
   });
 
   console.log('yes number one - the read');

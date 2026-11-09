@@ -42,6 +42,10 @@ const WORKERS = 4;
 const MS_DAY = 86400000;
 // US$ per million tokens, for the estimate only.
 const PRICE_IN = 4; const PRICE_OUT = 20;
+// ~1,100 tokens in and ~75 out per thread (4 Oct prototype run). The ONE place the per-conversation
+// cost is worked out - the setup chat quotes "per 1,000" from this, never a typed-in figure.
+const USD_PER_THREAD = (1100 * PRICE_IN + 75 * PRICE_OUT) / 1e6;
+const usdPer1000 = () => Math.round(USD_PER_THREAD * 1000);
 
 const ENDINGS = [
   'open_question_or_offer', 'stalled_after_interest', 'answered_then_dropped', 'not_now',
@@ -364,7 +368,7 @@ async function scoreConversations(tenantId, { who, dryRun = false, sample = 0, l
   if (dryRun) {
     // ~1,100 tokens in and ~75 out per thread on the 4 Oct prototype run.
     result.dryRun = true;
-    result.estimateUsd = Number(((todo.length * (1100 * PRICE_IN + 75 * PRICE_OUT)) / 1e6).toFixed(2));
+    result.estimateUsd = Number((todo.length * USD_PER_THREAD).toFixed(2));
     return result;
   }
 
@@ -412,5 +416,5 @@ async function scoreConversations(tenantId, { who, dryRun = false, sample = 0, l
 
 module.exports = {
   scoreConversations, buildSystem, profileSig, threadSig, transcript, pickTodo, normaliseItem, spread,
-  scoreBatch, loadProfile, saveWho, WHO_KEY, saveYearsBack, oldestAllowed, parseYears, YEARS_KEY, loadCandidates,ensureSchema, _setPool, ENDINGS, DEFAULT_GUIDANCE, QUIET_DAYS,
+  scoreBatch, loadProfile, saveWho, WHO_KEY, saveYearsBack, oldestAllowed, parseYears, YEARS_KEY, loadCandidates, usdPer1000, ensureSchema, _setPool, ENDINGS, DEFAULT_GUIDANCE, QUIET_DAYS,
 };

@@ -135,7 +135,11 @@ async function stepSave(args, tenant) {
   await score.saveWho(tenant, who);
   const dry = await score.scoreConversations(tenant, { dryRun: true });
   const cost = dry.ok ? ` There are ${dry.toRead} conversations to read now, about US$${dry.estimateUsd} on their own Claude key.` : '';
-  return { text: `Saved.${cost} Older conversations are still arriving at up to 3,000 a day and will be read as they come in - roughly US$4 for each further 1,000 conversations worth reading. TELL them both figures and ask for their yes to the read. On yes: step "read" with confirm true.` };
+  const complete = c.status && c.status.state === 'complete';
+  const more = complete
+    ? ' Their LinkedIn history is complete - that is the whole cost; only brand-new conversations are read from here, a few at a time. TELL them that figure'
+    : ` Older conversations are still arriving at up to 3,000 a day and will be read as they come in - roughly US$${score.usdPer1000()} for each further 1,000 conversations worth reading. TELL them both figures`;
+  return { text: `Saved.${cost}${more} and ask for their yes to the read. On yes: step "read" with confirm true.` };
 }
 
 async function stepRead(args, tenant) {
@@ -183,7 +187,7 @@ async function stepLeads(args, tenant) {
   const done = await leads.syncReconnectLeads(tenant, { dryRun: false, cutOff });
   if (!done.ok) return { text: `Bringing them in failed: ${done.error}. Nothing was switched on.`, isError: true };
   await setMaster(c.client, { Reconnect: 'Yes' });
-  return { text: `Done: ${done.created} people added to their leads list and ${done.updated} existing leads given their conversation score. Their Reconnect list is now ON. TELL them: open the Follow-Ups tab in the portal and refresh - under the normal follow-ups there is a Reconnect section with the first 20 people (it can take a minute to appear). Each row says why the person is there and what to pick up on; click the name, open the message thread, type /wg. Older conversations keep arriving and are added by themselves.` };
+  return { text: `Done: ${done.created} people added to their leads list and ${done.updated} existing leads given their conversation score. Their Reconnect list is now ON. TELL them: open the Follow-Ups tab in the portal and refresh - under the normal follow-ups there is a Reconnect section with the first 20 people (it can take a minute to appear). Each row says why the person is there and what to pick up on; click the name, open the message thread, type /wg. ${c.status && c.status.state === 'complete' ? 'New conversations are read and added by themselves.' : 'Older conversations keep arriving and are added by themselves.'}` };
 }
 
 async function runSetup(args = {}, tenant = TENANT) {
