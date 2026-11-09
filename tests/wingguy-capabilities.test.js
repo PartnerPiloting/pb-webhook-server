@@ -94,6 +94,14 @@ check('"instructions", never "rules"', () => {
     assert.ok(!/\brules?\b/i.test(t || ''), `"${t}" says rules - client wording is "instructions"`);
   }
 });
+check('Guy narrates: Wingguy is named, and Guy is never in the third person', () => {
+  // The page is signed by Guy. "When it moves to email, I write the email" read as Guy writing their
+  // emails (10 Nov 2026) - so "I" is Guy, and Wingguy is "Wingguy" or "it". Sentences clients SAY are exempt.
+  for (const s of list.sections) for (const x of [s.title, s.short, s.lead, ...s.items.map((i) => i.does)]) {
+    assert.ok(!/\bGuy\b/.test(x || ''), `"${x}" names Guy in the third person - on this page Guy is "I"`);
+    assert.ok(!/\bI (write|book|read|show|file|find|keep|hold|work out|add|brief|never send)\b/.test(x || ''), `"${x}" uses "I" for something Wingguy does`);
+  }
+});
 check('every line has a sentence and says what it does', () => {
   for (const i of items) {
     assert.ok(i.say && i.say.trim(), `a line in ${i.section} has no say`);
@@ -165,6 +173,21 @@ check('a reader who knows nothing can follow it: the terms are explained where t
   assert.ok(/software called \*\*Linked Helper\*\*/.test(leads), 'Linked Helper is never explained');
   assert.ok(/is your \*\*campaign\*\*/.test(leads), 'campaign is never explained');
   assert.ok(firstUse('campaign') >= leads.indexOf('is your **campaign**') - 400, 'campaign is used before it is explained');
+});
+check('carries the closing questions and a line for a forwarded friend, whose links are real routes', () => {
+  assert.ok((list.page_questions || []).length >= 1, 'no page_questions');
+  for (const x of list.page_questions) {
+    assert.ok(page.includes(esc(x.q)), `the page is missing "${x.q}"`);
+    assert.ok(!/\bGuy\b/.test(x.a) && !/[–—]/.test(x.a), `"${x.q}" breaks the narrator or dash rule`);
+    assert.ok(!full.includes(x.q), 'the questions belong on the page, never in the chat answer');
+  }
+  const routes = fs.readFileSync(path.join(ROOT, 'routes', 'marketingRoutes.js'), 'utf8');
+  const links = (list.page_friend || {}).links || [];
+  assert.ok(links.length, 'no friend links');
+  for (const l of links) {
+    assert.ok(page.includes(`href="${l.href}"`), `friend link ${l.href} is not on the page`);
+    assert.ok(routes.includes(`router.get('${l.href}'`), `${l.href} is not a route - the friend would hit a dead link`);
+  }
 });
 check('has a starter strip, a search box and the copy script', () => {
   assert.ok(items.some((i) => i.start), 'no line is marked start: true');

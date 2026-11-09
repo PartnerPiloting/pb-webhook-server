@@ -161,8 +161,11 @@ from it, and there is no second copy of the words:
   parts: the first version put every line in the chat (a wall of text, 9 Nov 2026), the second
   listed the eight parts and Guy said "still too much text" (10 Nov). The client's Claude paraphrases
   whatever it is handed, so the only lever is how much it gets. The test caps the word count.
-- the **full page**, knowaguy.com.au/what-wingguy-can-do (`routes/marketingRoutes.js`): every line,
-  folded into eight cards, tap a sentence to copy it, a search box.
+- the **full page**, knowaguy.com.au/what-wingguy-can-do (`routes/marketingRoutes.js`): THE STORY - the
+  sections are ten steps in the order a stranger becomes someone you know, each lead read in full and
+  explaining its own terms (a new client does not know what a campaign or Linked Helper is), the
+  sentences folded under each step, a map at the top, tap a sentence to copy it, a search box.
+  **Guy narrates the page**: "I" is Guy, Wingguy is always named or "it" - the test enforces it.
 
 Never hand-write capability lines into the tool or the page.
 

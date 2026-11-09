@@ -82,7 +82,7 @@ function renderVision(s, now = new Date()) {
   const total = list.sections.reduce((n, sec) => n + sec.items.length, 0);
   const parts = [];
 
-  parts.push(`**Welcome${name ? ', ' + name : ''}.** A machine finds the right people on LinkedIn, and I look after every conversation that comes back. You run all of it from here, just by saying what you want.`);
+  parts.push(`**Welcome${name ? ', ' + name : ''}.** A machine invites the people you choose on LinkedIn, and I look after every conversation that comes back. You run all of it from here, just by saying what you want.`);
   parts.push('');
   parts.push(`All ${total} things you can ask for are on one page, tap any to copy: ${pageUrl()}`);
 
@@ -154,6 +154,16 @@ function renderPage(now = new Date()) {
         </details>
       </section>`).join('\n');
 
+  // The two questions a reader is left with after the steps, and a line for a forwarded friend.
+  const qs = list.page_questions || [];
+  const questions = qs.length
+    ? `\n      <aside class="why">\n        ${qs.map((x) => `<h2>${esc(x.q)}</h2>\n        <p>${rich(x.a)}</p>`).join('\n        ')}\n      </aside>\n`
+    : '';
+  const fr = list.page_friend;
+  const friend = fr
+    ? `        <p>${esc(fr.text)} ${(fr.links || []).map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join(' &middot; ')}</p>\n`
+    : '';
+
   // The map: every step's one-liner on one screen, each a jump to its step.
   const map = list.sections.map((sec, i) => `<li><a href="#${esc(sec.id)}"><span class="num">${i + 1}</span><span><b>${esc(sec.title)}</b><span class="short">${esc(sec.short)}</span></span></a></li>`).join('\n          ');
 
@@ -210,6 +220,10 @@ function renderPage(now = new Date()) {
   .line { padding:11px 0; border-top:1px solid var(--rule); }
   .does { display:block; font-size:16px; line-height:1.55; margin-top:6px; color:var(--ink); }
   .new { display:inline-block; margin-left:8px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#fff; background:var(--gold-ink); border-radius:3px; padding:2px 7px; vertical-align:middle; }
+  .why { margin:6px 0 1.8rem; padding:6px 20px 8px; border:1px solid var(--rule); border-left:3px solid var(--gold); border-radius:3px; background:var(--cream); }
+  .why h2 { font-size:19px; line-height:1.3; margin:14px 0 6px; color:var(--ink-deep); font-weight:700; }
+  .why p { font-size:16.5px; line-height:1.62; margin:0 0 12px; color:var(--ink); }
+  .op-foot a { color:var(--gold-ink); }
   .none { display:none; font-size:16px; color:var(--ink-soft); margin:0 0 1rem; }
   .hide { display:none; }
   .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:var(--dark); color:var(--cream); font-size:15px; padding:10px 18px; border-radius:999px; opacity:0; pointer-events:none; transition:opacity .15s; }
@@ -229,10 +243,10 @@ function renderPage(now = new Date()) {
 
     <div class="op-c">
       <h1 class="op-t">What you can do with Wingguy</h1>
-      <p class="op-dek">A machine that finds the right people on LinkedIn, and an assistant that looks after every conversation that comes back.</p>
+      <p class="op-dek">A machine that invites the people you choose on LinkedIn, and an assistant that looks after every conversation that comes back.</p>
       <hr class="op-r">
 
-      <p class="how">Here's the whole thing, in the order it happens - from a stranger on LinkedIn to someone you've met. Under each step are the sentences you say to your Claude to make it happen. <b>Tap a sentence to copy it, then paste it into your Claude.</b> You don't learn any of this. You just say it.</p>
+      <p class="how">Here's the whole thing, in the order it happens - from a stranger on LinkedIn to someone you've met. Under each step are the sentences you say to your Claude to make it happen. <b>Tap a sentence to copy it, then paste it into your Claude.</b> Where a sentence has a name in it - Sarah, him, her - swap in the real one. You don't learn any of this. You just say it.</p>
 
       <ul class="map">
           ${map}
@@ -241,9 +255,9 @@ function renderPage(now = new Date()) {
 
       <input class="find" id="find" type="search" placeholder="Looking for something? Type a word - email, campaign, booking..." aria-label="Search this page">
       <div class="tools"><span id="found"></span><button type="button" id="all">Open all</button></div>
-      <p class="none" id="none">Nothing here matches that. Ask your Claude anyway - or ask Guy.</p>
+      <p class="none" id="none">Nothing here matches that. Ask your Claude anyway - or ask me.</p>
 ${steps}
-
+${questions}
       <div class="start">
         <h2>Your first day? Start with these</h2>
         ${starters.map((it) => sayButton(it.say)).join('\n        ')}
@@ -251,7 +265,7 @@ ${steps}
 
       <footer class="op-foot">
         <p>This page writes itself from the live list of what Wingguy can do, so anything marked New arrived in the last ${days} days and nothing here is out of date. You can also just ask your Claude: &ldquo;what can I do with Wingguy?&rdquo;</p>
-        <p class="op-sign">- (I know a) Guy</p>
+${friend}        <p class="op-sign">- (I know a) Guy</p>
       </footer>
     </div>
 
