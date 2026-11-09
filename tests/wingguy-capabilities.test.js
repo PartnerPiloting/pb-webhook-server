@@ -150,9 +150,21 @@ const esc = (x) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, 
 check('carries every sentence as a tap-to-copy button', () => {
   for (const i of items) assert.ok(page.includes(`data-say="${esc(i.say)}"`), `the page is missing "${i.say}"`);
 });
-check('one card per part, the first one open', () => {
-  assert.strictEqual((page.match(/<details class="part"/g) || []).length, list.sections.length);
-  assert.strictEqual((page.match(/<details class="part"[^>]* open>/g) || []).length, 1);
+check('tells the story in full - every step\'s lead is on the page unfolded, its sentences folded under it', () => {
+  assert.strictEqual((page.match(/<section class="part"/g) || []).length, list.sections.length);
+  for (const s of list.sections) {
+    assert.ok(page.includes(`<h2>${s.title.replace(/&/g, '&amp;').replace(/'/g, "'")}</h2>`) || page.includes(`<h2>${s.title}</h2>`), `step "${s.title}" has no heading`);
+    assert.ok(page.includes(`href="#${s.id}"`), `the map does not point at step ${s.id}`);
+  }
+  assert.strictEqual((page.match(/<details class="says">/g) || []).length, list.sections.length, 'every step folds its sentences');
+  assert.ok(!/<details class="says" open>/.test(page), 'the sentences start folded - the story is what is read first');
+});
+check('a reader who knows nothing can follow it: the terms are explained where they first appear', () => {
+  const leads = list.sections.map((s) => s.lead).join(' ');
+  const firstUse = (word) => leads.toLowerCase().indexOf(word);
+  assert.ok(/software called \*\*Linked Helper\*\*/.test(leads), 'Linked Helper is never explained');
+  assert.ok(/is your \*\*campaign\*\*/.test(leads), 'campaign is never explained');
+  assert.ok(firstUse('campaign') >= leads.indexOf('is your **campaign**') - 400, 'campaign is used before it is explained');
 });
 check('has a starter strip, a search box and the copy script', () => {
   assert.ok(items.some((i) => i.start), 'no line is marked start: true');

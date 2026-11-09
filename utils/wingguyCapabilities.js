@@ -134,20 +134,28 @@ function renderPage(now = new Date()) {
     return `<li class="line" data-text="${esc(`${it.say} ${it.does}`.toLowerCase())}">${sayButton(it.say)}${fresh ? '<span class="new">New</span>' : ''}<span class="does">${rich(cap(it.does))}</span></li>`;
   };
 
-  const cards = list.sections.map((sec, i) => `
-      <details class="part" id="${esc(sec.id)}"${i === 0 ? ' open' : ''}>
-        <summary>
+  // The story is always open: a reader who has never heard of a campaign or Linked Helper follows
+  // every step without tapping anything (Guy, 10 Nov 2026: "they have no idea what a campaign is").
+  // The sentences sit folded under each step - the detail is one tap away, never in the way.
+  const steps = list.sections.map((sec, i) => `
+      <section class="part" id="${esc(sec.id)}">
+        <div class="step">
           <span class="num">${i + 1}</span>
-          <span class="head"><b>${esc(sec.title)}</b><span class="short">${esc(sec.short)}</span></span>
-          <span class="count">${sec.items.length}</span>
-        </summary>
-        <div class="inner">
-          <p class="lead">${rich(sec.lead)}</p>
+          <div class="head">
+            <h2>${esc(sec.title)}</h2>
+            <p class="lead">${rich(sec.lead)}</p>
+          </div>
+        </div>
+        <details class="says">
+          <summary>What you say <span class="count">${sec.items.length}</span></summary>
           <ul class="lines">
             ${sec.items.map(row).join('\n            ')}
           </ul>
-        </div>
-      </details>`).join('\n');
+        </details>
+      </section>`).join('\n');
+
+  // The map: every step's one-liner on one screen, each a jump to its step.
+  const map = list.sections.map((sec, i) => `<li><a href="#${esc(sec.id)}"><span class="num">${i + 1}</span><span><b>${esc(sec.title)}</b><span class="short">${esc(sec.short)}</span></span></a></li>`).join('\n          ');
 
   return `<style>
   /* The editorial shell the one-pagers use (see content/site/how-campaigns-work.html). Single-theme.
@@ -176,20 +184,29 @@ function renderPage(now = new Date()) {
   .find:focus { outline:none; border-color:var(--gold); }
   .tools { display:flex; justify-content:space-between; align-items:baseline; margin:0 0 14px; font-size:14px; color:var(--ink-soft); }
   .tools button { font:inherit; font-size:14px; color:var(--gold-ink); background:none; border:0; padding:0; cursor:pointer; text-decoration:underline; }
-  .part { border:1px solid var(--rule); border-radius:4px; background:#fff; margin:0 0 10px; }
-  .part[open] { border-color:var(--gold); }
-  .part summary { display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:pointer; list-style:none; }
-  .part summary::-webkit-details-marker { display:none; }
+  .map { list-style:none; margin:0 0 1.8rem; padding:0; border:1px solid var(--rule); border-radius:4px; background:#fff; }
+  .map li + li { border-top:1px solid var(--rule); }
+  .map a { display:flex; align-items:center; gap:12px; padding:9px 14px; text-decoration:none; color:inherit; }
+  .map a:hover { background:var(--cream); }
+  .map .num { width:24px; height:24px; font-size:13px; }
+  .map b { display:block; font-size:15px; line-height:1.3; color:var(--ink-deep); }
+  .map .short { font-size:13.5px; }
+  .map-key { font-size:14px; color:var(--ink-soft); margin:-1.3rem 0 1.8rem; }
+  .part { margin:0 0 26px; scroll-margin-top:16px; }
+  .step { display:flex; gap:14px; align-items:flex-start; }
   .num { flex:none; width:30px; height:30px; border-radius:50%; background:var(--dark); color:var(--cream); font-size:15px; display:flex; align-items:center; justify-content:center; }
   .head { flex:1; min-width:0; }
-  .head b { display:block; font-size:18px; line-height:1.3; color:var(--ink-deep); font-weight:700; }
+  .head h2 { font-size:21px; line-height:1.3; margin:2px 0 6px; color:var(--ink-deep); font-weight:400; text-wrap:balance; }
   .short { display:block; font-size:15px; line-height:1.45; color:var(--ink-soft); }
-  .count { flex:none; font-size:13px; color:var(--ink-soft); border:1px solid var(--rule); border-radius:999px; padding:2px 9px; }
+  .lead { font-size:17px; line-height:1.62; color:var(--ink); margin:0 0 10px; }
+  .says { margin:0 0 0 44px; border:1px solid var(--rule); border-radius:4px; background:#fff; }
+  .says[open] { border-color:var(--gold); }
+  .says summary { display:flex; align-items:center; gap:10px; padding:9px 14px; cursor:pointer; list-style:none; font-size:14px; letter-spacing:.08em; text-transform:uppercase; color:var(--gold-ink); }
+  .says summary::-webkit-details-marker { display:none; }
+  .count { flex:none; font-size:13px; letter-spacing:0; text-transform:none; color:var(--ink-soft); border:1px solid var(--rule); border-radius:999px; padding:1px 9px; }
   .count::after { content:" +"; }
-  .part[open] .count::after { content:" \\2212"; }
-  .inner { padding:2px 16px 8px 60px; }
-  .lead { font-size:16px; line-height:1.6; color:var(--ink-mid); margin:0 0 14px; }
-  .lines { list-style:none; margin:0; padding:0; }
+  .says[open] .count::after { content:" \\2212"; }
+  .lines { list-style:none; margin:0; padding:0 14px 6px; }
   .line { padding:11px 0; border-top:1px solid var(--rule); }
   .does { display:block; font-size:16px; line-height:1.55; margin-top:6px; color:var(--ink); }
   .new { display:inline-block; margin-left:8px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#fff; background:var(--gold-ink); border-radius:3px; padding:2px 7px; vertical-align:middle; }
@@ -200,7 +217,7 @@ function renderPage(now = new Date()) {
   .op-foot { padding:18px 40px 6px; border-top:1px solid var(--rule); margin-top:1.6rem; font-size:14px; line-height:1.6; color:var(--ink-soft); }
   .op-sign { margin:.9rem 0 0; }
   .op-bar { background:var(--dark); height:34px; }
-  @media (max-width:520px) { .op-mast, .op-c, .op-foot { padding-left:22px; padding-right:22px; } .op-t { font-size:25px; } .op-wm { font-size:26px; } .inner { padding-left:16px; } }
+  @media (max-width:520px) { .op-mast, .op-c, .op-foot { padding-left:22px; padding-right:22px; } .op-t { font-size:25px; } .op-wm { font-size:26px; } .says { margin-left:0; } }
 </style>
 
 <div class="op-page">
@@ -215,17 +232,22 @@ function renderPage(now = new Date()) {
       <p class="op-dek">A machine that finds the right people on LinkedIn, and an assistant that looks after every conversation that comes back.</p>
       <hr class="op-r">
 
-      <p class="how">You don't learn any of this. You just say it. <b>Tap a sentence to copy it, then paste it into your Claude.</b> There are ${total} here, in ${list.sections.length} parts, in the order a new contact travels - from stranger to someone you've met.</p>
+      <p class="how">Here's the whole thing, in the order it happens - from a stranger on LinkedIn to someone you've met. Under each step are the sentences you say to your Claude to make it happen. <b>Tap a sentence to copy it, then paste it into your Claude.</b> You don't learn any of this. You just say it.</p>
 
-      <div class="start">
-        <h2>New here? Start with these</h2>
-        ${starters.map((it) => sayButton(it.say)).join('\n        ')}
-      </div>
+      <ul class="map">
+          ${map}
+      </ul>
+      <p class="map-key">${list.sections.length} steps, ${total} things you can say. Tap a step to jump to it.</p>
 
       <input class="find" id="find" type="search" placeholder="Looking for something? Type a word - email, campaign, booking..." aria-label="Search this page">
       <div class="tools"><span id="found"></span><button type="button" id="all">Open all</button></div>
       <p class="none" id="none">Nothing here matches that. Ask your Claude anyway - or ask Guy.</p>
-${cards}
+${steps}
+
+      <div class="start">
+        <h2>Your first day? Start with these</h2>
+        ${starters.map((it) => sayButton(it.say)).join('\n        ')}
+      </div>
 
       <footer class="op-foot">
         <p>This page writes itself from the live list of what Wingguy can do, so anything marked New arrived in the last ${days} days and nothing here is out of date. You can also just ask your Claude: &ldquo;what can I do with Wingguy?&rdquo;</p>
@@ -266,22 +288,29 @@ ${cards}
   var parts = [].slice.call(document.querySelectorAll('.part'));
   var find = document.getElementById('find'), found = document.getElementById('found'), none = document.getElementById('none');
   var all = document.getElementById('all');
+  var saysOf = function (p) { return p.querySelector('.says'); };
   all.addEventListener('click', function () {
     var open = all.textContent === 'Open all';
-    parts.forEach(function (p) { p.open = open; });
+    parts.forEach(function (p) { saysOf(p).open = open; });
     all.textContent = open ? 'Close all' : 'Open all';
   });
+  // A step's sentences open when its map entry or an in-page link lands on it.
+  function openTarget() {
+    var p = location.hash && document.getElementById(location.hash.slice(1));
+    if (p && p.classList.contains('part')) saysOf(p).open = true;
+  }
+  window.addEventListener('hashchange', openTarget); openTarget();
   find.addEventListener('input', function () {
     var q = find.value.trim().toLowerCase(), hits = 0;
-    parts.forEach(function (p, i) {
+    parts.forEach(function (p) {
       var any = 0;
       [].forEach.call(p.querySelectorAll('.line'), function (li) {
         var ok = !q || li.getAttribute('data-text').indexOf(q) >= 0;
         li.classList.toggle('hide', !ok);
         if (ok) any++;
       });
-      p.classList.toggle('hide', !any);
-      p.open = q ? any > 0 : i === 0;
+      p.classList.toggle('hide', !!q && !any);
+      if (q && any) saysOf(p).open = true;
       if (q) hits += any;
     });
     found.textContent = q ? (hits + (hits === 1 ? ' match' : ' matches')) : '';

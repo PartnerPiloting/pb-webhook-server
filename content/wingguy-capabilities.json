@@ -9,31 +9,43 @@
     "needs: machine | mailbox | calendar | notes - when the client has not connected that yet, the line is still shown, marked as opening up once they do.",
     "added: YYYY-MM-DD for a new feature. The line carries a 'New' flag for 30 days from that date, then drops it by itself.",
     "not_shown: tools deliberately left out of the client answer (Guy-only, or the answer itself), each with the reason.",
-    "short (per section): one plain line saying what that part does for them - it is the summary in the chat answer and on the closed card of the page.",
-    "start: true on the handful of lines a brand-new client should try first - they make the 'Start with these' strip at the top of the page."
+    "The sections ARE THE STORY (Guy, 10 Nov 2026): ten steps in the order a stranger becomes someone you know. The page shows every step's lead in full and folds the sentences under it. A new section is a new step in that story - put it where it happens, not at the end.",
+    "lead: the step told in Guy's voice, explaining its own terms the moment they appear (Linked Helper, campaign, scored) - a reader who has never heard of any of it must be able to follow. Claims about how good Wingguy is stay third person ('Guy reckons').",
+    "short (per section): one plain line - the step's summary in the chat answer and on the page's map.",
+    "start: true on the handful of lines a brand-new client should try first - they make the 'first day' strip near the foot of the page."
   ],
   "new_for_days": 30,
   "sections": [
     {
+      "id": "audience",
+      "title": "You choose who you want to know",
+      "short": "A LinkedIn search: the kind of people, the kind of job, the place.",
+      "lead": "It starts with a search on LinkedIn - the kind of people you want in your network, the kind of job they do, where they are. That search is the only thing in this whole system that only you can do, because only you know who belongs. I help you build it.",
+      "items": [
+        { "say": "help me work out who to search for", "does": "we work out the search together - who, what title, where - and I show you how to set it up on LinkedIn.", "tools": ["wingguy_learn"] },
+        { "say": "Who should I be connecting with?", "does": "Guy's answer, in his words - who is worth your network and who isn't.", "tools": ["wingguy_learn"] }
+      ]
+    },
+    {
       "id": "machine",
-      "title": "Your machine - it finds the people",
-      "short": "Finds the right people on LinkedIn and invites them, every week, by itself.",
-      "lead": "It runs **Linked Helper**, software that works LinkedIn for you like a careful assistant. It sends connection requests to exactly the people you've picked, up to 100 a week, spread over sensible hours so it looks like a real person at work. It lives on your own computer in the cloud, so it's always on and there's no laptop to leave running. Guy built it, it gets checked every day and backed up every night, and if LinkedIn ever signs you out you get an email. You run it from right here:",
+      "title": "A machine invites them for you",
+      "short": "A computer in the cloud that Guy looks after sends your connection requests, every day, by itself.",
+      "lead": "It's a computer in the cloud that Guy sets up and looks after, running software called **Linked Helper**. Every day it sends your connection request, with your note, to a few of the people from your search - up to 100 a week, spread over working hours so it looks like a real person at work. That list of people and the note it sends is your **campaign**. You never log in to it. It's checked every day and backed up every night, and if LinkedIn ever signs you out you get an email. When it runs low on people, you give it a new search.",
       "needs": "machine",
       "items": [
-        { "say": "open my Linked Helper machine", "does": "your own link, straight in from any browser.", "tools": ["wingguy_open_machine"] },
         { "say": "show me my campaign numbers", "does": "invitations sent, how many said yes, and how many people are still waiting. The same numbers land in your inbox every Monday.", "tools": ["wingguy_campaign_numbers"], "start": true },
         { "say": "show me my campaign settings", "does": "see the message it sends, the days and times it runs and how many go out a week - then change any of it in plain English. I show you the change before I make it.", "tools": ["wingguy_campaign_settings"], "added": "2026-11-07" },
         { "say": "top up my campaign with this search", "does": "paste a LinkedIn search link and I add those people, so it never runs dry.", "tools": ["wingguy_top_up_campaign"], "added": "2026-11-05" },
         { "say": "what campaigns do I have?", "does": "every campaign your leads are coming from, and how many each has brought in.", "tools": ["wingguy_campaigns"] },
+        { "say": "open my Linked Helper machine", "does": "your own link, straight in from any browser.", "tools": ["wingguy_open_machine"] },
         { "say": "put this file on my machine", "does": "get a file or a line of text from your computer onto the machine without any fiddling.", "tools": ["wingguy_send_file_to_machine", "wingguy_send_to_machine"] }
       ]
     },
     {
       "id": "leads",
-      "title": "Every yes lands with me, already sorted",
-      "short": "Everyone who says yes arrives read and scored, best first.",
-      "lead": "When someone accepts, they show up in your leads by themselves - profile read, and scored against who you're really after, so the best people come first.",
+      "title": "Everyone who says yes lands in Wingguy",
+      "short": "Read, scored against who you are after, best first.",
+      "lead": "When someone accepts, they show up in your leads by themselves - nothing to copy or type. Their profile is read and they're **scored** against who you're really after, so the best people come first and you never work through a list in the order it arrived.",
       "items": [
         { "say": "rebuild my scoring", "does": "change what a good lead looks like for you, test it on real people before anything is saved, and undo it if you don't like it.", "tools": ["wingguy_scoring_get", "wingguy_scoring_propose", "wingguy_scoring_test", "wingguy_scoring_commit", "wingguy_scoring_revert"] },
         { "say": "who is Sarah and what's her email?", "does": "one lookup across your leads and everyone you've written to.", "tools": ["wingguy_find_person", "wingguy_contacts_status"] },
@@ -42,24 +54,33 @@
       ]
     },
     {
+      "id": "thanks",
+      "title": "You thank them, and the conversation starts",
+      "short": "A note from their real profile in about thirty seconds, sounding like you.",
+      "lead": "This is the moment it clicks. I write the thanks-for-connecting note from their real profile and what they post - not a template. What would have taken you ten minutes takes about thirty seconds, and Guy reckons it sounds like you, not like AI. You read it and send it. And if a line isn't quite you, say so on the spot and it's fixed for every note after.",
+      "items": [
+        { "say": "write his thanks-for-connecting", "does": "off their real profile and what they post, on your instructions, never a template.", "tools": [] },
+        { "say": "What do I say to thank someone for connecting?", "does": "Guy's method for the first message - why it isn't a pitch, and what it is instead.", "tools": ["wingguy_learn"] }
+      ]
+    },
+    {
       "id": "followups",
-      "title": "Then I look after every conversation",
-      "short": "Nobody you owe a reply slips through.",
-      "lead": "Nobody falls through the cracks. The list is worked out overnight, so it's ready when you sit down.",
+      "title": "Wingguy keeps every conversation moving",
+      "short": "Who you owe a reply, worked out overnight, drafts ready.",
+      "lead": "Nobody falls through the cracks. Every night I work out who you owe something - a reply, a nudge, a promised note - and write the drafts, so when you sit down the list is ready. The people you already know are on it too: old conversations worth picking up again are worth more than any new name.",
       "items": [
         { "say": "show me my follow-ups", "does": "everyone you owe something, best first, with the drafts already written. Park someone until a date, or drop them for good.", "tools": ["wingguy_queue", "wingguy_followup_brief", "wingguy_set_reconnect", "wingguy_cease_followups"], "start": true },
-        { "say": "refresh my follow-ups", "does": "rebuild the list right now if a lot has changed.", "tools": ["wingguy_prepare_brief", "wingguy_followup_sweep"] },
         { "say": "remind me about Sarah", "does": "your whole history with anyone in one go - calls, emails, LinkedIn, what you agreed last time.", "tools": ["wingguy_dossier"] },
-        { "say": "write his thanks-for-connecting", "does": "off their real profile and what they post, on your instructions, never a template.", "tools": [] },
+        { "say": "refresh my follow-ups", "does": "rebuild the list right now if a lot has changed.", "tools": ["wingguy_prepare_brief", "wingguy_followup_sweep"] },
         { "say": "show me my backlog", "does": "the people who went quiet months ago, sorted into worth reopening and let go, with the reopening notes written.", "tools": ["wingguy_backlog"] },
         { "say": "set up my reconnect list", "does": "the people you already know on LinkedIn are worth the most. I find the old conversations worth picking up and bring you a few each day.", "tools": ["wingguy_reconnect_setup"] }
       ]
     },
     {
       "id": "email",
-      "title": "Your email, without living in it",
+      "title": "When it moves to email, I write the email",
       "short": "Drafts in your own mailbox. You press send.",
-      "lead": "Everything is written into your own mailbox as a draft. I never send. That is always you.",
+      "lead": "Every email goes into your own mailbox as a draft, on the right thread, links intact. I never send - that is always you. I can read what they wrote back, show you the whole back-and-forth with one person, and go through your inbox with you.",
       "needs": "mailbox",
       "items": [
         { "say": "email Sarah about Thursday", "does": "a real draft in your Drafts folder, links intact, on the right thread.", "tools": ["wingguy_create_draft", "wingguy_find_message"] },
@@ -69,21 +90,22 @@
     },
     {
       "id": "meetings",
-      "title": "Your diary and your bookings",
-      "short": "Real free times, offered and booked.",
-      "lead": "Real free times, with your hours, buffers and time zones already applied.",
+      "title": "When they want to meet, I book it",
+      "short": "Real free times from your diary, offered and booked.",
+      "lead": "I read your real calendar, apply your hours, your buffers and both time zones, and offer times that actually work. When they pick one, the invite, your meeting link and the reminders all go out. Before the call, I brief you on who you're meeting.",
       "needs": "calendar",
       "items": [
         { "say": "prep me for my meetings", "does": "today's diary plus everything I know about who you're meeting. Guy starts every morning this way.", "tools": ["wingguy_list_events"], "start": true },
         { "say": "offer him three times", "does": "three real slots that suit you both - and if they sent a booking link, I read it and find where you overlap.", "tools": ["wingguy_check_availability", "wingguy_check_time"] },
+        { "say": "set my booking hours", "does": "which days, what times, how much gap between meetings and how many a day - it is your diary, so you decide.", "tools": ["wingguy_booking_hours"], "added": "2026-11-10" },
         { "say": "book it", "does": "the invite, your meeting link and the reminders, all sent. Move or cancel it later just by saying so.", "tools": ["wingguy_book_meeting", "wingguy_reschedule_meeting", "wingguy_cancel_meeting"] }
       ]
     },
     {
       "id": "calls",
-      "title": "Your calls, remembered",
+      "title": "After the call, the follow-up writes itself",
       "short": "Every recorded call kept against the right person.",
-      "lead": "Every recorded call is kept against the right person, so the follow-up writes itself.",
+      "lead": "If a note-taker is on the call, the transcript is filed against the right person and I write the follow-up from what was actually said - the thing you promised, the name they mentioned, the next step you agreed. You never open a transcript. It's your data: you can see every call I hold and delete any of it.",
       "needs": "notes",
       "items": [
         { "say": "draft the follow-up from my last call", "does": "I read the transcript and write the email from what was actually said.", "tools": ["wingguy_dossier", "recall_latest_transcript", "recall_find_transcript", "fathom_list_meetings", "fathom_transcript"], "start": true },
@@ -93,9 +115,9 @@
     },
     {
       "id": "voice",
-      "title": "It gets more like you every week",
-      "short": "Everything is written on your own instructions.",
-      "lead": "Everything I write runs on your own instructions, and you change them in plain English.",
+      "title": "It all runs on your instructions, in your words",
+      "short": "You say how you like things written. It learns from what you change.",
+      "lead": "Everything above is written on your own instructions - how you open, what you never say, the links you like to share. You change them in plain English, I show you the change before I make it, and it sticks. And whenever you edit one of my drafts before sending, I learn from what you changed.",
       "items": [
         { "say": "let's set up my instructions", "does": "a guided chat that turns the starter kit into your voice - your angle, who you're after, how you handle a no.", "tools": ["wingguy_setup_rules"] },
         { "say": "update my instructions", "does": "tell me what to do differently. I show you the change before I make it, it sticks for good, and you can always go back.", "tools": ["wingguy_rules_list", "wingguy_rule_get", "wingguy_rule_propose", "wingguy_rule_commit", "wingguy_rule_revert", "wingguy_rule_reset_to_standard"], "start": true },
@@ -106,11 +128,10 @@
     },
     {
       "id": "learning",
-      "title": "And Wingguy Learning is built in",
-      "short": "Guy's whole method, on tap.",
-      "lead": "I don't only do the work - I teach you Guy's whole method as you go, in his words, not generic advice off the internet. And it grows: what Guy learns with every client lands in your Wingguy automatically.",
+      "title": "And Guy's whole method is built in",
+      "short": "Ask how, and you get his answer in his words.",
+      "lead": "I don't only do the work - I teach you Guy's method as you go: what to say when someone accepts, why the second meeting is the one that matters, how to hold a steady pace. Ask and you get his answer in his words, not generic advice off the internet. What he learns with every client lands in your Wingguy too.",
       "items": [
-        { "say": "Who should I be connecting with?", "does": "or anything else about the method - what to say when they accept, why the second meeting matters, how to hold a steady pace.", "tools": ["wingguy_learn"] },
         { "say": "where are we up to?", "does": "the guided tour through getting started, picked up wherever you left it.", "tools": ["wingguy_learn"] },
         { "say": "am I set up?", "does": "a quick check of what's connected and what's still to do.", "tools": ["wingguy_get_started"] }
       ]
