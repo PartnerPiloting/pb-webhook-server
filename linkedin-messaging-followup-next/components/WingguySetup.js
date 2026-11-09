@@ -219,6 +219,9 @@ function WingguySetupInner() {
             onCommit={(v) => save(f, v)}
           />
         ))}
+        {group === 'Meetings' && data.bookingHours ? (
+          <BookingHoursEditor initial={data.bookingHours} authHeaders={authHeaders} onSaved={loadInstructions} />
+        ) : null}
       </div>
     );
   });
@@ -988,6 +991,162 @@ function InstructionItem({ item, assist, commitChange }) {
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * "Your booking hours" (10 Nov 2026) - which days Wingguy offers people, the earliest and latest a
+ * meeting may START each day, the gap between meetings and how many in a day. Replaces the old
+ * earliest-time / normal-start / meetings-a-day boxes, which the code that picks times never read.
+ * Saves through PUT /setup/booking-hours - the same save as "set my booking hours" in Claude.
+ */
+const HOURS_DAYS = [
+  ['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'],
+  ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday'],
+];
+const HOURS_TIMES = (() => {
+  const out = [];
+  for (let m = 6 * 60; m <= 21 * 60; m += 30) {
+    const h = Math.floor(m / 60);
+    const mm = String(m % 60).padStart(2, '0');
+    out.push({ value: `${String(h).padStart(2, '0')}:${mm}`, label: `${(h % 12) || 12}:${mm}${h < 12 ? 'am' : 'pm'}` });
+  }
+  return out;
+})();
+const HOURS_GAPS = [0, 15, 30, 45, 60, 90, 120];
+
+function BookingHoursEditor({ initial, authHeaders, onSaved }) {
+  const [hours, setHours] = useState(initial);
+  const [status, setStatus] = useState('');
+  const [dirty, setDirty] = useState(false);
+  // A time that is off the half-hour grid (typed in chat as 8:45) still shows as itself.
+  const timeOptions = (current) => (HOURS_TIMES.some((t) => t.value === current) || !current
+    ? HOURS_TIMES
+    : [...HOURS_TIMES, { value: current, label: current }].sort((a, b) => a.value.localeCompare(b.value)));
+
+  const change = (next) => { setHours(next); setDirty(true); setStatus(''); };
+  const setDay = (key, value) => change({ ...hours, week: { ...hours.week, [key]: value } });
+
+  const save = async () => {
+    setStatus('saving');
+    try {
+      const res = await fetch(`${getBackendBase()}/api/wingguy/setup/booking-hours`, {
+        method: 'PUT',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          week: hours.week,
+          bufferMins: hours.bufferMins,
+          maxMeetingsPerDay: hours.maxMeetingsPerDay,
+          dailyLimitHard: hours.dailyLimitHard,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) { setStatus(data.error || 'Not saved - try again.'); return; }
+      setHours(data.bookingHours);
+      setDirty(false);
+      setStatus('saved');
+      if (onSaved) onSaved();
+    } catch (e) {
+      setStatus('Not saved - check your connection.');
+    }
+  };
+
+  const selectClasses = 'border border-slate-300 bg-white px-2 py-1.5 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600';
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <span className="font-semibold text-slate-900 leading-snug">Your booking hours</span>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          The days and times Wingguy offers people - in Claude and in your LinkedIn drafts. These are
+          START times: the earliest and the latest a meeting can begin. You can also just tell
+          Wingguy in Claude - <span className="font-medium">&ldquo;set my booking hours&rdquo;</span> - and it
+          will show up here.
+        </p>
+        {hours.source === 'setup' ? (
+          <p className="border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-700 leading-relaxed">
+            Worked out from what you told us when you set up. Check it looks right, change anything
+            that is not you, and press Save.
+          </p>
+        ) : hours.source === 'standard' ? (
+          <p className="border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-700 leading-relaxed">
+            These are the standard hours. Change anything that is not you, and press Save.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col divide-y divide-slate-100 border border-slate-200 bg-white">
+        {HOURS_DAYS.map(([key, name]) => {
+          const day = hours.week[key];
+          return (
+            <div key={key} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
+              <label className="flex items-center gap-2 w-32 text-sm font-medium text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={!!day}
+                  onChange={(e) => setDay(key, e.target.checked ? { first: '09:00', last: '16:30' } : null)}
+                />
+                {name}
+              </label>
+              {day ? (
+                <span className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                  from
+                  <select className={selectClasses} value={day.first}
+                    onChange={(e) => setDay(key, { first: e.target.value, last: day.last < e.target.value ? e.target.value : day.last })}>
+                    {timeOptions(day.first).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                  to
+                  <select className={selectClasses} value={day.last}
+                    onChange={(e) => setDay(key, { first: day.first > e.target.value ? e.target.value : day.first, last: e.target.value })}>
+                    {timeOptions(day.last).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                  {day.first === day.last ? <span className="text-slate-400">(that start time only)</span> : null}
+                </span>
+              ) : (
+                <span className="text-sm text-slate-400">No meetings</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-slate-700">
+        <label className="flex items-center gap-2">
+          Gap between meetings
+          <select className={selectClasses} value={hours.bufferMins}
+            onChange={(e) => change({ ...hours, bufferMins: Number(e.target.value) })}>
+            {HOURS_GAPS.map((g) => <option key={g} value={g}>{g ? `${g} minutes` : 'none'}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-2">
+          Meetings in a day
+          <select className={selectClasses} value={hours.maxMeetingsPerDay}
+            onChange={(e) => change({ ...hours, maxMeetingsPerDay: Number(e.target.value) })}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={!!hours.dailyLimitHard}
+            onChange={(e) => change({ ...hours, dailyLimitHard: e.target.checked })} />
+          A firm limit - never offer a day that is already full
+        </label>
+      </div>
+      <p className="text-xs text-slate-500 -mt-1">
+        Without the firm limit, Wingguy offers lighter days first and only uses a full day when nothing else fits.
+      </p>
+
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={save}
+          disabled={status === 'saving' || (!dirty && hours.source === 'saved')}
+          className="px-4 py-2 text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 disabled:bg-slate-300"
+        >
+          Save my booking hours
+        </button>
+        <SaveNote status={status} />
+      </div>
     </div>
   );
 }

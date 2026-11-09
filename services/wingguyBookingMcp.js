@@ -20,7 +20,7 @@ const { DateTime } = require('luxon');
 const wingguyCalendar = require('./wingguyCalendar');
 const leadBookingLink = require('./wingguyLeadBookingLink');
 const { resolveLeadTimezone } = require('./leadLocationResolver');
-const { getBookingPrefsFor, normaliseBookingHours, describeBookingHours } = require('../config/wingguyBookingPrefs');
+const { getBookingPrefsFor, describeBookingHours, effectiveBookingHours, fmtClock } = require('../config/wingguyBookingPrefs');
 // NOTE: coachingClientLookupService + clientService are required LAZILY inside runBookMeeting —
 // their Airtable config crashes at module load when env vars are absent (local test runs).
 
@@ -90,7 +90,7 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
   // chat model applies the "10:00+ first" rule without holding it in its head.
   const coachTz = filtered.yourTimezone || 'Australia/Brisbane';
   const prefMin = wingguyCalendar.hhmmToMin(prefs.preferredStart);
-  const pinch = (s) => (prefMin != null && wingguyCalendar.minutesInTz(s.time, coachTz) < prefMin) ? ' ⚠ AT-A-PINCH (before preferred 10:00 start — offer only if later times can\'t fill the options)' : '';
+  const pinch = (s) => (prefMin != null && wingguyCalendar.minutesInTz(s.time, coachTz) < prefMin) ? ` ⚠ AT-A-PINCH (before the preferred ${fmtClock(prefs.preferredStart)} start — offer only if later times can't fill the options)` : '';
   // Daily load is a PREFERENCE, not a cap (Guy 2026-07-10, after the hard version emptied next
   // week): busy days stay offerable, flagged — stacking them beats spilling into a fallback week.
   const busy = (d) => d.busyDay ? ` ⚠ BUSY DAY — already ${d.meetingCount} meetings (at/over his preferred ${prefs.maxMeetingsPerDay}/day): still offerable and BETTER than a fallback week, but prefer lighter days first and tell the coach how loaded it is` : '';
@@ -541,36 +541,37 @@ const RANGE_DESC = 'Which window to list: "today" (default), "tomorrow", "this_w
 // calls, three a day at most" - said once in chat, kept in services/bookingHoursStore.js, and read by
 // every surface that offers or checks a time (wingguyCalendar via getBookingPrefsFor).
 async function runBookingHours({ action, monday, tuesday, wednesday, thursday, friday, saturday, sunday, gap_between_meetings_mins, max_meetings_per_day, daily_limit_is_hard } = {}, tenant = TENANT, deps = {}) {
-  const store = deps.store || require('./bookingHoursStore');
+  // ONE save shared with the setup page's "Your booking hours" editor (services/bookingHoursService.js).
+  const svc = deps.service || require('./bookingHoursService');
+  const prefsDeps = deps.prefsDeps || {};
   const act = String(action || 'show').toLowerCase();
   if (act === 'reset') {
-    const had = await store.clearBookingHours(tenant);
-    const prefs = await getBookingPrefsFor(tenant, { getBookingHours: async () => null });
-    return { text: `${had ? 'Done - their own booking hours are cleared.' : 'They had no booking hours of their own saved.'} Times are now offered on the standard hours:\n${describeBookingHours(prefs)}` };
+    const had = await svc.clearBookingHours(tenant, deps);
+    const prefs = await getBookingPrefsFor(tenant, { ...prefsDeps, getBookingHours: async () => null });
+    return { text: `${had ? 'Done - their own booking hours are cleared.' : 'They had no booking hours of their own saved.'} Times are now offered on:\n${describeBookingHours(prefs)}` };
   }
   if (act === 'set') {
-    const current = (await store.getBookingHours(tenant)) || {};
-    const next = { ...current };
+    const raw = {};
     const given = { mon: monday, tue: tuesday, wed: wednesday, thu: thursday, fri: friday, sat: saturday, sun: sunday };
     if (Object.values(given).some((v) => v !== undefined)) {
-      // A day not mentioned keeps what it had; with no saved week yet, an unmentioned day is OFF -
-      // the reply says so, so the person can correct it.
-      const week = { ...(current.week || {}) };
+      // A day not mentioned keeps the hours in force for it now (saved, or what their setup answers
+      // / the standard hours give) - never silently switched off.
+      const nowPrefs = await getBookingPrefsFor(tenant, prefsDeps);
+      const week = { ...effectiveBookingHours(nowPrefs).week };
       for (const [k, v] of Object.entries(given)) if (v !== undefined) week[k] = v;
-      next.week = week;
+      raw.week = week;
     }
-    if (gap_between_meetings_mins !== undefined) next.bufferMins = gap_between_meetings_mins;
-    if (max_meetings_per_day !== undefined) next.maxMeetingsPerDay = max_meetings_per_day;
-    if (daily_limit_is_hard !== undefined) next.dailyLimitHard = daily_limit_is_hard;
-    const { value, errors } = normaliseBookingHours(next);
-    if (errors.length) return { text: `NOTHING SAVED - ${errors.join('; ')}. Ask the person to clarify, then try again.`, isError: true };
-    if (!value) return { text: 'NOTHING SAVED - no hours were given. Pass the days (e.g. monday="17:30", friday="off") and/or the gap and daily limit.', isError: true };
-    await store.setBookingHours(tenant, value);
-    const prefs = await getBookingPrefsFor(tenant, { getBookingHours: async () => value });
-    return { text: `Saved. From now on every time Wingguy offers - in chat and in the LinkedIn drafts - follows these:\n${describeBookingHours(prefs)}\n\nRead it back to them in plain words and ask them to say if any day is wrong (a day they did not mention shows as "no meetings").` };
+    if (gap_between_meetings_mins !== undefined) raw.bufferMins = gap_between_meetings_mins;
+    if (max_meetings_per_day !== undefined) raw.maxMeetingsPerDay = max_meetings_per_day;
+    if (daily_limit_is_hard !== undefined) raw.dailyLimitHard = daily_limit_is_hard;
+    if (!Object.keys(raw).length) return { text: 'NOTHING SAVED - no hours were given. Pass the days (e.g. monday="17:30", friday="off") and/or the gap and daily limit.', isError: true };
+    const r = await svc.saveBookingHours({ tenantId: tenant, raw, actor: `mcp:${tenant}` }, deps);
+    if (!r.ok) return { text: `NOTHING SAVED - ${r.errors.join('; ')}. Ask the person to clarify, then try again.`, isError: true };
+    return { text: `Saved. From now on every time Wingguy offers - in chat and in the LinkedIn drafts - follows these (they also show on the setup page, under Meetings):\n${describeBookingHours(r.prefs)}\n\nRead it back to them in plain words and ask them to say if any day is wrong.` };
   }
-  const prefs = await getBookingPrefsFor(tenant);
-  return { text: `${prefs.ownBookingHours ? 'Their own booking hours' : 'They have no hours of their own saved, so times are offered on the standard hours'}:\n${describeBookingHours(prefs)}` };
+  const prefs = await getBookingPrefsFor(tenant, prefsDeps);
+  const from = prefs.ownBookingHours ? 'Their own booking hours' : prefs.fromSetupAnswers ? 'The hours from their setup answers (nothing saved yet - "set" saves their own)' : 'The standard hours (nothing of their own saved yet)';
+  return { text: `${from}:\n${describeBookingHours(prefs)}\n\nThey can also see and change these on their setup page, under Meetings.` };
 }
 
 const DAY_DESC = (day) => `${day}: "off" for no meetings that day; one time ("17:30" or "5:30pm") when a meeting may ONLY start then; or "first-last" START times ("9:00-17:00"). These are START times - when the person gives an end ("9 to 5:30"), the last start is the end minus their meeting length (a 30-minute meeting -> "9:00-17:00"). Omit to leave the day as it is.`;

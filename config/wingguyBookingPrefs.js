@@ -196,20 +196,99 @@ function describeBookingHours(prefs) {
   return lines.join('\n');
 }
 
-/** Prefs for one person, with their own saved hours laid over the defaults. Never throws. */
+// ── What clients typed on the setup page's old Meetings boxes (10 Nov 2026) ──────────────────────
+// earliest_meeting_time / preferred_start_time / max_meetings_per_day / default_meeting_length were
+// on the setup page from the start, promising "it will never offer anyone a time before this" - and
+// the code that picks times never read them. 14 clients had answered (Dean, Roland, Matthew 8am
+// floors; Julian and Owen 2 a day; Roland 45-minute meetings). They now count, underneath a
+// client's saved hours. Values are free text ("9.00am NSW", "10am - both FindMe First and
+// Barclayss"), so the earliest time mentioned is taken; anything unreadable keeps the default.
+function clocksIn(text) {
+  const out = [];
+  const re = /(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/gi;
+  let m;
+  while ((m = re.exec(String(text || '')))) {
+    if (!m[2] && !m[3]) continue;            // a bare number ("both 2 campaigns") is not a time
+    const c = parseClock(`${m[1]}${m[2] ? `:${m[2]}` : ''}${m[3] || ''}`);
+    if (c) out.push(c);
+  }
+  return out.sort();
+}
+function meetingMinutes(text) {
+  const t = String(text || '').toLowerCase();
+  const h = t.match(/(\d+(?:\.\d+)?)\s*(?:hour|hr)/);
+  if (h) return Math.round(Number(h[1]) * 60);
+  if (/\ban hour\b|\bone hour\b/.test(t)) return 60;
+  const m = t.match(/(\d{1,3})\s*(?:min|m\b)/);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Pure: the old setup-page answers as prefs fields. `vars` = { key: value }. Returns only what
+ * could be read and makes sense against the defaults' last start.
+ */
+function legacyFromVariables(vars, base = DEFAULT_PREFS) {
+  const v = vars || {};
+  const out = {};
+  const last = clockMin(base.lastStart);
+  const earliest = clocksIn(v.earliest_meeting_time)[0];
+  const preferred = clocksIn(v.preferred_start_time)[0];
+  if (earliest && clockMin(earliest) < last) out.earliestStart = earliest;
+  if (preferred && clockMin(preferred) < last) out.preferredStart = preferred;
+  // The floor can never sit above the normal start.
+  if (out.earliestStart && out.preferredStart && out.preferredStart < out.earliestStart) out.preferredStart = out.earliestStart;
+  if (out.preferredStart && !out.earliestStart && out.preferredStart < base.earliestStart) out.earliestStart = out.preferredStart;
+  if (out.earliestStart && !out.preferredStart && out.earliestStart > base.preferredStart) out.preferredStart = out.earliestStart;
+  const max = Number(String(v.max_meetings_per_day || '').match(/\d+/)?.[0]);
+  if (Number.isInteger(max) && max >= 1 && max <= 20) out.maxMeetingsPerDay = max;
+  const len = meetingMinutes(v.default_meeting_length);
+  if (len && len >= 10 && len <= 240) out.meetingLengthMins = len;
+  return out;
+}
+
+/**
+ * The week a person is working to right now, in the saved-hours shape - their saved week, or the
+ * one their setup answers / the standard hours imply (weekdays, first start = their floor). This is
+ * what the setup page shows, so it never shows something different from what gets offered.
+ */
+function effectiveBookingHours(prefs) {
+  const week = prefs.weekHours || Object.fromEntries(DAY_KEYS.map((k) => [k,
+    (prefs.excludeWeekends && (k === 'sat' || k === 'sun')) ? null : { first: prefs.earliestStart, last: prefs.lastStart }]));
+  return {
+    week,
+    bufferMins: prefs.bufferMins || 0,
+    maxMeetingsPerDay: prefs.maxMeetingsPerDay,
+    dailyLimitHard: !!prefs.dailyLimitHard,
+    meetingLengthMins: prefs.meetingLengthMins || 30,
+    source: prefs.ownBookingHours ? 'saved' : (prefs.fromSetupAnswers ? 'setup' : 'standard'),
+  };
+}
+
+/** Prefs for one person: the defaults, then their old setup answers, then their own saved hours. Never throws. */
 async function getBookingPrefsFor(clientId, deps = {}) {
-  const base = getBookingPrefs(clientId);
-  if (!clientId) return base;
+  let prefs = getBookingPrefs(clientId);
+  if (!clientId) return prefs;
+  try {
+    const readVars = deps.getVariables || (async (tenantId) => {
+      const rows = await require('../services/wingguyRulesStore').getVariables({ tenantId });
+      return Object.fromEntries(rows.filter((r) => r.value != null).map((r) => [r.var_key, r.value]));
+    });
+    const legacy = legacyFromVariables(await readVars(clientId), prefs);
+    if (Object.keys(legacy).length) prefs = { ...prefs, ...legacy, fromSetupAnswers: true };
+  } catch (e) {
+    console.warn(`[bookingPrefs] setup answers unavailable for ${clientId}: ${e.message}`);
+  }
   try {
     const read = deps.getBookingHours || require('../services/bookingHoursStore').getBookingHours;
-    return applyBookingHours(base, await read(clientId));
+    return applyBookingHours(prefs, await read(clientId));
   } catch (e) {
     console.warn(`[bookingPrefs] own hours unavailable for ${clientId}: ${e.message} - using the defaults`);
-    return base;
+    return prefs;
   }
 }
 
 module.exports = {
   getBookingPrefs, getBookingPrefsFor, DEFAULT_PREFS,
   normaliseBookingHours, applyBookingHours, describeBookingHours, parseClock, parseDay, DAY_KEYS,
+  legacyFromVariables, effectiveBookingHours, fmtClock,
 };

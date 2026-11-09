@@ -137,6 +137,7 @@ const VARIABLE_FIELDS = [
   },
   {
     key: 'earliest_meeting_time',
+    retiredFromPage: true,
     tier: 'glance',
     group: 'Meetings',
     label: 'What is the earliest you would ever take one?',
@@ -146,6 +147,7 @@ const VARIABLE_FIELDS = [
   },
   {
     key: 'preferred_start_time',
+    retiredFromPage: true,
     tier: 'glance',
     group: 'Meetings',
     label: 'And what would you rather it offered?',
@@ -155,6 +157,7 @@ const VARIABLE_FIELDS = [
   },
   {
     key: 'max_meetings_per_day',
+    retiredFromPage: true,
     tier: 'glance',
     group: 'Meetings',
     label: 'How many meetings in a day is too many?',
@@ -312,7 +315,11 @@ const VOICE_FIELDS = [
   },
 ];
 
-const VARIABLE_KEYS = new Set([...VARIABLE_FIELDS, ...VOICE_FIELDS].map((f) => f.key));
+// Retired-from-page fields (10 Nov 2026): earliest time / normal start / meetings a day moved into
+// the "Your booking hours" editor, which writes them itself. Kept here so their keys, hints and
+// examples stay documented, but neither shown nor writable through PUT /setup.
+const PAGE_VARIABLE_FIELDS = VARIABLE_FIELDS.filter((f) => !f.retiredFromPage);
+const VARIABLE_KEYS = new Set([...PAGE_VARIABLE_FIELDS, ...VOICE_FIELDS].map((f) => f.key));
 const ASSET_KEYS = new Set(ASSET_FIELDS.map((f) => f.key));
 
 /** Per-field save cap: voice pieces run long; everything else stays at the original 600. */
@@ -327,7 +334,7 @@ function capFor(scope, key) {
 /** Group order per tier, derived from field order so there is one source of truth. */
 function groupOrder(tier) {
   const seen = [];
-  [...VARIABLE_FIELDS, ...ASSET_FIELDS, ...VOICE_FIELDS]
+  [...PAGE_VARIABLE_FIELDS, ...ASSET_FIELDS, ...VOICE_FIELDS]
     .filter((f) => !tier || f.tier === tier)
     .forEach((f) => { if (!seen.includes(f.group)) seen.push(f.group); });
   return seen;
@@ -335,6 +342,7 @@ function groupOrder(tier) {
 
 module.exports = {
   VARIABLE_FIELDS,
+  PAGE_VARIABLE_FIELDS,
   ASSET_FIELDS,
   VOICE_FIELDS,
   VARIABLE_KEYS,

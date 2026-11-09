@@ -1255,7 +1255,7 @@ module.exports = function mountWingguy(app) {
       );
 
       const fields = [
-        ...setupFields.VARIABLE_FIELDS.map((f) => ({
+        ...setupFields.PAGE_VARIABLE_FIELDS.map((f) => ({
           ...f, scope: 'variable', value: varValues.get(f.key) || '',
         })),
         ...setupFields.ASSET_FIELDS.map((f) => ({
@@ -1270,7 +1270,16 @@ module.exports = function mountWingguy(app) {
       // filling in settings the page has just told them are fine left alone.
       const essentials = fields.filter((f) => f.tier === 'essential');
       const answered = essentials.filter((f) => String(f.value).trim()).length;
+      // Booking hours: the week Wingguy is offering from right now (saved, or what their setup
+      // answers / the standard hours give). Never break the page over it.
+      let bookingHours = null;
+      try {
+        bookingHours = await require('../services/bookingHoursService').bookingHoursView(tenantId);
+      } catch (e) {
+        logger.warn(`[Wingguy] booking hours read failed for ${tenantId}: ${e.message}`);
+      }
       return res.json({
+        bookingHours,
         ok: true,
         clientName: req.client.clientName || '',
         groups: setupFields.groupOrder(),
@@ -1337,6 +1346,31 @@ module.exports = function mountWingguy(app) {
       return res.json({ ok: true, scope, key, value: clean, ...(record ? { record } : {}) });
     } catch (e) {
       logger.error(`[Wingguy] setup write failed for ${tenantId} (${scope}/${key}): ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // "Your booking hours" on the setup page (10 Nov 2026). The SAME save the chat tool
+  // wingguy_booking_hours uses (services/bookingHoursService.js), so whichever door a client uses,
+  // the other shows it. Body: { week: { mon: {first,last} | null, ... sun }, bufferMins,
+  // maxMeetingsPerDay, dailyLimitHard } - the page always sends the whole thing.
+  router.put('/setup/booking-hours', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const b = req.body || {};
+    const raw = {};
+    if (b.week && typeof b.week === 'object') raw.week = b.week;
+    if (b.bufferMins !== undefined) raw.bufferMins = b.bufferMins;
+    if (b.maxMeetingsPerDay !== undefined) raw.maxMeetingsPerDay = b.maxMeetingsPerDay;
+    if (b.dailyLimitHard !== undefined) raw.dailyLimitHard = b.dailyLimitHard;
+    try {
+      const svc = require('../services/bookingHoursService');
+      const by = `portal:${tenantId}${pageName(req) ? `:as:${pageName(req)}` : ''}`;
+      const r = await svc.saveBookingHours({ tenantId, raw, actor: by });
+      if (!r.ok) return res.status(400).json({ ok: false, error: r.errors.join('; ') });
+      logger.info(`[Wingguy] booking hours saved by ${tenantId} from the setup page`);
+      return res.json({ ok: true, bookingHours: await svc.bookingHoursView(tenantId) });
+    } catch (e) {
+      logger.error(`[Wingguy] booking hours save failed for ${tenantId}: ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
     }
   });

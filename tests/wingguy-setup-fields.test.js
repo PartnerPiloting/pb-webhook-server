@@ -45,9 +45,12 @@ check('keys are unique within each scope', () => {
 });
 
 check('the key sets match the field lists (the write-door allow-list)', () => {
-  assert.strictEqual(fields.VARIABLE_KEYS.size, fields.VARIABLE_FIELDS.length + fields.VOICE_FIELDS.length);
+  // The three Meetings boxes retired from the page on 10 Nov 2026 (the booking-hours editor writes them) are
+  // documented in VARIABLE_FIELDS but are not on the page and not writable through PUT /setup.
+  assert.strictEqual(fields.VARIABLE_KEYS.size, fields.PAGE_VARIABLE_FIELDS.length + fields.VOICE_FIELDS.length);
+  fields.VARIABLE_FIELDS.filter((f) => f.retiredFromPage).forEach((f) => assert.ok(!fields.VARIABLE_KEYS.has(f.key), `${f.key} is retired but still writable`));
   assert.strictEqual(fields.ASSET_KEYS.size, fields.ASSET_FIELDS.length);
-  [...fields.VARIABLE_FIELDS, ...fields.VOICE_FIELDS].forEach((f) => assert.ok(fields.VARIABLE_KEYS.has(f.key), `${f.key} missing from VARIABLE_KEYS`));
+  [...fields.PAGE_VARIABLE_FIELDS, ...fields.VOICE_FIELDS].forEach((f) => assert.ok(fields.VARIABLE_KEYS.has(f.key), `${f.key} missing from VARIABLE_KEYS`));
   fields.ASSET_FIELDS.forEach((f) => assert.ok(fields.ASSET_KEYS.has(f.key), `${f.key} missing from ASSET_KEYS`));
 });
 
