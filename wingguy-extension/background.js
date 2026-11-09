@@ -196,7 +196,7 @@ const ACTS_AS_CLIENT = new Set([
   'LOOKUP_LEAD', 'QUICK_UPDATE', 'CREATE_LEAD',
   'WINGGUY_GET_TEMPLATES', 'WINGGUY_DRAFT_THANKS', 'WINGGUY_DRAFT_REPLY',
   'WG_BOOKING_PREFS', 'WG_CAL_AVAILABILITY', 'WG_CAL_QUICKPICK', 'WG_CAL_LOOKUP', 'WG_BOOK',
-  'WG_CHAT', 'WG_LEAD_CONTACT', 'WG_EDIT_PAIR', 'WG_ENRICH_FROM_PROFILE'
+  'WG_CHAT', 'WG_CHAT_START', 'WG_CHAT_RESULT', 'WG_LEAD_CONTACT', 'WG_EDIT_PAIR', 'WG_ENRICH_FROM_PROFILE'
 ]);
 
 // Listen for messages from content scripts and popup
@@ -452,6 +452,21 @@ function handleMessage(message, sender, sendResponse) {
   // Create the calendar invite (Nylas write) once the human has confirmed the time + guest.
   if (message.type === 'WG_BOOK') {
     wingguyBook(message.payload)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  // 0.3.42: start-then-collect. START answers at once with a job id (or, from a server without the
+  // new doors, the whole turn the old way); the PANEL then asks RESULT every couple of seconds, so no
+  // single request stays open long enough for the ~30 s cut that dropped ~1 turn in 11 (9 Nov 2026).
+  if (message.type === 'WG_CHAT_START') {
+    wingguyChatStart({ ...(message.payload || {}), viewerName: message._viewer || '' })
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  if (message.type === 'WG_CHAT_RESULT') {
+    wingguyChatResult(message.jobId)
       .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -794,6 +809,33 @@ async function wingguyChat(payload) {
   const apiBase = await getWingguyApiBase();
   const headers = await getAuthHeaders();
   const response = await fetch(`${apiBase}/chat`, { method: 'POST', headers, body: JSON.stringify(payload || {}) });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Chat failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+// Start a chat turn (POST /chat/start, 0.3.42). Returns { jobId } - or { legacy: true, data } when the
+// server has no start door yet (404), having run the turn through the old one-shot /chat instead.
+async function wingguyChatStart(payload) {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/chat/start`, { method: 'POST', headers, body: JSON.stringify(payload || {}) });
+  if (response.status === 404) return { legacy: true, data: await wingguyChat(payload) };
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Chat failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+// Ask for a started turn. { done: false } = not ready yet; anything else = the finished turn, exactly
+// what /chat would have answered. An HTTP error is the turn's own error, worded the same as /chat's.
+async function wingguyChatResult(jobId) {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/chat/result/${encodeURIComponent(jobId || '')}`, { method: 'GET', headers });
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Chat failed: ${response.status}`);

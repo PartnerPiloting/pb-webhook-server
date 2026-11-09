@@ -3351,6 +3351,39 @@
     }
   }
 
+  // One chat turn, started then collected (0.3.42). A turn takes 20-40+ s, and a single request held
+  // open that long was cut by the browser at about 30 s - Render logged ~1 turn in 11 as "client
+  // closed" (30 Oct - 9 Nov 2026), and each was a finished draft thrown away behind "Couldn't reach
+  // Wingguy right now" (David Gould, 4 Nov). Now the server answers the start at once with a job id
+  // and this asks for the result every couple of seconds. Asking from HERE (not from the background
+  // worker) matters: each ask is a fresh message, which also keeps the worker from being shut down.
+  // A dropped ask is retried; an error the turn itself returned is thrown as /chat would have.
+  const CHAT_POLL_MS = 2000;
+  const CHAT_MAX_WAIT_MS = 4 * 60 * 1000;
+  const CHAT_TRANSIENT = /failed to fetch|networkerror|network error|message port|message channel|no response from background|receiving end/i;
+  async function runChatTurn(payload) {
+    const started = await bg({ type: 'WG_CHAT_START', payload });
+    if (started && started.legacy) return started.data;           // server without the new doors yet
+    const jobId = started && started.jobId;
+    if (!jobId) return started;                                    // never expected; hand back what came
+    const deadline = Date.now() + CHAT_MAX_WAIT_MS;
+    let misses = 0;
+    while (Date.now() < deadline) {
+      await sleep(CHAT_POLL_MS);
+      let r;
+      try {
+        r = await bg({ type: 'WG_CHAT_RESULT', jobId });
+      } catch (e) {
+        if (CHAT_TRANSIENT.test((e && e.message) || '') && ++misses <= 5) continue;
+        throw e;
+      }
+      misses = 0;
+      if (r && r.done === false) continue;
+      return r;
+    }
+    throw new Error('Wingguy is taking much longer than usual on this one - please ask again in a minute.');
+  }
+
   async function sendChatTurn(text, opts = {}) {
     if (!chatState || chatState.busy) return;
     chatState.busy = true;
@@ -3360,14 +3393,11 @@
     chatState.messages.push({ role: 'user', content: text });
     const thinking = showThinking(!!opts.hidden);
     try {
-      const data = await bg({
-        type: 'WG_CHAT',
-        payload: {
-          profile: chatState.profile,
-          conversation: chatState.thread,
-          messages: chatState.messages,
-          leadEmail: chatState.leadEmail || undefined,
-        },
+      const data = await runChatTurn({
+        profile: chatState.profile,
+        conversation: chatState.thread,
+        messages: chatState.messages,
+        leadEmail: chatState.leadEmail || undefined,
       });
       thinking.stop();
       // The server returns the FULL running history (incl. tool blocks) — store it for the next turn.

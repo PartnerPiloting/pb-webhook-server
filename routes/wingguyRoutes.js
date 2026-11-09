@@ -39,6 +39,7 @@ const { createBookingEvent } = require('../services/wingguyCalendar');
 const { runWingguyChatTurn } = require('../services/wingguyChat');
 const wingguyLeads = require('../services/wingguyLeads');
 const wingguyIdentity = require('../services/wingguyIdentity');
+const chatJobs = require('../services/wingguyChatJobStore');
 const clientService = require('../services/clientService');
 const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../utils/linkedinCanonical');
 const wingguyStore = require('../services/wingguyRulesStore');
@@ -876,7 +877,11 @@ module.exports = function mountWingguy(app) {
   // lives in services/wingguyChat.js so this route and the cloud test share ONE implementation.
   // Returns the updated `messages` (to resend next turn), the latest assistant `reply` (chat), the
   // `draft` (the LinkedIn message Guy edits/accepts and sends), and `booked` (set once an invite is made).
-  router.post('/chat', async (req, res) => {
+  //
+  // One turn's work, written against `res` so the same code serves the one-shot door (/chat, kept
+  // for extensions before 0.3.42) and the start-then-collect doors below, which hand it a stand-in
+  // `res` that captures the status + body instead of sending them.
+  async function chatTurn(req, res) {
     if (!ENABLED) return res.status(503).json({ ok: false, error: 'Wingguy is disabled.' });
     if (!isAnthropicConfigured()) {
       return res.status(500).json({ ok: false, error: 'Claude (ANTHROPIC_API_KEY) is not configured.' });
@@ -965,6 +970,53 @@ module.exports = function mountWingguy(app) {
       logger.error(`[Wingguy] chat failed: ${e.message}`);
       // Key/billing failure -> clear "fix your key" (400); transient overload -> 503; else 500.
       return respondClaudeError(res, e, req);
+    }
+  }
+  router.post('/chat', chatTurn);
+
+  // Start a chat turn and answer AT ONCE with a job id; the panel then asks /chat/result/:id every
+  // couple of seconds (0.3.42+). Why: a turn takes 20-40+ s and the browser cuts a request at about
+  // 30 s - Render logged ~1 turn in 11 as 499 (client closed) between 30 Oct and 9 Nov, each one a
+  // finished draft thrown away and "Couldn't reach Wingguy right now" on screen (David Gould, 4 Nov).
+  // See services/wingguyChatJobStore.js.
+  router.post('/chat/start', async (req, res) => {
+    const tenantId = req.client && req.client.clientId;
+    let jobId;
+    try {
+      jobId = await chatJobs.startJob(tenantId);
+    } catch (e) {
+      logger.error(`[Wingguy] chat start failed: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+    res.status(202).json({ ok: true, jobId });
+    // Runs on after the answer has gone. Every way out of chatTurn ends in status().json() on the
+    // stand-in, so the job always finishes; a throw outside its own catch is stored as a 500.
+    const captured = { code: 200, body: null };
+    const stand = {
+      status(c) { captured.code = c; return stand; },
+      json(b) { captured.body = b; return stand; },
+    };
+    try {
+      await chatTurn(req, stand);
+    } catch (e) {
+      logger.error(`[Wingguy] chat job ${jobId} threw: ${e.message}`);
+      captured.code = 500;
+      captured.body = { ok: false, error: e.message };
+    }
+    await chatJobs.finishJob(jobId, captured.code, captured.body || { ok: false, error: 'No response from the chat turn.' });
+  });
+
+  // Collect a started turn. Not done yet -> { done: false } (ask again shortly). Done -> the exact
+  // status and body /chat would have sent, so the panel handles both doors the same way.
+  router.get('/chat/result/:id', async (req, res) => {
+    try {
+      const j = await chatJobs.getJob(String(req.params.id || ''), req.client && req.client.clientId);
+      if (!j.found) return res.status(404).json({ ok: false, error: 'That draft has expired - please ask again.' });
+      if (!j.done) return res.json({ ok: true, done: false });
+      return res.status(j.status || 200).json(j.body || {});
+    } catch (e) {
+      logger.error(`[Wingguy] chat result failed: ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
     }
   });
 
