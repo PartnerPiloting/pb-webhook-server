@@ -74,6 +74,7 @@ async function stepStatus(tenant) {
   const s = c.status;
   const lines = [
     `LinkedIn history: ${Number(s.connections).toLocaleString('en-AU')} connections, ${Number(s.conversations).toLocaleString('en-AU')} conversations with messages, back to ${dayOf(s.oldest_msg_at)}. ${s.state === 'complete' ? 'The history is complete.' : 'Older history is still arriving each day and is added by itself.'}`,
+    profile.yearsBack ? `How far back: the last ${profile.yearsBack} year${profile.yearsBack === 1 ? '' : 's'} only - older conversations are not read or listed.` : 'How far back: not set - every conversation counts, however old. Ask them (step "how_far_back").',
     profile.who ? `Their saved description: "${profile.who}"` : 'No description saved yet.',
   ];
   if (profile.who) {
@@ -88,6 +89,24 @@ async function stepStatus(tenant) {
     ? 'Nothing more to set up. New arrivals are read and added each day by themselves.'
     : `NEXT STEP: ${!profile.who ? 'write their description - ask who they want to hear from again, who they do not, and what a good conversation looks like for them; draft a short first-person paragraph; then step "sample" with it.' : 'step "read" (shows the cost, then needs their yes), then step "leads".'}${on && !profile.who ? ' Until then their Reconnect box in the portal is empty - say so if they ask.' : ''}`);
   return { text: lines.join('\n') };
+}
+
+async function stepHowFarBack(args, tenant) {
+  const c = await context(tenant);
+  if (c.error) return { text: c.error, isError: true };
+  if (!hasHistory(c.status)) return { text: NOT_READY };
+  const years = Number(args.years);
+  if (args.years == null || !Number.isFinite(years) || years < 0 || years > 30) {
+    return { text: 'Pass years: how many years back they want to go (for example 2), or 0 for no limit. Ask them - never assume.', isError: true };
+  }
+  const score = require('./conversationScore');
+  const saved = await score.saveYearsBack(tenant, years);
+  const profile = await score.loadProfile(tenant);
+  const dry = profile.who ? await score.scoreConversations(tenant, { dryRun: true }) : null;
+  const count = dry && dry.ok ? ` That leaves ${dry.candidates} conversations in range (${dry.toRead} still to read, about US$${dry.estimateUsd}).` : '';
+  return { text: saved.yearsBack
+    ? `Saved: only people they last spoke with in the last ${saved.yearsBack} year${saved.yearsBack === 1 ? '' : 's'}. Older conversations will not be read (so they cost nothing), brought in, or listed.${count} No need to say this in the description. NEXT: ${profile.who ? 'carry on where they were.' : 'the description questions, then step "sample".'}`
+    : `Saved: no limit - every conversation counts, however old.${count}` };
 }
 
 async function stepSample(args, tenant) {
@@ -170,37 +189,40 @@ async function stepLeads(args, tenant) {
 async function runSetup(args = {}, tenant = TENANT) {
   const step = String(args.step || 'status');
   if (step === 'status') return stepStatus(tenant);
+  if (step === 'how_far_back') return stepHowFarBack(args, tenant);
   if (step === 'sample') return stepSample(args, tenant);
   if (step === 'save_description') return stepSave(args, tenant);
   if (step === 'read') return stepRead(args, tenant);
   if (step === 'leads') return stepLeads(args, tenant);
-  return { text: 'Unknown step. Use status, sample, save_description, read or leads.', isError: true };
+  return { text: 'Unknown step. Use status, how_far_back, sample, save_description, read or leads.', isError: true };
 }
 
 // ---------------------------------------------------------------------------
 // Tool definition (one shape, both transports)
 // ---------------------------------------------------------------------------
 
-const DESCRIPTION = 'Set up the client\'s RECONNECT LIST - a daily list of people they already know on LinkedIn whose old conversation is worth picking up again. Use for "set up my reconnect list", "set up reconnect", "where am I up to with reconnect", "who should I reconnect with". ALWAYS start with step "status": it says what is ready and what the next step is, and if it says the history has not arrived, stop and relay that - never suggest a way to connect LinkedIn yourself. THE ORDER: (1) ask who they want to hear from again, who they do NOT, and what a good conversation looks like for them - their words, never invented - and draft a short first-person paragraph; (2) step "sample" with that draft scores about 30 of their own old conversations and saves nothing - show them the list and fix whatever they say is wrong, repeating until it looks right; (3) step "save_description"; (4) step "read" shows the cost on their own Claude key and needs their YES (confirm true) - it then runs for some minutes, re-call it for progress; (5) step "leads" shows how many people would be brought in at cut-off 3 and at cut-off 4 and needs their second YES (confirm true + cut_off) - that also switches the list on. Two yeses, never assumed. Plain English throughout: "description", "conversations", "list" - no internal names.';
+const DESCRIPTION = 'Set up the client\'s RECONNECT LIST - a daily list of people they already know on LinkedIn whose old conversation is worth picking up again. Use for "set up my reconnect list", "set up reconnect", "where am I up to with reconnect", "who should I reconnect with". ALWAYS start with step "status": it says what is ready and what the next step is, and if it says the history has not arrived, stop and relay that - never suggest a way to connect LinkedIn yourself. THE ORDER: (0) ask how far back they want to go - most people only want the last few years - and save it with step "how_far_back" (years, 0 = no limit); it is a hard limit, so it never goes in the description, and it can be changed any time, including mid-setup ("limit this to the last 2 years" = step "how_far_back" with years 2); (1) ask who they want to hear from again, who they do NOT, and what a good conversation looks like for them - their words, never invented - and draft a short first-person paragraph; (2) step "sample" with that draft scores about 30 of their own old conversations and saves nothing - show them the list and fix whatever they say is wrong, repeating until it looks right; (3) step "save_description"; (4) step "read" shows the cost on their own Claude key and needs their YES (confirm true) - it then runs for some minutes, re-call it for progress; (5) step "leads" shows how many people would be brought in at cut-off 3 and at cut-off 4 and needs their second YES (confirm true + cut_off) - that also switches the list on. Two yeses, never assumed. Plain English throughout: "description", "conversations", "list" - no internal names.';
 
 const TOOL_DEFS = [
   {
     name: 'wingguy_reconnect_setup',
     description: DESCRIPTION,
     zodSchema: {
-      step: z.enum(['status', 'sample', 'save_description', 'read', 'leads']).optional().describe('Which step. Default "status".'),
+      step: z.enum(['status', 'how_far_back', 'sample', 'save_description', 'read', 'leads']).optional().describe('Which step. Default "status".'),
       description: z.string().optional().describe('The client\'s own description of who they are and who they are looking for - for steps "sample" and "save_description".'),
       size: z.number().optional().describe('Step "sample": how many conversations to score (default 30, max 40).'),
       confirm: z.boolean().optional().describe('Steps "read" and "leads": true ONLY after the human has said yes to the figures the step just showed.'),
+      years: z.number().optional().describe('Step "how_far_back": how many years back they want to go, e.g. 2. 0 = no limit.'),
       cut_off: z.number().optional().describe('Step "leads" with confirm: 3 (everyone scoring 3 or better) or 4 (only 4s and 5s) - the one they chose.'),
     },
     jsonSchema: {
       type: 'object',
       properties: {
-        step: { type: 'string', enum: ['status', 'sample', 'save_description', 'read', 'leads'], description: 'Which step. Default "status".' },
+        step: { type: 'string', enum: ['status', 'how_far_back', 'sample', 'save_description', 'read', 'leads'], description: 'Which step. Default "status".' },
         description: { type: 'string', description: 'The client\'s own description of who they are and who they are looking for - for steps "sample" and "save_description".' },
         size: { type: 'number', description: 'Step "sample": how many conversations to score (default 30, max 40).' },
         confirm: { type: 'boolean', description: 'Steps "read" and "leads": true ONLY after the human has said yes to the figures the step just showed.' },
+        years: { type: 'number', description: 'Step "how_far_back": how many years back they want to go, e.g. 2. 0 = no limit.' },
         cut_off: { type: 'number', description: 'Step "leads" with confirm: 3 (everyone scoring 3 or better) or 4 (only 4s and 5s) - the one they chose.' },
       },
       required: [],

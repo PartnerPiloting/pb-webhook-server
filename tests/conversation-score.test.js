@@ -154,6 +154,40 @@ const m = (when, mine, body) => ({ sent_at: when, is_sender: mine, body });
     assert.strictEqual(r.refused, true);
   });
 
+  console.log('how far back');
+  await check('years parse to a number or 0 for no limit', () => {
+    assert.strictEqual(cs.parseYears('2'), 2);
+    assert.strictEqual(cs.parseYears('1.5'), 1.5);
+    for (const v of ['', null, undefined, '0', '-1', 'abc', '99']) assert.strictEqual(cs.parseYears(v), 0, String(v));
+  });
+  await check('the oldest date is that many years before now, null with no limit', () => {
+    assert.strictEqual(cs.oldestAllowed(0, nowMs), null);
+    assert.strictEqual(cs.oldestAllowed(2, nowMs).slice(0, 10), '2024-10-04'); // 730.5 days
+  });
+  await check('loadProfile reads the saved years even when a draft paragraph is passed', async () => {
+    const store = { getVariables: async () => [{ var_key: cs.WHO_KEY, value: 'Saved.' }, { var_key: cs.YEARS_KEY, value: '2' }] };
+    assert.strictEqual((await cs.loadProfile('T', { store })).yearsBack, 2);
+    assert.strictEqual((await cs.loadProfile('T', { who: 'Draft.', store })).yearsBack, 2);
+    assert.strictEqual((await cs.loadProfile('T', { store: { getVariables: async () => [] } })).yearsBack, 0);
+  });
+  await check('saveYearsBack stores the years, 0 clears it, nonsense is refused', async () => {
+    const sets = []; const store = { setVariable: async (a) => { sets.push(a); return { ok: true }; } };
+    assert.strictEqual((await cs.saveYearsBack('T', 2, { store })).yearsBack, 2);
+    assert.strictEqual(sets[0].varKey, cs.YEARS_KEY); assert.strictEqual(sets[0].value, '2');
+    await cs.saveYearsBack('T', 0, { store });
+    assert.strictEqual(sets[1].value, '');
+    await assert.rejects(() => cs.saveYearsBack('T', -1, { store }));
+    await assert.rejects(() => cs.saveYearsBack('T', 'two', { store }));
+  });
+  await check('the candidate query filters on the oldest date, and passes null with no limit', async () => {
+    const seen = []; const db = { query: async (sql, params) => { seen.push({ sql, params }); return { rows: [] }; } };
+    await cs.loadCandidates(db, 'T', nowMs, '2024-10-05T00:00:00.000Z');
+    await cs.loadCandidates(db, 'T', nowMs);
+    assert.ok(/last_msg_at >= \$3/.test(seen[0].sql));
+    assert.strictEqual(seen[0].params[2], '2024-10-05T00:00:00.000Z');
+    assert.strictEqual(seen[1].params[2], null);
+  });
+
   if (failures) { console.error(`\n${failures} FAILED`); process.exit(1); }
   console.log('\nall passed');
 })();

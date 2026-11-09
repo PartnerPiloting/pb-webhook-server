@@ -146,7 +146,7 @@ function _setPool(fake) { pool = fake; }
 async function loadScoredPeople(db, tenantId) {
   const r = await db.query(
     `SELECT p.person_key, p.member_id, p.public_identifier, p.profile_url, p.name, p.first_name, p.last_name,
-            p.headline, p.connected_at, s.ending, s.warmth, s.why, s.pick_up_on, s.scored_at
+            p.headline, p.connected_at, p.last_msg_at, s.ending, s.warmth, s.why, s.pick_up_on, s.scored_at
      FROM linkedin_conversation_scores s
      JOIN linkedin_people p ON p.tenant_id = s.tenant_id AND p.person_key = s.person_key
      WHERE s.tenant_id = $1
@@ -189,7 +189,11 @@ async function syncReconnectLeads(tenantId, { dryRun = true, cutOff: askedCutOff
   // A cut-off handed in wins - that is how the setup conversation shows "at 3" beside "at 4"
   // before the client has chosen, and how the chosen one is used in the same breath it is saved.
   const cutOff = Number(askedCutOff) || Number(client.reconnectLeadCutOff) || DEFAULT_CUT_OFF;
-  const [people, leads] = [await loadScoredPeople(db, tenantId), await loadLeads(base)];
+  // How far back (setup value): a conversation read before the limit was set is still left out.
+  const score = require('./conversationScore');
+  const oldest = score.oldestAllowed((await score.loadProfile(tenantId)).yearsBack);
+  const people = (await loadScoredPeople(db, tenantId)).filter((p) => !oldest || new Date(p.last_msg_at) >= new Date(oldest));
+  const leads = await loadLeads(base);
   const plan = planLeads(people, leads, { cutOff });
   const result = { ok: true, dryRun, scoredPeople: people.length, leadsInBase: leads.length, ...summarise(plan, cutOff) };
   if (dryRun) return result;

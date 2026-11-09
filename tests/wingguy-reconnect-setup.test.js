@@ -25,7 +25,8 @@ const state = { client: { clientId: 'T', recordId: 'recT', reconnect: null }, st
 fake('clientService.js', { getClientById: async () => state.client, clearCache: () => {} });
 fake('linkedinCollect.js', { statusByTenant: async () => state.status });
 fake('conversationScore.js', {
-  loadProfile: async () => ({ who: state.who }),
+  loadProfile: async () => ({ who: state.who, yearsBack: state.yearsBack || 0 }),
+  saveYearsBack: async (t, y) => { if (!(y >= 0 && y <= 30)) throw new Error('bad years'); state.yearsBack = y; state.calls.push(`years ${y}`); return { ok: true, yearsBack: y }; },
   saveWho: async (t, who) => { state.who = who; state.calls.push('save'); return { ok: true }; },
   scoreConversations: async (t, o) => {
     if (o.dryRun) return state.who ? { ok: true, candidates: 400, upToDate: 400 - state.toRead, toRead: state.toRead, estimateUsd: 0.71 } : { ok: false, error: 'T has no "who I\'m looking for" paragraph yet' };
@@ -52,6 +53,25 @@ const DESC = 'I advise mid-size builders on procurement and I am looking for peo
     }
     assert.deepStrictEqual(state.calls, []);
     state.status = saved;
+  });
+
+  console.log('how far back');
+  await check('status says when no limit is set, and asks', async () => {
+    const r = await runSetup({ step: 'status' }, 'T');
+    assert.ok(/How far back: not set/.test(r.text) && /how_far_back/.test(r.text));
+  });
+  await check('how_far_back needs years, saves them, and status then shows the limit', async () => {
+    assert.strictEqual((await runSetup({ step: 'how_far_back' }, 'T')).isError, true);
+    assert.strictEqual((await runSetup({ step: 'how_far_back', years: 99 }, 'T')).isError, true);
+    const r = await runSetup({ step: 'how_far_back', years: 2 }, 'T');
+    assert.ok(/last 2 years/.test(r.text) && /will not be read/.test(r.text), r.text);
+    assert.ok(/the last 2 years only/.test((await runSetup({ step: 'status' }, 'T')).text));
+    assert.deepStrictEqual(state.calls, ['years 2']);
+    state.calls.length = 0;
+  });
+  await check('the tool tells Claude to ask how far back first, as its own step', async () => {
+    assert.ok(/how_far_back/.test(TOOL_DEFS[0].description) && /never goes in the description/.test(TOOL_DEFS[0].description));
+    assert.ok(TOOL_DEFS[0].jsonSchema.properties.step.enum.includes('how_far_back'));
   });
 
   console.log('the description');

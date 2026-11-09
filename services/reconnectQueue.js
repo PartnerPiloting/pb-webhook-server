@@ -71,10 +71,12 @@ function newestNoteMs(notes) {
  * Who may be on the list today. `people` are scored people joined to their state row; `leadsById`
  * is the lead record's fields by record id. Returns the survivors, each with its lead attached.
  */
-function eligible(people, leadsById, { todayIso, nowMs = Date.now(), cutOff = DEFAULT_CUT_OFF, clientEmails = new Set(), clientNames = new Set() } = {}) {
+function eligible(people, leadsById, { todayIso, nowMs = Date.now(), cutOff = DEFAULT_CUT_OFF, clientEmails = new Set(), clientNames = new Set(), oldest = null } = {}) {
   const out = [];
+  const oldestMs = oldest ? new Date(oldest).getTime() : 0;
   for (const p of people) {
     if (Number(p.warmth) < cutOff || NEVER_SHOWN.has(p.ending)) continue;
+    if (oldestMs && (new Date(p.last_msg_at).getTime() || 0) < oldestMs) continue; // past the client's "how far back"
     if (p.status === 'done' || p.status === 'never' || p.status === 'disconnect') continue;
     if (p.status === 'skipped' && p.until && String(p.until).slice(0, 10) > todayIso) continue;
     const lead = p.lead_rec_id && leadsById.get(p.lead_rec_id);
@@ -252,13 +254,15 @@ async function buildReconnect(tenantId, liveItems = [], { more = 0, nowMs = Date
     const cutOff = Number(client.reconnectLeadCutOff) || DEFAULT_CUT_OFF;
     const number = Number(client.reconnectDailyNumber) || DEFAULT_DAILY;
     const todayIso = todayIn(client.timezone, nowMs);
-    const [people, leadsById, clients] = await Promise.all([
-      loadPeople(db, tenantId, cutOff), loadLeads(base, tenantId, cutOff), clientService.getAllClients(),
+    const score = require('./conversationScore');
+    const [people, leadsById, clients, profile] = await Promise.all([
+      loadPeople(db, tenantId, cutOff), loadLeads(base, tenantId, cutOff), clientService.getAllClients(), score.loadProfile(tenantId),
     ]);
+    const oldest = score.oldestAllowed(profile.yearsBack, nowMs);
     const clientEmails = new Set((clients || []).map((c) => nrm(c.clientEmailAddress)).filter(Boolean));
     const clientNames = new Set((clients || []).map((c) => nrm(c.clientName)).filter(Boolean));
 
-    const everyone = eligible(people, leadsById, { todayIso, nowMs, cutOff, clientEmails, clientNames });
+    const everyone = eligible(people, leadsById, { todayIso, nowMs, cutOff, clientEmails, clientNames, oldest });
     const { live, handedOver, liveKeys } = splitOwnership(liveItems, everyone);
     const poolNow = everyone.filter((p) => !liveKeys.has(p.person_key));
     const { portion, stamp, waiting } = pickPortion(poolNow, { todayIso, number, more });

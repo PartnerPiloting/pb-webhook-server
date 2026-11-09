@@ -222,14 +222,15 @@ async function ensureSchema(db) {
   `);
 }
 
-async function loadCandidates(db, tenantId, nowMs) {
+async function loadCandidates(db, tenantId, nowMs, oldest = null) {
   const cutoff = new Date(nowMs - QUIET_DAYS * MS_DAY).toISOString();
   const r = await db.query(
     `SELECT person_key, member_id, sales_nav_id, name, headline, msgs_in, msgs_out, last_msg_at
      FROM linkedin_people
      WHERE tenant_id = $1 AND is_connection AND msgs_in > 0 AND last_msg_at <= $2::timestamptz
+       AND ($3::timestamptz IS NULL OR last_msg_at >= $3::timestamptz)
      ORDER BY last_msg_at DESC, person_key`,
-    [tenantId, cutoff]
+    [tenantId, cutoff, oldest]
   );
   return r.rows;
 }
@@ -265,21 +266,53 @@ async function saveScores(db, tenantId, rows) {
 }
 
 const WHO_KEY = 'reconnect_looking_for';
+// HOW FAR BACK (Guy, 9 Nov 2026 - Dean on his setup call: "limit this to the last 2 years").
+// Most clients do not want people they last spoke to a decade ago. Stored as a setup value beside
+// the description, in years; blank = no limit. A hard filter, not left to the AI to honour from
+// the description: conversations older than this are never read (so never charged for on the
+// client's key), never brought in as leads and never shown on the daily list.
+const YEARS_KEY = 'reconnect_years_back';
+const MAX_YEARS = 30;
+
+/** Years as saved -> a positive number, or 0 for "no limit". */
+function parseYears(v) {
+  const n = Number(String(v == null ? '' : v).trim());
+  return Number.isFinite(n) && n > 0 && n <= MAX_YEARS ? n : 0;
+}
+
+/** The oldest last-message date still in range, as an ISO string - null when there is no limit. */
+function oldestAllowed(yearsBack, nowMs = Date.now()) {
+  const y = parseYears(yearsBack);
+  return y ? new Date(nowMs - Math.round(y * 365.25 * MS_DAY)).toISOString() : null;
+}
 
 /**
- * The client's paragraph and the reading guidance. `who` passed by the caller wins (that is how a
- * draft paragraph is tried on a sample before it is saved); otherwise the saved one is read.
+ * The client's paragraph, the reading guidance and how far back to go. `who` passed by the caller
+ * wins (that is how a draft paragraph is tried on a sample before it is saved); otherwise the saved
+ * one is read. How far back is always the saved value.
  */
 async function loadProfile(tenantId, { who, store } = {}) {
   let text = String(who || '').trim();
-  if (!text) {
-    try {
-      const rows = await (store || require('./wingguyRulesStore')).getVariables({ tenantId });
-      const row = (rows || []).find((r) => r.var_key === WHO_KEY);
-      text = String((row && row.value) || '').trim();
-    } catch (_) { /* store down - the caller reports "no paragraph yet" */ }
-  }
-  return { who: text, guidance: DEFAULT_GUIDANCE };
+  let yearsBack = 0;
+  try {
+    const rows = (await (store || require('./wingguyRulesStore')).getVariables({ tenantId })) || [];
+    const val = (k) => { const row = rows.find((r) => r.var_key === k); return row ? row.value : ''; };
+    if (!text) text = String(val(WHO_KEY) || '').trim();
+    yearsBack = parseYears(val(YEARS_KEY));
+  } catch (_) { /* store down - the caller reports "no paragraph yet" */ }
+  return { who: text, guidance: DEFAULT_GUIDANCE, yearsBack };
+}
+
+/** Save how far back to go, in years. 0 removes the limit. */
+async function saveYearsBack(tenantId, years, { store } = {}) {
+  const raw = Number(years);
+  if (!Number.isFinite(raw) || raw < 0 || raw > MAX_YEARS) throw new Error(`years must be between 0 (no limit) and ${MAX_YEARS}`);
+  const y = parseYears(raw);
+  await (store || require('./wingguyRulesStore')).setVariable({
+    tenantId, varKey: YEARS_KEY, value: y ? String(y) : '', actor: 'reconnect-setup',
+    description: 'Reconnect: how many years back to go. Conversations whose last message is older are never read, brought in or listed. Blank = no limit.',
+  });
+  return { ok: true, yearsBack: y };
 }
 
 /** Save the client's paragraph. This is what lets the daily top-up read without anyone there. */
@@ -320,7 +353,7 @@ async function scoreConversations(tenantId, { who, dryRun = false, sample = 0, l
   const db = getPool();
   if (!db) return { ok: false, error: 'DATABASE_URL not configured' };
   await ensureSchema(db);
-  const candidates = await loadCandidates(db, tenantId, nowMs);
+  const candidates = await loadCandidates(db, tenantId, nowMs, oldestAllowed(profile.yearsBack, nowMs));
   const existing = await db.query('SELECT person_key, thread_sig, profile_sig FROM linkedin_conversation_scores WHERE tenant_id = $1', [tenantId]);
   const scoresByKey = new Map(existing.rows.map((r) => [r.person_key, r]));
 
@@ -379,5 +412,5 @@ async function scoreConversations(tenantId, { who, dryRun = false, sample = 0, l
 
 module.exports = {
   scoreConversations, buildSystem, profileSig, threadSig, transcript, pickTodo, normaliseItem, spread,
-  scoreBatch, loadProfile, saveWho, WHO_KEY, ensureSchema, _setPool, ENDINGS, DEFAULT_GUIDANCE, QUIET_DAYS,
+  scoreBatch, loadProfile, saveWho, WHO_KEY, saveYearsBack, oldestAllowed, parseYears, YEARS_KEY, loadCandidates,ensureSchema, _setPool, ENDINGS, DEFAULT_GUIDANCE, QUIET_DAYS,
 };

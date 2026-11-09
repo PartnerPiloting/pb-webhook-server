@@ -40,6 +40,12 @@ const el = (people, leadsById, opts = {}) => rq.eligible(people, leadsById, { to
     assert.deepStrictEqual(keys(out), ['a']);
     assert.ok(out[0].quietDays > 600);
   });
+  await check('"how far back" leaves out anyone last spoken to before the limit', () => {
+    const people = [person('new', { last_msg_at: '2025-06-01T00:00:00.000Z' }), person('old', { last_msg_at: '2019-03-01T00:00:00.000Z' })];
+    const both = leads(leadOf('new'), leadOf('old'));
+    assert.deepStrictEqual(keys(el(people, both, { oldest: '2024-10-06T00:00:00.000Z' })), ['new']);
+    assert.deepStrictEqual(keys(el(people, both)).sort(), ['new', 'old'], 'no limit = everyone');
+  });
   await check('below the cut-off, declined and pitches are never shown', () => {
     const out = el([person('a', { warmth: 2 }), person('b', { ending: 'declined', warmth: 4 }), person('c', { ending: 'their_pitch', warmth: 3 })], leads(leadOf('a'), leadOf('b'), leadOf('c')));
     assert.strictEqual(out.length, 0);
