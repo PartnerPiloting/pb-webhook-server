@@ -404,6 +404,19 @@ module.exports = function mountMarketingSite(app) {
   router.get('/privacy', servePage(PAGES.privacy));
   router.get('/terms', servePage(PAGES.terms));
   router.get('/how-campaigns-work', servePage(PAGES.howWorks));
+  // Everything a client can do with Wingguy, on one page. GENERATED on each request from
+  // content/wingguy-capabilities.json (utils/wingguyCapabilities.js) - the same list the chat answer
+  // to "what can I do with Wingguy?" is built from, so the page can never fall behind a new feature.
+  // Sent by link (the chat answer carries it), so noindex.
+  router.get('/what-wingguy-can-do', (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.end(fullPage(require('../utils/wingguyCapabilities').renderPage(), req.get('host'), {
+      title: 'What you can do with Wingguy - I Know A Guy',
+      description: 'Everything you can ask Wingguy for, on one page - tap a sentence to copy it.',
+      noindex: true,
+    }));
+  });
   router.get('/pick-your-people', servePage(PAGES.pickPeople));
 
   // ---------------------------------------------------------------------------

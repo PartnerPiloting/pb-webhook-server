@@ -1,5 +1,5 @@
 {
-  "_what": "THE ONE LIST of everything a client can do with Wingguy. The answer to \"what can I do with Wingguy?\" (wingguy_vision in services/wingguyGetStartedMcp.js) is generated from this file by utils/wingguyCapabilities.js - there is no second copy of the words. Checked by tests/wingguy-capabilities.test.js.",
+  "_what": "THE ONE LIST of everything a client can do with Wingguy. Two things are generated from it by utils/wingguyCapabilities.js and there is no second copy of the words: the SHORT answer to \"what can I do with Wingguy?\" (wingguy_vision in services/wingguyGetStartedMcp.js) and the FULL page at knowaguy.com.au/what-wingguy-can-do (routes/marketingRoutes.js). Checked by tests/wingguy-capabilities.test.js.",
   "_why": "9 Nov 2026: the answer a brand-new client got on onboarding day never mentioned their Linked Helper machine, still said leads arrive by copy and paste, and was missing half of what had been built since July. It was hand-written prose, so nothing made it keep up. Now a new tool cannot ship without a line here - the test fails until it has one.",
   "_rules": [
     "Built a new tool? Add it to an item's tools here (or a new item), or to not_shown with the reason. Then run: node tests/wingguy-capabilities.test.js",
@@ -8,18 +8,21 @@
     "tools: every MCP tool that sits behind this line. The first one is the tool the say-sentence must be registered against.",
     "needs: machine | mailbox | calendar | notes - when the client has not connected that yet, the line is still shown, marked as opening up once they do.",
     "added: YYYY-MM-DD for a new feature. The line carries a 'New' flag for 30 days from that date, then drops it by itself.",
-    "not_shown: tools deliberately left out of the client answer (Guy-only, or the answer itself), each with the reason."
+    "not_shown: tools deliberately left out of the client answer (Guy-only, or the answer itself), each with the reason.",
+    "short (per section): one plain line saying what that part does for them - it is the summary in the chat answer and on the closed card of the page.",
+    "start: true on the handful of lines a brand-new client should try first - they make the 'Start with these' strip at the top of the page."
   ],
   "new_for_days": 30,
   "sections": [
     {
       "id": "machine",
       "title": "Your machine - it finds the people",
+      "short": "Finds the right people on LinkedIn and invites them, every week, by itself.",
       "lead": "It runs **Linked Helper**, software that works LinkedIn for you like a careful assistant. It sends connection requests to exactly the people you've picked, up to 100 a week, spread over sensible hours so it looks like a real person at work. It lives on your own computer in the cloud, so it's always on and there's no laptop to leave running. Guy built it, it gets checked every day and backed up every night, and if LinkedIn ever signs you out you get an email. You run it from right here:",
       "needs": "machine",
       "items": [
         { "say": "open my Linked Helper machine", "does": "your own link, straight in from any browser.", "tools": ["wingguy_open_machine"] },
-        { "say": "show me my campaign numbers", "does": "invitations sent, how many said yes, and how many people are still waiting. The same numbers land in your inbox every Monday.", "tools": ["wingguy_campaign_numbers"] },
+        { "say": "show me my campaign numbers", "does": "invitations sent, how many said yes, and how many people are still waiting. The same numbers land in your inbox every Monday.", "tools": ["wingguy_campaign_numbers"], "start": true },
         { "say": "show me my campaign settings", "does": "see the message it sends, the days and times it runs and how many go out a week - then change any of it in plain English. I show you the change before I make it.", "tools": ["wingguy_campaign_settings"], "added": "2026-11-07" },
         { "say": "top up my campaign with this search", "does": "paste a LinkedIn search link and I add those people, so it never runs dry.", "tools": ["wingguy_top_up_campaign"], "added": "2026-11-05" },
         { "say": "what campaigns do I have?", "does": "every campaign your leads are coming from, and how many each has brought in.", "tools": ["wingguy_campaigns"] },
@@ -29,6 +32,7 @@
     {
       "id": "leads",
       "title": "Every yes lands with me, already sorted",
+      "short": "Everyone who says yes arrives read and scored, best first.",
       "lead": "When someone accepts, they show up in your leads by themselves - profile read, and scored against who you're really after, so the best people come first.",
       "items": [
         { "say": "rebuild my scoring", "does": "change what a good lead looks like for you, test it on real people before anything is saved, and undo it if you don't like it.", "tools": ["wingguy_scoring_get", "wingguy_scoring_propose", "wingguy_scoring_test", "wingguy_scoring_commit", "wingguy_scoring_revert"] },
@@ -40,9 +44,10 @@
     {
       "id": "followups",
       "title": "Then I look after every conversation",
+      "short": "Nobody you owe a reply slips through.",
       "lead": "Nobody falls through the cracks. The list is worked out overnight, so it's ready when you sit down.",
       "items": [
-        { "say": "show me my follow-ups", "does": "everyone you owe something, best first, with the drafts already written. Park someone until a date, or drop them for good.", "tools": ["wingguy_queue", "wingguy_followup_brief", "wingguy_set_reconnect", "wingguy_cease_followups"] },
+        { "say": "show me my follow-ups", "does": "everyone you owe something, best first, with the drafts already written. Park someone until a date, or drop them for good.", "tools": ["wingguy_queue", "wingguy_followup_brief", "wingguy_set_reconnect", "wingguy_cease_followups"], "start": true },
         { "say": "refresh my follow-ups", "does": "rebuild the list right now if a lot has changed.", "tools": ["wingguy_prepare_brief", "wingguy_followup_sweep"] },
         { "say": "remind me about Sarah", "does": "your whole history with anyone in one go - calls, emails, LinkedIn, what you agreed last time.", "tools": ["wingguy_dossier"] },
         { "say": "write his thanks-for-connecting", "does": "off their real profile and what they post, on your instructions, never a template.", "tools": [] },
@@ -53,21 +58,23 @@
     {
       "id": "email",
       "title": "Your email, without living in it",
+      "short": "Drafts in your own mailbox. You press send.",
       "lead": "Everything is written into your own mailbox as a draft. I never send. That is always you.",
       "needs": "mailbox",
       "items": [
         { "say": "email Sarah about Thursday", "does": "a real draft in your Drafts folder, links intact, on the right thread.", "tools": ["wingguy_create_draft", "wingguy_find_message"] },
         { "say": "what did she say in her last email?", "does": "I read it to you, or show the whole back-and-forth with one person and what you've already sent them.", "tools": ["wingguy_read_message", "wingguy_lead_correspondence", "wingguy_lead_replied_since", "wingguy_lead_history"] },
-        { "say": "go through my inbox", "does": "sorted into what needs you, what's just for your info and what can go. Nothing is archived without your yes.", "tools": ["wingguy_inbox"], "added": "2026-11-02" }
+        { "say": "go through my inbox", "does": "sorted into what needs you, what's just for your info and what can go. Clearing them out works on Gmail today, and nothing goes without your yes.", "tools": ["wingguy_inbox"], "added": "2026-11-02" }
       ]
     },
     {
       "id": "meetings",
       "title": "Your diary and your bookings",
+      "short": "Real free times, offered and booked.",
       "lead": "Real free times, with your hours, buffers and time zones already applied.",
       "needs": "calendar",
       "items": [
-        { "say": "prep me for my meetings", "does": "today's diary plus everything I know about who you're meeting. Guy starts every morning this way.", "tools": ["wingguy_list_events"] },
+        { "say": "prep me for my meetings", "does": "today's diary plus everything I know about who you're meeting. Guy starts every morning this way.", "tools": ["wingguy_list_events"], "start": true },
         { "say": "offer him three times", "does": "three real slots that suit you both - and if they sent a booking link, I read it and find where you overlap.", "tools": ["wingguy_check_availability", "wingguy_check_time"] },
         { "say": "book it", "does": "the invite, your meeting link and the reminders, all sent. Move or cancel it later just by saying so.", "tools": ["wingguy_book_meeting", "wingguy_reschedule_meeting", "wingguy_cancel_meeting"] }
       ]
@@ -75,10 +82,11 @@
     {
       "id": "calls",
       "title": "Your calls, remembered",
+      "short": "Every recorded call kept against the right person.",
       "lead": "Every recorded call is kept against the right person, so the follow-up writes itself.",
       "needs": "notes",
       "items": [
-        { "say": "draft the follow-up from my last call", "does": "I read the transcript and write the email from what was actually said.", "tools": ["wingguy_dossier", "recall_latest_transcript", "recall_find_transcript", "fathom_list_meetings", "fathom_transcript"] },
+        { "say": "draft the follow-up from my last call", "does": "I read the transcript and write the email from what was actually said.", "tools": ["wingguy_dossier", "recall_latest_transcript", "recall_find_transcript", "fathom_list_meetings", "fathom_transcript"], "start": true },
         { "say": "here's the transcript from a call you missed", "does": "paste it in and I file it against the right person.", "tools": ["recall_import_transcript"] },
         { "say": "what recordings are you holding?", "does": "see every call I keep, stop one before it's stored, or delete any of it for good. It's your data.", "tools": ["wingguy_recordings", "wingguy_recording_veto", "wingguy_recording_release", "wingguy_recording_delete", "wingguy_recordings_purge"] }
       ]
@@ -86,10 +94,11 @@
     {
       "id": "voice",
       "title": "It gets more like you every week",
+      "short": "Everything is written on your own instructions.",
       "lead": "Everything I write runs on your own instructions, and you change them in plain English.",
       "items": [
         { "say": "let's set up my instructions", "does": "a guided chat that turns the starter kit into your voice - your angle, who you're after, how you handle a no.", "tools": ["wingguy_setup_rules"] },
-        { "say": "update my instructions", "does": "tell me what to do differently. I show you the change before I make it, it sticks for good, and you can always go back.", "tools": ["wingguy_rules_list", "wingguy_rule_get", "wingguy_rule_propose", "wingguy_rule_commit", "wingguy_rule_revert", "wingguy_rule_reset_to_standard"] },
+        { "say": "update my instructions", "does": "tell me what to do differently. I show you the change before I make it, it sticks for good, and you can always go back.", "tools": ["wingguy_rules_list", "wingguy_rule_get", "wingguy_rule_propose", "wingguy_rule_commit", "wingguy_rule_revert", "wingguy_rule_reset_to_standard"], "start": true },
         { "say": "never use the word folks again", "does": "your banned words, gone from every draft.", "tools": ["wingguy_banned_words"] },
         { "say": "add this article to my library", "does": "your own links - articles, videos, your booking page - ready to drop into the right message.", "tools": ["wingguy_assets", "wingguy_variables"] },
         { "say": "review my edits", "does": "whenever you change one of my drafts before sending, I learn from what you changed and offer to fold it into your instructions.", "tools": ["wingguy_edit_review"] }
@@ -98,6 +107,7 @@
     {
       "id": "learning",
       "title": "And Wingguy Learning is built in",
+      "short": "Guy's whole method, on tap.",
       "lead": "I don't only do the work - I teach you Guy's whole method as you go, in his words, not generic advice off the internet. And it grows: what Guy learns with every client lands in your Wingguy automatically.",
       "items": [
         { "say": "Who should I be connecting with?", "does": "or anything else about the method - what to say when they accept, why the second meeting matters, how to hold a steady pace.", "tools": ["wingguy_learn"] },
@@ -117,5 +127,6 @@
     "wingguy_referrals": "Guy only - referral tracking",
     "wingguy_schedule_email": "Guy only - timed sending",
     "wingguy_scheduled_emails": "Guy only - the timed-send queue"
-  }
+  },
+  "page_path": "/what-wingguy-can-do"
 }

@@ -152,10 +152,17 @@ worktree at `origin/main` - from a stale checkout it ships an OLDER build and ro
 
 ## "What can I do with Wingguy?" - content/wingguy-capabilities.json
 
-The answer a client gets to that question (`wingguy_vision`) is generated from
-`content/wingguy-capabilities.json` by `utils/wingguyCapabilities.js`. It is the ONE list of
-everything a client can do, each line with the sentence to say and the tools behind it. Never
-hand-write capability lines into the tool.
+`content/wingguy-capabilities.json` is the ONE list of everything a client can do, each line with
+the sentence to say and the tools behind it. `utils/wingguyCapabilities.js` generates two things
+from it, and there is no second copy of the words:
+
+- the **short chat answer** (`wingguy_vision`): the eight parts, one line and one sentence each, what
+  is new, what they still have to switch on, and the link to the page. Keep it short - the first
+  version put every line in the chat and Guy called it a wall of text (9 Nov 2026).
+- the **full page**, knowaguy.com.au/what-wingguy-can-do (`routes/marketingRoutes.js`): every line,
+  folded into eight cards, tap a sentence to copy it, a search box.
+
+Never hand-write capability lines into the tool or the page.
 
 **Built a new tool? It needs a line there before it ships** - add it to the `tools` of the line
 that describes it, or write a new line with `"added": "<today>"` (it shows as **New** for 30 days,
