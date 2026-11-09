@@ -29,6 +29,7 @@ const TICK_MS = Number(process.env.WINGGUY_MONITOR_TICK_MS) || 30 * 60 * 1000;  
 const RUN_HOUR = Number(process.env.WINGGUY_MONITOR_HOUR) || 7;                  // Brisbane hour to run after
 const MISS_MIN = Number(process.env.WINGGUY_MONITOR_MISS_MIN) || 3;              // landmark: min misses in 24h
 const MISS_RATE = Number(process.env.WINGGUY_MONITOR_MISS_RATE) || 0.25;         // landmark: min miss share
+const RECOVERED_FINDS = Number(process.env.WINGGUY_MONITOR_RECOVERED_FINDS) || 3; // landmark: finds after last miss = blip over
 const THIN_MIN = Number(process.env.WINGGUY_MONITOR_THIN_MIN) || 4;              // blind drafts: min count in 24h
 const THIN_RATE = Number(process.env.WINGGUY_MONITOR_THIN_RATE) || 0.4;          // blind drafts: min share of turns
 
@@ -101,15 +102,20 @@ async function landmarkFindings(client) {
   // very next pass found). The rule lives in the selector store so this and the health summary can
   // never drift apart; the full story is in the comment above RESOLVED_MISS_SQL there.
   const { rows } = await client.query(`
-    WITH h AS (
+    WITH h0 AS (
       SELECT *, (NOT found AND ${RESOLVED_MISS_SQL}) AS retried_ok
         FROM wingguy_selector_health h
        WHERE h.created_at > now() - interval '24 hours'
+    ), h AS (
+      SELECT *, max(created_at) FILTER (WHERE NOT found AND NOT retried_ok)
+                  OVER (PARTITION BY selector_key, tenant_id, surface, extension_version) AS slice_last_miss
+        FROM h0
     )
     SELECT selector_key, COALESCE(tenant_id, '(shared)') AS tenant, COALESCE(surface, '') AS surface,
            COALESCE(extension_version, '?') AS version,
            count(*) FILTER (WHERE NOT found AND NOT retried_ok) AS misses,
            count(*) FILTER (WHERE found) AS founds,
+           count(*) FILTER (WHERE found AND created_at > slice_last_miss) AS founds_after,
            count(*) FILTER (WHERE retried_ok) AS retried,
            min(created_at) FILTER (WHERE NOT found AND NOT retried_ok) AS first_miss,
            max(created_at) FILTER (WHERE NOT found AND NOT retried_ok) AS last_miss
@@ -121,22 +127,28 @@ async function landmarkFindings(client) {
 
 /** The alert rules, on the per-tenant/version slices the query above produces. Pure so the rules
  *  can be tested without a database (tests/wingguy-monitor.test.js). */
-function pickLandmarkFindings(rows, { missMin = MISS_MIN, missRate = MISS_RATE } = {}) {
+function pickLandmarkFindings(rows, { missMin = MISS_MIN, missRate = MISS_RATE, recoveredFinds = RECOVERED_FINDS } = {}) {
   const soft = new Set(SOFT_KEYS);
   // INFO_KEYS are facts about the page, not landmarks (did LinkedIn's deferred About/Featured block
   // render before the read?). Nothing in the store can fix them, so they never make an alert.
   const info = new Set(INFO_KEYS);
   const slices = rows
     .filter((r) => !info.has(r.selector_key))
-    .map((r) => ({ ...r, misses: Number(r.misses), founds: Number(r.founds) }));
+    .map((r) => ({ ...r, misses: Number(r.misses), founds: Number(r.founds), founds_after: Number(r.founds_after) || 0 }));
 
   // Per-tenant rule. OPTIONAL landmarks (SOFT_KEYS) are exempt: one person opening three brand-new
   // message threads in a morning is three honest misses on message_body with nothing found, and
   // that is exactly what fired the 2026-09-09 false alarm. A soft landmark that LinkedIn really did
   // move still gets caught below, by everybody missing it at once.
+  //
+  // A slice whose machine has found the landmark again since its last miss is a blip that stopped,
+  // not a move — LinkedIn does not move something back. 2026-11-07, David Gould: 11 profile_name
+  // misses in 13 minutes, then 31 finds; it emailed Guy "LinkedIn has moved where the name sits".
+  // RECOVERED_FINDS finds after the last miss clear it. A real move never finds it again.
   const perTenant = slices
     .filter((r) => !soft.has(r.selector_key))
-    .filter((r) => r.misses >= missMin && r.misses / (r.misses + r.founds) >= missRate);
+    .filter((r) => r.misses >= missMin && r.misses / (r.misses + r.founds) >= missRate)
+    .filter((r) => r.founds_after < recoveredFinds);
 
   // Cross-tenant aggregate (added 2026-08-13, from the monitor's own first blind spot): a landmark
   // missing for EVERY client is the strongest possible "LinkedIn moved it" signal, but split per

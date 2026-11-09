@@ -88,6 +88,16 @@ const slice = (selector_key, tenant, misses, founds, extra = {}) => ({
     assert.deepStrictEqual(pickLandmarkFindings(rows), []);
   });
 
+  await check('the 2026-11-07 alarm: a hard landmark missed 11 times, then found 31 times since → nothing (blip over)', () => {
+    const rows = [slice('profile_name', 'David-Gould', 11, 31, { surface: 'profile', version: '0.3.36', founds_after: '31' })];
+    assert.deepStrictEqual(pickLandmarkFindings(rows), []);
+  });
+
+  await check('same misses, but found only once or twice since → still alerts (not over yet)', () => {
+    const rows = [slice('profile_name', 'David-Gould', 11, 31, { surface: 'profile', version: '0.3.36', founds_after: '2' })];
+    assert.strictEqual(pickLandmarkFindings(rows).length, 1);
+  });
+
   await check('thresholds are overridable (the env knobs)', () => {
     const rows = [slice('convo_header', 'Guy-Wilson', 2, 0)];
     assert.strictEqual(pickLandmarkFindings(rows).length, 0);
