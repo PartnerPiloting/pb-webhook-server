@@ -15,7 +15,7 @@
  *      quotes it);
  *   4. house style: short dash, "instructions" not "rules", and none of the retired copy-and-paste
  *      story;
- *   5. the chat answer is SHORT (it was a wall of text once), names every part, adapts to what the
+ *   5. the chat answer is a CARD (a wall of text once, then an eight-line list - both too much), adapts to what the
  *      client has connected, and carries a link to the page that really is a route;
  *   6. the page carries every line, and New switches itself off after new_for_days.
  *
@@ -109,35 +109,30 @@ const FULL = { name: 'Josh', hasMachine: true, hasMailbox: true, hasCalendar: tr
 const NOW = new Date('2026-11-09T00:00:00Z');
 const full = caps.renderVision(FULL, NOW);
 const words = (x) => x.split(/\s+/).filter(Boolean).length;
-check('names every part, with its one-liner and a sentence to try', () => {
-  for (const s of list.sections) {
-    assert.ok(full.includes(s.title), `missing part "${s.title}"`);
-    assert.ok(s.short && full.includes(s.short), `part ${s.id} has no short line in the answer`);
-    assert.ok(full.includes(`"${caps.heroOf(s).say}"`), `part ${s.id} offers no sentence to try`);
-  }
+check('is a card: what it is, the page, one thing to try - and every part has a short line for the page', () => {
+  assert.ok(/machine/.test(full.split('\n')[0]), 'the first line should say a machine finds the people');
+  assert.ok(/Or just try \*\*"[^"]+"\*\*\.\s*$/.test(full), 'should end with one sentence to try');
+  for (const s of list.sections) assert.ok(s.short && s.short.length > 10, `part ${s.id} has no short line`);
 });
-check('stays short - it was a wall of text once', () => {
-  assert.ok(words(full) < 380, `the chat answer is ${words(full)} words - the detail belongs on the page`);
+check('stays a card - it was a wall of text, then an eight-line list (Guy, 10 Nov 2026: still too much)', () => {
+  assert.ok(words(full) <= 90, `the chat answer is ${words(full)} words - the detail belongs on the page`);
   const fresh = caps.renderVision({ name: 'Josh' }, NOW);
-  assert.ok(words(fresh) < 470, `the brand-new-client answer is ${words(fresh)} words`);
+  assert.ok(words(fresh) <= 120, `the brand-new-client answer is ${words(fresh)} words`);
+  assert.ok(full.split('\n').filter(Boolean).length <= 6, 'more than six lines');
 });
 check('carries the link to the page, and the page is a real route', () => {
   assert.ok(list.page_path && full.includes(caps.pageUrl()), 'no page link in the answer');
   const routes = fs.readFileSync(path.join(ROOT, 'routes', 'marketingRoutes.js'), 'utf8');
   assert.ok(routes.includes(`router.get('${list.page_path}'`), `${list.page_path} is not a route in routes/marketingRoutes.js - the link would 404`);
 });
-check('opens on the machine', () => assert.ok(/machine/.test(full.split('\n').slice(0, 5).join(' '))));
 check('the retired copy-and-paste story is gone', () => assert.ok(!/copy a lead|copy\/paste|paste them to me/i.test(full)));
 check('never praises its own drafting', () => assert.ok(!/\b(amazing|brilliant|best-in-class|world-class)\b/i.test(full)));
-check('a fully connected client is told everything is live', () => {
-  assert.ok(full.includes('everything is connected'));
-  assert.ok(!full.includes('Still to switch on'));
-  assert.ok(!/\*\(once your/.test(full));
-});
-check('a brand-new client sees what is still to switch on', () => {
+check('a fully connected client is not told to switch anything on', () => assert.ok(!full.includes('Still to switch on')));
+check('a brand-new client sees what is still to switch on, by name only', () => {
   const fresh = caps.renderVision({ name: 'Josh', hasMachine: false, hasMailbox: false, hasCalendar: false, hasFathom: false, rulesSeeded: false }, NOW);
-  for (const w of ['machine', 'mailbox', 'calendar', 'note-taker', 'instructions']) assert.ok(fresh.split('Still to switch on')[1].includes(w), `no mention of ${w}`);
-  assert.ok(fresh.includes('once your machine is switched on'));
+  const line = fresh.split('Still to switch on')[1] || '';
+  for (const w of ['machine', 'mailbox', 'calendar', 'note-taker', 'instructions']) assert.ok(line.includes(w), `no mention of ${w}`);
+  assert.ok(line.includes('"where are we up to?"'), 'should hand them to the tour');
 });
 check('survives a client record that could not be read', () => assert.ok(caps.renderVision(null, NOW).includes('Still to switch on')));
 const dated = items.filter((i) => i.added);
@@ -145,8 +140,8 @@ const newest = dated.map((i) => i.added).sort().pop();
 const afterWindow = newest ? new Date(Date.parse(`${newest}T00:00:00Z`) + (list.new_for_days + 2) * 86400000) : null;
 check('new lines are named inside the window and drop off after it', () => {
   if (!newest) return;
-  assert.ok(caps.renderVision(FULL, new Date(`${newest}T12:00:00Z`)).includes('**New in the last'), 'a line added today should be named as new');
-  assert.ok(!caps.renderVision(FULL, afterWindow).includes('**New in the last'), 'New should drop off by itself');
+  assert.ok(caps.renderVision(FULL, new Date(`${newest}T12:00:00Z`)).includes('**New this month:**'), 'a line added today should be named as new');
+  assert.ok(!caps.renderVision(FULL, afterWindow).includes('**New this month:**'), 'New should drop off by itself');
 });
 
 console.log('\n6. the page - everything, folded');

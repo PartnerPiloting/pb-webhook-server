@@ -68,7 +68,12 @@ function heroOf(sec) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The chat answer - short on purpose.
+// The chat answer - a card, not a list.
+//
+// Guy, 10 Nov 2026: even the eight-line map was "still too much text", and the screenshot showed the
+// client's Claude paraphrasing every line anyway. The only lever we control is how much we hand it.
+// So: one sentence on what it is, the page link (the page carries all the detail), what is new,
+// what is still to switch on, and ONE thing to try. Seeing that one thing work is the impressive part.
 // ---------------------------------------------------------------------------------------------
 function renderVision(s, now = new Date()) {
   const list = load();
@@ -77,42 +82,30 @@ function renderVision(s, now = new Date()) {
   const total = list.sections.reduce((n, sec) => n + sec.items.length, 0);
   const parts = [];
 
-  parts.push(`**Welcome${name ? ', ' + name : ''} - here's what you've just switched on.**`);
+  parts.push(`**Welcome${name ? ', ' + name : ''}.** A machine finds the right people on LinkedIn, and I look after every conversation that comes back. You run all of it from here, just by saying what you want.`);
   parts.push('');
-  parts.push('Two things are working for you now: a machine that goes out on LinkedIn and finds the right people, and me, looking after every conversation that comes back. You run all of it from right here, just by saying what you want.');
-  parts.push('');
-
-  list.sections.forEach((sec, i) => {
-    const need = sec.needs && NEEDS[sec.needs];
-    const waiting = need && !need.has(s);
-    parts.push(`${i + 1}. **${sec.title}.** ${sec.short} Try **"${heroOf(sec).say}"**${waiting ? ` *(${need.waiting})*` : ''}`);
-  });
+  parts.push(`All ${total} things you can ask for are on one page, tap any to copy: ${pageUrl()}`);
 
   const fresh = list.sections.flatMap((sec) => sec.items.filter((it) => isNew(it, now, days)));
   if (fresh.length) {
     parts.push('');
-    parts.push(`**New in the last ${days} days:** ${fresh.map((it) => `"${it.say}"`).join(', ')}.`);
+    parts.push(`**New this month:** ${fresh.map((it) => `"${it.say}"`).join(', ')}.`);
   }
 
-  parts.push('');
-  parts.push(`**That's the short version.** All ${total} things you can ask for are on one page, tap to copy: ${pageUrl()}`);
-
-  // Where this client is up to - only what is true for them.
+  // Where this client is up to - only what is true for them, and only the names.
   const todo = [];
-  if (!s || !s.hasMachine) todo.push('your **machine** - Guy sets it up with you, and from then on it runs by itself');
-  if (!s || !s.hasMailbox) todo.push('your **mailbox** - so drafts land in your own Drafts folder');
-  if (!s || !s.hasCalendar) todo.push('your **calendar** - so I can offer real times and book them');
-  if (!s || !s.hasFathom) todo.push('a call **note-taker** - so follow-ups come from what was actually said');
-  if (!s || !s.rulesSeeded) todo.push('your **instructions** - the good part: a short chat and everything I write starts sounding like you');
-  parts.push('');
-  if (!todo.length) {
-    parts.push('**Where you\'re up to:** everything is connected - all of it is live for you today. Say **"show me my follow-ups"** and we\'ll start.');
-  } else {
-    parts.push('**Where you\'re up to:** you\'re connected, so we can start today. Still to switch on:');
-    parts.push(todo.map((t) => `- ${t}`).join('\n'));
+  if (!s || !s.hasMachine) todo.push('your machine');
+  if (!s || !s.hasMailbox) todo.push('your mailbox');
+  if (!s || !s.hasCalendar) todo.push('your calendar');
+  if (!s || !s.hasFathom) todo.push('a call note-taker');
+  if (!s || !s.rulesSeeded) todo.push('your instructions');
+  if (todo.length) {
     parts.push('');
-    parts.push('Say **"where are we up to?"** and I\'ll take you through the next step.');
+    parts.push(`**Still to switch on:** ${todo.join(', ')}. Say **"where are we up to?"** and I'll take you through the next one.`);
   }
+
+  parts.push('');
+  parts.push(`Or just try **"${heroOf(list.sections.find((sec) => sec.id === 'followups') || list.sections[0]).say}"**.`);
 
   return parts.join('\n');
 }

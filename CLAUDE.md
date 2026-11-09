@@ -156,9 +156,11 @@ worktree at `origin/main` - from a stale checkout it ships an OLDER build and ro
 the sentence to say and the tools behind it. `utils/wingguyCapabilities.js` generates two things
 from it, and there is no second copy of the words:
 
-- the **short chat answer** (`wingguy_vision`): the eight parts, one line and one sentence each, what
-  is new, what they still have to switch on, and the link to the page. Keep it short - the first
-  version put every line in the chat and Guy called it a wall of text (9 Nov 2026).
+- the **chat answer** (`wingguy_vision`): a CARD, five or six lines - one sentence on what it is, the
+  page link, what is new, what they still have to switch on, one thing to try. Never a list of the
+  parts: the first version put every line in the chat (a wall of text, 9 Nov 2026), the second
+  listed the eight parts and Guy said "still too much text" (10 Nov). The client's Claude paraphrases
+  whatever it is handed, so the only lever is how much it gets. The test caps the word count.
 - the **full page**, knowaguy.com.au/what-wingguy-can-do (`routes/marketingRoutes.js`): every line,
   folded into eight cards, tap a sentence to copy it, a search box.
 
