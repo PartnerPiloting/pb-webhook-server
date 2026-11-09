@@ -189,7 +189,7 @@ function describeBookingHours(prefs) {
       lines.push(`${DAY_NAMES[k]}: ${!d ? 'no meetings' : d.first === d.last ? `${fmtClock(d.first)} start only` : `first start ${fmtClock(d.first)}, last start ${fmtClock(d.last)}`}`);
     }
   } else {
-    lines.push(`Weekdays${prefs.excludeWeekends ? ' only' : ' and weekends'}: first start ${fmtClock(prefs.earliestStart)}, last start ${fmtClock(prefs.lastStart)} (the standard hours)`);
+    lines.push(`Weekdays${prefs.excludeWeekends ? ' only' : ' and weekends'}: first start ${fmtClock(prefs.earliestStart)}, last start ${fmtClock(prefs.lastStart)} (${prefs.fromSetupAnswers ? 'from the setup answers' : 'the standard hours'})`);
   }
   lines.push(`Gap between meetings: ${prefs.bufferMins ? `${prefs.bufferMins} minutes` : 'none'}`);
   lines.push(`Meetings a day: ${prefs.maxMeetingsPerDay}${prefs.dailyLimitHard ? ' - a hard limit, a full day is never offered' : ' - a preference, lighter days are offered first'}`);
