@@ -157,7 +157,7 @@ function renderPage(now = new Date()) {
   // The two questions a reader is left with after the steps, and a line for a forwarded friend.
   const qs = list.page_questions || [];
   const questions = qs.length
-    ? `\n      <aside class="why">\n        ${qs.map((x) => `<h2>${esc(x.q)}</h2>\n        <p>${rich(x.a)}</p>`).join('\n        ')}\n      </aside>\n`
+    ? `\n      <aside class="why">\n        ${qs.map((x) => `<h2>${esc(x.q)}</h2>\n        <p>${rich(x.a)}</p>${x.say ? `\n        <p class="why-say">${sayButton(x.say)}${x.say_note ? ` <span>${rich(x.say_note)}</span>` : ''}</p>` : ''}`).join('\n        ')}\n      </aside>\n`
     : '';
   const fr = list.page_friend;
   const friend = fr
@@ -223,6 +223,7 @@ function renderPage(now = new Date()) {
   .why { margin:6px 0 1.8rem; padding:6px 20px 8px; border:1px solid var(--rule); border-left:3px solid var(--gold); border-radius:3px; background:var(--cream); }
   .why h2 { font-size:19px; line-height:1.3; margin:14px 0 6px; color:var(--ink-deep); font-weight:700; }
   .why p { font-size:16.5px; line-height:1.62; margin:0 0 12px; color:var(--ink); }
+  .why .why-say { margin:-2px 0 14px; font-size:15px; color:var(--ink-soft); }
   .op-foot a { color:var(--gold-ink); }
   .none { display:none; font-size:16px; color:var(--ink-soft); margin:0 0 1rem; }
   .hide { display:none; }

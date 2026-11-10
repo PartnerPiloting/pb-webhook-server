@@ -61,6 +61,14 @@
       ]
     },
     {
+      "phrase": "Why Linked Helper and not the other tools?",
+      "tool": "wingguy_learn",
+      "topic": "WHY LINKED HELPER",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
+    },
+    {
       "phrase": "is my Linked Helper licence OK?",
       "tool": "wingguy_learn",
       "topic": "LINKED HELPER - THE TRIAL",

@@ -24,6 +24,12 @@
     {
       "q": "Couldn't I build that myself?",
       "a": "You could start. What makes it work is the things nobody thinks of until they go wrong: offering someone a time before you know which city they're in, chasing a person who already replied by email, a thank-you note that opens the same way as the last three. I've spent thousands of hours finding those and fixing them, one at a time, and I'm still at it. That's the part you don't have to do."
+    },
+    {
+      "q": "Why Linked Helper, and not the tool someone just told me about?",
+      "a": "I get told about a new one most weeks, and plenty of them look better. I looked at a lot of them before choosing. Most of them run your LinkedIn from their own servers, and every customer looks the same to LinkedIn - so when one gets spotted, they all do, and it's your account that goes. Linked Helper runs on a machine that is yours alone, through a real browser, one thing at a time, at a person's pace. They're obsessed with not getting you flagged. In all my time running this, I've not seen one person using it lose their account. Nobody can honestly promise zero risk, but it's the safest I could find.",
+      "say": "Why Linked Helper and not the other tools?",
+      "say_note": "the whole story, in my words."
     }
   ],
   "page_friend": {

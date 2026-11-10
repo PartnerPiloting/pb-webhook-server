@@ -180,6 +180,10 @@ check('carries the closing questions and a line for a forwarded friend, whose li
     assert.ok(page.includes(esc(x.q)), `the page is missing "${x.q}"`);
     assert.ok(!/\bGuy\b/.test(x.a) && !/[–—]/.test(x.a), `"${x.q}" breaks the narrator or dash rule`);
     assert.ok(!full.includes(x.q), 'the questions belong on the page, never in the chat answer');
+    if (x.say) {
+      assert.ok(registry.get(normalise(x.say)), `"${x.say}" is a sentence the page tells people to type - add it to content/client-phrases.json`);
+      assert.ok(page.includes(`data-say="${esc(x.say)}"`), `"${x.say}" has no tap-to-copy button`);
+    }
   }
   const routes = fs.readFileSync(path.join(ROOT, 'routes', 'marketingRoutes.js'), 'utf8');
   const links = (list.page_friend || {}).links || [];
