@@ -33,6 +33,10 @@ const VARIABLE_DEFAULTS = {
 
   // Sign-off: most people sign with their first name, so borrow it rather than inventing one.
   signoff: { alias: 'owner_first_name' },
+
+  // The lines code writes under a time list (services/wingguyFixedLines.js). Blank = the standard
+  // wording, and that module is the one copy of it.
+  ...Object.fromEntries(require('../services/wingguyFixedLines').FIXED_LINES.map((l) => [l.key, { value: l.standard }])),
 };
 
 /**

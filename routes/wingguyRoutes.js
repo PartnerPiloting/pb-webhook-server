@@ -45,6 +45,7 @@ const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = requ
 const wingguyStore = require('../services/wingguyRulesStore');
 const setupFields = require('../config/wingguySetupFields');
 const clientFactSync = require('../services/clientFactSync');
+const wingguyFixedLines = require('../services/wingguyFixedLines');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
@@ -1318,6 +1319,12 @@ module.exports = function mountWingguy(app) {
     const cap = setupFields.capFor(scope, key);
     if (clean.length > cap) {
       return res.status(400).json({ ok: false, error: `That is too long (limit ${cap} characters).` });
+    }
+    // A line Wingguy writes itself has to keep the gaps it fills in ([city], [email]) - refuse a
+    // wording that would leave the draft without them (services/wingguyFixedLines.js).
+    if (scope === 'variable' && wingguyFixedLines.isFixedLineKey(key)) {
+      const v = wingguyFixedLines.validateFixedLine(key, clean);
+      if (!v.ok) return res.status(400).json({ ok: false, error: v.error });
     }
     // A link box that is not a link is the one mistake worth catching before it reaches an invite.
     if (scope === 'asset' && clean && !/^https?:\/\/\S+$/i.test(clean)) {

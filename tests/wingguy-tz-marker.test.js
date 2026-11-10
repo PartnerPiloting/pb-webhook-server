@@ -81,8 +81,8 @@ function makeRun({ leadTimezone, location, detected = true, intro = 'A few times
   const perth = await makeRun({ leadTimezone: 'Australia/Perth', location: 'Perth, Western Australia' });
   check('a draft was produced', () => assert.ok(perth.res && perth.res.draft, `no draft: ${JSON.stringify(perth.res)}`));
   check('draft renders times in the LEAD\'s (Perth) clock', () => assert.ok(/8:30\s*am/i.test(perth.res.draft), `missing Perth 8:30:\n${perth.res.draft}`));
-  check('draft carries the single marker line', () => assert.ok(perth.res.draft.includes('(all times are Perth time)'), `no marker line:\n${perth.res.draft}`));
-  check('marker appears exactly once (not per slot)', () => assert.strictEqual((perth.res.draft.match(/all times are/g) || []).length, 1, perth.res.draft));
+  check('draft carries the single marker line', () => assert.ok(perth.res.draft.includes('(All times are Perth time)'), `no marker line:\n${perth.res.draft}`));
+  check('marker appears exactly once (not per slot)', () => assert.strictEqual((perth.res.draft.match(/All times are/g) || []).length, 1, perth.res.draft));
   check('draft carries the connecting line directly above the list', () => assert.ok(
     /Would any of the following times work for you\?\n\n- /.test(perth.res.draft), `no connecting line above slots:\n${perth.res.draft}`));
   check('offeredTimes echo shows BOTH sides', () => assert.ok(
@@ -95,7 +95,7 @@ function makeRun({ leadTimezone, location, detected = true, intro = 'A few times
   console.log('\nSame-timezone lead — marker STILL present (lead doesn\'t know Guy\'s tz), single-sided echo:');
   const bris = await makeRun({ leadTimezone: 'Australia/Brisbane', location: 'Brisbane, Queensland' });
   check('a draft was produced', () => assert.ok(bris.res && bris.res.draft, `no draft: ${JSON.stringify(bris.res)}`));
-  check('draft carries the marker line even same-tz', () => assert.ok(bris.res.draft.includes('(all times are Brisbane time)'), `no marker line:\n${bris.res.draft}`));
+  check('draft carries the marker line even same-tz', () => assert.ok(bris.res.draft.includes('(All times are Brisbane time)'), `no marker line:\n${bris.res.draft}`));
   check('draft carries the connecting line', () => assert.ok(bris.res.draft.includes('Would any of the following times work for you?'), bris.res.draft));
   check('offeredTimes stays single-sided', () => assert.ok(
     bris.proposeResult && bris.proposeResult.offeredTimes.every((t) => !t.includes('(')),
@@ -115,7 +115,7 @@ function makeRun({ leadTimezone, location, detected = true, intro = 'A few times
   console.log('\nMissing location but Guy said "use my clock" (override = coach tz) — the draft proceeds on Brisbane time:');
   const nolocOk = await makeRun({ leadTimezone: 'Australia/Brisbane', location: '', detected: false, leadTimezoneOverride: 'Australia/Brisbane' });
   check('a draft was produced', () => assert.ok(nolocOk.res && nolocOk.res.draft, `no draft: ${JSON.stringify(nolocOk.res)}`));
-  check('marker is Brisbane', () => assert.ok(nolocOk.res.draft.includes('(all times are Brisbane time)'), nolocOk.res.draft));
+  check('marker is Brisbane', () => assert.ok(nolocOk.res.draft.includes('(All times are Brisbane time)'), nolocOk.res.draft));
 
   console.log('\nModel intro already ends with its own "do these work" question — stripped, no double ask:');
   const dup = await makeRun({ leadTimezone: 'Australia/Brisbane', location: 'Brisbane, Queensland',
@@ -128,14 +128,14 @@ function makeRun({ leadTimezone, location, detected = true, intro = 'A few times
   const nz = await makeRun({ leadTimezone: 'Australia/Sydney', location: 'Sydney, New South Wales',
     leadTimezoneOverride: 'Pacific/Auckland' });
   check('a draft was produced', () => assert.ok(nz.res && nz.res.draft, `no draft: ${JSON.stringify(nz.res)}`));
-  check('marker names the TRAVEL zone, not the profile city', () => assert.ok(nz.res.draft.includes('(all times are Auckland time)'), nz.res.draft));
-  check('slot times are rendered on the travel clock (10:30 Bris = 12:30 NZ, July)', () => assert.ok(/12:30\s*pm/i.test(nz.res.draft), nz.res.draft));
+  check('marker names the TRAVEL zone, not the profile city', () => assert.ok(nz.res.draft.includes('(All times are Auckland time)'), nz.res.draft));
+  check('slot times are rendered on the travel clock (10:30 Bris = 12:30 NZ in winter, 1:30 under NZ daylight saving)', () => assert.ok(/(12|1):30\s*pm/i.test(nz.res.draft), nz.res.draft));
 
   console.log('\nInvalid override string — silently ignored, profile-derived zone stands:');
   const bad = await makeRun({ leadTimezone: 'Australia/Brisbane', location: 'Brisbane, Queensland',
     leadTimezoneOverride: 'Not/AZone' });
   check('a draft was produced', () => assert.ok(bad.res && bad.res.draft, `no draft: ${JSON.stringify(bad.res)}`));
-  check('marker stays on the profile-derived zone', () => assert.ok(bad.res.draft.includes('(all times are Brisbane time)'), bad.res.draft));
+  check('marker stays on the profile-derived zone', () => assert.ok(bad.res.draft.includes('(All times are Brisbane time)'), bad.res.draft));
 
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all tz-marker tests passed');
   process.exit(failures ? 1 : 0);

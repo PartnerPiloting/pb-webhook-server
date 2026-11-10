@@ -37,6 +37,17 @@ const bannedWords = require('../utils/bannedWords');
 // that uses a listed word and the model writes it again. At most MAX_BANNED_REFUSALS per turn, so
 // a list that fights the client's own campaign wording costs two extra rounds, never a loop.
 const MAX_BANNED_REFUSALS = 2;
+/** The wording in force for the lines code writes (services/wingguyFixedLines.js). Never throws -
+ * an unreachable store means the standard wording, never a broken draft. */
+async function loadFixedLines(clientId, getVariablesFn) {
+  try {
+    const getVars = getVariablesFn || require('./wingguyRulesStore').getVariables;
+    return fixedLines.resolveFixedLines(await getVars({ tenantId: clientId }));
+  } catch (e) {
+    console.warn(`WINGGUY-FIXED-LINES could not read the wording for ${clientId}: ${e.message}`);
+    return fixedLines.STANDARD_LINES;
+  }
+}
 /** The client's enforceable banned words. Never throws - no list is an empty list. */
 async function loadBannedTerms(clientId, getVariablesFn) {
   try {
@@ -131,7 +142,7 @@ const AGENT_TOOLS = [
       properties: {
         intro: { type: 'string', description: 'Opening line(s) before the times, in Guy\'s voice.' },
         slotTimes: { type: 'array', items: { type: 'string' }, description: 'ISO start times chosen from check_availability (the slot "time" field).' },
-        outro: { type: 'string', description: 'Optional extra closing words after the times - usually leave it empty. The system appends the invite line itself ("Let me know which suits and I\'ll send a calendar invite with the Zoom link..." naming the on-file email, or asking for one) and drops any invite/which-suits line you write.' },
+        outro: { type: 'string', description: 'Optional extra closing words after the times - usually leave it empty. The system appends the invite line itself, in the client\'s own saved wording ("Let me know which suits, and I\'ll send a calendar invite with the Zoom link..." naming the on-file email, or asking for one) and drops any invite/which-suits line you write.' },
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants to offer a lunch-time slot — otherwise lunch (12:00–12:45) is dropped from the list.' },
         includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asked for today/tomorrow — otherwise slots before the day after tomorrow are dropped (his one-clear-day rule). Past times are always dropped.' },
         includeWeekends: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a weekend slot — otherwise weekend slots are dropped.' },
@@ -351,6 +362,7 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, leadName
 // The offer-time helpers (bounds, lunch, past/too-soon, slot formatting) live in wingguyCalendar —
 // ONE implementation shared with the claude.ai connector tools (the "one booking door", 2026-07-06).
 const { inLunch, earliestOfferDate, dateStrInTz, fmtSlot, tzCity } = wingguyCalendar;
+const fixedLines = require('./wingguyFixedLines');
 
 // Message-level prompt caching (2026-07-15): each tool round-trip used to re-send the per-lead
 // context block + the ENTIRE conversation at full input price — the dominant line on the API bill
@@ -652,14 +664,16 @@ function coachSpokeLast({ conversation, coachName, group }) {
 const TIMES_OFFER = /would any of the following times work|(^|\n)\s*[-•*]\s*(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s+\d{1,2}/i;
 /** Coach offered times AFTER the lead's last message and the lead hasn't answered. Returns
  * { day } (the offer's day label, may be '') or null. */
-function unansweredTimesOffer({ conversation, coachName, group }) {
+function unansweredTimesOffer({ conversation, coachName, group, lines }) {
   if (!coachSpokeLast({ conversation, coachName, group })) return null;
   const list = Array.isArray(conversation) ? conversation : [];
   for (let i = list.length - 1; i >= 0; i--) {
     const m = list[i];
     if (!m || !String(m.text || '').trim()) continue;
     if (!isCoachSender(m.sender, coachName)) return null; // reached the lead's last message
-    if (TIMES_OFFER.test(String(m.text))) return { day: String(m.day || '').trim() };
+    // The standard phrases, then the client's own wording and the list itself (11 Nov 2026 - the
+    // wording became per-client, so a guard that knew one sentence would go blind on a reworded one).
+    if (TIMES_OFFER.test(String(m.text)) || fixedLines.looksLikeTimesOffer(m.text, lines)) return { day: String(m.day || '').trim() };
   }
   return null;
 }
@@ -934,10 +948,10 @@ function isHandshakeOnly({ conversation, coachName, leadName, group }) {
 // kickoff starts with "(" and never counts.
 // A time list already in the thread counts too - older offers carried no call word (Anton, 15 Sep).
 const TIMES_OFFERED = /(all times are|following times|times work for you)/i;
-function meetingRaisedInThread(conversation = []) {
+function meetingRaisedInThread(conversation = [], lines = null) {
   return (Array.isArray(conversation) ? conversation : []).some((m) => {
     const t = String((m && m.text) || '');
-    return MEETING_ASK.test(t) || TIMES_OFFERED.test(t);
+    return MEETING_ASK.test(t) || TIMES_OFFERED.test(t) || fixedLines.looksLikeTimesOffer(t, lines);
   });
 }
 const COACH_TIMES_ASK = /\b(times?|book|booking|zoom|teams|call|meet|meeting|slots?|availability|calendar|diary|today|tomorrow|next week|mon(day)?|tue(s(day)?)?|wed(nesday)?|thu(rs(day)?)?|fri(day)?|\d{1,2}(:\d{2})?\s?(am|pm))\b/i;
@@ -956,14 +970,16 @@ function coachAskedForTimes(messages = []) {
 // from the address it actually holds. Any invite/which-suits line the model wrote is dropped so the
 // draft never promises the invite twice; anything else in its outro stays, above this line.
 const INVITE_PROMISE = /(calendar invite|send (you )?(an? |the )?(invite|zoom|teams|link)|which (one )?suits|what suits|let me know which|best email)/i;
-function inviteLine(email) {
+// The WORDING is the client's own since 11 Nov 2026 (services/wingguyFixedLines.js) - code still
+// writes the line and fills in the address; `lines` omitted = the standard wording.
+function inviteLine(email, lines = null) {
   return email
-    ? `Let me know which suits and I'll send a calendar invite with the Zoom link to ${email} - just say if there's a better address.`
-    : "Let me know which suits and I'll send a calendar invite with the Zoom link - what's the best email to send it to?";
+    ? fixedLines.renderFixedLine('invite_line', lines, { email })
+    : fixedLines.renderFixedLine('invite_line_no_email', lines);
 }
-function withInviteLine(outro, email) {
+function withInviteLine(outro, email, lines = null) {
   const kept = String(outro || '').split('\n').filter((l) => !INVITE_PROMISE.test(l)).join('\n').trim();
-  return [kept, inviteLine(email)].filter(Boolean).join('\n\n');
+  return [kept, inviteLine(email, lines)].filter(Boolean).join('\n\n');
 }
 
 // When the record's location can't be pinned to one timezone, the current role on the LinkedIn page
@@ -1191,6 +1207,8 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   // Banned words (see loadBannedTerms). A word in the lead's own name, headline or company is
   // allowed through - banning "solutions" must not stop a message to someone at Acme Solutions.
   const bannedTerms = await loadBannedTerms(coach.clientId, deps.getVariables);
+  // The client's own wording for the lines code writes under a time list (standard when unset).
+  const ownLines = await loadFixedLines(coach.clientId, deps.getVariables);
   const bannedExempt = [profile.name, profile.headline, profile.company, profile.companyName].filter(Boolean).join('\n');
   let bannedRefusals = 0;
   const bannedWordCheck = (text, where) => {
@@ -1238,7 +1256,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
 
   // Who spoke last, from DATA (see coachSpokeLast above). Named in the context so the stage is not
   // guessed from an old yes further up the thread.
-  const stallArgs = { conversation, coachName: coach.clientName, group: profile.group };
+  const stallArgs = { conversation, coachName: coach.clientName, group: profile.group, lines: ownLines };
   const timesStall = unansweredTimesOffer(stallArgs);
   const ballWithLead = coachSpokeLast(stallArgs);
   const leadFirst = String(profile.name || 'the lead').trim().split(/\s+/)[0];
@@ -1375,7 +1393,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       if (leadLinkState && leadLinkState.ok) {
         return { ok: false, error: `STOPPED - the lead sent their own booking link (${leadLinkState.url}) and Wingguy read it, so a list of times is the wrong move. check_availability already returned only the times BOTH are free: pick ONE (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. If that result had no days, say so and let Guy choose which side bends.` };
       }
-      if (!meetingRaisedInThread(conversation) && !coachAskedForTimes(messages)) {
+      if (!meetingRaisedInThread(conversation, ownLines) && !coachAskedForTimes(messages)) {
         console.warn(`WINGGUY-NO-ASK-GUARD refused a time list for ${coach.clientId} → ${profile.name || 'lead'} (no call raised in the thread)`);
         return { ok: false, error: `STOPPED - nobody has raised a call in this thread yet, so NO time list was built and the draft was NOT touched. ${leadFirst} said yes to the network (or replied warmly), not to a meeting - offering times now books them into something they never agreed to. Draft the warm reply instead with propose_message (stage 3): react to what they actually said, then end on the meeting ask from the campaign template, e.g. "Would you be up for a quick Zoom in the next couple of weeks to talk about potential two-way collaboration?" Tell Guy in one line that you asked first rather than sending times, and that if he wants to offer times anyway he only has to say so.` };
       }
@@ -1502,12 +1520,12 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // actually reads differently on the two sides.
       const tzDiffer = ordered.some((iso) => wingguyCalendar.clockGapMins(iso, tz, leadTz) !== 0);
       const bullets = ordered.map((iso) => `- ${fmtSlot(iso, leadTz)}`).join('\n')
-        + `\n\n(all times are ${tzCity(leadTz)} time)`;
+        + `\n\n${fixedLines.renderFixedLine('times_zone_line', ownLines, { city: tzCity(leadTz) })}`;
       // CODE-OWNED connecting line above the list (Guy, 2026-07-15 — drafts kept jumping from the
       // intro straight into bare dates; rulebook prose couldn't fix it because the model never
       // writes the list). If the model already ended its intro with its own "do these work"-style
       // question, strip that line so the draft doesn't ask twice.
-      const CONNECTING_LINE = 'Would any of the following times work for you?';
+      const CONNECTING_LINE = fixedLines.renderFixedLine('times_question_line', ownLines);
       let intro = unescapeModelNewlines(input.intro).trim();
       {
         const lines = intro.split('\n');
@@ -1532,7 +1550,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         }
         outro = parts.join('\n').trim();
       }
-      outro = withInviteLine(outro, currentLeadEmail);
+      outro = withInviteLine(outro, currentLeadEmail, ownLines);
       currentDraft = [intro, bullets, outro].filter(Boolean).join('\n\n') + (voice && voice.signoff ? `\n\n${voice.signoff}` : '');
       // Echo back the EXACT lines written into the draft so the model's chat summary to Guy is grounded in
       // what was actually rendered — not re-derived from memory (which is how the summary said "Wed 8 July"
@@ -1564,7 +1582,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const leadBase = overrode
         ? `Lead's record says ${leadLoc ? `"${leadLoc}"` : 'nothing about where they are'}, but the THREAD puts them in ${tzCity(leadTz)} — the draft is written in ${tzCity(leadTz)} time. Tell Guy you took that from the conversation rather than the record, quote the line you took it from, and ask whether to save it to their record (wingguy_update_lead) so every future draft gets it right. Do NOT save it yourself off an inference — that is Guy's call.`
         : profileTzKnown
-          ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy on every offered date — no daylight-saving gap, so show ONE time and never add an hour (the draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.${tzAssumedNote ? ` Note: ${tzAssumedNote}.` : ''}`
+          ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy on every offered date — no daylight-saving gap, so show ONE time and never add an hour (the draft's "${fixedLines.renderFixedLine('times_zone_line', ownLines, { city: tzCity(leadTz) })}" line covers it)`}. Tell Guy where the lead is based when you present the draft.${tzAssumedNote ? ` Note: ${tzAssumedNote}.` : ''}`
           : tzCandidates.length
             ? `⚠ Lead's location "${leadLoc}" is AMBIGUOUS — could be ${tzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')} — so the draft ASSUMES Guy's own timezone (${tzCity(tz)}). Do NOT send it like that: check the thread for a clue to which one, otherwise ask Guy WHICH place it is, get it saved to the record (wingguy_update_lead), then redo the times.`
             : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the record'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). BEFORE you tell Guy that, re-read the thread: if the lead named a place they are in or near (a city, a suburb, "when you're in Melbourne"), call propose_times AGAIN with leadTimezoneOverride set to that zone — the conversation beats a vague record. Only if the thread says nothing about where they are, say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
@@ -1932,4 +1950,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: clocked.reply, draft: draftOut, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, trimHistoryForModel, restoreSignoffLayout, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, withdrawnAcceptance, leadBlamingLine, summariseEventsForPanel, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, trimHistoryForModel, restoreSignoffLayout, meetingRaisedInThread, coachAskedForTimes, withInviteLine, loadFixedLines, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, withdrawnAcceptance, leadBlamingLine, summariseEventsForPanel, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };

@@ -177,7 +177,7 @@ const base = { coach: { clientId: 'Guy-Wilson', clientName: 'Guy' }, profile: { 
     check('the draft carries Guy\'s three times with the timezone line, and no promise to use their link', () => {
       assert.ok(res.draft, 'no draft was set');
       assert.match(res.draft, /Would any of the following times work for you\?/);
-      assert.match(res.draft, /\(all times are Brisbane time\)/);
+      assert.match(res.draft, /\(All times are Brisbane time\)/);
       assert.strictEqual((res.draft.match(/^- /gm) || []).length, 3, res.draft);
       assert.ok(!/through (your|the) link|grab a slot|your link|your page/i.test(res.draft), res.draft);
       assert.strictEqual(linkBookingPromise(res.draft), null, res.draft);

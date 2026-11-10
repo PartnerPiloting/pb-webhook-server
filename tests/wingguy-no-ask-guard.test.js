@@ -42,7 +42,7 @@ check('"make it warmer" does not', () => assert.strictEqual(coachAskedForTimes([
 
 console.log('withInviteLine');
 const onFile = withInviteLine("and I'll send a calendar invite with the Zoom link to amfwheater@gmail.com - just say if there's a better address.", 'amfwheater@gmail.com');
-check('the fragment is replaced by the full sentence', () => assert.strictEqual(onFile, "Let me know which suits and I'll send a calendar invite with the Zoom link to amfwheater@gmail.com - just say if there's a better address."));
+check('the fragment is replaced by the full sentence', () => assert.strictEqual(onFile, "Let me know which suits, and I'll send a calendar invite with the Zoom link to amfwheater@gmail.com - just say if there's a better address."));
 check('no email → asks for one', () => assert.ok(/what's the best email to send it to\?$/.test(withInviteLine('', ''))));
 check('other closing words stay, above the invite line', () => {
   const r = withInviteLine('Looking forward to it.\nJust let me know what suits.', 'a@b.com');
@@ -98,10 +98,10 @@ const ask = 'Hi Andrew,\n\nAppreciate the enthusiasm - and the offer to help.\n\
       leadEmail: 'amfwheater@gmail.com', messages: [{ role: 'user', content: '(kickoff)' }],
       deps: deps(client),
     });
-    check('after a Zoom ask, times go through', () => assert.ok(r.draft && /all times are Sydney time/.test(r.draft), String(r.draft)));
+    check('after a Zoom ask, times go through', () => assert.ok(r.draft && /All times are Sydney time/.test(r.draft), String(r.draft)));
     check('no line starts with "and I\'ll send"', () => assert.ok(!/^and I'll send/m.test(r.draft), r.draft));
     check('the invite line follows the timezone line, once', () => {
-      assert.ok(/\(all times are Sydney time\)\n\nLet me know which suits and I'll send a calendar invite with the Zoom link to amfwheater@gmail\.com/.test(r.draft), r.draft);
+      assert.ok(/\(All times are Sydney time\)\n\nLet me know which suits, and I'll send a calendar invite with the Zoom link to amfwheater@gmail\.com/.test(r.draft), r.draft);
       assert.strictEqual((r.draft.match(/calendar invite/g) || []).length, 1, r.draft);
     });
   } catch (e) { failed++; console.log(`  ✗ invite-line wired test threw: ${e.message}`); }

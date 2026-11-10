@@ -14,6 +14,7 @@
 
 const { z } = require('zod');
 const store = require('./wingguyRulesStore');
+const fixedLines = require('./wingguyFixedLines');
 
 const TENANT = (process.env.RECALL_COACH_CLIENT_ID || store.DEFAULT_TENANT).trim();
 // Per-request tenant is threaded into every executor (2nd arg, defaults to TENANT); the door's
@@ -301,6 +302,17 @@ async function runRulePropose({ rule_key, layer = 'client', context, rule_type, 
     `Scope: ${prop.layer}${prop.tenantId ? ` / ${prop.tenantId}` : ' (platform-wide — every tenant reads this)'}${prop.tier ? ` · tier=${prop.tier}${prop.tier === 'locked' ? ' (FIXED — no client can override this)' : ' (STANDARD — clients may keep their own version)'}` : ''} · ${prop.context}/${prop.ruleType}${prop.campaign ? ` · campaign:${prop.campaign}` : ''}`,
     '',
   ];
+  // A client instruction about a line Wingguy writes ITSELF (David Gould, 11 Nov 2026: "capital A in
+  // All times are Brisbane time" saved cleanly and changed nothing, because in a LinkedIn times
+  // draft code writes that line after the model has finished). Never a refusal - the instruction
+  // still applies where the model writes the whole message - but the proposal now says so, first,
+  // and points at the door that does change the line. Never let this note break a proposal.
+  if (prop.layer === 'client') {
+    try {
+      const note = fixedLines.fixedLineNote(prop.proposedBody, fixedLines.resolveFixedLines(await store.getVariables({ tenantId: tenant })));
+      if (note) lines.push(note, '');
+    } catch (e) { /* the note is a courtesy; the proposal stands without it */ }
+  }
   // The override case, stated as what it IS. Before cross-layer shadowing this was the "two bodies
   // will reach the model" warning; now exactly one does, and the human needs to read the one they
   // are replacing before replacing it.
@@ -413,16 +425,43 @@ async function recordFollows(tenant, scope, key, value) {
     : `\n(The client record's ${r.field} was NOT updated: ${r.reason}.)`;
 }
 
+// The lines Wingguy writes itself under a time list (services/wingguyFixedLines.js) - their wording
+// is a variable, but one with a shape: the [city] / [email] gap has to survive the edit.
+function fixedLinesBlock(vars) {
+  const lines = fixedLines.resolveFixedLines(vars);
+  const rows = fixedLines.FIXED_LINES.map((l) => {
+    const own = lines[l.key] !== l.standard;
+    return `- ${l.key} (${l.label}) - ${own ? 'THEIR OWN WORDING' : 'standard wording'}\n    reads: ${fixedLines.exampleFor(l.key, lines)}`;
+  });
+  return 'LINES WINGGUY WRITES ITSELF in a LinkedIn draft that offers times (a writing instruction never reaches these - set the wording here; keep any [city] or [email] gap as written; blank = standard):\n' + rows.join('\n');
+}
+
 async function runVariables({ set_key, set_value, description } = {}, tenant = TENANT) {
   let recordNote = '';
   if (set_key !== undefined && set_key !== null && String(set_key).trim()) {
+    const key = String(set_key).trim();
+    if (fixedLines.isFixedLineKey(key)) {
+      const v = fixedLines.validateFixedLine(key, set_value);
+      if (!v.ok) {
+        const spec = fixedLines.FIXED_LINES.find((l) => l.key === key);
+        return {
+          text: `NOT SAVED - nothing changed.\n\n${v.error}\n\nThe standard wording, for the shape: ${spec.standard}\n\nTell the human why in plain words, fix the wording with them, and call this again.`,
+          isError: true,
+        };
+      }
+      await store.setVariable({ tenantId: tenant, varKey: key, value: v.value || null, description, actor: `mcp:${tenant}` });
+      const after = fixedLines.resolveFixedLines(await store.getVariables({ tenantId: tenant }));
+      return {
+        text: `Saved. ${v.value ? 'From now on' : 'Back on the standard wording -'} this line in a LinkedIn draft that offers times reads:\n\n${fixedLines.exampleFor(key, after)}\n\n(Wingguy fills in the real ${key === 'times_zone_line' ? 'city' : 'details'} each time. It also shows on their setup page under "Lines Wingguy always writes". Show the human the line exactly as above.)`,
+      };
+    }
     await store.setVariable({ tenantId: tenant, varKey: set_key, value: set_value ?? null, description, actor: `mcp:${tenant}` });
     recordNote = await recordFollows(tenant, 'variable', set_key, set_value);
   }
   const vars = await store.getVariables({ tenantId: tenant });
   if (!vars.length) return { text: 'No variables in the catalog yet (they arrive with the Notion import / de-personalisation pass).' };
   const lines = vars.map((v) => `- ${v.var_key} = ${v.value == null ? '(unset)' : JSON.stringify(v.value)}${v.required ? ' [required]' : ''}${v.description ? ` — ${v.description}` : ''}`);
-  return { text: `Wingguy variables for ${tenant}:\n${lines.join('\n')}${recordNote}` };
+  return { text: `Wingguy variables for ${tenant}:\n${lines.join('\n')}${recordNote}\n\n${fixedLinesBlock(vars)}` };
 }
 
 // The banned-words list (never_say_words), by word instead of by overwrite. "Never use folks
@@ -1219,7 +1258,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_variables',
-    description: 'Lists this tenant\'s Wingguy variables ({{placeholders}} the rules reference — names, links, sign-offs), and optionally sets one. Setting a value is history-logged. To CHANGE a rule\'s wording use the propose/commit tools; variables are for the fill-in values.',
+    description: 'Lists this tenant\'s Wingguy variables ({{placeholders}} the rules reference — names, links, sign-offs), and optionally sets one. Setting a value is history-logged. To CHANGE a rule\'s wording use the propose/commit tools; variables are for the fill-in values. ALSO THE HOME OF THE LINES WINGGUY WRITES ITSELF: in a LinkedIn draft that offers meeting times, the question above the list, the "(All times are Brisbane time)" line under it and the "Let me know which suits, and I\'ll send a calendar invite..." line are written by the system after the draft, so an instruction never changes them. When the human wants one of those worded differently (a capital, a comma, "including" for "with", any rewording), set times_question_line, times_zone_line, invite_line or invite_line_no_email here with the WHOLE new line as set_value, keeping any [city] or [email] gap exactly as written; an empty set_value puts the standard wording back. Listing shows each line as it reads now.',
     zodSchema: {
       set_key: z.string().optional().describe('Variable key to set (omit to just list)'),
       set_value: z.string().optional().describe('The value to store for set_key'),

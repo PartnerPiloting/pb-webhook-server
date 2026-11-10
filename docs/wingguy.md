@@ -5443,3 +5443,43 @@ stays the way to look at a client's Portal: the extension is not allowed there, 
 
 **Tests.** `tests/wingguy-identity.test.js` (the rule) and `tests/wingguy-extension-owner-lock.test.js`
 (runs the real `background.js` in a sandbox with a fake browser and server).
+
+## The lines Wingguy writes itself: per-client wording (2026-11-11)
+
+**What it does.** In a LinkedIn draft that offers meeting times, code writes three lines after the
+model has finished: the question above the list, the "(All times are X time)" line under it, and
+the invite line (two forms - email on file, or asking for one). Each client can now have their own
+wording for those lines. Code still writes them and still fills in the facts.
+
+**Why.** David Gould, 11 Nov 2026: he added four small fixes to his writing instructions and three
+never landed, because an instruction goes to the model and the model never writes these lines. It
+looked like "the extension only reads my instructions some of the time".
+
+**Where it lives.** `services/wingguyFixedLines.js` is the one home: the standard wording, the
+validation, the rendering, and the recognition helpers. The wording itself is four plain store
+variables - `times_question_line`, `times_zone_line`, `invite_line`, `invite_line_no_email` -
+blank meaning standard.
+
+- **Facts are gaps.** `[city]` and `[email]` in the wording are filled in by code. A wording that
+  drops a gap it needs is refused at both write doors, in plain English.
+- **Fail safe.** An unset, invalid or unreadable value renders the standard line. A bad value in
+  the store can never produce a broken draft.
+- **Doors.** The setup page ("Lines Wingguy always writes", skippable tier - generated from the
+  module, no second copy of the words) and `wingguy_variables` in chat. `wingguy_rule_propose`
+  adds a heads-up when a client instruction talks about one of these lines, pointing at the door
+  that does change it. Never a refusal: the instruction still applies where the model writes the
+  whole message (an email draft in Claude).
+- **Recognition follows the wording.** `meetingRaisedInThread` and `unansweredTimesOffer` used to
+  know the standard phrases only. They now also take the client's own wording, plus `hasTimeList`
+  (two or more dated slots with clock times), which no rewording can touch and which survives
+  LinkedIn flattening line breaks.
+- **Standard wording changed for everyone the same day:** capital A in "(All times are ...)" and a
+  comma in "Let me know which suits, and I'll send ...".
+
+**Adding another code-written line later:** add it to `FIXED_LINES` in the module. The setup page,
+the defaults and the variables tool pick it up from there; `tests/wingguy-fixed-lines.test.js`
+pins the rest.
+
+**Not built:** the weekly edit-learning pass does not yet update these boxes when a client keeps
+hand-fixing one of the lines. The claude.ai email surface still has the model write these lines,
+so a client's instructions apply there as before.

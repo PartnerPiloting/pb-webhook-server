@@ -66,7 +66,7 @@ function makeRun({ coachTimezone, location }) {
   check('availability stub was never reached', () => assert.strictEqual(perth.availCalls, 0));
   check('a draft was produced', () => assert.ok(perth.res && perth.res.draft, `no draft: ${JSON.stringify(perth.res)}`));
   check('marker is the LEAD\'s city (Perth), not the Brisbane default', () => assert.ok(
-    perth.res.draft.includes('(all times are Perth time)'), `draft:\n${perth.res.draft}`));
+    perth.res.draft.includes('(All times are Perth time)'), `draft:\n${perth.res.draft}`));
   check('no Brisbane anywhere in the draft', () => assert.ok(!/Brisbane/.test(perth.res.draft), perth.res.draft));
   check('slot times render on the Perth clock', () => assert.ok(
     perth.res.draft.includes(perthLabel(dTEN)), `expected ${perthLabel(dTEN)} in:\n${perth.res.draft}`));
@@ -77,13 +77,13 @@ function makeRun({ coachTimezone, location }) {
   console.log('\nSydney coach, Sydney lead, same shape - marker says Sydney, never Brisbane:');
   const syd = await makeRun({ coachTimezone: 'Australia/Sydney', location: 'Sydney, New South Wales' });
   check('a draft was produced', () => assert.ok(syd.res && syd.res.draft, `no draft: ${JSON.stringify(syd.res)}`));
-  check('marker is Sydney', () => assert.ok(syd.res.draft.includes('(all times are Sydney time)'), syd.res.draft));
+  check('marker is Sydney', () => assert.ok(syd.res.draft.includes('(All times are Sydney time)'), syd.res.draft));
   check('slot times render on the Sydney clock (10:00 am)', () => assert.ok(/10:00\s*am/i.test(syd.res.draft), syd.res.draft));
 
   console.log('\nNo timezone on the coach record at all - Brisbane remains the last resort:');
   const none = await makeRun({ coachTimezone: undefined, location: 'Brisbane, Queensland' });
   check('a draft was produced', () => assert.ok(none.res && none.res.draft, `no draft: ${JSON.stringify(none.res)}`));
-  check('marker is Brisbane', () => assert.ok(none.res.draft.includes('(all times are Brisbane time)'), none.res.draft));
+  check('marker is Brisbane', () => assert.ok(none.res.draft.includes('(All times are Brisbane time)'), none.res.draft));
 
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all coach-record-fallback tests passed');
   process.exit(failures ? 1 : 0);

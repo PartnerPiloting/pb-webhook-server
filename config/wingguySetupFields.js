@@ -176,6 +176,22 @@ const VARIABLE_FIELDS = [
     type: 'text',
   },
 
+  // === GLANCE: the lines Wingguy writes itself ==================================================
+  // (11 Nov 2026, David Gould.) In a LinkedIn draft that offers times, code writes these lines after
+  // the model has finished, so a writing instruction never reaches them. The wording lives here
+  // instead: blank = the standard line, and services/wingguyFixedLines.js refuses a version that
+  // drops a [gap] the line needs. Generated from that module so there is one copy of the wording.
+  ...require('../services/wingguyFixedLines').FIXED_LINES.map((l) => ({
+    key: l.key,
+    tier: 'glance',
+    group: 'Lines Wingguy always writes',
+    label: l.label,
+    hint: `When a LinkedIn message offers meeting times, Wingguy adds this line itself, so your writing instructions do not reach it - this box does. Left alone it reads: "${l.standard}"${l.needs.length ? ` Keep ${l.needs.map((n) => `[${n}]`).join(' and ')} exactly as written - Wingguy swaps in the real ${l.needs.join(' and ')} each time.` : ''}`,
+    example: l.standard,
+    type: 'text',
+    fixedLine: true,
+  })),
+
   // === GLANCE: your material =====================================================================
   {
     // A plain list beats the asset library on day one: the library needs a usage rule per link
