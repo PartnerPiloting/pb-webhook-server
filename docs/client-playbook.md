@@ -1151,6 +1151,37 @@ quite how you'd have put it.
 
 ---
 
+## THE BROWSER EXTENSION - GETTING WINGGUY INTO LINKEDIN
+
+The extension puts Wingguy inside LinkedIn itself. Open a conversation, type **/wg** in the message
+box, and it reads their profile and the conversation and drafts your message right there. It's how
+you thank new connections and keep conversations moving without copying anything back and forth.
+
+**Where to get it: your portal.** Say **open my portal**, go to the **Setup and help** tab, and click
+the browser extension card. That opens the install page, which walks you through it step by step -
+about two minutes, and you only do the full set-up once. It's the one place the steps are kept up to
+date, so follow it rather than anything you've seen elsewhere.
+
+**Your Claude key goes in first.** The extension writes with your own Claude key, so if it isn't in
+yet, the install page asks for it before the download. The Claude key topic shows you how.
+
+**The one step people miss: Developer mode.** On the extensions page there's a switch called
+Developer mode, in the top-right corner. Until it's on, the button you need - Load unpacked - isn't
+there. The install page has a little picture of it.
+
+**Edge works too.** Everything is the same, except the address is edge://extensions and the Developer
+mode switch is on the left-hand side.
+
+**Updates.** When there's a new version, the browser extension card on the Setup and help tab turns
+amber and says so. Click **Update it**, then open **Updating later** at the bottom of the install page
+and follow its three steps: download the new version, unzip it into the same folder as before
+(choose Replace when Windows asks), and press the refresh arrow on the Wingguy card in your extensions
+page. About 30 seconds. Most improvements happen on my side, so you won't need to do this often.
+
+**Stuck?** Don't guess - message me and we'll do it together on a quick call. It takes two minutes.
+
+---
+
 ## YOUR CLAUDE KEY - SETTING IT UP IN FIFTEEN MINUTES
 
 Two parts of Wingguy work for you away from your chat. Overnight, it goes through your follow-ups
@@ -1219,12 +1250,13 @@ been sent anywhere, and nothing is broken on your side.
 **First, just try again.** Wait half a minute and press Send. Most of the time that's it - a brief
 hiccup between your browser and Wingguy, or Wingguy being updated at that moment.
 
-**If it keeps happening, reload the extension.** Until early November, a long draft could take
+**If it keeps happening, update the extension.** Until early November, a long draft could take
 longer than your browser was willing to wait - about one in ten did - and the panel gave up even
 though the draft had been written. That's fixed: the panel now starts the draft and comes back for
-it, so a slow one just takes a bit longer instead of failing. The fix reaches your computer by
-itself within the hour, but Chrome keeps running the old copy until you reload it. Go to
-chrome://extensions, press the reload arrow on the Wingguy card, then refresh your LinkedIn tab.
+it, so a slow one just takes a bit longer instead of failing. To get the fix, open your portal and
+go to the Setup and help tab. If the browser extension card is amber, a new version is ready: click
+**Update it**, then open **Updating later** at the bottom of that page and follow its three steps.
+About 30 seconds.
 
 **If it still fails, check your Claude key.** Wingguy writes your drafts on your own Anthropic
 account. If the monthly spend limit you set has been reached, or the credit has run out, Anthropic

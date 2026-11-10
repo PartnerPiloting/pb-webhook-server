@@ -454,6 +454,11 @@ const MATCH_STOPWORDS = new Set(['what', 'about', 'your', 'you', 'the', 'and', '
 // exists to prevent. (Bare "connection" is deliberately NOT a key - "my connection sent me a
 // text" is not about the invite note.)
 const TOPIC_ALIASES = [
+  // The browser extension (10 Nov 2026): Paul "add Wingguy Chrome extension to chrome", "chrome extension",
+  // Roland "extension". The panel's own error keeps its topic, so it sits first.
+  [[/couldn.?t reach wingguy/], '"COULDN'],
+  [[/\b(extensions?|add-?on|plug-?in)\b/], 'THE BROWSER EXTENSION'],
+  [[/\b(install|add|get|update|updating)\b/, /\b(chrome|edge|browser)\b/], 'THE BROWSER EXTENSION'],
   // Three Learning gaps written 10 Nov 2026 - each original question was being pulled elsewhere by an
   // alias below ("boolean", "campaign" + "two/several"), so these sit at the TOP.
   // Roland: "what connection acceptance rate should I expect ... how long before it is fair to judge it?"
