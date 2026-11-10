@@ -352,6 +352,33 @@ can feed Linked Helper as many searches as you like.
 
 ---
 
+## INMAIL CREDITS - WHAT THEY ARE, AND WHY YOU DON'T NEED THEM
+
+If LinkedIn tells you you've used up your InMail credits, nothing in your setup is broken - and
+nothing we do depends on them.
+
+**What an InMail is.** It's LinkedIn's way of messaging someone you're not connected to. Premium
+comes with a handful a month and Sales Navigator a few more. Each one you send uses a credit, and
+when they're gone LinkedIn stops you sending more until the next month's lot arrive. If the person
+replies, LinkedIn usually gives you that credit back.
+
+**Why this method doesn't use them.** Everything here runs on connection requests, not InMails.
+A connection request costs nothing, and someone who accepts becomes a first-level connection - you
+can message them freely from then on, forever. An InMail is a cold message to a stranger, which is
+exactly the thing this whole approach is built to avoid. So running out costs you nothing that
+matters.
+
+**How you'd have used them up.** Usually one of two ways: messaging someone by hand straight from
+their profile before they'd accepted, or a Linked Helper campaign with an InMail step in it. The
+campaign I set you up with has no InMail step - it invites, checks who accepted, visits and
+extracts, and sends them to your database. If you've built or copied a campaign that includes one,
+take that step out, or ask me and we'll look at it together.
+
+**What it costs.** Nothing to fix - wait for next month's credits, or simply don't use them. I
+wouldn't pay for extra InMails, or upgrade your subscription to get more of them.
+
+---
+
 ## FINDING YOUR AUDIENCE WITH CLAUDE - the conversation to have
 
 This is the bit people expect to be hard and it isn't. You work it out by talking to Claude, and the
@@ -1130,6 +1157,32 @@ spent any time you like.
 
 ---
 
+## "COULDN'T REACH WINGGUY" - WHEN THE PANEL IN LINKEDIN DOESN'T ANSWER
+
+Every so often the Wingguy panel in LinkedIn says "Couldn't reach Wingguy right now - give it a
+moment and try again." It means the panel asked for a draft and didn't get one back. Nothing has
+been sent anywhere, and nothing is broken on your side.
+
+**First, just try again.** Wait half a minute and press Send. Most of the time that's it - a brief
+hiccup between your browser and Wingguy, or Wingguy being updated at that moment.
+
+**If it keeps happening, reload the extension.** Until early November, a long draft could take
+longer than your browser was willing to wait - about one in ten did - and the panel gave up even
+though the draft had been written. That's fixed: the panel now starts the draft and comes back for
+it, so a slow one just takes a bit longer instead of failing. The fix reaches your computer by
+itself within the hour, but Chrome keeps running the old copy until you reload it. Go to
+chrome://extensions, press the reload arrow on the Wingguy card, then refresh your LinkedIn tab.
+
+**If it still fails, check your Claude key.** Wingguy writes your drafts on your own Anthropic
+account. If the monthly spend limit you set has been reached, or the credit has run out, Anthropic
+turns the request away. Usually the panel tells you so in plain words, but if it doesn't, sign in at
+console.anthropic.com and look at Billing. The Claude key topic shows you where everything is.
+
+**Still stuck? Tell me.** Email me a screenshot of the panel and roughly what time it happened, and I
+can see exactly what went wrong from my end.
+
+---
+
 ## YOUR INSTRUCTIONS - HOW WINGGUY LEARNS YOUR WAY
 
 Wingguy writes like you, not like an AI. That's not magic - it's instructions. Behind the scenes
@@ -1597,6 +1650,61 @@ until Fathom's bot-free version reaches Windows.
 
 ---
 
+## THE TRANSCRIPT REVIEW SCREEN - THAT ONE'S MINE
+
+If you've come across a page called Transcript review (the address has "recall-review" in it) and
+it told you it's only available for Guy Wilson - that's right, and you're not missing anything.
+
+It's my own back-office screen, where I check the odd transcript by hand - fixing who said what on a
+messy one, or linking a call to the right person when the system couldn't tell. Your transcripts
+don't need it. Once your recorder is connected, each call files itself against the right person,
+and Wingguy reads it from there.
+
+What you probably wanted is one of these, and you just say them in your Claude chat:
+
+- **"what recordings are you holding?"** - every call Wingguy keeps for you. You can stop one before
+  it's stored, or delete any of it for good. It's your data.
+- **"draft the follow-up from my last call"** - Wingguy reads the transcript and writes the email from
+  what was actually said.
+- **"here's the transcript from a call you missed"** - then paste it in, and it's filed against the
+  right person.
+
+---
+
+## PHONE CALLS - GETTING THE TRANSCRIPT INTO WINGGUY
+
+Your recorder only hears video calls. A plain phone call goes straight past it - so here's how to
+stop those becoming the hole in your memory.
+
+**Best of all: make it a video call.** If you're the one arranging it, send your meeting room link
+instead of a phone number. Your recorder turns up on its own, and there's nothing else to do. Most
+people are happy either way, and you can still both join from your phones.
+
+**When it has to be a phone call, record it and paste it in.** Any recorder that gives you a
+transcript you can copy will do. Then open your Claude chat, say **"here's the transcript from a
+call you missed"**, paste it in, and tell it who the call was with - their email is best, so it
+lands against the right person. From then on it's just like any other call: the follow-up drafts
+itself from it, and it's there for your prep next time. It's a manual step, but it's a quick one.
+
+Where to get the transcript:
+
+- **Your phone may do it already.** Many recent phones can record a call and write the transcript
+  for you - look for a record button on the screen while you're on a call.
+- **If you're on the phone a lot, a clip-on recorder is worth a look.** I have one called Pocket
+  (heypocket.com). It snaps onto the back of your phone, you flip it to call mode, and it picks up
+  both sides of the call through the phone itself - no speakerphone, any phone, calls in or out.
+  Its app gives you the transcript to copy. There are others like it - the one thing to check is
+  that you can copy the transcript out.
+
+**Could it be automatic?** Yes - a recorder like Pocket can send each transcript straight to
+Wingguy, the way your video calls arrive. I haven't built that yet. If enough of you are doing a lot
+of phone calls, I will - so if that's you, tell me.
+
+**Good manners, and the law.** Tell the other person up front that you record your calls so nothing
+gets lost.
+
+---
+
 ## NEW LEADS - PEOPLE YOU'VE MET, AND ADDING SOMEONE BY HAND
 
 Most of your people arrive through Linked Helper. But some of the best ones don't - you meet them on
@@ -1885,6 +1993,33 @@ to press send.
 Guy reckons this is the single most valuable thing the system does for you, once you're up and
 running. The meetings are the fun part - but the follow-up is where a pile of nice conversations
 either turns into a network, or turns into a list of people you once met.
+
+---
+
+## YOUR MAILBOX SAYS "DISCONNECTED ACCOUNT" - WHEN YOUR EMAIL, CALENDAR AND FOLLOW-UP LIST STOP
+
+Wingguy reaches your email and calendar through one connection you approved on onboarding day. Every
+so often Google or Microsoft quietly cuts it off - most often after you change your password, or
+after one of their security checks signs you out everywhere. When that happens Wingguy tells you
+your account is disconnected.
+
+**What stops working.** Wingguy can't see your email, so your daily follow-up list stops refreshing -
+it's still there, just stuck on the last day it could read. Drafts can't land in your mailbox, and
+meetings can't be booked into your calendar. Nothing is lost - it all picks up again once you
+reconnect.
+
+**The fix:**
+
+1. **Email me** and say your mailbox has disconnected. I'll send you a fresh connect link. It works
+   for 24 hours, so use it the same day.
+2. **Click the link** and choose Google or Microsoft - whichever your email is.
+3. **Sign in with the same account as before** - the one your work email and calendar live in.
+4. **Tick everything it asks for** and approve. Wingguy needs mail and calendar both. Leave one
+   unticked and half of it stays broken.
+
+That's it. Wingguy picks the new connection up the moment you approve - there's nothing to copy or
+paste. To prove it, ask Wingguy for today's follow-up list, or what's in your calendar tomorrow. If it
+answers, you're back.
 
 ---
 
