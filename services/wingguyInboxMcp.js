@@ -18,8 +18,9 @@
  *     Not Unipile, because Unipile's copy of his folders lagged Gmail on 2 Nov - three sent mails
  *     sat in his Gmail inbox that Unipile still had as SENT only, so they could never be cleared.
  *   - Anyone else: their own mailbox through Wingguy's mail link (services/mailProvider.js,
- *     Unipile). Archive is proven on Google mailboxes; Outlook / IMAP list and read, and archive is
- *     refused until it is proven.
+ *     Unipile). Archive is proven on Google mailboxes. Outlook has its own folder move (10 Nov
+ *     2026), switched on per client by INBOX_FOLDER_ARCHIVE_CLIENTS until a real mailbox proves it;
+ *     every other mailbox lists and reads, and archive is refused.
  *
  * One definition, BOTH transports (same pattern as machineClipboardMcp):
  *   - the SDK server (services/mcpRecallServer.js -> /mcp2/:token, claude.ai)
@@ -242,7 +243,7 @@ function wingguyMailBackend(record, mail) {
     async move(id, archive) {
       const r = await mail.setThreadInInbox(record, id, !archive);
       if (!r.ok) throw new Error(r.error);
-      return { subject: r.subject };
+      return { subject: r.subject, unconfirmed: !!r.unconfirmed, folder: r.folder || null };
     },
   };
 }
@@ -407,20 +408,24 @@ async function runMove(args, inbox, archive) {
   const ids = [...new Set((Array.isArray(args.thread_ids) ? args.thread_ids : [args.thread_ids]).map((x) => String(x || '').trim()).filter(Boolean))];
   if (!ids.length) return { text: 'Which emails? Pass thread_ids from the list.', isError: true };
   const done = [];
+  const unsure = [];
   const failed = [];
   for (const id of ids) {
     try {
-      const { subject } = await inbox.backend.move(id, archive);
-      done.push(`- ${subject || '(no subject)'} (thread_id=${id})`);
+      const { subject, unconfirmed } = await inbox.backend.move(id, archive);
+      if (unconfirmed) unsure.push(`- ${subject || '(no subject)'} (thread_id=${id})`);
+      else done.push(`- ${subject || '(no subject)'} (thread_id=${id})`);
     } catch (e) {
       failed.push(`- thread_id=${id}: ${e.message}`);
     }
   }
   const lines = [];
   if (done.length) lines.push(`${archive ? 'Archived' : 'Put back in the inbox'} ${done.length}:`, ...done);
+  // The mailbox took the move but reading it back did not show it. Never reported as done.
+  if (unsure.length) lines.push(`NOT CONFIRMED - ${unsure.length} ${archive ? 'sent to the Archive folder' : 'sent back to the inbox'}, but when I looked again I could not see that it had moved. Tell them plainly: ask them to look in their mailbox for ${unsure.length === 1 ? 'this one' : 'these'} before trusting it, and do not count ${unsure.length === 1 ? 'it' : 'them'} as cleared:`, ...unsure);
   if (failed.length) lines.push(`Couldn't ${archive ? 'archive' : 'restore'} ${failed.length}:`, ...failed);
-  if (archive && done.length) lines.push('', 'Nothing was deleted. To undo, action=restore with the same thread_ids.');
-  return { text: lines.join('\n'), ...(done.length ? {} : { isError: true }) };
+  if (archive && (done.length || unsure.length)) lines.push('', 'Nothing was deleted. To undo, action=restore with the same thread_ids.');
+  return { text: lines.join('\n'), ...(done.length || unsure.length ? {} : { isError: true }) };
 }
 
 /** remember / forget a standing inbox instruction - no mailbox needed, just the person's own list. */

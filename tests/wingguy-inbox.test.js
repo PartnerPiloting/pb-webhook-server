@@ -338,6 +338,113 @@ function fakeClient({ archiveOk = true } = {}) {
     assert.ok(d.includes('YOUR OWN EMAILS WAITING (only when') && d.includes('when the inbox is empty, straight after "Your inbox is clear."') && d.includes('Approve, change, skip or cancel ONLY on their number'), 'the description asks at the end, one at a time');
   });
 
+  // ---- Outlook: an email sits in ONE folder, so archive is a move, not a label coming off.
+  // A fake of Wingguy's mail link (Unipile) behind global.fetch. `moves` is how the fake mailbox
+  // behaves: 'thread' = one PUT carries the whole conversation, 'one' = one message per PUT,
+  // 'lag' = it says yes and the read-back never changes.
+  function fakeLink({ type = 'OUTLOOK', moves = 'thread', archiveFolder = true } = {}) {
+    const msgs = [
+      { id: 'm1', thread_id: 'T1', subject: 'Lunch?', date: '2026-11-02T01:00:00Z', folders: ['Inbox'] },
+      { id: 'm2', thread_id: 'T1', subject: 'Lunch?', date: '2026-11-02T03:00:00Z', folders: ['Inbox'] },
+      { id: 's1', thread_id: 'T1', subject: 'Lunch?', date: '2026-11-02T02:00:00Z', folders: [type === 'GOOGLE_OAUTH' ? 'SENT' : 'Sent Items'] },
+    ];
+    if (type === 'GOOGLE_OAUTH') { msgs[0].folders = ['INBOX', 'CATEGORY_PERSONAL']; msgs[1].folders = ['INBOX']; }
+    const puts = [];
+    const json = (o, status = 200) => ({ ok: status < 300, status, text: async () => JSON.stringify(o) });
+    const fetchFake = async (url, opts = {}) => {
+      const u = new URL(url);
+      if ((opts.method || 'GET') === 'PUT') {
+        const id = decodeURIComponent(u.pathname.split('/').pop());
+        const body = JSON.parse(opts.body);
+        puts.push([id, body.folders]);
+        const from = (msgs.find((x) => x.id === id) || { folders: [] }).folders[0];
+        if (moves !== 'lag') for (const m of msgs) if (m.id === id || (moves === 'thread' && type !== 'GOOGLE_OAUTH' && m.folders[0] === from)) m.folders = body.folders.slice();
+        return json({ object: 'EmailUpdated' });
+      }
+      if (/\/accounts\//.test(u.pathname)) return json({ type });
+      if (/\/folders$/.test(u.pathname)) return json({ items: [{ id: 'f1', name: 'Inbox', role: 'inbox', provider_id: 'p1' }, { id: 'f3', name: 'Sent Items', role: 'sent', provider_id: 'p3' }].concat(archiveFolder ? [{ id: 'f2', name: 'Archive', role: 'archive', provider_id: 'p2' }] : []) });
+      if (/\/emails$/.test(u.pathname)) return json({ items: msgs.filter((m) => m.thread_id === u.searchParams.get('thread_id')) });
+      return json({}, 404);
+    };
+    return { fetchFake, puts, msgs };
+  }
+  async function withLink(link, allow, fn) {
+    const keep = { fetch: global.fetch, k: process.env.UNIPILE_API_KEY, d: process.env.UNIPILE_DSN, a: process.env.INBOX_FOLDER_ARCHIVE_CLIENTS };
+    global.fetch = link.fetchFake; process.env.UNIPILE_API_KEY = 'k'; process.env.UNIPILE_DSN = 'x.test';
+    if (allow === null) delete process.env.INBOX_FOLDER_ARCHIVE_CLIENTS; else process.env.INBOX_FOLDER_ARCHIVE_CLIENTS = allow;
+    try { return await fn(require('../services/mailProvider')); } finally {
+      global.fetch = keep.fetch;
+      for (const [n, v] of [['UNIPILE_API_KEY', keep.k], ['UNIPILE_DSN', keep.d], ['INBOX_FOLDER_ARCHIVE_CLIENTS', keep.a]]) { if (v === undefined) delete process.env[n]; else process.env[n] = v; }
+    }
+  }
+  const roland = { clientId: 'Roland-Illyes', unipileAccountId: 'acc1', emailProvider: 'unipile' };
+
+  await t('Outlook: archive stays refused, and nothing is touched, until the client is named in INBOX_FOLDER_ARCHIVE_CLIENTS', async () => {
+    for (const allow of [null, '', 'Sam-Noble']) {
+      const link = fakeLink();
+      const r = await withLink(link, allow, (mail) => mail.setThreadInInbox(roland, 'T1', false));
+      assert.ok(!r.ok && /not switched on for OUTLOOK/.test(r.error), JSON.stringify(r));
+      assert.strictEqual(link.puts.length, 0, 'no move was attempted');
+    }
+  });
+
+  await t('Outlook: archive MOVES the inbox emails to the Archive folder by name, leaves Sent alone, and is confirmed by reading back', async () => {
+    const link = fakeLink({ moves: 'thread' });
+    const r = await withLink(link, 'sam-noble, roland-illyes', (mail) => mail.setThreadInInbox(roland, 'T1', false));
+    assert.ok(r.ok && !r.unconfirmed && r.folder === 'Archive', JSON.stringify(r));
+    assert.deepStrictEqual(link.puts, [['m1', ['Archive']]], 'one move carried the conversation - the second was not sent blind');
+    assert.deepStrictEqual(link.msgs.map((m) => m.folders[0]), ['Archive', 'Archive', 'Sent Items']);
+  });
+
+  await t('Outlook: when a move carries only one email, the rest are moved too', async () => {
+    const link = fakeLink({ moves: 'one' });
+    const r = await withLink(link, 'all', (mail) => mail.setThreadInInbox(roland, 'T1', false));
+    assert.ok(r.ok && !r.unconfirmed && r.moved === 2, JSON.stringify(r));
+    assert.deepStrictEqual(link.puts.map((x) => x[0]), ['m1', 'm2']);
+  });
+
+  await t('Outlook: restore puts the newest archived email back in the Inbox', async () => {
+    const link = fakeLink({ moves: 'one' });
+    await withLink(link, 'all', (mail) => mail.setThreadInInbox(roland, 'T1', false));
+    link.puts.length = 0;
+    const r = await withLink(link, 'all', (mail) => mail.setThreadInInbox(roland, 'T1', true));
+    assert.ok(r.ok && !r.unconfirmed && r.folder === 'Inbox', JSON.stringify(r));
+    assert.deepStrictEqual(link.puts, [['m2', ['Inbox']]]);
+    const none = await withLink(fakeLink(), 'all', (mail) => mail.setThreadInInbox(roland, 'T1', true));
+    assert.ok(none.ok && none.moved === 0, 'already in the inbox = nothing to do');
+  });
+
+  await t('Outlook: a move the read-back cannot see is NOT reported as done', async () => {
+    const link = fakeLink({ moves: 'lag' });
+    const r = await withLink(link, 'all', (mail) => mail.setThreadInInbox(roland, 'T1', false));
+    assert.ok(r.ok && r.unconfirmed === true, JSON.stringify(r));
+    assert.strictEqual(link.puts.length, 2, 'each email tried once, never in a loop');
+    const { deps } = fakeClient();
+    deps.mailProvider.setThreadInInbox = async () => ({ ok: true, subject: 'Lunch?', unconfirmed: true });
+    const out = await runInbox({ action: 'archive', thread_ids: ['T1'] }, 'Sam-Noble', deps);
+    assert.ok(/NOT CONFIRMED/.test(out.text) && !/Archived 1/.test(out.text) && /Nothing was deleted/.test(out.text), out.text);
+  });
+
+  await t('Outlook: a mailbox with no Archive folder is left alone', async () => {
+    const link = fakeLink({ archiveFolder: false });
+    const r = await withLink(link, 'all', (mail) => mail.setThreadInInbox(roland, 'T1', false));
+    assert.ok(!r.ok && /Archive folder/.test(r.error) && /nothing was changed/.test(r.error), JSON.stringify(r));
+    assert.strictEqual(link.puts.length, 0);
+  });
+
+  await t('Gmail is untouched by all this: still the INBOX label coming off, other labels kept, no list needed', async () => {
+    const link = fakeLink({ type: 'GOOGLE_OAUTH' });
+    const r = await withLink(link, null, (mail) => mail.setThreadInInbox(roland, 'T1', false));
+    assert.ok(r.ok && r.moved === 2, JSON.stringify(r));
+    assert.deepStrictEqual(link.puts, [['m1', ['CATEGORY_PERSONAL']], ['m2', []]]);
+  });
+
+  await t('IMAP and anything else stay refused even with the list set to all', async () => {
+    const link = fakeLink({ type: 'MAIL' });
+    const r = await withLink(link, 'all', (mail) => mail.setThreadInInbox(roland, 'T1', false));
+    assert.ok(!r.ok && /not switched on for MAIL/.test(r.error) && link.puts.length === 0, JSON.stringify(r));
+  });
+
   console.log(failed ? `\n${failed} failed` : '\nall passed');
   process.exit(failed ? 1 : 0);
 })();

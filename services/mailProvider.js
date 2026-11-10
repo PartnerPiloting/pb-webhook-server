@@ -629,8 +629,18 @@ async function sendViaUnipile(coach, details = {}) {
  *
  * Archive on a Google mailbox = rewrite the message's folders without INBOX (Gmail folders are its
  * labels, so the others stay put) - proven live on Guy's account 2 Nov: PUT /emails/{id}
- * {folders:[...]} 200 EmailUpdated, Gmail showed it gone and back. Outlook / IMAP archive is NOT
- * proven, so it is refused (`archiveSupported: false`) rather than guessed at on a client's mail.
+ * {folders:[...]} 200 EmailUpdated, Gmail showed it gone and back.
+ *
+ * Archive on an OUTLOOK mailbox is a different move (built 10 Nov 2026, NOT yet proven live): an
+ * Outlook email sits in exactly ONE folder, so there is no INBOX label to take off. Unipile's own
+ * reference for PUT /emails/{id}: "folders - the names of the folders to which the email should be
+ * moved. Outlook and IMAP accounts accept only one folder", and the move may carry the whole
+ * conversation. So: find the mailbox's Archive folder (GET /folders, role "archive"), move there by
+ * NAME, and restore = move back to the folder with role "inbox". Every move is then READ BACK, and
+ * a move that cannot be confirmed says so rather than claiming it worked.
+ * SWITCHED OFF until a real Outlook mailbox has proven it: INBOX_FOLDER_ARCHIVE_CLIENTS (Render
+ * env) = a comma list of client ids allowed to try it, or "all". Empty = refused, as before.
+ * IMAP stays refused - nobody has looked at it.
  * Known gap: Unipile's folder list can lag Gmail - three of Guy's sent mails sat in his Gmail inbox
  * while Unipile still had them as SENT only. Guy's own inbox therefore runs on the direct Gmail
  * login instead (services/wingguyInboxMcp.js).
@@ -669,14 +679,93 @@ function fromUnipileInboxMessage(m) {
   };
 }
 
-/** The mailbox's kind - GOOGLE_OAUTH, OUTLOOK, MAIL (IMAP)... - which decides how archive works. */
+/** Is this client on the list allowed to archive on a folder (Outlook) mailbox? Off unless named. */
+function folderArchiveAllowed(coach) {
+  const v = String(process.env.INBOX_FOLDER_ARCHIVE_CLIENTS || '').trim().toLowerCase();
+  if (!v) return false;
+  if (v === 'all') return true;
+  const id = String((coach && coach.clientId) || '').trim().toLowerCase();
+  return !!id && v.split(/[,;\s]+/).filter(Boolean).includes(id);
+}
+
+/**
+ * The mailbox's kind - GOOGLE_OAUTH, OUTLOOK, MAIL (IMAP)... - which decides how archive works.
+ * style 'label' = Gmail (take the INBOX label off); 'folder' = Outlook (move to the Archive folder).
+ */
 async function mailboxKind(coach) {
   if (activeMailProvider(coach) !== 'unipile') return { ok: false, error: 'not supported on this mail provider' };
   const { accountId } = unipileMailEnv(coach);
   const r = await unipileGet(coach, `/accounts/${encodeURIComponent(accountId)}`);
   if (!r.ok) return r;
   const type = String(r.json.type || '').toUpperCase();
-  return { ok: true, type, archiveSupported: type === 'GOOGLE_OAUTH' };
+  const style = type === 'GOOGLE_OAUTH' ? 'label' : (/OUTLOOK|MICROSOFT/.test(type) ? 'folder' : null);
+  return { ok: true, type, style, archiveSupported: style === 'label' || (style === 'folder' && folderArchiveAllowed(coach)) };
+}
+
+/** The mailbox's inbox and archive folders, by the role Unipile gives them. */
+async function inboxAndArchiveFolders(coach) {
+  const r = await unipileGet(coach, '/folders');
+  if (!r.ok) return r;
+  const items = r.json.items || [];
+  const byRole = (role) => items.find((f) => String(f.role || '').toLowerCase() === role) || null;
+  return { ok: true, inbox: byRole('inbox'), archive: byRole('archive') };
+}
+
+/** Does this message sit in that folder? A message may name its folder by name, id or role. */
+function messageInFolder(m, folder) {
+  if (!folder) return false;
+  const names = [folder.name, folder.id, folder.provider_id, folder.role].filter(Boolean).map((x) => String(x).toLowerCase());
+  return (m.folders || []).some((f) => names.includes(String(f).toLowerCase()));
+}
+
+/**
+ * Archive / restore on a folder mailbox (Outlook). One PUT may move the whole conversation, and a
+ * message's id can change when it moves, so: move one, read the thread again, move whatever is
+ * still where it was. The last read is the proof - `unconfirmed: true` when the mailbox accepted
+ * the move but the read-back does not show it (Unipile's copy can lag the real mailbox).
+ */
+async function moveThreadByFolder(coach, threadId, inInbox) {
+  const fo = await inboxAndArchiveFolders(coach);
+  if (!fo.ok) return fo;
+  if (!fo.inbox || !fo.archive) return { ok: false, error: `couldn't find this mailbox's ${fo.inbox ? 'Archive' : 'Inbox'} folder, so nothing was changed` };
+  const t = await threadMessages(coach, threadId);
+  if (!t.ok) return t;
+  if (!t.messages.length) return { ok: false, error: 'no such thread' };
+  const subject = t.messages[0].subject;
+  const dest = inInbox ? fo.inbox : fo.archive;
+  // Archive: every message in the inbox goes. Restore: the newest archived message comes back
+  // (the same shape as Gmail, where the newest message gets its INBOX label back).
+  const waiting = (messages) => {
+    if (!inInbox) return messages.filter((m) => messageInFolder(m, fo.inbox));
+    if (messages.some((m) => messageInFolder(m, fo.inbox))) return [];
+    const archived = messages.filter((m) => messageInFolder(m, fo.archive));
+    return archived.length ? [archived[archived.length - 1]] : [];
+  };
+  const { apiKey, base, accountId } = unipileMailEnv(coach);
+  let pending = waiting(t.messages);
+  if (inInbox && !pending.length && !t.messages.some((m) => messageInFolder(m, fo.inbox))) {
+    return { ok: false, error: 'that email is not in the Archive folder, so there is nothing to put back' };
+  }
+  const tried = new Set();
+  let moved = 0;
+  let readBack = true;
+  while (pending.length && moved < 25) {
+    const m = pending.find((x) => !tried.has(x.id));
+    if (!m) break;
+    tried.add(m.id);
+    let res;
+    try {
+      res = await fetch(`${base}/emails/${encodeURIComponent(m.id)}?account_id=${encodeURIComponent(accountId)}`, {
+        method: 'PUT', headers: { ...unipileMailHeaders(apiKey), 'Content-Type': 'application/json' }, body: JSON.stringify({ folders: [dest.name] }),
+      });
+    } catch (e) { return { ok: false, error: `unipile request failed: ${e.message}${moved ? ' (part of the conversation had already moved)' : ''}` }; }
+    if (!res.ok) return { ok: false, error: `unipile HTTP ${res.status}: ${(await res.text()).slice(0, 200)}${moved ? ' (part of the conversation had already moved)' : ''}` };
+    moved += 1;
+    const again = await threadMessages(coach, threadId);
+    if (!again.ok || !again.messages.length) { readBack = false; break; }
+    pending = waiting(again.messages);
+  }
+  return { ok: true, subject, moved, folder: dest.name, ...(readBack && !pending.length ? {} : { unconfirmed: true }) };
 }
 
 /** Messages currently in the inbox, newest first (one per message - the caller groups by thread). */
@@ -696,11 +785,15 @@ async function threadMessages(coach, threadId) {
   return { ok: true, messages };
 }
 
-/** Take a thread out of the inbox (inInbox=false) or put it back (true). Google mailboxes only. */
+/**
+ * Take a thread out of the inbox (inInbox=false) or put it back (true). Google mailboxes by label;
+ * Outlook by folder, and only for clients named in INBOX_FOLDER_ARCHIVE_CLIENTS.
+ */
 async function setThreadInInbox(coach, threadId, inInbox) {
   const kind = await mailboxKind(coach);
   if (!kind.ok) return kind;
   if (!kind.archiveSupported) return { ok: false, error: `archiving is not switched on for ${kind.type || 'this'} mailboxes yet` };
+  if (kind.style === 'folder') return moveThreadByFolder(coach, threadId, inInbox);
   const t = await threadMessages(coach, threadId);
   if (!t.ok) return t;
   if (!t.messages.length) return { ok: false, error: 'no such thread' };
