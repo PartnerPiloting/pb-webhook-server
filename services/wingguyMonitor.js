@@ -284,6 +284,26 @@ async function learningReview() {
     .sort((a, b) => b.times - a.times)
     .map((g) => ({ question: g.question, times: g.times, who: [...g.who].join(', ') }));
 
+  // ANSWERED, BUT IT DID NOT LAND (10 Nov 2026). A gap is a question with no answer. These are
+  // answers that were given and were not good enough - which reached Guy only when the client
+  // emailed him. Three sources: the client asked for a better explanation, their Claude saw the
+  // answer not land, or the same client went back to the same topic within the week.
+  const owner = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
+  const [reportRows, repeatRows] = await Promise.all([
+    learning.reports(null, 7),
+    learning.repeatServes(7, owner),   // Guy re-reads his own topics while writing them
+  ]);
+  const unclear = reportRows.map((r) => ({
+    who: r.tenant_id,
+    asked: r.kind !== 'pushback',
+    about: r.key,
+    detail: r.detail || '',
+  }));
+  const reported = new Set(unclear.map((u) => `${u.who}|${String(u.about).toLowerCase()}`));
+  const repeats = repeatRows
+    .filter((r) => !reported.has(`${r.tenant_id}|${String(r.key).toLowerCase()}`))   // already in the list above, with detail
+    .map((r) => ({ who: r.tenant_id, topic: r.key, times: r.times }));
+
   let beatCount = 0;
   try { beatCount = require('./wingguyGetStartedMcp').loadTour().length; } catch (_e) { /* report still works */ }
 
@@ -309,24 +329,40 @@ async function learningReview() {
     log.warn(`learning review: client roster unavailable (${e.message})`);
   }
 
-  return { gapList, progress, beatCount };
+  return { gapList, unclear, repeats, progress, beatCount };
 }
+
+const shortTopic = (t) => String(t || '').split(' - ')[0].toLowerCase();
 
 // Opens with what Guy has to DO (2 Nov 2026) - the email used to open on how gaps are logged.
 function learningEmailHtml(rev) {
   const parts = [];
-  if (rev.gapList.length) {
+  const unclear = rev.unclear || [];
+  const repeats = rev.repeats || [];
+  if (rev.gapList.length || unclear.length) {
+    const todo = [
+      ...unclear.map((u) => `<li>Make "${esc(shortTopic(u.about))}" clearer - ${esc(u.who)} ${u.asked ? 'asked you to explain it better' : 'did not get what they needed from it'} (their write-up is below)</li>`),
+      ...rev.gapList.map((g) => `<li>Write a playbook topic that answers ${esc(g.who)}'s question: "${esc(g.question)}"${g.times > 1 ? ` (asked ${g.times} times)` : ''}</li>`),
+    ];
     parts.push(`<h3>What you need to do:</h3>
-      <ul>${rev.gapList.map((g) => `<li>Write a playbook topic that answers ${esc(g.who)}'s question: "${esc(g.question)}"${g.times > 1 ? ` (asked ${g.times} times)` : ''}</li>`).join('')}</ul>
+      <ul>${todo.join('')}</ul>
       <p>Ask a Claude Code session to "write the Learning gap" and it drafts the topic for you to check.</p>`);
   } else {
     parts.push('<h3>Nothing to do this week</h3>');
+  }
+  if (repeats.length) {
+    parts.push(`<p><b>Worth a look:</b> ${repeats.map((r) => `${esc(r.who)} went back to "${esc(shortTopic(r.topic))}" ${r.times} times`).join('; ')}. Nobody complained - but going back to the same answer in one week often means it did not land the first time.</p>`);
   }
   const started = rev.progress.filter((p) => p.beats > 0).length;
   if (rev.progress.length && !started) {
     parts.push(`<p><b>Worth knowing:</b> none of the ${rev.progress.length} clients using Wingguy Learning has started the guided tour yet - they only ask one-off questions.</p>`);
   }
   parts.push('<hr>');
+  if (unclear.length) {
+    parts.push(`<h3>Answered, but it didn't land (last 7 days)</h3>
+      <p>Each of these is an answer a client got and could not use. The write-up is from their own Claude, and they were told it was sent to you.</p>
+      <ul>${unclear.map((u) => `<li><b>${esc(u.who)}</b> - ${u.asked ? 'asked you to explain it better' : 'their Claude saw it not land'} - about "${esc(u.about)}"<br>${esc(u.detail)}</li>`).join('')}</ul>`);
+  }
   if (rev.gapList.length) {
     parts.push(`<h3>Questions Wingguy Learning could not answer (last 7 days)</h3>
       <p>Asked by clients, most-asked first. Each of these is a candidate topic - the recurring ones especially. Reply to yourself with one and a Claude session can draft it against the playbook.</p>
@@ -338,7 +374,7 @@ function learningEmailHtml(rev) {
     parts.push(`<h3>Where everyone is up to</h3>
       <ul>${rev.progress.map((p) => `<li><b>${esc(p.client)}</b> - tour ${esc(p.beats)}${rev.beatCount ? ' of ' + esc(rev.beatCount) : ''}${p.lastBeat ? ` (last: ${esc(String(p.lastBeat).split(' - ')[0].toLowerCase())})` : ''}${p.topics ? `; asked for ${esc(p.topics)}` : ''}${p.nudge ? `; nudge waiting: "${esc(p.nudge)}"` : ''}</li>`).join('')}</ul>`);
   }
-  parts.push('<p style="color:#666">Wingguy Learning weekly review. Silent weeks mean no gaps logged and nobody learning - the Monday heartbeat separately proves the monitor is alive. A gap is logged when a client asks something no topic matches, or when Wingguy has to admit it is not covered.</p>');
+  parts.push('<p style="color:#666">Wingguy Learning weekly review. Silent weeks mean no gaps logged and nobody learning - the Monday heartbeat separately proves the monitor is alive. A gap is logged when a client asks something no topic matches, or when Wingguy has to admit it is not covered. An answer that did not land is logged when a client says "can you ask Guy to explain this better in future?", or their Claude sees an answer not work for them.</p>');
   return parts.join('');
 }
 
@@ -425,13 +461,17 @@ async function runWeeklyLearningReview({ force = false } = {}) {
     }
     const rev = await learningReview();
     let emailed = false;
-    if (rev.gapList.length || rev.progress.length) {
-      const subject = rev.gapList.length
-        ? `Wingguy Learning: ${rev.gapList.length} gap${rev.gapList.length === 1 ? '' : 's'} to write (${now.date})`
+    const toFix = (rev.unclear || []).length;
+    if (rev.gapList.length || toFix || rev.progress.length) {
+      const bits = [];
+      if (toFix) bits.push(`${toFix} answer${toFix === 1 ? '' : 's'} to make clearer`);
+      if (rev.gapList.length) bits.push(`${rev.gapList.length} gap${rev.gapList.length === 1 ? '' : 's'} to write`);
+      const subject = bits.length
+        ? `Wingguy Learning: ${bits.join(', ')} (${now.date})`
         : `Wingguy Learning: no gaps, here is where everyone is up to (${now.date})`;
       const r = await sendAlertEmail(subject, learningEmailHtml(rev));
       emailed = !!(r && r.success);
-      log.info(`wingguy-learning review: ${rev.gapList.length} gap(s), ${rev.progress.length} client(s), email ${emailed ? 'sent' : 'FAILED'}`);
+      log.info(`wingguy-learning review: ${rev.gapList.length} gap(s), ${toFix} unclear, ${(rev.repeats || []).length} repeat(s), ${rev.progress.length} client(s), email ${emailed ? 'sent' : 'FAILED'}`);
     } else {
       log.info('wingguy-learning review: nothing to report, no email');
     }

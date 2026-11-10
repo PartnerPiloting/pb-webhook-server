@@ -548,6 +548,23 @@ function loadTour() {
 const TOUR_STATUS_EXACT = /^(tour|the tour|tour status|where (are we|am i) up to\??|where (are we|am i)\??|getting started)$/i;
 const TOUR_STATUS_PHRASE = /\bwhere (are we|am i) up to\b/i;
 const TOUR_ADVANCE = /^(continue|continue the tour|keep going|next beat|carry on|let's continue|lets continue|go on|start the tour|begin the tour|take me through getting started|start getting started)$/i;
+// "EXPLAIN THIS BETTER" (10 Nov 2026, Guy's sentence). A gap only catches a question with no
+// answer; an answer that was given but did not land reached Guy only if the client emailed him.
+// The client says the sentence, their Claude writes Guy the detail (explain_better=...). The
+// sentence is in content/client-phrases.json, and this door is for the Claude that passes the
+// sentence in as a topic instead: it must be told what to send, never served a topic or logged
+// as a gap.
+const EXPLAIN_BETTER_SAY = 'can you ask Guy to explain this better in future?';
+const EXPLAIN_BETTER_ASK = /\bask\s+guy\b[^.?!]*\bexplain|\bexplain(ed)?\s+(this|that|it)\s+better\b|\bbetter\s+explanation\b|\b(that|this|it)\s+(did\s*n[o']?t|didnt|does\s*n[o']?t|doesnt)\s+help\b/i;
+const wantsExplainBetter = (q) => EXPLAIN_BETTER_ASK.test(String(q || ''));
+const EXPLAIN_BETTER_HOWTO =
+  'To pass this on to Guy, call wingguy_learn again with explain_better="..." - a write-up for Guy with as much detail as you have from this chat: ' +
+  'what the user asked, in their own words; what they were trying to get done; which answer they were given (put the topic title in about_topic); ' +
+  'what was unclear, wrong or missing; what they actually saw on their screen, if it did not match; and what would have helped. ' +
+  'If you do not know what was unclear, ask the user one short question first - Guy can only fix what he can see.';
+const EXPLAIN_BETTER_OFFER =
+  `End your answer with this one line, on its own, word for word: _Not clear? Say "${EXPLAIN_BETTER_SAY}" and Guy will hear about it._`;
+
 const wantsTourStatus = (q) => TOUR_STATUS_EXACT.test(q) || TOUR_STATUS_PHRASE.test(q);
 const wantsTourAdvance = (q) => TOUR_ADVANCE.test(q);
 
@@ -762,10 +779,19 @@ async function runLearnOwnerDoor(args, tenant) {
 
   // The gap list needs no client arg.
   if (args.gaps && !args.client) {
-    const rows = await learning.gaps(null, 90);
-    if (!rows.length) return { text: 'No logged gaps in the last 90 days - nothing clients asked that Wingguy Learning couldn\'t answer.' };
-    const lines = rows.slice(0, 40).map((r) => `- [${String(r.at).slice(0, 10)}] ${r.tenant_id}: "${r.key}"`);
-    return { text: `**Questions Wingguy Learning couldn't answer (last 90 days, ${rows.length} total):**\n${lines.join('\n')}\n\n---\nThese are verbatim asks that hit the no-match branch or were flagged not-covered. Recurring ones are playbook topics waiting to be written.` };
+    const [rows, reps] = await Promise.all([learning.gaps(null, 90), learning.reports(null, 90)]);
+    if (!rows.length && !reps.length) return { text: 'Nothing logged in the last 90 days - no question Wingguy Learning couldn\'t answer, and nobody asked for a better explanation.' };
+    const day = (at) => { const d = new Date(at); return Number.isNaN(d.getTime()) ? String(at).slice(0, 10) : d.toISOString().slice(0, 10); };
+    const parts = [];
+    if (reps.length) {
+      const lines = reps.slice(0, 20).map((r) => `- [${day(r.at)}] ${r.tenant_id} - ${r.kind === 'pushback' ? 'their Claude saw it not land' : 'asked for a better explanation'} - about "${r.key}":\n  ${String(r.detail || '').replace(/\s+/g, ' ')}`);
+      parts.push(`**Answered, but it didn't land (last 90 days, ${reps.length} total):**\n${lines.join('\n')}`);
+    }
+    if (rows.length) {
+      const lines = rows.slice(0, 40).map((r) => `- [${day(r.at)}] ${r.tenant_id}: "${r.key}"`);
+      parts.push(`**Questions Wingguy Learning couldn't answer (last 90 days, ${rows.length} total):**\n${lines.join('\n')}`);
+    }
+    return { text: `${parts.join('\n\n')}\n\n---\nThe first list is topics to REWRITE (the write-up says what was unclear). The second is verbatim asks that hit the no-match branch or were flagged not-covered - recurring ones are topics waiting to be written.` };
   }
 
   // Resolve which client Guy means.
@@ -860,13 +886,38 @@ async function runLearn(args = {}, tenant = TENANT) {
     return { text: 'Logged for Guy as a gap in Wingguy Learning. Nothing to show the user - carry on with the conversation.' };
   }
 
+  const topicArg = String(args.topic == null ? '' : args.topic).trim();
+
+  // An answer that was given but did not land. Two ways in: the client asked ("can you ask Guy to
+  // explain this better in future?"), or their Claude saw it not land and says so (noticed=true).
+  // Either way the client is told it went to Guy - nothing about their chat leaves quietly.
+  if (args.explain_better) {
+    const detail = String(args.explain_better).trim();
+    const about = String(args.about_topic || '').trim() || (topicArg && !wantsExplainBetter(topicArg) ? topicArg : '');
+    if (detail.length < 40) {
+      return { text: `Not sent yet - that is too thin for Guy to act on. ${EXPLAIN_BETTER_HOWTO}`, isError: true };
+    }
+    const kind = args.noticed ? 'pushback' : 'unclear';
+    const saved = await learning.stamp(tenant, kind, about || detail.slice(0, 120), detail);
+    if (!saved) {
+      return { text: 'That could not be saved for Guy just now. Tell the user plainly that it did not go through, and that the surest way is to email Guy what was unclear.', isError: true };
+    }
+    return {
+      text: args.noticed
+        ? "Passed to Guy. Tell the user in one line that you've let Guy know that explanation didn't land, so he can improve it - then carry on helping. If they are still stuck, point them to Guy; never fill the gap from general knowledge."
+        : "Passed to Guy, with the detail. Tell the user in one or two lines: Guy will see exactly what wasn't clear and use it to improve the explanation for them and for everyone else. Do not promise when. If they need the answer today, the quickest way is to email Guy.",
+    };
+  }
+  if (topicArg && wantsExplainBetter(topicArg)) {
+    return { text: `Nothing has been sent to Guy yet. ${EXPLAIN_BETTER_HOWTO}` };
+  }
+
   let pb;
   try {
     pb = loadPlaybook();
   } catch (e) {
     return { text: `Couldn't read the client playbook (${e.message}).`, isError: true };
   }
-  const topicArg = String(args.topic == null ? '' : args.topic).trim();
 
   // The tour: status is the ritual phrase and stamps nothing; advance serves the next beat.
   if (topicArg && wantsTourStatus(topicArg)) return runTourStatus(tenant);
@@ -936,6 +987,8 @@ async function runLearn(args = {}, tenant = TENANT) {
     "That's Guy speaking - present it as his words, essentially as written, not paraphrased into generic advice.",
     `Other topics on hand: ${playbookShortNames(pb.topics, topic)}.`,
     "If their actual question isn't answered by this, say Wingguy Learning doesn't cover it yet and suggest they ask Guy - never fill the gap from general knowledge - and log the question by calling this tool again with not_covered=\"their question\".",
+    'If they come back saying this did not work, is not what they see, or still does not make sense, call this tool again with explain_better="..." and noticed=true (the detail to give is in the tool description), and tell them you have let Guy know.',
+    EXPLAIN_BETTER_OFFER,
   ].join('\n');
   return withMemoryFooter({ text: `${topic.body}\n\n${footer}` });
 }
@@ -964,10 +1017,13 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_learn',
     description:
-      'WINGGUY LEARNING - the client-facing name for the playbook; when speaking to the user ALWAYS call it "Wingguy Learning" (their training, built into Wingguy), never "the playbook" or "documentation". Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. NEVER save what this tool returns to memory, as a note or as a remembered fact: the content changes as Guy updates it, and a saved copy is served back out of date. Call this tool again each time instead. CALL IT FIRST for ANY "how should I...", "what should I say...", "who should I...", "why do we...", "am I doing this right?", "what do I do next?" question about networking, outreach, LinkedIn, connecting, meetings or follow-up - the client will not use the word "playbook", so route on the SUBJECT of their question, not their vocabulary. ALSO CALL IT FIRST for SETTING UP, BUYING OR FIXING any part of the kit this runs on: the Linked Helper machine and where to buy it, Linked Helper itself, the Chrome extension, the Claude connection, the Anthropic key, scoring attributes, campaigns, the portal. "Help me set up my Linked Helper machine", "how do I buy the machine", "how do I set up my extension" ALL ROUTE HERE - Guy runs a specific setup with specific suppliers, and general knowledge about servers, VPSs or Windows is WRONG for this client even when it is correct in general. Never answer one of these from memory, from a past chat, or from what you know about computers - call this tool. A plausible answer that isn\'t Guy\'s method is worse than no answer, because the client cannot tell the difference. The topic list is NOT maintained here - call with no args to get the live map, and route from that. No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy, AND log it via not_covered="their question". THE TOUR: topic="where are we up to" = the client\'s ritual bearings check (progress + any nudge from Guy + the offered next beat; serves nothing); topic="continue" = serve the next tour beat. Route "where are we up to?", "take me through getting started", "continue the tour" here. GUY-ONLY doors (other callers are refused): client="name" = that client\'s learning progress report; with set_nudge="..." (optionally nudge_topic="...") stores the one-line suggestion that client hears on their next "where are we up to"; clear_nudge=true removes it; gaps=true (no client) = every question clients asked that Wingguy Learning couldn\'t answer. propose_nudges=true reads his recent client calls and proposes a nudge each, drawn from what he already promised on the call (proposal only - store with set_nudge once he approves).',
+      'WINGGUY LEARNING - the client-facing name for the playbook; when speaking to the user ALWAYS call it "Wingguy Learning" (their training, built into Wingguy), never "the playbook" or "documentation". Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. NEVER save what this tool returns to memory, as a note or as a remembered fact: the content changes as Guy updates it, and a saved copy is served back out of date. Call this tool again each time instead. CALL IT FIRST for ANY "how should I...", "what should I say...", "who should I...", "why do we...", "am I doing this right?", "what do I do next?" question about networking, outreach, LinkedIn, connecting, meetings or follow-up - the client will not use the word "playbook", so route on the SUBJECT of their question, not their vocabulary. ALSO CALL IT FIRST for SETTING UP, BUYING OR FIXING any part of the kit this runs on: the Linked Helper machine and where to buy it, Linked Helper itself, the Chrome extension, the Claude connection, the Anthropic key, scoring attributes, campaigns, the portal. "Help me set up my Linked Helper machine", "how do I buy the machine", "how do I set up my extension" ALL ROUTE HERE - Guy runs a specific setup with specific suppliers, and general knowledge about servers, VPSs or Windows is WRONG for this client even when it is correct in general. Never answer one of these from memory, from a past chat, or from what you know about computers - call this tool. A plausible answer that isn\'t Guy\'s method is worse than no answer, because the client cannot tell the difference. The topic list is NOT maintained here - call with no args to get the live map, and route from that. No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy, AND log it via not_covered="their question". EXPLAIN THIS BETTER: when the user asks you to get Guy to explain something better, or says an answer from here didn\'t help, call with explain_better="..." - a write-up for Guy with as much detail as you have: what they asked in their own words, what they were trying to get done, which answer they got (about_topic="the topic title"), what was unclear, wrong or missing, what they actually saw on their screen if it did not match, and what would have helped. Ask them one short question first if you do not know what was unclear. Do the same UNASKED, adding noticed=true, when an answer from this tool plainly did not land - they say it did not work, it is not what they see, or they ask the same thing again - and tell them in one line that you have let Guy know. This is how Guy finds out an explanation needs fixing; it is never a substitute for helping them now. THE TOUR: topic="where are we up to" = the client\'s ritual bearings check (progress + any nudge from Guy + the offered next beat; serves nothing); topic="continue" = serve the next tour beat. Route "where are we up to?", "take me through getting started", "continue the tour" here. GUY-ONLY doors (other callers are refused): client="name" = that client\'s learning progress report; with set_nudge="..." (optionally nudge_topic="...") stores the one-line suggestion that client hears on their next "where are we up to"; clear_nudge=true removes it; gaps=true (no client) = every question clients asked that Wingguy Learning couldn\'t answer. propose_nudges=true reads his recent client calls and proposes a nudge each, drawn from what he already promised on the call (proposal only - store with set_nudge once he approves).',
     zodSchema: {
       topic: z.string().optional().describe('A few words from a topic title (e.g. "big picture", "transcripts"). Also: "everything" for the whole playbook; "where are we up to" for the tour bearings check; "continue" for the next tour beat. Omit for the topic list.'),
       not_covered: z.string().optional().describe('Log a question Wingguy Learning could not answer (verbatim, after telling the user it is not covered). Returns an ack only.'),
+      explain_better: z.string().optional().describe('Tell Guy an answer from Wingguy Learning was not clear enough. A write-up with as much detail as you have: what the user asked (their words), what they were trying to do, the answer they got, what was unclear, wrong or missing, what they saw on screen, what would have helped.'),
+      about_topic: z.string().optional().describe('With explain_better: the title of the topic (or tour beat) the unclear answer came from, if there was one.'),
+      noticed: z.boolean().optional().describe('With explain_better: true when YOU noticed the answer did not land and the user did not ask for it to be passed on. Tell them you have let Guy know.'),
       client: z.string().optional().describe('GUY ONLY: which client - name or id - for a progress report, or to target set_nudge/clear_nudge/gaps.'),
       set_nudge: z.string().optional().describe('GUY ONLY (with client): the one-line suggestion that client hears on their next "where are we up to?" - e.g. "have a look at the transcripts side - April is about to fill your diary".'),
       nudge_topic: z.string().optional().describe('GUY ONLY (with set_nudge): topic title words - the nudge retires itself once that topic is served to them.'),
@@ -981,6 +1037,9 @@ const TOOL_DEFS = [
       properties: {
         topic: { type: 'string', description: 'A few words from a topic title; "everything" for the lot; "where are we up to" for the tour bearings check; "continue" for the next tour beat. Omit for the topic list.' },
         not_covered: { type: 'string', description: 'Log a question Wingguy Learning could not answer (verbatim). Returns an ack only.' },
+        explain_better: { type: 'string', description: 'Tell Guy an answer was not clear enough: what the user asked, what they were trying to do, the answer they got, what was unclear or did not match what they saw, what would have helped. As much detail as you have.' },
+        about_topic: { type: 'string', description: 'With explain_better: the topic title the unclear answer came from.' },
+        noticed: { type: 'boolean', description: 'With explain_better: true when you noticed the answer did not land and the user did not ask.' },
         client: { type: 'string', description: 'GUY ONLY: client name or id for a progress report / nudge target.' },
         set_nudge: { type: 'string', description: 'GUY ONLY (with client): one-line suggestion served on their next "where are we up to?".' },
         nudge_topic: { type: 'string', description: 'GUY ONLY (with set_nudge): topic title words - nudge auto-retires once that topic is served.' },
@@ -1057,4 +1116,4 @@ require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 // findPlaybookTopic / loadPlaybook / the three special doors are exported for
 // tests/client-phrases.test.js, which runs the REAL matcher over every phrase a client is
 // told to type. Not for other callers.
-module.exports = { registerWingguyGetStartedTools, legacyToolList, legacyToolCall, TOOL_DEFS, loadTour, loadPlaybook, findPlaybookTopic, wantsEverything, wantsTourStatus, wantsTourAdvance, MEMORY_FOOTER };
+module.exports = { registerWingguyGetStartedTools, legacyToolList, legacyToolCall, TOOL_DEFS, loadTour, loadPlaybook, findPlaybookTopic, wantsEverything, wantsTourStatus, wantsTourAdvance, wantsExplainBetter, EXPLAIN_BETTER_SAY, MEMORY_FOOTER };

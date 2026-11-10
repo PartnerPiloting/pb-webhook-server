@@ -99,7 +99,7 @@ for (const p of phrases) {
 console.log('\n2. wingguy_learn routes the phrase where the registry says');
 const pb = learn.loadPlaybook();
 for (const p of phrases.filter((x) => x.tool === 'wingguy_learn')) {
-  check(`"${p.phrase}" -> ${p.tour ? `tour ${p.tour}` : p.everything ? 'everything' : p.topic}`, () => {
+  check(`"${p.phrase}" -> ${p.tour ? `tour ${p.tour}` : p.everything ? 'everything' : p.report ? 'explain-better report' : p.topic}`, () => {
     if (p.tour === 'status') {
       assert.ok(learn.wantsTourStatus(p.phrase), 'wantsTourStatus() rejected it');
       return;
@@ -112,7 +112,15 @@ for (const p of phrases.filter((x) => x.tool === 'wingguy_learn')) {
       assert.ok(learn.wantsEverything(p.phrase), 'wantsEverything() rejected it');
       return;
     }
-    assert.ok(p.topic, 'a wingguy_learn phrase needs topic, tour or everything');
+    if (p.report) {
+      // "can you ask Guy to explain this better in future?" - must reach the explain-better door,
+      // and must be the very sentence every topic answer offers.
+      assert.ok(learn.wantsExplainBetter(p.phrase), 'wantsExplainBetter() rejected it - it would be served a topic or logged as a gap');
+      assert.ok(!learn.wantsTourStatus(p.phrase) && !learn.wantsTourAdvance(p.phrase) && !learn.wantsEverything(p.phrase), 'a tour/everything door would catch this first');
+      assert.strictEqual(normalise(p.phrase), normalise(learn.EXPLAIN_BETTER_SAY), 'the registry and EXPLAIN_BETTER_SAY have drifted apart');
+      return;
+    }
+    assert.ok(p.topic, 'a wingguy_learn phrase needs topic, tour, everything or report');
     // Neither special door may swallow a topic phrase on the way in.
     assert.ok(!learn.wantsTourStatus(p.phrase) && !learn.wantsTourAdvance(p.phrase) && !learn.wantsEverything(p.phrase), 'a special door (tour/everything) would catch this before the topic matcher');
     const hit = learn.findPlaybookTopic(pb.topics, p.phrase);

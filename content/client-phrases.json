@@ -8,6 +8,7 @@
     "topic: for wingguy_learn only - the playbook title the phrase must resolve to (a leading substring). Omit for tour phrases and 'everything'.",
     "tour: for wingguy_learn only - 'status' or 'advance' when the phrase drives the tour rather than serving a topic.",
     "everything: true for the phrases that mean 'read me the whole playbook'.",
+    "report: true for wingguy_learn only - the phrase asks for a better explanation to be passed to Guy. It must reach the explain-better door and never be served a topic or logged as a gap.",
     "where: repo files that tell the client to type it. The test checks each still contains the phrase - so a doc edit that reworded it fails loudly.",
     "near_misses: sentences NOT in any doc that a client might plausibly type, with the topic they must NOT be served ('not'), and optionally the one they SHOULD reach ('expect'). A miss is fine - it is logged as a gap and the client is told to ask Guy. The wrong topic is not.",
     "None of this proves a client's Claude will CHOOSE the tool. It proves the description claims the words and the matcher lands them. The only proof of choice is typing the sentence into a fresh chat once before it ships - do that too."
@@ -273,6 +274,15 @@
       "phrase": "go through my inbox",
       "tool": "wingguy_inbox",
       "where": []
+    },
+    {
+      "phrase": "can you ask Guy to explain this better in future?",
+      "tool": "wingguy_learn",
+      "report": true,
+      "note": "Guy's sentence, 10 Nov 2026. Also offered at the foot of every Wingguy Learning topic answer (EXPLAIN_BETTER_SAY in services/wingguyGetStartedMcp.js - the test checks the two match).",
+      "where": [
+        "content/wingguy-capabilities.json"
+      ]
     },
     {
       "phrase": "set my booking hours",

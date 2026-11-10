@@ -156,10 +156,11 @@
       "id": "learning",
       "title": "And my whole method is built in",
       "short": "Ask how, and you get my answer in my words.",
-      "lead": "Wingguy doesn't only do the work - it teaches you my method as you go: what to say when someone accepts, why the second meeting is the one that matters, how to hold a steady pace. Ask and you get my answer in my words, not generic advice off the internet. What I learn with every client lands in your Wingguy too.",
+      "lead": "Wingguy doesn't only do the work - it teaches you my method as you go: what to say when someone accepts, why the second meeting is the one that matters, how to hold a steady pace. Ask and you get my answer in my words, not generic advice off the internet. What I learn with every client lands in your Wingguy too. And when an answer isn't clear, or your question isn't covered yet, I hear about it and fix it.",
       "items": [
         { "say": "How do I keep on top of follow-ups?", "does": "my answer on the one daily habit that makes the rest work.", "tools": ["wingguy_learn"] },
         { "say": "where are we up to?", "does": "the guided tour through getting started, picked up wherever you left it.", "tools": ["wingguy_learn"] },
+        { "say": "can you ask Guy to explain this better in future?", "does": "for when one of my answers isn't clear. I'm told exactly what didn't make sense, and I fix it - for you and for everyone else.", "tools": ["wingguy_learn"], "added": "2026-11-10" },
         { "say": "am I set up?", "does": "a quick check of what's connected and what's still to do.", "tools": ["wingguy_get_started"] }
       ]
     }
