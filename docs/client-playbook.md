@@ -529,6 +529,34 @@ the safest.
 
 ---
 
+## YOUR ACCEPTANCE RATE - WHAT'S GOOD, AND WHEN TO JUDGE IT
+
+Your acceptance rate is how many of the people you invite say yes. It's the first number that tells
+you whether your campaign is working.
+
+**What's good.** Ask any AI and you'll hear around 35%. I get 50% to 60% with a collaborate note -
+because it's an offer, not a pitch, and my profile says connector. Anywhere from 30% up, you're
+doing fine. Under 15% and something needs changing.
+
+**When to judge it.** Not in the first week. People take days to accept - some take weeks - so last
+week's invitations always look bad. The fair test is the people you invited two to five weeks ago.
+That's exactly what your Monday email shows you, campaign by campaign: "Of the people invited 2 to 5
+weeks ago, so many per cent have accepted so far." So give a new campaign about three weeks before
+you read anything into it.
+
+**If it's low, it's almost always one of three things:**
+- **The note.** Anything that smells of a pitch gets ignored. Keep it an offer - see Your first
+  campaign.
+- **The search.** If the people in it aren't people who'd want to know you, no note will save it.
+  Look down the first page of results again with fresh eyes.
+- **Your profile.** It's the first thing they look at before they decide. If it doesn't say what you
+  do and who for, they won't bother - see Your LinkedIn profile.
+
+Change one thing at a time, then give it another three weeks, so you know which change made the
+difference.
+
+---
+
 ## THE PLUMBING - LINKED HELPER AND YOUR DATABASE
 
 This is the flow underneath everything, and you and Guy set it up together as the closing step of
@@ -665,6 +693,31 @@ topping up: https://knowaguy.com.au/pick-your-people
 it from here. Topping up is pasting the search into your campaign yourself: open the campaign, open the
 first step's Queue, choose Add and collect from your search URL. Ask me to help with your first campaign
 and I'll walk you through it.
+
+---
+
+## SEVERAL SEARCHES IN ONE CAMPAIGN - ALL AT ONCE, OR ONE AT A TIME?
+
+You can put as many searches into one Linked Helper campaign as you like. So if you've split your
+people into several searches - by city, by industry, by job title - the question is whether to feed
+them in together or one after another.
+
+**My advice: one at a time, if you want to know which one works.** Your numbers - how many went out,
+how many accepted - are kept per campaign, not per search. Put three searches in together and you'll
+know how the campaign is doing, but not which search is pulling its weight. Run one for three weeks,
+look at the acceptance rate in your Monday email, then top up with the next. That way each search
+gets a fair test, and you learn which people say yes to you.
+
+**All at once is fine when they're really the same crowd.** If the searches only differ by city, say,
+and you're not trying to compare them, put them all in - it saves you topping up as often. Anyone who
+turns up in more than one search is only collected once, so there's no doubling up.
+
+**A genuinely different crowd needs its own campaign, not just its own search.** Everyone in a
+campaign gets the same invitation note and the same thank-you. If one group needs a different note or
+a different thank-you, that's a second campaign - see A second Linked Helper campaign.
+
+To put a search in, say **top up my campaign with this search** and paste the link - see Keeping your
+campaign fed.
 
 ---
 
@@ -1405,6 +1458,31 @@ and it learns from every change you make to a draft before you send it (see *you
 one it's good. A few weeks in, it's you.
 
 Picture: https://knowaguy.com.au/thanks-for-connecting-example
+
+---
+
+## /WG ON PEOPLE YOU'RE ALREADY TALKING TO - NOT JUST NEW CONNECTIONS
+
+Wingguy isn't only for thanking new connections. It works on any LinkedIn conversation - someone
+you've been talking to for years, someone who just replied, someone you've never written to before.
+
+**How to use it.**
+1. Open the conversation - in LinkedIn Messaging, or go to their profile and press Message.
+2. Click in the message box at the bottom.
+3. Type **/wg** - with the forward slash in front, no space.
+
+A Wingguy window opens, reads the whole conversation and their profile, and drafts your next message.
+Change anything you like, press Insert into LinkedIn, then read it once more and press send yourself.
+
+**Typed WG and nothing happened?** It needs the slash: **/wg**, not WG. That's deliberate - without
+the slash, Wingguy would pop up every time you typed those two letters in a normal sentence.
+
+**Still nothing?** Refresh the LinkedIn page and try again. If that doesn't do it, there's a teal
+Wingguy button on the page - click that instead. And if neither appears at all, the extension isn't
+switched on in this browser - tell me and we'll sort it.
+
+**Not in your list yet?** That's fine - Wingguy still drafts. If you'd like them added, just tell it
+in the Wingguy window ("add them to my list") and they'll be there next time.
 
 ---
 

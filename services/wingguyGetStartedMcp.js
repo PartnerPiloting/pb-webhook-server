@@ -454,6 +454,16 @@ const MATCH_STOPWORDS = new Set(['what', 'about', 'your', 'you', 'the', 'and', '
 // exists to prevent. (Bare "connection" is deliberately NOT a key - "my connection sent me a
 // text" is not about the invite note.)
 const TOPIC_ALIASES = [
+  // Three Learning gaps written 10 Nov 2026 - each original question was being pulled elsewhere by an
+  // alias below ("boolean", "campaign" + "two/several"), so these sit at the TOP.
+  // Roland: "what connection acceptance rate should I expect ... how long before it is fair to judge it?"
+  [[/\bacceptance\b/], 'YOUR ACCEPTANCE RATE'],
+  [[/\baccept(s|ed|ing)?\b/, /\b(rate|per ?cent|percentage|expect|judge)\b/], 'YOUR ACCEPTANCE RATE'],
+  // Dean: "several Boolean searches (segments) in my campaign at the same time, or one at a time?"
+  [[/\b(several|multiple|many|two|three)\b/, /\bsearch(es)?\b/], 'SEVERAL SEARCHES IN ONE CAMPAIGN'],
+  [[/\bsegments?\b/], 'SEVERAL SEARCHES IN ONE CAMPAIGN'],
+  // Steve: "/wg on first-level connections I'm already in conversation with ... typing WG does nothing"
+  [[/\bwg\b/, /\b(existing|already|conversations?|first.level|1st|nothing|not working)\b/], '/WG ON PEOPLE'],
   // the note that rides on the connection request: "connection request note", "invite wording",
   // "what should the note on my connection request say?", "what do I write in my invite"
   [[/\b(connection requests?|invites?|invitations?)\b/, /\b(notes?|wording|text|message|say|write|put)\b/], 'THANKS FOR CONNECTING'],
