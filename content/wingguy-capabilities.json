@@ -113,12 +113,11 @@
       "id": "email",
       "title": "When it moves to email, Wingguy writes the email",
       "short": "Drafts in your own mailbox. You press send.",
-      "lead": "Every email goes into your own mailbox as a draft, on the right thread, links intact. Wingguy never sends - that is always you. It can read you what they wrote back, show you the whole back-and-forth with one person, and go through your inbox with you.",
+      "lead": "Every email goes into your own mailbox as a draft, on the right thread, links intact. Wingguy never sends - that is always you. It can read you what they wrote back and show you the whole back-and-forth with one person.",
       "needs": "mailbox",
       "items": [
         { "say": "email Sarah about Thursday", "does": "a real draft in your Drafts folder, links intact, on the right thread.", "tools": ["wingguy_create_draft", "wingguy_find_message"] },
-        { "say": "what did she say in her last email?", "does": "it reads it to you, or shows the whole back-and-forth with one person and what you've already sent them.", "tools": ["wingguy_read_message", "wingguy_lead_correspondence", "wingguy_lead_replied_since", "wingguy_lead_history"] },
-        { "say": "go through my inbox", "does": "sorted into what needs you, what's just for your info and what can go. Clearing them out works on Gmail today, and nothing goes without your yes.", "tools": ["wingguy_inbox"], "added": "2026-11-02" }
+        { "say": "what did she say in her last email?", "does": "it reads it to you, or shows the whole back-and-forth with one person and what you've already sent them.", "tools": ["wingguy_read_message", "wingguy_lead_correspondence", "wingguy_lead_replied_since", "wingguy_lead_history"] }
       ]
     },
     {
@@ -183,7 +182,8 @@
     "wingguy_list_edition": "Guy only - the prospect weekly",
     "wingguy_referrals": "Guy only - referral tracking",
     "wingguy_schedule_email": "Guy only - timed sending",
-    "wingguy_scheduled_emails": "Guy only - the timed-send queue"
+    "wingguy_scheduled_emails": "Guy only - the timed-send queue",
+    "wingguy_inbox": "not promoted (Guy, 10 Nov 2026) - it suits people who keep an empty inbox, so it is off the page; it still works for anyone who says go through my inbox"
   },
   "page_path": "/what-wingguy-can-do"
 }
