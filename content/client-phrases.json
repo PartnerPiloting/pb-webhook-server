@@ -158,6 +158,12 @@
       ]
     },
     {
+      "phrase": "what can Wingguy do?",
+      "tool": "wingguy_vision",
+      "note": "Not in a doc - it is what Guy actually typed on 10 Nov 2026, and the chat described the tool list instead of calling the tool. Registered so the description quotes the natural wording too.",
+      "where": []
+    },
+    {
       "phrase": "review my edits",
       "tool": "wingguy_edit_review",
       "where": [

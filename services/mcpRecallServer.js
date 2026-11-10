@@ -398,7 +398,14 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
         + "INBOX: when they ask to go through, check, sort or clear their inbox or their email (\"go through my inbox\", "
         + "\"what's in my email?\", \"anything I need to deal with?\"), call wingguy_inbox - never a Gmail or Outlook connector. "
         + "It is their own mailbox, it knows who their clients and contacts are, checks every to-do live before passing it "
-        + "on, and archives only on their yes. A plain mail connector does none of that.",
+        + "on, and archives only on their yes. A plain mail connector does none of that. "
+        // 10 Nov 2026: "what can wingguy do" in a fresh chat got "Planning how to describe Wingguy's tools" - the chat
+        // read the tool list and wrote its own feature summary (coach-only tools included). wingguy_vision was never called.
+        + "WHAT IT CAN DO: when they ask what Wingguy can do, what they can do with it, what it is, how it works or what is "
+        + "new (\"what can Wingguy do?\", \"what can I do with Wingguy?\", \"what is Wingguy?\"), call wingguy_vision and give "
+        + "them its answer word for word, with its page link. NEVER answer by describing or listing these tools yourself - "
+        + "the tool list is plumbing, it includes things this person cannot use, and Guy has written the answer he wants "
+        + "them to get. It is five or six lines; add nothing to it.",
     },
   );
 

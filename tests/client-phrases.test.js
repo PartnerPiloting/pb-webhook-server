@@ -189,5 +189,19 @@ check('mcpRecallServer.js instructions send inbox requests to wingguy_inbox, not
     'the INBOX line no longer sends inbox requests to wingguy_inbox over a mail connector');
 });
 
+// 10 Nov 2026: "what can wingguy do" in a fresh chat got "Planning how to describe Wingguy's tools" - the
+// chat summarised the tool list itself (a wall of text, coach-only tools included) and never called
+// wingguy_vision. A tool description cannot stop that; only the steer above every tool can.
+check('mcpRecallServer.js instructions send "what can Wingguy do" to wingguy_vision, never a self-written tool summary', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'services', 'mcpRecallServer.js'), 'utf8');
+  const start = src.indexOf('instructions:');
+  const block = start < 0 ? '' : src.slice(start, src.indexOf('server.registerTool(', start));
+  const at = block.indexOf('WHAT IT CAN DO:');
+  assert.ok(at > 0, 'the server instructions have no WHAT IT CAN DO line');
+  const line = block.slice(at);
+  assert.ok(line.includes('call wingguy_vision'), 'the line no longer names wingguy_vision');
+  assert.ok(/NEVER answer by describing or listing these tools yourself/.test(line), 'the line no longer forbids describing the tool list');
+});
+
 console.log(`\n${failures ? `${failures} FAILED` : 'all passed'}\n`);
 process.exit(failures ? 1 : 0);
