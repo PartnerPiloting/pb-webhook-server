@@ -185,6 +185,13 @@ check('carries the closing questions and a line for a forwarded friend, whose li
       assert.ok(page.includes(`data-say="${esc(x.say)}"`), `"${x.say}" has no tap-to-copy button`);
     }
   }
+  // A step can point down to a question (Guy looked for "why Linked Helper" in step 2, where it is first
+  // named, and found nothing - 10 Nov 2026). The pointer must land on a question that exists.
+  for (const s of list.sections.filter((x) => x.pointer)) {
+    assert.ok(list.page_questions.some((x) => x.id === s.pointer.to), `step ${s.id} points at "${s.pointer.to}", which is not a question id`);
+    assert.ok(page.includes(`href="#${s.pointer.to}"`) && page.includes(`id="${s.pointer.to}"`), `step ${s.id}'s pointer is not wired on the page`);
+    assert.ok(!/\bGuy\b/.test(s.pointer.text) && !/[–—]/.test(s.pointer.text), `step ${s.id}'s pointer breaks the narrator or dash rule`);
+  }
   const routes = fs.readFileSync(path.join(ROOT, 'routes', 'marketingRoutes.js'), 'utf8');
   const links = (list.page_friend || {}).links || [];
   assert.ok(links.length, 'no friend links');

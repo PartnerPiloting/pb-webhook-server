@@ -26,8 +26,9 @@
       "a": "You could start. What makes it work is the things nobody thinks of until they go wrong: offering someone a time before you know which city they're in, chasing a person who already replied by email, a thank-you note that opens the same way as the last three. I've spent thousands of hours finding those and fixing them, one at a time, and I'm still at it. That's the part you don't have to do."
     },
     {
+      "id": "why-linked-helper",
       "q": "Why Linked Helper, and not the tool someone just told me about?",
-      "a": "I get told about a new one most weeks, and plenty of them look better. I looked at a lot of them before choosing. Most of them run your LinkedIn from their own servers, and every customer looks the same to LinkedIn - so when one gets spotted, they all do, and it's your account that goes. Linked Helper runs on a machine that is yours alone, through a real browser, one thing at a time, at a person's pace. They're obsessed with not getting you flagged. In all my time running this, I've not seen one person using it lose their account. Nobody can honestly promise zero risk, but it's the safest I could find.",
+      "a": "I get told about a new one most weeks, and plenty of them look better. I examined every possibility I could find before choosing. Most of them run your LinkedIn from their own servers, and every customer looks the same to LinkedIn - so when one gets spotted, they all do, and it's your account that goes. Linked Helper runs on a machine that is yours alone, through a real browser, one thing at a time, at a person's pace. They're obsessed with not getting you flagged. In all my time running this, I've not seen one person using it lose their account. Nobody can honestly promise zero risk, but it's the safest I could find.",
       "say": "Why Linked Helper and not the other tools?",
       "say_note": "the whole story, in my words."
     }
@@ -62,6 +63,7 @@
       "title": "A machine invites them for you",
       "short": "A computer in the cloud that I look after sends your connection requests, every day, by itself.",
       "lead": "It's a computer in the cloud that I set up and look after, running software called **Linked Helper**. Every day it sends your connection request, with your note, to a few of the people from your search - up to 100 a week, spread over working hours so it looks like a real person at work. That list of people and the note it sends is your **campaign**. It runs without you. It's checked every day and backed up every night, and if LinkedIn ever signs you out you get an email. When it runs low on people, you give it a new search.",
+      "pointer": { "text": "Why Linked Helper and not another tool? It's the safest I could find, after examining every possibility I could find.", "label": "Here's why", "to": "why-linked-helper" },
       "needs": "machine",
       "items": [
         { "say": "show me my campaign numbers", "does": "invitations sent, how many said yes, and how many people are still waiting. The same numbers land in your inbox every Monday.", "tools": ["wingguy_campaign_numbers"], "start": true },
