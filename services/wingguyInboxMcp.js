@@ -245,6 +245,13 @@ function wingguyMailBackend(record, mail) {
       if (!r.ok) throw new Error(r.error);
       return { subject: r.subject, unconfirmed: !!r.unconfirmed, folder: r.folder || null };
     },
+    // Why emails cannot be cleared on this mailbox right now, in words to pass on - or null when
+    // they can. A check that itself fails says nothing: the move still has its own guards.
+    async clearBlock() {
+      if (typeof mail.archiveReadiness !== 'function') return null;
+      const r = await mail.archiveReadiness(record).catch(() => null);
+      return r && r.ok && r.ready === false ? r.message : null;
+    },
   };
 }
 
@@ -361,12 +368,32 @@ async function approvalLines(tenant, deps = {}) {
   return [`YOUR OWN EMAILS WAITING FOR YOUR OK (${items.length}) - not inbox emails; ask about these at the end, see YOUR OWN EMAILS WAITING:`, ...items.map((i) => `  - ${i}`), ''];
 }
 
+/** Why this mailbox cannot clear emails right now (words to pass on), or null. Never throws. */
+async function clearBlock(inbox) {
+  if (typeof inbox.backend.clearBlock !== 'function') return null;
+  try { return (await inbox.backend.clearBlock()) || null; } catch (_e) { return null; }
+}
+
+/**
+ * Said at the TOP of the first list, so the person hears it before the sort - not after they have
+ * said yes to a clear that then fails (Guy, 13 Nov 2026).
+ */
+function clearBlockLines(block) {
+  if (!block) return [];
+  return [
+    `CLEARING WILL NOT WORK ON THIS MAILBOX RIGHT NOW: ${block}`,
+    'Tell them this in your FIRST message, in plain words, with the fix if one is given above. Still sort the inbox and do the jobs with them, but do NOT offer to clear or archive anything - say they can clear those emails themselves in their mailbox.',
+    '',
+  ];
+}
+
 async function runList(args, inbox, tenant, deps) {
   const max = Math.min(Number(args.max) || MAX_LIST, MAX_LIST);
   const { offset, page } = readPageToken(args.page_token);
   const { threads, more, next, total } = await inbox.backend.list(max, page);
   // Guy, 2 Nov 2026: an empty inbox must not hide them, so they come first and on every first page.
   const head = [...await instructionLines(tenant, deps), ...(offset ? [] : await approvalLines(tenant, deps))];
+  if (!offset && threads.length) head.push(...clearBlockLines(await clearBlock(inbox)));
   if (!threads.length) return { text: [...head, offset ? 'No more emails - that was the end of the inbox.' : 'Your inbox is empty.'].join('\n') };
   const lines = [...head, ...coverageLines({ shown: threads.length, offset, more, total, next }), ''];
   threads.forEach((t, n) => {
@@ -407,6 +434,9 @@ async function runRead(args, inbox) {
 async function runMove(args, inbox, archive) {
   const ids = [...new Set((Array.isArray(args.thread_ids) ? args.thread_ids : [args.thread_ids]).map((x) => String(x || '').trim()).filter(Boolean))];
   if (!ids.length) return { text: 'Which emails? Pass thread_ids from the list.', isError: true };
+  // One answer, not the same refusal once per email - and nothing is attempted.
+  const block = await clearBlock(inbox);
+  if (block) return { text: `Couldn't ${archive ? 'archive' : 'restore'} - nothing was moved: ${block}\nTell them exactly that, including the fix if one is given.`, isError: true };
   const done = [];
   const unsure = [];
   const failed = [];

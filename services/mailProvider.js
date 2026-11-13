@@ -702,13 +702,43 @@ async function mailboxKind(coach) {
   return { ok: true, type, style, archiveSupported: style === 'label' || (style === 'folder' && folderArchiveAllowed(coach)) };
 }
 
-/** The mailbox's inbox and archive folders, by the role Unipile gives them. */
+/**
+ * What the person is told when their mailbox has no Archive folder (Guy, 13 Nov 2026: "would the
+ * user get explicit directions?" - before this they got a bare "couldn't find", once per email, and
+ * Claude made up the rest). Making a folder called Archive is the sure fix, because the folder is
+ * also found by NAME below; Outlook's own Archive button is the quicker one.
+ */
+const NO_ARCHIVE_FOLDER = "this mailbox has no Archive folder yet, so nothing was changed. To fix it: in Outlook, pick any email and press Archive once - Outlook makes the folder. Or make a new folder called exactly Archive. Then ask again.";
+
+/**
+ * The mailbox's inbox and archive folders. By the role Unipile gives them first; if no folder
+ * carries the role, by NAME (a folder called exactly "Archive" / "Inbox") - so a mailbox whose
+ * Archive folder is there but untagged is not told it has none.
+ */
 async function inboxAndArchiveFolders(coach) {
   const r = await unipileGet(coach, '/folders');
   if (!r.ok) return r;
   const items = r.json.items || [];
-  const byRole = (role) => items.find((f) => String(f.role || '').toLowerCase() === role) || null;
-  return { ok: true, inbox: byRole('inbox'), archive: byRole('archive') };
+  const find = (role) => items.find((f) => String(f.role || '').toLowerCase() === role)
+    || items.find((f) => String(f.name || '').trim().toLowerCase() === role) || null;
+  return { ok: true, inbox: find('inbox'), archive: find('archive') };
+}
+
+/**
+ * Can emails be cleared on this mailbox right now? Asked ONCE, before the person is offered a
+ * clear - so they hear "not on your mailbox" or "you need an Archive folder" before they have sat
+ * through the sort and said yes, not after. ready:false carries the words to pass on.
+ */
+async function archiveReadiness(coach) {
+  const kind = await mailboxKind(coach);
+  if (!kind.ok) return kind;
+  if (!kind.archiveSupported) return { ok: true, ready: false, why: 'off', message: `archiving is not switched on for ${kind.type || 'this'} mailboxes yet` };
+  if (kind.style !== 'folder') return { ok: true, ready: true };
+  const fo = await inboxAndArchiveFolders(coach);
+  if (!fo.ok) return fo;
+  if (!fo.archive) return { ok: true, ready: false, why: 'no_archive_folder', message: NO_ARCHIVE_FOLDER };
+  if (!fo.inbox) return { ok: true, ready: false, why: 'no_inbox_folder', message: "couldn't find this mailbox's Inbox folder, so nothing was changed" };
+  return { ok: true, ready: true };
 }
 
 /** Does this message sit in that folder? A message may name its folder by name, id or role. */
@@ -727,7 +757,8 @@ function messageInFolder(m, folder) {
 async function moveThreadByFolder(coach, threadId, inInbox) {
   const fo = await inboxAndArchiveFolders(coach);
   if (!fo.ok) return fo;
-  if (!fo.inbox || !fo.archive) return { ok: false, error: `couldn't find this mailbox's ${fo.inbox ? 'Archive' : 'Inbox'} folder, so nothing was changed` };
+  if (!fo.archive) return { ok: false, error: NO_ARCHIVE_FOLDER };
+  if (!fo.inbox) return { ok: false, error: "couldn't find this mailbox's Inbox folder, so nothing was changed" };
   const t = await threadMessages(coach, threadId);
   if (!t.ok) return t;
   if (!t.messages.length) return { ok: false, error: 'no such thread' };
@@ -814,4 +845,4 @@ async function setThreadInInbox(coach, threadId, inInbox) {
   return { ok: true, subject: t.messages[0].subject, moved: targets.length };
 }
 
-module.exports = { createDraft, sendMessage, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider, hasMailbox, mailParties, listInbox, threadMessages, setThreadInInbox, mailboxKind };
+module.exports = { createDraft, sendMessage, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider, hasMailbox, mailParties, listInbox, threadMessages, setThreadInInbox, mailboxKind, archiveReadiness };

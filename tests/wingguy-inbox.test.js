@@ -362,7 +362,7 @@ function fakeClient({ archiveOk = true } = {}) {
         return json({ object: 'EmailUpdated' });
       }
       if (/\/accounts\//.test(u.pathname)) return json({ type });
-      if (/\/folders$/.test(u.pathname)) return json({ items: [{ id: 'f1', name: 'Inbox', role: 'inbox', provider_id: 'p1' }, { id: 'f3', name: 'Sent Items', role: 'sent', provider_id: 'p3' }].concat(archiveFolder ? [{ id: 'f2', name: 'Archive', role: 'archive', provider_id: 'p2' }] : []) });
+      if (/\/folders$/.test(u.pathname)) return json({ items: [{ id: 'f1', name: 'Inbox', role: 'inbox', provider_id: 'p1' }, { id: 'f3', name: 'Sent Items', role: 'sent', provider_id: 'p3' }].concat(archiveFolder ? [{ id: 'f2', name: 'Archive', role: archiveFolder === 'untagged' ? null : 'archive', provider_id: 'p2' }] : []) });
       if (/\/emails$/.test(u.pathname)) return json({ items: msgs.filter((m) => m.thread_id === u.searchParams.get('thread_id')) });
       return json({}, 404);
     };
@@ -430,6 +430,48 @@ function fakeClient({ archiveOk = true } = {}) {
     const r = await withLink(link, 'all', (mail) => mail.setThreadInInbox(roland, 'T1', false));
     assert.ok(!r.ok && /Archive folder/.test(r.error) && /nothing was changed/.test(r.error), JSON.stringify(r));
     assert.strictEqual(link.puts.length, 0);
+  });
+
+  await t('Outlook: no Archive folder = plain directions on how to get one, not a bare "could not find"', async () => {
+    const r = await withLink(fakeLink({ archiveFolder: false }), 'all', (mail) => mail.setThreadInInbox(roland, 'T1', false));
+    assert.ok(/press Archive once/.test(r.error) && /folder called exactly Archive/.test(r.error) && /Then ask again/.test(r.error), r.error);
+  });
+
+  await t('Outlook: an Archive folder the mail link has not tagged is still found, by its name', async () => {
+    const link = fakeLink({ archiveFolder: 'untagged' });
+    const r = await withLink(link, 'all', (mail) => mail.setThreadInInbox(roland, 'T1', false));
+    assert.ok(r.ok && !r.unconfirmed && r.folder === 'Archive', JSON.stringify(r));
+    assert.deepStrictEqual(link.msgs.map((m) => m.folders[0]), ['Archive', 'Archive', 'Sent Items']);
+  });
+
+  await t('can this mailbox clear? - answered once, without touching an email', async () => {
+    const ask = async (opts, allow) => { const link = fakeLink(opts); const r = await withLink(link, allow, (mail) => mail.archiveReadiness(roland)); assert.strictEqual(link.puts.length, 0); return r; };
+    assert.deepStrictEqual(await ask({}, 'all'), { ok: true, ready: true });
+    assert.deepStrictEqual(await ask({ type: 'GOOGLE_OAUTH' }, null), { ok: true, ready: true });
+    const none = await ask({ archiveFolder: false }, 'all');
+    assert.ok(none.ok && none.ready === false && none.why === 'no_archive_folder' && /press Archive once/.test(none.message), JSON.stringify(none));
+    const off = await ask({}, null);
+    assert.ok(off.ok && off.ready === false && off.why === 'off' && /not switched on for OUTLOOK/.test(off.message), JSON.stringify(off));
+  });
+
+  await t('a mailbox that cannot clear says so at the TOP of the list, and a clear is refused once - not once per email', async () => {
+    const { deps, moved } = fakeClient();
+    deps.mailProvider.archiveReadiness = async () => ({ ok: true, ready: false, why: 'no_archive_folder', message: 'this mailbox has no Archive folder yet, so nothing was changed. To fix it: press Archive once.' });
+    const list = await runInbox({ action: 'list' }, 'Sam-Noble', deps);
+    assert.ok(!list.isError && /thread_id=T1/.test(list.text), 'the inbox is still listed');
+    assert.ok(list.text.indexOf('CLEARING WILL NOT WORK') > -1 && list.text.indexOf('CLEARING WILL NOT WORK') < list.text.indexOf('thread_id=T1'), 'said before the emails');
+    assert.ok(/press Archive once/.test(list.text) && /do NOT offer to clear/.test(list.text), list.text);
+    const out = await runInbox({ action: 'archive', thread_ids: ['T1', 'T2'] }, 'Sam-Noble', deps);
+    assert.ok(out.isError && (out.text.match(/no Archive folder/g) || []).length === 1 && /nothing was moved/.test(out.text), out.text);
+    assert.strictEqual(moved.length, 0, 'no move was attempted');
+    // A mailbox that CAN clear hears nothing about it, and a check that breaks never hides the inbox.
+    deps.mailProvider.archiveReadiness = async () => ({ ok: true, ready: true });
+    assert.ok(!/CLEARING WILL NOT WORK/.test((await runInbox({ action: 'list' }, 'Sam-Noble', deps)).text));
+    deps.mailProvider.archiveReadiness = async () => { throw new Error('link down'); };
+    const broken = await runInbox({ action: 'list' }, 'Sam-Noble', deps);
+    assert.ok(/thread_id=T1/.test(broken.text) && !/CLEARING WILL NOT WORK/.test(broken.text), broken.text);
+    await runInbox({ action: 'archive', thread_ids: ['T1'] }, 'Sam-Noble', deps);
+    assert.strictEqual(moved.length, 1, 'a broken check does not block the move - the move has its own guards');
   });
 
   await t('Gmail is untouched by all this: still the INBOX label coming off, other labels kept, no list needed', async () => {
