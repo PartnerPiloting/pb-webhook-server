@@ -263,10 +263,12 @@ function gmailBackend() {
     text: cleanBody(bodyText(m.payload)) || m.snippet || '', attachments: attachmentNames(m.payload),
   });
   return {
-    async list(max, page) {
-      const { data } = await gmail.users.threads.list({ userId: 'me', q: 'in:inbox', maxResults: max, ...(page ? { pageToken: page } : {}) });
+    // sinceMs = only threads with a message that arrived after then ("since I last looked").
+    async list(max, page, { sinceMs } = {}) {
+      const q = sinceMs ? `in:inbox after:${Math.floor(sinceMs / 1000)}` : 'in:inbox';
+      const { data } = await gmail.users.threads.list({ userId: 'me', q, maxResults: max, ...(page ? { pageToken: page } : {}) });
       // The INBOX label's own thread count is exact (threads.list's resultSizeEstimate is not).
-      const total = await gmail.users.labels.get({ userId: 'me', id: 'INBOX' }).then((r) => r.data.threadsTotal).catch(() => null);
+      const total = sinceMs ? null : await gmail.users.labels.get({ userId: 'me', id: 'INBOX' }).then((r) => r.data.threadsTotal).catch(() => null);
       const out = [];
       const ids = (data.threads || []).map((t) => t.id);
       // A few at a time - Gmail rate-limits a burst of thread reads.
@@ -323,8 +325,8 @@ function wingguyMailBackend(record, mail) {
     text: cleanBody(m.text || htmlToText(m.html)), attachments: m.attachments || [],
   });
   return {
-    async list(max, page) {
-      const r = await mail.listInbox(record, { limit: max, cursor: page });
+    async list(max, page, { sinceMs } = {}) {
+      const r = await mail.listInbox(record, { limit: max, cursor: page, after: sinceMs || undefined });
       if (!r.ok) throw new Error(r.error);
       // The inbox is a list of messages; show each thread once, by its newest message.
       const byThread = new Map();
@@ -496,21 +498,133 @@ function clearBlockLines(block) {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// "Since I last looked" (Guy, 13 Nov 2026). He empties his inbox, so listing what is IN it shows
+// him only new mail. Someone who lives with thousands in theirs was shown the same newest 50 every
+// run and never reached an end. For them the list is what has ARRIVED since their last finished
+// run, plus anything they said "later" to - and the old pile underneath is left alone.
+//
+// Which one a person gets is not a setting: an inbox that fits in one list (50) is gone through
+// whole; a fuller one is gone through by what is new. scope=new / scope=all asks for one outright.
+//
+// THE RULE: when in doubt, show it again (the store explains how the flag moves).
+// ---------------------------------------------------------------------------
+
+const FIRST_RUN_MS = 2 * 24 * 3600 * 1000;   // no flag yet: the last two days
+
+async function lookedState(tenant, deps) {
+  try { return await (deps.inboxStore || require('./wingguyInboxStore')).getLooked(tenant); } catch (_e) { return null; }
+}
+
+/** The emails they said "later" to last time, read fresh. One that has left the inbox is dropped. */
+async function laterThreads(inbox, ids, skip) {
+  const out = [];
+  for (const id of ids || []) {
+    if (skip.has(id)) continue;
+    try {
+      const { subject, messages, inInbox } = await inbox.backend.read(id);
+      if (!messages.length || inInbox === false) continue;
+      out.push({ id, subject, last: messages[messages.length - 1], count: messages.length, unread: false, later: true });
+    } catch (_e) { /* one unreadable email never hides the rest */ }
+  }
+  return out;
+}
+
+function newSinceLines({ shown, laterCount, flagAt, sinceMs, more, next, offset }) {
+  const lines = [];
+  const fresh = shown - laterCount;
+  if (!flagAt) {
+    lines.push(`NEW SINCE YOU LAST LOOKED - FIRST TIME: this inbox is too full to go through whole, so this covers the last 2 days (since ${brisbaneTime(sinceMs)}): ${fresh} email thread(s), newest first. Times are Brisbane.`);
+    lines.push('Say so in your FIRST line, plainly - e.g. "Your inbox has a lot in it, so I\'ll start with the last two days: 8 emails. From now on I\'ll only show you what has arrived since we last did this." This FIRST time only, also tell them the older ones are there if they want them ("Say \'go through all of it\' if you want the older ones too") - someone who normally empties their inbox and has come back to a full one needs to know nothing was skipped silently.');
+  } else {
+    lines.push(`NEW SINCE YOU LAST LOOKED (${brisbaneTime(flagAt)}): ${fresh} email thread(s) have arrived since, newest first. Times are Brisbane.`);
+    lines.push(`Your FIRST line says it that way - e.g. "${fresh} new emails since ${brisbaneTime(flagAt)} - 3 need you, the rest can go."`);
+  }
+  if (laterCount) lines.push(`PLUS ${laterCount} they said "later" to last time - marked LATER FROM LAST TIME below. Add "plus ${laterCount} you said later to" to your first line; each is a job again.`);
+  lines.push('The OLDER emails still sitting in their inbox are deliberately NOT here. Never mention, count or offer them. Only if they ask for them ("show me the older ones", "go through all of it"): action=list with scope=all.');
+  if (more && next) lines.push(`NOT ALL OF THE NEW ONES: there are more than these. Say so, and when this batch is done get the rest: action=list with page_token=${offset + shown}~new:${next}`);
+  lines.push('WHEN YOU FINISH: action=done (see WHEN YOU FINISH in the description) - that is what moves their marker.');
+  return lines;
+}
+
 async function runList(args, inbox, tenant, deps) {
   const max = Math.min(Number(args.max) || MAX_LIST, MAX_LIST);
-  const { offset, page } = readPageToken(args.page_token);
-  const { threads, more, next, total } = await inbox.backend.list(max, page);
+  const token = readPageToken(args.page_token);
+  const { offset } = token;
+  const newPage = !!token.page && token.page.startsWith('new:');
+  const page = newPage ? token.page.slice(4) || null : token.page;
+  const startedAt = Date.now();
+  const store = deps.inboxStore || require('./wingguyInboxStore');
+  const scope = ['new', 'all'].includes(args.scope) ? args.scope : 'auto';
+
+  // Which way: whole inbox, or only what is new. Without a place to keep the flag it is always whole.
+  const looked = await lookedState(tenant, deps);
+  let listed = null;
+  let since = false;
+  if (looked && (newPage || scope === 'new')) since = true;
+  else if (looked && scope === 'auto' && !token.page) {
+    listed = await inbox.backend.list(max, page);
+    if (listed.more) { since = true; listed = null; }
+  }
+  const lookback = store.LOOKBACK_MS || 3600 * 1000;
+  const sinceMs = since ? (looked.flagAt ? looked.flagAt - lookback : startedAt - FIRST_RUN_MS) : null;
+  if (!listed) listed = await inbox.backend.list(max, page, since ? { sinceMs } : {});
+  let { threads } = listed;
+  let { more, next } = listed;
+  const { total } = listed;
+
+  let laterCount = 0;
+  if (since) {
+    // The look-back hour overlaps the last run on purpose (the mail link can be behind). What that
+    // run already showed is left out - unless something newer has arrived in the thread since.
+    const unseen = (list) => list.filter((t) => !(Number(looked.shown[t.id]) >= (t.last.date || 0)));
+    threads = unseen(threads);
+    // A batch made up of emails already shown must not hide the unseen ones behind it: keep reading
+    // until there is something to show or nothing left (a few batches at most).
+    for (let i = 0; i < 6 && !threads.length && more && next; i++) {
+      const again = await inbox.backend.list(max, next, { sinceMs });
+      threads = unseen(again.threads);
+      more = again.more; next = again.next;
+    }
+    if (!newPage) {
+      threads = threads.map((t) => (looked.later.includes(t.id) ? { ...t, later: true } : t));
+      threads.push(...await laterThreads(inbox, looked.later, new Set(threads.map((t) => t.id))));
+      laterCount = threads.filter((t) => t.later).length;
+    }
+  }
+  // Remember what this run showed and when it started. The flag itself only moves on action=done.
+  // A whole-inbox run with more pages still to come is not "everything", so it never moves the flag.
+  if (looked) {
+    try {
+      await store.notePending(tenant, {
+        at: startedAt, first: !token.page, complete: !more,
+        shown: Object.fromEntries(threads.map((t) => [t.id, t.last.date || startedAt])),
+      });
+    } catch (_e) { /* the list still works; next time simply shows these again */ }
+  }
+
   // Guy, 2 Nov 2026: an empty inbox must not hide them, so they come first and on every first page.
   const head = [...await instructionLines(tenant, deps), ...(offset ? [] : await approvalLines(tenant, deps))];
   if (!offset && threads.length) head.push(...clearBlockLines(await clearBlock(inbox)));
-  if (!threads.length) return { text: [...head, offset ? 'No more emails - that was the end of the inbox.' : 'Your inbox is empty.'].join('\n') };
-  const lines = [...head, ...coverageLines({ shown: threads.length, offset, more, total, next }), ''];
+  if (!threads.length) {
+    let empty = offset ? 'No more emails - that was the end of the inbox.' : 'Your inbox is empty.';
+    if (since) {
+      empty = offset
+        ? 'No more new emails - that was the last of them. WHEN YOU FINISH: action=done.'
+        : `NOTHING NEW since ${brisbaneTime(looked.flagAt || sinceMs)}. Say exactly that in one line ("Nothing new since ...") and call action=done. The older emails in their inbox are left alone - do not mention them unless they ask (action=list with scope=all).`;
+    }
+    return { text: [...head, empty].join('\n') };
+  }
+  const lines = [...head, ...(since
+    ? newSinceLines({ shown: threads.length, laterCount, flagAt: looked.flagAt, sinceMs, more, next, offset })
+    : coverageLines({ shown: threads.length, offset, more, total, next })), ''];
   const check = await recentSent(inbox, Math.min(...threads.map((t) => t.last.date || Date.now())));
   lines.push(...sentCheckLines(check));
   threads.forEach((t, n) => {
     const m = t.last;
     const tags = senderTags(m.from, m.to, inbox.who);
     lines.push(`[${offset + n + 1}] thread_id=${t.id} | ${brisbaneTime(m.date)} | ${m.from}${t.unread ? ' | UNREAD' : ''}${t.count > 1 ? ` | ${t.count} messages` : ''}`);
+    if (t.later) lines.push('LATER FROM LAST TIME: they said "later" to this one - it is a job again, not new mail.');
     lines.push(`Subject: ${t.subject || '(no subject)'}`);
     // The newest message's id - a quick-thanks reply drafts into this thread with it.
     if (m.id) lines.push(`To reply: reply_to_message_id=${m.id}`);
@@ -523,12 +637,30 @@ async function runList(args, inbox, tenant, deps) {
     if (m.attachments.length) lines.push(`Attachments: ${m.attachments.join(', ')}`);
     lines.push(`Text: ${excerpt(m.text, EXCERPT_CHARS).replace(/\n/g, ' / ')}`);
     if (check.ok) {
-      const since = writtenSinceLine(writtenSince({ date: m.date, from: [senderAddress(m.from)], text: `${t.subject || ''}\n${m.text}` }, check.sent, inbox.who.own));
-      if (since) lines.push(since);
+      const wrote = writtenSinceLine(writtenSince({ date: m.date, from: [senderAddress(m.from)], text: `${t.subject || ''}\n${m.text}` }, check.sent, inbox.who.own));
+      if (wrote) lines.push(wrote);
     }
     lines.push('');
   });
   return { text: lines.join('\n') };
+}
+
+/**
+ * The run is finished: move the flag, and keep the ones they said "later" to for next time.
+ * Needs no mailbox. Calling it with no run in progress changes nothing.
+ */
+async function runDone(args, tenant, deps) {
+  const store = deps.inboxStore || require('./wingguyInboxStore');
+  const later = Array.isArray(args.later_thread_ids) ? args.later_thread_ids : (args.later_thread_ids ? [args.later_thread_ids] : []);
+  let r = null;
+  try { r = await store.markDone(tenant, later); } catch (e) {
+    return { text: `Couldn't mark the inbox as done (${e.message}). Nothing is lost - next time simply starts from where this run started.`, isError: true };
+  }
+  if (!r) return { text: 'Nothing to mark - no inbox run was in progress. Nothing changed.' };
+  const kept = r.later.length ? ` ${r.later.length} kept for next time as "later".` : '';
+  return { text: r.moved
+    ? `Marked done. Next time starts from ${brisbaneTime(r.flagAt)}.${kept} Do not tell them this unless they ask - just close with your one line.`
+    : `Noted what was covered, but NOT everything was listed in this run, so the marker has not moved - next time carries on with the rest.${kept}` };
 }
 
 async function runRead(args, inbox) {
@@ -652,10 +784,11 @@ async function runInstruction(args, tenant, deps, remember) {
 
 async function runInbox(args = {}, tenant = TENANT, deps = {}) {
   const action = args.action || 'list';
-  if (!['list', 'read', 'check', 'archive', 'restore', 'remember', 'forget'].includes(action)) {
-    return { text: `Unknown action "${action}". Use list, read, check, archive, restore, remember or forget.`, isError: true };
+  if (!['list', 'read', 'check', 'archive', 'restore', 'done', 'remember', 'forget'].includes(action)) {
+    return { text: `Unknown action "${action}". Use list, read, check, archive, restore, done, remember or forget.`, isError: true };
   }
   if (action === 'remember' || action === 'forget') return runInstruction(args, tenant, deps, action === 'remember');
+  if (action === 'done') return runDone(args, tenant, deps);
   const inbox = await resolveInbox(tenant, deps);
   if (inbox.error) return { text: inbox.error, isError: true };
   try {
@@ -690,18 +823,22 @@ const TOOL_DEFS = [
       '   Say "Type a number." (If this chat can show clickable choices, show them as buttons instead.) STOP and wait. Never show the next job in the same message - the numbers only ever belong to the job on screen. Typing words instead of a number works too.\n' +
       '   When they answer, do it (draft, book, fix the record), confirm in one line, archive that job\'s email once every job in it is decided, then "2 of 5 - ..." "Later" leaves the email in the inbox and moves on; "nothing needed" or "skip" archives it.\n' +
       '   If something can only be done outside this chat, the choice is a link that takes them straight there (the email\'s "Open in Gmail" link from the list, their portal) - never just "go and do it".\n' +
-      '4. AT THE END: "That\'s your inbox done." plus one line listing anything they said "later" to.\n' +
+      '4. AT THE END: "That\'s your inbox done." plus one line listing anything they said "later" to. Then WHEN YOU FINISH, below.\n' +
       'If they ask to see everything at once, show it - but one at a time is the default, every time.\n\n' +
       'YOUR OWN EMAILS WAITING (only when the list has a YOUR OWN EMAILS WAITING FOR YOUR OK section): these are emails the person is SENDING, not inbox emails - never count them in the inbox numbers or mix them into the jobs. Straight after "That\'s your inbox done." - or, when the inbox is empty, straight after "Your inbox is clear." - ask in one message, with the real count and the soonest send: "4 of your own emails need your OK before Wednesday - they won\'t go without it. Go through them now?" then "1 Yes" / "2 Later" and "Type a number." On 1, take them ONE AT A TIME the same way: show each with the tool named on its line (action=show), then choices 1 Approve it / 2 Change it / 3 Skip this week (for a one-off: 3 Cancel it) / 4 Later. Approve, change, skip or cancel ONLY on their number. Weekly client emails that are not approved never go. When there is no such section, say nothing about it. Guy, 2 Nov 2026 - his approvals were lapsing on days he did not open the review.\n\n' +
       'PILE NAMES: when you name groups, use Needs you (the jobs), Worth knowing and Can go (the easy clear) - the names the person has been told.\n\n' +
       'QUICK THANKS: when a real person wrote to them personally and a short reply would be the courteous thing - a client explaining something, someone answering their question, a favour, good news, a kind word - it is a job: "Worth a quick thanks?" with a one-line reply drafted in their voice, NEVER in the easy clear. Its choices are exactly: 1 Put it in my Drafts (wingguy_create_draft as a threaded reply, reply_to_message_id from the list - it lands in their Drafts and THEY press send; Wingguy never sends, so never say "send"), 2 Change it (they say how, you rewrite and show it again), 3 No reply needed. Archive it only after they have decided. Not for emails that expect no reply: calendar acceptances, automatic notices, their own system reports, newsletters, receipts, copies of mail they sent. Their business runs on relationships - an email from a person never disappears unanswered without their say-so.\n\n' +
+      'NEW SINCE YOU LAST LOOKED: some people empty their inbox and some live with thousands in it. When the inbox is too full to go through whole, the list comes back headed "NEW SINCE YOU LAST LOOKED" - only what has arrived since their last finished run, plus anything they said "later" to then. That IS the whole job, done exactly the same way (one line, the easy clear, the jobs one at a time). Your one line is "8 new emails since Thu 3:10pm - 3 need you, 5 can go" and the close is "That\'s everything new - you\'re done." NEVER mention, count or offer the older emails underneath: they have chosen to live with a full inbox, and being walked back over it every time is what this exists to stop (Guy, 13 Nov 2026). Only if they ask for them ("show me the older ones", "go through all of it") call action=list with scope=all. "Nothing new since ..." is a complete, good answer. If they say they only ever want what is new, even with a small inbox, save that with action=remember and list with scope=new from then on.\n\n' +
+      'WHEN YOU FINISH - EVERY RUN, whichever kind of list it was: once you have said the closing line, call action=done with later_thread_ids = the thread_id of EVERY listed email that was not decided - each one they said "later" to, and, if they stopped part-way ("that\'s enough for now"), every job and every easy-clear email not yet dealt with. Empty when everything was decided. That moves their marker, so next time starts from here and the undecided ones come back. If you are not sure whether one was decided, put it in - shown twice is fine, never shown is not. Never call done before the end of the run.\n\n' +
       'NOT THE WHOLE INBOX: the list comes 50 at a time. When it starts "NOT THE WHOLE INBOX", your first line must say how many emails there are and how many this covers - never let them think the rest were looked at - and when this batch is done offer the next one (action=list with the page_token it gives).\n\n' +
       'ARCHIVING: only the thread_ids they have said yes to in this chat - the easy clear needs its own yes; a job\'s email goes once they have decided that job. Never on your own judgement, never "while you were at it". Archive takes it out of the inbox and nothing is deleted; action=restore puts it back. If archiving is not switched on for their mailbox, say so plainly and leave it.\n\n' +
       'FIX THE RECORD: when an email changes a fact about a person - an email address that no longer works, a new email or phone number, they have moved - make it part of that email\'s job and offer to fix their record ("Fix Lynne\'s record?"). On their yes use wingguy_update_lead (email, phone, location, LinkedIn URL on the lead\'s record). If the person is on one of their clients\' records rather than their own, say whose record it is instead of changing it. Never change a record without their yes.\n\n' +
       'STANDING INSTRUCTIONS: the list starts with any standing inbox instructions they have given - follow them when sorting (an "always clear" instruction puts those emails in Can go; the yes is still theirs to give). When they say how they always want something handled - "always clear LinkedIn notifications", "always show me anything from the accountant", "never bother me with receipts" - save it with action=remember and text = the instruction in their words, then tell them it is saved. action=forget with instruction_id removes one.\n\n' +
       'action=read with a thread_id gives the whole thread, when you need more than the excerpt. Plain English, what a thing means before what it is called, " - " not an em dash.',
     zodSchema: {
-      action: z.enum(['list', 'read', 'check', 'archive', 'restore', 'remember', 'forget']).optional().describe('list (default) | read | check | archive | restore | remember | forget'),
+      action: z.enum(['list', 'read', 'check', 'archive', 'restore', 'done', 'remember', 'forget']).optional().describe('list (default) | read | check | archive | restore | done | remember | forget'),
+      scope: z.enum(['auto', 'new', 'all']).optional().describe('list: leave out normally. new = only what has arrived since they last finished; all = the whole inbox, older emails too - only when they ask for them'),
+      later_thread_ids: z.array(z.string()).optional().describe('done: the thread_ids of every listed email not decided in this run (said "later" to, or not reached)'),
       thread_id: z.string().optional().describe('read / check: the thread_id from the list'),
       thread_ids: z.array(z.string()).optional().describe('archive / restore: the thread_ids they said yes to'),
       max: z.number().optional().describe('list: how many threads, newest first (default and most 50)'),
@@ -712,7 +849,9 @@ const TOOL_DEFS = [
     jsonSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'read', 'check', 'archive', 'restore', 'remember', 'forget'], description: 'list (default) | read | check | archive | restore | remember | forget' },
+        action: { type: 'string', enum: ['list', 'read', 'check', 'archive', 'restore', 'done', 'remember', 'forget'], description: 'list (default) | read | check | archive | restore | done | remember | forget' },
+        scope: { type: 'string', enum: ['auto', 'new', 'all'], description: 'list: leave out normally. new = only what has arrived since they last finished; all = the whole inbox, older emails too - only when they ask for them' },
+        later_thread_ids: { type: 'array', items: { type: 'string' }, description: 'done: the thread_ids of every listed email not decided in this run (said "later" to, or not reached)' },
         thread_id: { type: 'string', description: 'read / check: the thread_id from the list' },
         thread_ids: { type: 'array', items: { type: 'string' }, description: 'archive / restore: the thread_ids they said yes to' },
         max: { type: 'number', description: 'list: how many threads, newest first (default and most 50)' },

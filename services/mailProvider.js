@@ -799,10 +799,21 @@ async function moveThreadByFolder(coach, threadId, inInbox) {
   return { ok: true, subject, moved, folder: dest.name, ...(readBack && !pending.length ? {} : { unconfirmed: true }) };
 }
 
-/** Messages currently in the inbox, newest first (one per message - the caller groups by thread). */
-async function listInbox(coach, { limit = 50, cursor } = {}) {
+/**
+ * Messages currently in the inbox, newest first (one per message - the caller groups by thread).
+ * after (ms) = only messages that arrived after then ("since I last looked").
+ * The folder is asked for as INBOX, which is Gmail's own id for it. A mailbox that answers "no such
+ * folder" (Outlook names its folders by its own ids) is asked again with its inbox folder's real id.
+ */
+async function listInbox(coach, { limit = 50, cursor, after } = {}) {
   if (activeMailProvider(coach) !== 'unipile') return { ok: false, error: 'not supported on this mail provider' };
-  const r = await unipileGet(coach, '/emails', { folder: 'INBOX', limit: Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100), cursor: cursor || undefined });
+  const params = { limit: Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100), cursor: cursor || undefined, after: after ? new Date(Number(after)).toISOString() : undefined };
+  let r = await unipileGet(coach, '/emails', { folder: 'INBOX', ...params });
+  if (!r.ok && /HTTP 4\d\d/.test(r.error || '') && /folder/i.test(r.error || '')) {
+    const fo = await inboxAndArchiveFolders(coach);
+    const id = fo.ok && fo.inbox && (fo.inbox.provider_id || fo.inbox.id);
+    if (id) r = await unipileGet(coach, '/emails', { folder: id, ...params });
+  }
   if (!r.ok) return r;
   return { ok: true, messages: (r.json.items || []).map(fromUnipileInboxMessage), more: !!r.json.cursor, cursor: r.json.cursor || null };
 }
