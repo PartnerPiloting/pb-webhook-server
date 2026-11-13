@@ -38,6 +38,7 @@ const { registerMachineClipboardTools } = require('./machineClipboardMcp');
 const { registerWingguyInboxTools } = require('./wingguyInboxMcp');
 const { registerWingguyTopUpTools } = require('./wingguyTopUpMcp');
 const { registerWingguyCampaignSettingsTools } = require('./wingguyCampaignSettingsMcp');
+const { registerWisprTools } = require('./wisprMcp');
 const connectorSeen = require('./connectorSeenStore');
 
 const BASE = '/mcp2';
@@ -111,19 +112,42 @@ async function replaceParticipantLabels(text, meetingId) {
   return result;
 }
 
+// ── Wispr feed hooks ────────────────────────────────────────────────────────────────────────
+// Both return "nothing to say" for a tenant the feed is off for or who never connected Wispr, and
+// neither is allowed to break a transcript lookup: any failure in the feed is logged and ignored.
+async function wisprPrepare(coachClientId) {
+  try { return await require('./wisprFeedService').prepareForTranscriptRequest(coachClientId); }
+  catch (e) { console.warn(`mcpRecallServer: wispr prepare failed for ${coachClientId}: ${e.message}`); return null; }
+}
+async function wisprDecide(ctx, q) {
+  if (!ctx) return {};
+  try { return await require('./wisprFeedService').decideTranscriptReply(ctx, q); }
+  catch (e) { console.warn(`mcpRecallServer: wispr decide failed: ${e.message}`); return {}; }
+}
+/** A reply with nothing found: lead with what the feed has to say about why. */
+function wisprLead(say, text) {
+  const head = (say && (say.block || say.prefix)) || '';
+  return head ? `${head}\n\n${text}` : text;
+}
+
 async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAULT_COACH_CLIENT_ID) {
+  let wisprNote = '';
   const clean = (email || '').trim().toLowerCase();
   if (!clean || !clean.includes('@')) return { text: 'Error: a valid email address is required.', isError: true };
 
   const coachClient = await clientService.getClientById(coachClientId);
   if (!coachClient?.airtableBaseId) return { text: 'Server config error: coach base not set.', isError: true };
+  // WISPR FEED (13 Nov 2026): for a Wispr-connected tenant, check Wispr NOW so a call that ended a
+  // minute ago is in the store before we look. null for everyone else - nothing below changes.
+  const wispr = await wisprPrepare(coachClientId);
   const lead = await findLeadByEmail(coachClient, clean);
   // A miss is never silent (Rick Wong / Cynthia Lau, 2026-09-04): before saying "no lead" or
   // "no meetings", check the parked list and, if the person is there, say so and name the door.
   const { waitingHintForEmail, waitingHintForLead } = require('./pendingPeopleLookup');
   if (!lead?.id) {
     const hint = await waitingHintForEmail(coachClient, clean);
-    return { text: `No lead found for email: ${clean}${hint}`, isError: !hint };
+    const say = await wisprDecide(wispr, { person: { email: clean } });
+    return { text: wisprLead(say, `No lead found for email: ${clean}${hint}`), isError: !hint && !say.block && !say.prefix };
   }
 
   const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || clean;
@@ -139,7 +163,8 @@ async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAU
   }
   if (!rows || rows.length === 0) {
     const hint = await waitingHintForLead(coachClient, { name: leadName, email: lead.email || clean });
-    return { text: `No meetings found for ${leadName} (${clean}).${hint}` };
+    const say = await wisprDecide(wispr, { person: { name: leadName, email: clean } });
+    return { text: wisprLead(say, `No meetings found for ${leadName} (${clean}).${hint}`) };
   }
 
   // Prefer the newest meeting that actually HAS a transcript. A header-only row (capture failed,
@@ -160,6 +185,18 @@ async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAU
     };
   }
   const skipped = rows.indexOf(latest);
+  {
+    // Never serve an older call with this person while Wispr holds a newer one that is not ready
+    // or has no name yet - say so instead (the reply names this call so it can still be asked for).
+    const when = latest.meeting_start || latest.created_at;
+    const say = await wisprDecide(wispr, {
+      foundStartMs: when ? new Date(when).getTime() : null,
+      person: { name: leadName, email: clean },
+      foundLabel: `#${latest.meeting_id} "${latest.title || 'Meeting'}" with ${leadName}${when ? ` on ${new Date(when).toISOString()}` : ''}`,
+    });
+    if (say.block) return { text: say.block };
+    if (say.prefix) wisprNote = `${say.prefix}\n\n`;
+  }
   const transcript = await replaceParticipantLabels(latest.transcript_text || '', latest.meeting_id);
   const durMin = latest.duration_seconds ? Math.round(latest.duration_seconds / 60) : null;
   const header = [
@@ -171,7 +208,7 @@ async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAU
     '---',
     '',
   ].filter(Boolean).join('\n');
-  return { text: header + transcript };
+  return { text: wisprNote + header + transcript };
 }
 
 /**
@@ -183,6 +220,14 @@ async function runRecallFindTranscript({ query, after, before, meeting_id }, coa
   const includeUnowned = coachClientId === DEFAULT_COACH_CLIENT_ID;
   let pick = null;
   let others = [];
+  let wisprNote = '';
+  // An exact meeting number is an exact ask - nothing to check or second-guess.
+  const exact = meeting_id != null && String(meeting_id).trim();
+  const wispr = exact ? null : await wisprPrepare(coachClientId);
+  const wisprQ = {
+    person: String(query || '').trim() ? { name: String(query).trim() } : null,
+    beforeMs: before && !isNaN(Date.parse(before)) ? Date.parse(before) : null,
+  };
   if (meeting_id != null && String(meeting_id).trim()) {
     pick = await getMeetingById(meeting_id, coachClientId);
     const owned = pick && (pick.coach_client_id ? pick.coach_client_id === coachClientId : includeUnowned);
@@ -193,13 +238,23 @@ async function runRecallFindTranscript({ query, after, before, meeting_id }, coa
     const words = String(query || '').split(/\s+/).filter((w) => w.length > 1);
     const rows = await findMeetingsForCoach(coachClientId, { words, after, before, limit: 10, includeUnowned });
     if (!rows.length) {
+      const say = await wisprDecide(wispr, wisprQ);
       return {
-        text: `No stored call matched${words.length ? ` "${words.join(' ')}"` : ''}${after || before ? ' in that date range' : ''}. `
-          + 'Try fewer words (just a first name), a wider date range, or no query at all to see the most recent calls.',
+        text: wisprLead(say, `No stored call matched${words.length ? ` "${words.join(' ')}"` : ''}${after || before ? ' in that date range' : ''}. `
+          + 'Try fewer words (just a first name), a wider date range, or no query at all to see the most recent calls.'),
       };
     }
     pick = await getMeetingById(rows[0].id, coachClientId);
     others = rows.slice(1);
+    const pickWhen = pick.meeting_start || pick.created_at;
+    const say = await wisprDecide(wispr, {
+      ...wisprQ,
+      foundStartMs: pickWhen ? new Date(pickWhen).getTime() : null,
+      foundMeetingId: pick.id,
+      foundLabel: `#${pick.id} "${pick.title || 'Meeting'}"${pickWhen ? ` on ${new Date(pickWhen).toISOString()}` : ''}`,
+    });
+    if (say.block) return { text: say.block };
+    if (say.prefix) wisprNote = `${say.prefix}\n\n`;
   }
   const when = pick.meeting_start || pick.created_at;
   const durMin = pick.duration_seconds ? Math.round(pick.duration_seconds / 60) : null;
@@ -215,7 +270,7 @@ async function runRecallFindTranscript({ query, after, before, meeting_id }, coa
     '---',
     '',
   ].filter(Boolean).join('\n');
-  return { text: header + (transcript || '(empty transcript)') };
+  return { text: wisprNote + header + (transcript || '(empty transcript)') };
 }
 
 async function fathomFetchMeetings(apiKey, { includeTranscript = false, createdAfter } = {}) {
@@ -507,6 +562,8 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
   registerWingguyTopUpTools(server, coachClientId);
   // Campaign message + working hours ("change my campaign message" - preview, then the machine does it).
   registerWingguyCampaignSettingsTools(server, coachClientId);
+  // Wispr feed: "who was this call with?" - only for tenants the feed is switched on for.
+  registerWisprTools(server, coachClientId);
 
   return server;
 }
@@ -595,4 +652,9 @@ function mountRecallMcp(app, log = console) {
   log.info && log.info(`mcpRecallServer: mounted ${BASE}/:token (streamable POST, SDK) — recall_latest_transcript + recall_find_transcript + fathom tools (Fathom tenants only)`);
 }
 
-module.exports = { sharedSecretAllowed, isSharedSecret, mountRecallMcp, BASE };
+module.exports = {
+  sharedSecretAllowed, isSharedSecret, mountRecallMcp, BASE,
+  // The two transcript executors, for tests/wispr-transcript-tools.test.js.
+  _runRecallLatestTranscript: runRecallLatestTranscript,
+  _runRecallFindTranscript: runRecallFindTranscript,
+};

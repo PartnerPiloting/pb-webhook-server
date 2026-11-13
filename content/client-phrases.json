@@ -15,6 +15,20 @@
   ],
   "phrases": [
     {
+      "phrase": "name my last recording",
+      "tool": "wingguy_name_recording",
+      "where": [
+        "services/wisprFeedService.js"
+      ]
+    },
+    {
+      "phrase": "skip it",
+      "tool": "wingguy_name_recording",
+      "where": [
+        "services/wisprFeedService.js"
+      ]
+    },
+    {
       "phrase": "top up my campaign with this search",
       "tool": "wingguy_top_up_campaign",
       "where": [

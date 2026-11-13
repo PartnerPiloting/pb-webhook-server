@@ -1614,6 +1614,35 @@ module.exports = function mountWingguy(app) {
     }
   }
 
+  // "Connect Wispr" - the Wispr Flow feed (services/wisprFeedService.js, 13 Nov 2026). Answers
+  // { hidden: true } unless the WISPR_FEED_TENANTS switch is on for this client, so the section
+  // simply is not there for anyone else. Never returns a token - only the client's own signed
+  // Connect link and where the connection stands.
+  router.get('/setup/wispr', async (req, res) => {
+    try {
+      if (req.assistant) return res.json({ ok: true, hidden: true });
+      const tenantId = req.client && req.client.clientId;
+      const wisprCfg = require('../services/wisprConfig');
+      if (!tenantId || !wisprCfg.feedEnabledFor(tenantId) || !wisprCfg.oauthClientId()) return res.json({ ok: true, hidden: true });
+      const connectUrl = require('../services/wisprAuth').connectLink(tenantId);
+      if (!connectUrl) return res.json({ ok: true, hidden: true });
+      let conn = null;
+      try { conn = await require('../services/wisprFeedService').getConnectionStatus(tenantId); } catch (e) {
+        logger.warn(`[Wingguy] wispr status read failed for ${tenantId}: ${e.message}`);
+      }
+      return res.json({
+        ok: true,
+        connectUrl,
+        status: conn ? conn.status : 'not_connected',
+        connectedAt: conn ? conn.connectedAt : null,
+        lastSuccessAt: conn ? conn.lastSuccessAt : null,
+        disconnectedAt: conn ? conn.disconnectedAt : null,
+      });
+    } catch (e) {
+      return res.json({ ok: true, hidden: true });
+    }
+  });
+
   router.get('/setup/recorder-key', recorderGet);
   router.post('/setup/recorder-key', (req, res) => recorderPost(req, res));
   router.delete('/setup/recorder-key', (req, res) => recorderDelete(req, res));

@@ -57,6 +57,7 @@ const MODULES = {
   'services/wingguyContactsMcp.js': require('../services/wingguyContactsMcp'),
   'services/recallImportMcp.js': require('../services/recallImportMcp'),
   'services/captureControlMcp.js': require('../services/captureControlMcp'),
+  'services/wisprMcp.js': require('../services/wisprMcp'),
 };
 
 function findTool(name) {

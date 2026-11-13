@@ -290,10 +290,18 @@ function startFathomPoll() {
   if (!pollEnabled()) { log.info('fathom-poll: disabled (FATHOM_POLL_ENABLED not true)'); return; }
   if (liveFromMs() == null) { log.info('fathom-poll: FATHOM_LIVE_FROM not set — not starting'); return; }
   log.info(`fathom-poll: starting multi-tenant (every ${Math.round(POLL_INTERVAL_MS / 60000)} min)`);
-  setTimeout(() => { pollAllFathomTenants().catch((e) => log.error(`first tick: ${e.message}`)); }, 8000);
-  intervalHandle = setInterval(() => {
-    pollAllFathomTenants().catch((e) => log.error(`tick: ${e.message}`));
-  }, POLL_INTERVAL_MS);
+  setTimeout(() => { tick('first tick'); }, 8000);
+  intervalHandle = setInterval(() => { tick('tick'); }, POLL_INTERVAL_MS);
+}
+
+// One timer, two feeds. The Wispr feed (services/wisprFeedService.js, 13 Nov 2026) rides this
+// heartbeat rather than owning a timer of its own: it paces itself to every 15 minutes whatever
+// this interval is, and does nothing at all while WISPR_FEED_TENANTS is empty. It runs AFTER the
+// Fathom pass on purpose, so a call both recorders caught is already filed by Fathom when the
+// Wispr doubles check looks. A failure in either never stops the other.
+async function tick(label) {
+  try { await pollAllFathomTenants(); } catch (e) { log.error(`${label}: ${e.message}`); }
+  try { await require('./wisprFeedService').heartbeat(); } catch (e) { log.error(`${label} (wispr): ${e.message}`); }
 }
 
 function stopFathomPoll() {

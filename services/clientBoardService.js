@@ -260,10 +260,16 @@ function buildPills(client, ctx) {
     note: rules > 0 ? `${rules} own instruction${rules === 1 ? '' : 's'}` : 'homework not started',
   });
   const rk = recorderKey(client);
+  // A Wispr connection counts as a recorder too (no key - the client clicked Connect Wispr). Its
+  // status and last good check ride on this pill; a dropped connection turns it back to 'owed'.
+  const wc = (ctx.wispr && ctx.wispr.get(client.clientId)) || null;
+  const wisprNote = wc ? require('./wisprFeedService').statusLine(wc) : '';
+  const wisprDown = !!(wc && wc.status === 'needs_reconnect');
+  const hasRecorder = rk || (wc && !wisprDown);
   pills.push({
     key: 'recorder', label: 'Recorder',
-    state: rk ? (stored > 0 ? 'done' : 'next') : 'owed',
-    note: rk ? `${lower(client.transcriptProvider || 'fathom')} · ${stored} filed` : 'no recorder key',
+    state: wisprDown ? 'owed' : (hasRecorder ? (stored > 0 ? 'done' : 'next') : 'owed'),
+    note: [rk ? `${lower(client.transcriptProvider || 'fathom')} · ${stored} filed` : (wc ? `${stored} filed` : 'no recorder key'), wisprNote].filter(Boolean).join(' · '),
   });
   if (client.wingguyEnabled) {
     pills.push({
@@ -324,6 +330,14 @@ async function getBoard(coachClientId) {
   const all = await clientService.getAllClients();
   const mine = all.filter((c) => c.coach === coachClientId && c.clientId !== coachClientId);
 
+  // Wispr feed connections (status + last good check). Empty unless the feed is switched on;
+  // a failure costs the Wispr note on the Recorder pill, not the board.
+  const wispr = new Map();
+  try {
+    const st = await require('./wisprFeedService').getFeedStatus();
+    for (const c of (st.connections || [])) wispr.set(c.coachClientId, c);
+  } catch (e) { logger.warn(`board wispr status skipped: ${e.message}`); }
+
   const [lastUsed, ownRules, storedMeetings, lastSessions, extension, owed, events, referralRows] = await Promise.all([
     lastUsedByTenant(),
     ownRulesByTenant(),
@@ -338,7 +352,7 @@ async function getBoard(coachClientId) {
       return [];
     }),
   ]);
-  const ctx = { lastUsed, ownRules, storedMeetings, extension };
+  const ctx = { lastUsed, ownRules, storedMeetings, extension, wispr };
 
   const cards = mine.map((client) => {
     const raw = (client.rawRecord && client.rawRecord._rawJson && client.rawRecord._rawJson.fields) || {};

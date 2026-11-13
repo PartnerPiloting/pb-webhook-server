@@ -183,7 +183,8 @@
     "wingguy_referrals": "Guy only - referral tracking",
     "wingguy_schedule_email": "Guy only - timed sending",
     "wingguy_scheduled_emails": "Guy only - the timed-send queue",
-    "wingguy_inbox": "not promoted (Guy, 10 Nov 2026) - it suits people who keep an empty inbox, so it is off the page; it still works for anyone who says go through my inbox"
+    "wingguy_inbox": "not promoted (Guy, 10 Nov 2026) - it suits people who keep an empty inbox, so it is off the page; it still works for anyone who says go through my inbox",
+    "wingguy_name_recording": "Wispr feed (13 Nov 2026) - only registered for tenants in WISPR_FEED_TENANTS, which is Guy alone until he says otherwise. When clients are connected, move it into the calls section with its own line"
   },
   "page_path": "/what-wingguy-can-do"
 }

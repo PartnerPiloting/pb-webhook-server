@@ -1934,6 +1934,16 @@ try {
     moduleLogger.error("index.js: Error mounting Zoho auth routes", e.message, e.stack);
 }
 
+// Connect Wispr (per-client sign-in for the Wispr Flow feed - see routes/wisprAuthRoutes.js).
+// Mounted always; every route checks the WISPR_FEED_TENANTS switch itself, which is off by default.
+try {
+    const wisprAuthRoutes = require('./routes/wisprAuthRoutes.js');
+    app.use('/auth/wispr', wisprAuthRoutes);
+    moduleLogger.info("index.js: Wispr auth routes mounted at /auth/wispr");
+} catch(e) {
+    moduleLogger.error("index.js: Error mounting Wispr auth routes", e.message, e.stack);
+}
+
 // Billing routes (Stripe invoices and PDF generation)
 try { 
     const billingRoutes = require('./routes/billingRoutes.js'); 

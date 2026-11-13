@@ -1941,6 +1941,62 @@ async function findMeetingsForCoach(coachClientId, { words = [], after, before, 
   }
 }
 
+/**
+ * A tenant's FILED meetings (with a transcript body) whose time span touches [startIso, endIso] -
+ * the doubles check for a recorder that files beside another one (Wispr beside Fathom, 13 Nov
+ * 2026). A row with no end time is taken as start + duration, else start + 60 minutes. Split
+ * parents are left out (their children carry the words). STRICT tenant equality.
+ */
+async function findOverlappingMeetings(coachClientId, startIso, endIso, { padMinutes = 10 } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  const s = Date.parse(startIso);
+  let e = Date.parse(endIso);
+  if (!Number.isFinite(s)) return [];
+  if (!Number.isFinite(e) || e <= s) e = s + 60 * 60 * 1000;
+  const pad = Math.max(0, Number(padMinutes) || 0) * 60 * 1000;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT m.id, m.title, m.source, m.meeting_start, m.meeting_end, m.duration_seconds, m.provider_recording_id
+       FROM recall_meetings m
+       WHERE m.coach_client_id = $1
+         AND m.meeting_start IS NOT NULL
+         AND COALESCE(LENGTH(TRIM(m.transcript_text)), 0) > 0
+         AND (m.status_reason IS NULL OR m.status_reason NOT LIKE 'Auto-split into%')
+         AND m.meeting_start < $3
+         AND COALESCE(m.meeting_end,
+                      m.meeting_start + make_interval(secs => COALESCE(m.duration_seconds, 3600))) > $2
+       ORDER BY m.meeting_start`,
+      [String(coachClientId).trim(), new Date(s - pad).toISOString(), new Date(e + pad).toISOString()],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/** Rename ONE meeting the tenant owns (e.g. an unnamed recording once the client says who it was with). */
+async function updateMeetingTitle(meetingId, coachClientId, title) {
+  const mid = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  const t = String(title || '').trim().slice(0, 300);
+  if (!Number.isFinite(mid) || !t) return { ok: false, error: 'invalid' };
+  const p = getPool();
+  if (!p) return { ok: false, error: 'database not available' };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `UPDATE recall_meetings SET title = $3, updated_at = now() WHERE id = $1 AND coach_client_id = $2`,
+      [mid, String(coachClientId).trim(), t],
+    );
+    return { ok: r.rowCount > 0 };
+  } finally {
+    client.release();
+  }
+}
+
 /** Delete ONE meeting the tenant owns. Returns the provider ids so the caller can tombstone. */
 async function deleteMeetingForCoach(meetingId, coachClientId) {
   const mid = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
@@ -1991,6 +2047,8 @@ module.exports = {
   persistRecallWebhookEvent,
   listMeetingsForCoach,
   findMeetingsForCoach,
+  findOverlappingMeetings,
+  updateMeetingTitle,
   deleteMeetingForCoach,
   purgeMeetingsForCoach,
   getRecallWebhookDbSummary,

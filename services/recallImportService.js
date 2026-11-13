@@ -194,6 +194,11 @@ async function importTranscript(opts) {
 
   const transcriptText = normalizeTranscript(source, rawText);
 
+  // FEED CALLERS (Wispr, 13 Nov 2026) ride this same pipeline with three extras the paste doors
+  // never pass: the recorder's own id (so the database refuses a second copy - see
+  // uq_recall_m_provider_filed), people identified who are not leads yet, and leads the feed has
+  // already matched. All optional; a paste behaves exactly as before.
+  const providerRecordingId = opts.providerRecordingId ? String(opts.providerRecordingId) : undefined;
   const ins = await insertImportedMeeting({
     title,
     source,
@@ -201,8 +206,12 @@ async function importTranscript(opts) {
     meetingStart,
     durationSeconds,
     coachClientId,
+    ...(providerRecordingId ? { providerRecordingId } : {}),
+    ...(Array.isArray(opts.pendingLeads) && opts.pendingLeads.length ? { pendingLeads: opts.pendingLeads } : {}),
   });
   if (!ins.ok) return { ok: false, error: ins.error || 'failed to insert meeting' };
+  // The database already holds this recording: a re-run, not a second meeting.
+  if (ins.duplicate) return { ok: true, duplicate: true, meetingId: ins.meeting_id, leadLinked: false, linkedLeadName: null, leadWarning: null, summary: null, reconstructionStatus: null };
 
   const meetingId = ins.meeting_id;
   log.info(`import: created meeting=${meetingId} source=${source} title="${title}" len=${transcriptText.length}`);
@@ -212,6 +221,17 @@ async function importTranscript(opts) {
   let leadLinked = false;
   let leadWarning = null;
   let linkedLeadName = null;
+  for (const m of (Array.isArray(opts.matchedLeads) ? opts.matchedLeads : [])) {
+    if (!m || !m.leadId) continue;
+    try {
+      await addMeetingLead(meetingId, m.leadId, coachClientId, `import:${source}`);
+      leadLinked = true;
+      if (!linkedLeadName) linkedLeadName = m.name || null;
+      log.info(`import: linked meeting=${meetingId} to lead=${m.leadId} (matched by the feed)`);
+    } catch (e) {
+      log.warn(`import: lead-link failed for meeting=${meetingId} lead=${m.leadId}: ${e.message}`);
+    }
+  }
   const rawEmail = (opts.leadEmail || '').trim();
   if (rawEmail) {
     const cleanEmail = normalizeEmail(rawEmail);

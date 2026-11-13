@@ -136,6 +136,12 @@ async function planOffboard(clientId) {
     }
   }
 
+  // 3b. Wispr Flow sign-in (the feed keeps its pass in Postgres, not on the row - see wisprStore.js).
+  try {
+    const conn = await require('./wisprStore').getStore().getConnection(clientId);
+    if (conn) plan.actions.push({ kind: 'wispr', text: 'Delete Wingguy\'s sign-in to their Wispr Flow (it stops collecting their calls)' });
+  } catch (_) { /* no database or no table = nothing held */ }
+
   // 4. Secrets on the row
   if (set.length) {
     plan.actions.push({ kind: 'fields', fields: set.map(([f]) => f), text: `Clear from their record: ${set.map(([, label]) => label).join(', ')}` });
@@ -207,6 +213,9 @@ async function runOffboard(clientId, { reason = 'Guy asked', logger = defaultLog
       } else if (a.kind === 'unipile') {
         const r = await deleteUnipileAccount(a.accountId);
         done.push(`Unipile connection ${r}`);
+      } else if (a.kind === 'wispr') {
+        await require('./wisprStore').getStore().deleteConnection(clientId);
+        done.push('Wispr sign-in deleted');
       } else if (a.kind === 'assistants') {
         const base = masterBase();
         for (const id of a.ids) await base('Assistants').update(id, { Status: 'Off' }, { typecast: true });

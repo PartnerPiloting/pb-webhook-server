@@ -11,6 +11,7 @@ import HelpButton from './HelpButton';
 import RescorePanel from './RescorePanel';
 import ClaudeKeySection from './ClaudeKeySection';
 import RecorderKeySection from './RecorderKeySection';
+import WisprSection from './WisprSection';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 // The purpose box: the client's own statement of who they are looking for and why. The scorer reads
@@ -970,6 +971,7 @@ const SettingsWithParams = () => {
               <h3 className="text-lg font-semibold text-gray-900">Connect your recorder</h3>
             </div>
             <RecorderKeySection authHeaders={claudeKeyAuthHeaders} />
+            <WisprSection authHeaders={claudeKeyAuthHeaders} />
           </div>
         </div>
       </div>

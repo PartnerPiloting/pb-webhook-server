@@ -5483,3 +5483,78 @@ pins the rest.
 **Not built:** the weekly edit-learning pass does not yet update these boxes when a client keeps
 hand-fixing one of the lines. The claude.ai email surface still has the model write these lines,
 so a client's instructions apply there as before.
+
+## Wispr Flow feed - Wispr calls file themselves (built 2026-11-13, ON FOR GUY ONLY)
+
+**What it does.** A client who records with Wispr Flow Notetaker (no bot - it records on their own
+laptop) clicks **Connect Wispr** once. From then on Wingguy collects their Wispr calls into the
+transcript store by itself: every 15 minutes, and on the spot when their Claude asks for a call.
+Before this a Wispr call only reached the store when someone asked Claude to copy it across (Wispr
+has no webhook and no REST API - only a read-only MCP connector, which a server can sign in to).
+
+**The switch.** `WISPR_FEED_TENANTS` (Render env, comma list of client ids). Empty = off for
+everyone: no Connect link, no poll, transcript tools unchanged. On prod it is `Guy-Wilson` only.
+**No client is added until Guy says so** (he is away 15-28 Nov 2026; Meagan Smith is the first
+candidate). `WISPR_OAUTH_CLIENT_ID` = the public client id Wispr issued when Wingguy registered
+(`scripts/wispr-register-client.js`, run once).
+
+**Pieces.**
+- `services/wisprConfig.js` - the switch, the addresses, the timings.
+- `routes/wisprAuthRoutes.js` - `/auth/wispr/start` (the client's signed Connect link),
+  `/auth/wispr/callback`, `/auth/wispr/status?key=` (Guy: every connection, no secrets).
+- `services/wisprAuth.js` - sign-in (authorization code + PKCE) and the token keeper. The pass
+  lasts 3 days; the renewal ticket ROTATES on every renewal, so a renewal runs under a lock and
+  saves pass + new ticket in one write (old ticket kept beside it).
+- `services/wisprStore.js` - Postgres: `wispr_connections` (the secrets live here, not on the
+  Client Master row - a rotating ticket needs a lock Airtable does not have), `wispr_oauth_pending`,
+  `wispr_recordings` (what was done with each Wispr recording + the "needs a name" state).
+- `services/wisprClient.js` - talks to `https://api.wisprflow.ai/connect/mcp` with the MCP SDK
+  client: `search_meetings` (since + cursor), `get_meeting` (transcript read in 40k portions),
+  `get_meeting_participants_enriched` (the only place attendee emails appear).
+- `services/wisprFeedService.js` - the poll, matching, doubles check, on-demand check, unnamed
+  recordings, the two emails, status. The 15-minute poll rides the Fathom poll's timer
+  (`fathomPollService.tick`).
+- `services/wisprMcp.js` - `wingguy_name_recording` (only registered for switched-on tenants).
+- Portal: `WisprSection.js` under Settings > Your Meeting Recorder (`/api/wingguy/setup/wispr`
+  answers `hidden` unless switched on). Client board: the Recorder pill carries Wispr status and
+  last good check.
+
+**Rules it keeps.**
+- Read-only towards Wispr. Files through `recallImportService.importTranscript` (the same pipeline
+  as `recall_import_transcript`), `source = 'wispr'`, `provider_recording_id` = Wispr's meeting id,
+  so the database refuses a second copy.
+- Lead matching reuses the Fathom ingest's matchers: attendee email, unique name, the coach's own
+  calendar booking, pending leads for people not in the database yet.
+- Doubles: if another recorder already filed the same call (same tenant, the shared time covers at
+  least half the Wispr recording) the Wispr copy is skipped. A tenant who also runs another
+  recorder gets a 20-minute head start for that recorder on the poll.
+- Transcript not ready = not filed, picked up next pass. On demand, the tools answer "Wispr is
+  still writing up that call - try again in a couple of minutes" and do NOT hand over an older call
+  with the same person.
+- A recording on nobody's calendar is stored unlinked and flagged. Wingguy asks ONE question -
+  "who was this call with?" (start time, length, a best guess from names said on the call) - in
+  chat when it matters, plus one email per recording. Never filed on the guess.
+  `wingguy_name_recording` attaches it or marks it "skip it".
+- A dropped connection: one email per logout with a one-click reconnect link; the chat says so
+  plainly with the same link; after a reconnect everything since the last good check is collected.
+
+**Tests.** `node tests/wispr-feed.test.js` (stand-ins for Wispr), `node
+tests/wispr-transcript-tools.test.js` (the two transcript tools with the feed plugged in),
+`node tests/wispr-live-smoke.test.js` (LIVE, read-only: Wispr's public sign-in settings and a
+no-pass knock on the connector).
+
+**Not proven / not built (as of 13 Nov 2026).**
+- How long a connection survives with nobody touching it is still being measured by the separate
+  test kit on Guy's machine (checks 14 and 21 Nov). The feed renews every ~2.5 days, so it is
+  never idle that long.
+- Reverse doubles: if Wispr files first and Fathom files the same call later, both are kept (the
+  Fathom path does not check for a Wispr copy). The 20-minute head start makes this rare on the
+  poll; an on-demand check straight after a call can cause it.
+- The legacy `/mcp/:token` endpoint's own `recall_latest_transcript` does not do the on-demand
+  check (the `/mcp2` connector that claude.ai uses does).
+- "name my last recording" and "skip it" are registered phrases but have not been typed into a
+  fresh client chat yet - do that before the unnamed-recording email goes to any client.
+- Wispr's terms were read on 13 Nov 2026: nothing forbids this (their help page supports "another
+  MCP client" on a read-only connection; their terms cover integrations a user chooses to link).
+  The one line worth knowing is "do not ... give others access to your account" - connecting is
+  the client's own choice through Wispr's own Allow page, not a shared password.
