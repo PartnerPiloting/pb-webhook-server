@@ -487,6 +487,89 @@ function fakeClient({ archiveOk = true } = {}) {
     assert.ok(!r.ok && /not switched on for MAIL/.test(r.error) && link.puts.length === 0, JSON.stringify(r));
   });
 
+  // Guy, 13 Nov 2026: a Fathom recap of his call with Simon Steele was shown with "Nothing has gone
+  // to him since" - he had emailed Simon at 2:44pm. The list now reads sent mail itself.
+  const simonSent = { date: Date.parse('2026-11-13T04:44:05Z'), subject: 'Something to share with the Squad team',
+    people: [{ name: 'Simon Steele', email: 'simon@simonsteele.com.au' }] };
+  const recap = { id: 'T9', subject: 'Recap for "Simon Steele & Guy Wilson"', count: 1, unread: false,
+    last: { id: 'm9', date: Date.parse('2026-11-12T22:30:00Z'), from: 'Fathom <no-reply@fathom.video>', to: 'guyralphwilson@gmail.com',
+      text: 'Simon will come back on Thu 3 December.', attachments: [] } };
+  const sentDeps = (sentSince) => ({
+    clientService: { getClientById: async () => ({ clientId: 'Guy-Wilson' }), getAllClients: async () => [] },
+    mailProvider: { hasMailbox: () => true, activeMailProvider: () => 'unipile' },
+    approvals: async () => [],
+    backendOverride: { list: async () => ({ threads: [recap], more: false, total: 1 }),
+      read: async () => ({ subject: recap.subject, messages: [recap.last] }), ...(sentSince ? { sentSince } : {}) },
+  });
+
+  await t('addresses are read out of a To line, quoted commas and all', () => {
+    assert.deepStrictEqual(_test.parseAddressList('Simon Steele <Simon@SimonSteele.com.au>, "Ng, Amy" <amy@y.com>, bare@z.com'), [
+      { name: 'Simon Steele', email: 'simon@simonsteele.com.au' }, { name: 'Amy Ng', email: 'amy@y.com' }, { name: '', email: 'bare@z.com' }]);
+  });
+
+  await t('a call recap that names someone already emailed says so, on the list and on read', async () => {
+    const deps = sentDeps(async () => ({ sent: [simonSent], truncated: false }));
+    const list = await runInbox({ action: 'list' }, 'Guy-Wilson', deps);
+    assert.ok(/SENT MAIL CHECKED/.test(list.text), list.text);
+    assert.ok(/YOU HAVE WRITTEN SINCE THIS EMAIL ARRIVED: to Simon Steele <simon@simonsteele\.com\.au> on Fri,? 13 Nov,? 2:44 pm - "Something to share with the Squad team"/i.test(list.text), list.text);
+    const read = await runInbox({ action: 'read', thread_id: 'T9' }, 'Guy-Wilson', deps);
+    assert.ok(/YOU HAVE WRITTEN SINCE THIS EMAIL ARRIVED: to Simon Steele/.test(read.text), read.text);
+  });
+
+  await t('mail sent BEFORE the email, to someone else, or only to yourself is not claimed', () => {
+    const email = { date: recap.last.date, from: ['no-reply@fathom.video'], text: `${recap.subject}\n${recap.last.text}` };
+    const own = new Set(['guyralphwilson@gmail.com']);
+    assert.strictEqual(_test.writtenSince(email, [{ ...simonSent, date: recap.last.date - 1000 }], own).length, 0, 'sent before');
+    assert.strictEqual(_test.writtenSince(email, [{ ...simonSent, people: [{ name: 'Simone Steeleman', email: 'x@y.com' }] }], own).length, 0, 'near-miss name');
+    assert.strictEqual(_test.writtenSince(email, [{ ...simonSent, people: [{ name: 'Guy Wilson', email: 'guyralphwilson@gmail.com' }] }], own).length, 0, 'own address');
+    assert.strictEqual(_test.writtenSince({ ...email, from: ['simon@simonsteele.com.au'], text: 'hi' }, [{ ...simonSent, people: [{ name: '', email: 'simon@simonsteele.com.au' }] }], own).length, 1, 'by sender address');
+  });
+
+  await t('when sent mail cannot be read the list says so instead of staying silent', async () => {
+    const none = await runInbox({ action: 'list' }, 'Guy-Wilson', sentDeps(null));
+    assert.ok(/SENT MAIL NOT CHECKED/.test(none.text) && !/YOU HAVE WRITTEN SINCE THIS EMAIL ARRIVED: to/.test(none.text), none.text);
+    const broke = await runInbox({ action: 'list' }, 'Guy-Wilson', sentDeps(async () => { throw new Error('quota'); }));
+    assert.ok(/SENT MAIL NOT CHECKED \(quota\)/.test(broke.text) && /Recap for/.test(broke.text), broke.text);
+  });
+
+  // The same look, again, just before each job is shown (action=check).
+  const checkDeps = ({ sent = [], messages = [recap.last], inInbox = true } = {}) => {
+    const d = sentDeps(async () => ({ sent, truncated: false }));
+    d.backendOverride.read = async () => ({ subject: recap.subject, messages, inInbox });
+    return d;
+  };
+
+  await t('check: an email already answered from sent mail comes back as dealt with', async () => {
+    const out = await runInbox({ action: 'check', thread_id: 'T9' }, 'Guy-Wilson', checkDeps({ sent: [simonSent] }));
+    assert.ok(/Still in the inbox/.test(out.text) && /YOU HAVE WRITTEN SINCE THIS EMAIL ARRIVED: to Simon Steele/.test(out.text) && /LOOKS ALREADY DEALT WITH/.test(out.text), out.text);
+  });
+
+  await t('check: nothing sent, still in the inbox = present the job', async () => {
+    const out = await runInbox({ action: 'check', thread_id: 'T9' }, 'Guy-Wilson', checkDeps());
+    assert.ok(/NOT DEALT WITH/.test(out.text) && !/LOOKS ALREADY DEALT WITH/.test(out.text) && /Sent mail: nothing since/.test(out.text), out.text);
+  });
+
+  await t('check: archived meanwhile, or replied to in the thread, is dealt with', async () => {
+    const gone = await runInbox({ action: 'check', thread_id: 'T9' }, 'Guy-Wilson', checkDeps({ inInbox: false }));
+    assert.ok(/NO LONGER IN THE INBOX/.test(gone.text) && /LOOKS ALREADY DEALT WITH/.test(gone.text), gone.text);
+    const reply = { id: 'm10', date: recap.last.date + 60000, from: 'Guy Wilson <guyralphwilson@gmail.com>', to: 'bob@y.com', text: 'Thanks Bob, done.', attachments: [] };
+    const replied = await runInbox({ action: 'check', thread_id: 'T9' }, 'Guy-Wilson', checkDeps({ messages: [recap.last, reply] }));
+    assert.ok(/THEY HAVE REPLIED IN THIS THREAD/.test(replied.text) && /LOOKS ALREADY DEALT WITH/.test(replied.text), replied.text);
+  });
+
+  await t('check: sent mail unreadable is said, never read as "nothing sent"', async () => {
+    const d = checkDeps();
+    d.backendOverride.sentSince = async () => { throw new Error('quota'); };
+    const out = await runInbox({ action: 'check', thread_id: 'T9' }, 'Guy-Wilson', d);
+    assert.ok(/SENT MAIL NOT CHECKED \(quota\)/.test(out.text) && /NOT DEALT WITH/.test(out.text), out.text);
+  });
+
+  await t('the description tells Claude to check each job before showing it', () => {
+    const d = TOOL_DEFS.find((x) => x.name === 'wingguy_inbox');
+    assert.ok(/BEFORE YOU SHOW EACH JOB/.test(d.description) && /action=check/.test(d.description));
+    assert.ok(d.jsonSchema.properties.action.enum.includes('check'));
+  });
+
   console.log(failed ? `\n${failed} failed` : '\nall passed');
   process.exit(failed ? 1 : 0);
 })();

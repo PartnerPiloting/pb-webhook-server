@@ -154,6 +154,101 @@ function excerpt(text, max) {
 }
 
 // ---------------------------------------------------------------------------
+// "You have written since" - the server's own look at sent mail.
+//
+// Guy, 13 Nov 2026: a Fathom recap of his morning call with Simon Steele was job 6 of 9. Claude said
+// "Nothing has gone to him since" and offered to draft a follow-up - he had emailed Simon at 2:44pm.
+// The description already told Claude to check the mailbox first (the Kay Ridge rule, 2 Nov); it was
+// the second time that rule was not enough. So the check no longer depends on Claude remembering:
+// the list itself reads recent sent mail and stamps the fact on the email it belongs to.
+// ---------------------------------------------------------------------------
+
+const SENT_LOOKBACK_MS = 14 * 24 * 3600 * 1000;
+const SENT_MAX = 80;
+
+/** "Simon Steele <s@x.com>, "Ng, Amy" <a@y.com>, bare@z.com" -> [{ name, email }] */
+function parseAddressList(raw) {
+  const out = [];
+  const re = /(?:"([^"]*)"|([^",<]*))\s*<([^>]+)>|([^\s,<>"]+@[^\s,<>"]+)/g;
+  let m;
+  while ((m = re.exec(String(raw || '')))) {
+    const email = String(m[3] || m[4] || '').trim().toLowerCase();
+    if (!email.includes('@')) continue;
+    let name = String(m[1] || m[2] || '').trim();
+    const flipped = name.match(/^([^,]+),\s*(.+)$/);   // "Steele, Simon" -> "Simon Steele"
+    if (flipped) name = `${flipped[2]} ${flipped[1]}`.trim();
+    out.push({ name: name && !name.includes('@') ? name : '', email });
+  }
+  return out;
+}
+
+/** A full name (two words or more) found whole in the text, any spacing or case. */
+function nameInText(name, text) {
+  const words = String(name || '').split(/\s+/).filter((w) => w.length > 1);
+  if (words.length < 2) return false;
+  const esc = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`(^|[^\\p{L}])${esc.join('\\s+')}($|[^\\p{L}])`, 'iu').test(String(text || ''));
+}
+
+/**
+ * The people this email is from or about that the caller has ALREADY emailed since it arrived.
+ * email = { date(ms), from: [addresses], text: subject + body }; sent = [{ date, subject, people }].
+ * A person matches when the email is from their address, or their address or full name is in it.
+ * Returns one entry per person, their newest email first: [{ name, email, date, subject }].
+ */
+function writtenSince(email, sent, own) {
+  const from = new Set((email.from || []).map((a) => String(a).toLowerCase()));
+  const text = String(email.text || '');
+  const lower = text.toLowerCase();
+  const hits = new Map();
+  for (const s of sent || []) {
+    if (!(s.date > email.date)) continue;
+    for (const p of s.people || []) {
+      if ((own && own.has(p.email)) || OWN_SYSTEM.some((re) => re.test(p.email))) continue;
+      if (!(from.has(p.email) || lower.includes(p.email) || nameInText(p.name, text))) continue;
+      const had = hits.get(p.email);
+      if (!had || s.date > had.date) hits.set(p.email, { name: p.name, email: p.email, date: s.date, subject: s.subject });
+    }
+  }
+  return [...hits.values()].sort((a, b) => b.date - a.date).slice(0, 3);
+}
+
+function writtenSinceLine(hits) {
+  if (!hits.length) return null;
+  const each = hits.map((h) => `${h.name ? `${h.name} <${h.email}>` : h.email} on ${brisbaneTime(h.date)} - "${h.subject || '(no subject)'}"`);
+  return `YOU HAVE WRITTEN SINCE THIS EMAIL ARRIVED: to ${each.join('; and to ')}. This is from the real sent mail. NEVER say nothing has gone to them. Before offering any email to them, read what was sent (wingguy_lead_correspondence, then wingguy_read_message) - if it already does the job, the job is DONE.`;
+}
+
+/**
+ * Recent sent mail from this connection, or why it could not be read. Never throws.
+ * -> { ok, sent, from(ms) } | { ok:false, why }
+ */
+async function recentSent(inbox, oldestMs) {
+  if (typeof inbox.backend.sentSince !== 'function') return { ok: false, why: 'this mailbox connection cannot list sent mail here' };
+  const since = Math.max(Number(oldestMs) || 0, Date.now() - SENT_LOOKBACK_MS);
+  try {
+    const r = await inbox.backend.sentSince(since);
+    const sent = r.sent || [];
+    return { ok: true, sent, from: r.truncated && sent.length ? Math.min(...sent.map((x) => x.date)) : since };
+  } catch (e) {
+    return { ok: false, why: e.message };
+  }
+}
+
+function sentCheckLines(check) {
+  if (check.ok) {
+    return [
+      `SENT MAIL CHECKED back to ${brisbaneTime(check.from)}: where an email below is from, or names, someone they have emailed since it arrived, it carries a "YOU HAVE WRITTEN SINCE THIS EMAIL ARRIVED" line - a fact, act on it. No such line is NOT proof that nothing was sent (a name can be spelt another way, and they may write to the person after this list was made): still call wingguy_lead_correspondence before any job about a person.`,
+      '',
+    ];
+  }
+  return [
+    `SENT MAIL NOT CHECKED (${check.why}): nothing below tells you whether they have already written to someone. Call wingguy_lead_correspondence for every person before a job about them - never say "nothing has gone to them" without it.`,
+    '',
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // The two connections. Each gives: list(max) -> { threads:[{id, subject, last, count, unread}], more },
 // read(threadId) -> { subject, messages }, move(threadId, archive) -> { subject }.
 // A message is { date(ms), from, to, cc, text, attachments }.
@@ -189,10 +284,24 @@ function gmailBackend() {
       }
       return { threads: out, more: !!data.nextPageToken, next: data.nextPageToken || null, total: Number.isFinite(total) ? total : null };
     },
+    // Mail the person sent after `sinceMs`, newest first: who it went to (To + Cc) and its subject.
+    async sentSince(sinceMs) {
+      const { data } = await gmail.users.messages.list({ userId: 'me', q: `in:sent after:${Math.floor(sinceMs / 1000)}`, maxResults: SENT_MAX });
+      const ids = (data.messages || []).map((m) => m.id);
+      const sent = [];
+      for (let i = 0; i < ids.length; i += 10) {
+        const batch = await Promise.all(ids.slice(i, i + 10).map((id) =>
+          gmail.users.messages.get({ userId: 'me', id, format: 'metadata', metadataHeaders: ['To', 'Cc', 'Subject'] }).then((r) => r.data)));
+        for (const m of batch) {
+          sent.push({ date: Number(m.internalDate), subject: header(m, 'Subject'), people: [...parseAddressList(header(m, 'To')), ...parseAddressList(header(m, 'Cc'))] });
+        }
+      }
+      return { sent, truncated: !!data.nextPageToken };
+    },
     async read(id) {
       const { data } = await gmail.users.threads.get({ userId: 'me', id, format: 'full' });
       const msgs = data.messages || [];
-      return { subject: msgs.length ? header(msgs[0], 'Subject') : '', messages: msgs.map(toMsg) };
+      return { subject: msgs.length ? header(msgs[0], 'Subject') : '', messages: msgs.map(toMsg), inInbox: msgs.some((m) => (m.labelIds || []).includes('INBOX')) };
     },
     async move(id, archive) {
       const { data } = await gmail.users.threads.modify({
@@ -396,6 +505,8 @@ async function runList(args, inbox, tenant, deps) {
   if (!offset && threads.length) head.push(...clearBlockLines(await clearBlock(inbox)));
   if (!threads.length) return { text: [...head, offset ? 'No more emails - that was the end of the inbox.' : 'Your inbox is empty.'].join('\n') };
   const lines = [...head, ...coverageLines({ shown: threads.length, offset, more, total, next }), ''];
+  const check = await recentSent(inbox, Math.min(...threads.map((t) => t.last.date || Date.now())));
+  lines.push(...sentCheckLines(check));
   threads.forEach((t, n) => {
     const m = t.last;
     const tags = senderTags(m.from, m.to, inbox.who);
@@ -411,6 +522,10 @@ async function runList(args, inbox, tenant, deps) {
     if (tags.length) lines.push(`About the sender: ${tags.join('; ')}`);
     if (m.attachments.length) lines.push(`Attachments: ${m.attachments.join(', ')}`);
     lines.push(`Text: ${excerpt(m.text, EXCERPT_CHARS).replace(/\n/g, ' / ')}`);
+    if (check.ok) {
+      const since = writtenSinceLine(writtenSince({ date: m.date, from: [senderAddress(m.from)], text: `${t.subject || ''}\n${m.text}` }, check.sent, inbox.who.own));
+      if (since) lines.push(since);
+    }
     lines.push('');
   });
   return { text: lines.join('\n') };
@@ -427,6 +542,62 @@ async function runRead(args, inbox) {
     if (m.attachments.length) out.push(`Attachments: ${m.attachments.join(', ')}`);
     out.push(text, '');
   }
+  if (messages.length) {
+    const lastDate = Math.max(...messages.map((m) => m.date || 0));
+    const check = await recentSent(inbox, lastDate);
+    if (check.ok) {
+      const since = writtenSinceLine(writtenSince({
+        date: lastDate, from: messages.map((m) => senderAddress(m.from)), text: `${subject || ''}\n${messages.map((m) => m.text).join('\n')}`,
+      }, check.sent, inbox.who.own));
+      if (since) out.push(since);
+    } else out.push(...sentCheckLines(check));
+  }
+  return { text: out.join('\n') };
+}
+
+/**
+ * One email, looked at again RIGHT NOW - called just before its job is shown (Guy, 13 Nov 2026: a run
+ * of nine takes twenty minutes, and he deals with things in other chats while it is open, so what
+ * the list said at the start is stale by item 6). Says: is it still in the inbox, who has the latest
+ * word in its thread, and has he written since to anyone it is from or names.
+ */
+async function runCheck(args, inbox) {
+  const id = String(args.thread_id || '').trim();
+  if (!id) return { text: 'Which email? Pass its thread_id from the list.', isError: true };
+  const { subject, messages, inInbox } = await inbox.backend.read(id);
+  if (!messages.length) return { text: `CHECKED NOW: that email is no longer in the mailbox (thread_id=${id}). Say so in one line and move to the next job.` };
+  const own = inbox.who.own;
+  const isOwn = (m) => own.has(senderAddress(m.from));
+  const newest = messages[messages.length - 1];
+  // The email the job came from = the newest one that is not their own.
+  const theirs = [...messages].reverse().find((m) => !isOwn(m)) || newest;
+  const out = [`CHECKED NOW (${brisbaneTime(Date.now())}) - "${subject || '(no subject)'}"`];
+  let dealt = false;
+
+  if (inInbox === false) {
+    dealt = true;
+    out.push('- NO LONGER IN THE INBOX: it has been archived since the list was made - they cleared it themselves. Do not archive it again.');
+  } else if (inInbox === true) out.push('- Still in the inbox.');
+
+  if (isOwn(newest) && newest !== theirs) {
+    dealt = true;
+    out.push(`- THEY HAVE REPLIED IN THIS THREAD: their own message on ${brisbaneTime(newest.date)} is the latest word. "${excerpt(newest.text, 200).replace(/\n/g, ' / ')}"`);
+  } else {
+    out.push(`- Latest message in the thread: ${brisbaneTime(newest.date)} from ${newest.from}${messages.length > 1 ? ` (${messages.length} messages - if that is newer than the one you listed, the other side has written again: read it with action=read)` : ''}.`);
+  }
+
+  const check = await recentSent(inbox, theirs.date);
+  if (check.ok) {
+    const since = writtenSinceLine(writtenSince({
+      date: theirs.date, from: messages.filter((m) => !isOwn(m)).map((m) => senderAddress(m.from)), text: `${subject || ''}\n${messages.map((m) => m.text).join('\n')}`,
+    }, check.sent, own));
+    if (since) { dealt = true; out.push(`- ${since}`); }
+    else out.push('- Sent mail: nothing since this email arrived to anyone it is from or names by full name or address. If the job is about a person it only calls by first name, this is NOT proof - call wingguy_lead_correspondence for them.');
+  } else out.push(`- ${sentCheckLines(check)[0]}`);
+
+  out.push('', dealt
+    ? 'LOOKS ALREADY DEALT WITH. Do not present this as a job or offer a draft. Say it in ONE line with the fact and the time ("6 of 9 - Simon Steele: you emailed him at 2:44pm - \'Something to share with the Squad team\'. Clearing this one.") and, if it is still in the inbox, archive it - unless what they sent plainly did not cover the job, in which case say what is still open. Then go straight on to the next job, checking that one first.'
+    : 'NOT DEALT WITH as far as the mailbox shows. Present the job now.');
   return { text: out.join('\n') };
 }
 
@@ -481,8 +652,8 @@ async function runInstruction(args, tenant, deps, remember) {
 
 async function runInbox(args = {}, tenant = TENANT, deps = {}) {
   const action = args.action || 'list';
-  if (!['list', 'read', 'archive', 'restore', 'remember', 'forget'].includes(action)) {
-    return { text: `Unknown action "${action}". Use list, read, archive, restore, remember or forget.`, isError: true };
+  if (!['list', 'read', 'check', 'archive', 'restore', 'remember', 'forget'].includes(action)) {
+    return { text: `Unknown action "${action}". Use list, read, check, archive, restore, remember or forget.`, isError: true };
   }
   if (action === 'remember' || action === 'forget') return runInstruction(args, tenant, deps, action === 'remember');
   const inbox = await resolveInbox(tenant, deps);
@@ -490,6 +661,7 @@ async function runInbox(args = {}, tenant = TENANT, deps = {}) {
   try {
     if (action === 'list') return await runList(args, inbox, tenant, deps);
     if (action === 'read') return await runRead(args, inbox);
+    if (action === 'check') return await runCheck(args, inbox);
     return await runMove(args, inbox, action === 'archive');
   } catch (e) {
     return { text: `Couldn't reach your mailbox: ${e.message}`, isError: true };
@@ -506,11 +678,12 @@ const TOOL_DEFS = [
       '(a) THE JOBS - each thing they actually need to do or decide, most important first. One email can hold several jobs (a report from their own system - Monday campaign numbers, Wingguy Learning, memory tidy-up, the morning brief - is usually several, in system language: turn each into a plain job and drop the rest) or none; several emails can be one job. A QUICK THANKS (below) is a job. A job is something they can act on from this chat, or with one click on a link you give them. NEVER make a job of Claude\'s own housekeeping - note merges, memory contradictions, test results in a memory tidy-up report are handled by Claude Code, not here: leave them out.\n' +
       '(b) THE EASY CLEAR - emails with no job: information, calendar acceptances, automatic notices, newsletters, receipts, copies of mail they sent.\n' +
       'CHECK EVERY JOB LIVE before it goes in the queue (wingguy_list_events for the calendar; wingguy_campaigns for campaigns; wingguy_scheduled_emails for what is queued). An email is a snapshot - on 2 Nov a tidy-up email said Steve\'s call was not on the calendar and the invite had gone 24 minutes after it was sent. A job already done is not a job: fold it into the easy clear ("Steve\'s call - already on your calendar"). Never pass on a job with "I haven\'t checked" - check it, or if nothing can check it, say plainly what to look at.\n' +
-      'ANY JOB ABOUT A PERSON - writing to them, chasing them, "re-contact due", "no reply yet" - first get their address (wingguy_find_person) and call wingguy_lead_correspondence: it reads the real mailbox, both directions, including what they sent today from their own email outside Wingguy. Look at everything newer than the email or report the job came from. If they have already written to that person, the job is DONE - fold it into the easy clear ("Kay - you wrote to her at 10:15 this morning"). NEVER say "nothing has gone to them", "no reply" or "you haven\'t written" from wingguy_dossier, wingguy_lead_history, a report or your own memory - none of those sees the mailbox. Guy, 2 Nov 2026: a report said Kay was due a welcome-back, Claude said "nothing has gone to her since" and offered to draft one - he had written to her that morning; one more number and she would have had two.\n\n' +
+      'ANY JOB ABOUT A PERSON - writing to them, chasing them, "re-contact due", "no reply yet", and a RECAP OR NOTES OF A CALL with them (Fathom, Wispr, Zoom - the follow-up may already have gone) - first get their address (wingguy_find_person) and call wingguy_lead_correspondence: it reads the real mailbox, both directions, including what they sent today from their own email outside Wingguy. Look at everything newer than the email or report the job came from. If they have already written to that person, the job is DONE - fold it into the easy clear ("Kay - you wrote to her at 10:15 this morning"). NEVER say "nothing has gone to them", "no reply" or "you haven\'t written" from wingguy_dossier, wingguy_lead_history, a report or your own memory - none of those sees the mailbox. Guy, 2 Nov 2026: a report said Kay was due a welcome-back, Claude said "nothing has gone to her since" and offered to draft one - he had written to her that morning; one more number and she would have had two. The list now does part of this for you: an email carrying "YOU HAVE WRITTEN SINCE THIS EMAIL ARRIVED" names an email they have already sent that person - a fact from their sent mail. Say it ("you emailed Simon at 2:44pm - \'Something to share with the Squad team\'"), read that email, and only offer another if it plainly did not cover the job. Guy, 13 Nov 2026: a recap of his call with Simon Steele was presented with "Nothing has gone to him since" and an offer to draft a follow-up, 1 hour 43 minutes after he had sent one.\n\n' +
       'THEN TALK, IN THIS ORDER:\n' +
       '1. ONE LINE: "12 emails - 5 things for you, 7 can go." Count EMAILS (threads in the list), each once: the two numbers must add up to the total - an email with a job counts under "things for you" only, even when its job turns out already done. (If the list says NOT THE WHOLE INBOX, this line also says how many there are in all and that this covers the newest 50.)\n' +
       '2. THE EASY CLEAR, in one go: one short line per kind, alike ones run together ("Rick\'s 2 calendar acceptances", "3 of your own sent emails", "Rick\'s call is Fri 10:30am - on your calendar"). These are the CAN GO pile; a useful fact rides along in its line (WORTH KNOWING). End with exactly this, using the real numbers: "Type yes to clear these 7. Then I\'ll take you through your 5 things, one at a time." - and STOP. A bare "Clear them?" is not enough: Guy, 2 Nov 2026, a person cannot tell it leaves their own things alone, or that they then come one by one. On yes, archive exactly those, say "Done - 7 cleared." and go straight to job 1 in the same message.\n' +
-      '3. THE JOBS, ONE PER MESSAGE: "1 of 5 - Kay Ridge." Two or three short sentences: what it is and why now. Then the CHOICES, numbered, each on its own line, the one you recommend first, always ending with Later:\n' +
+      '3. THE JOBS, ONE PER MESSAGE. BEFORE YOU SHOW EACH JOB - every one, the first included - call action=check with that job\'s thread_id. The list was made minutes ago and they deal with things in other chats and in their mailbox while you talk; check looks again right now: is the email still in the inbox, who has the latest word, have they written to that person since. If it answers LOOKS ALREADY DEALT WITH, the job is one line ("6 of 9 - Simon Steele: you emailed him at 2:44pm. Clearing this one."), archive it, and go on to the next job in the SAME message - checking that one first too. Never show a job you have not just checked (Guy, 13 Nov 2026: job 6 of 9 offered a follow-up to someone he had already emailed that afternoon). A job with no email of its own to check (it came out of a report) gets the live check its subject needs instead.\n' +
+      '   Then the job: "1 of 5 - Kay Ridge." Two or three short sentences: what it is and why now. Then the CHOICES, numbered, each on its own line, the one you recommend first, always ending with Later:\n' +
       '   1 Draft her a welcome-back with times for her first session\n' +
       '   2 Open the email in Gmail\n' +
       '   3 Later\n' +
@@ -528,8 +701,8 @@ const TOOL_DEFS = [
       'STANDING INSTRUCTIONS: the list starts with any standing inbox instructions they have given - follow them when sorting (an "always clear" instruction puts those emails in Can go; the yes is still theirs to give). When they say how they always want something handled - "always clear LinkedIn notifications", "always show me anything from the accountant", "never bother me with receipts" - save it with action=remember and text = the instruction in their words, then tell them it is saved. action=forget with instruction_id removes one.\n\n' +
       'action=read with a thread_id gives the whole thread, when you need more than the excerpt. Plain English, what a thing means before what it is called, " - " not an em dash.',
     zodSchema: {
-      action: z.enum(['list', 'read', 'archive', 'restore', 'remember', 'forget']).optional().describe('list (default) | read | archive | restore | remember | forget'),
-      thread_id: z.string().optional().describe('read: the thread_id from the list'),
+      action: z.enum(['list', 'read', 'check', 'archive', 'restore', 'remember', 'forget']).optional().describe('list (default) | read | check | archive | restore | remember | forget'),
+      thread_id: z.string().optional().describe('read / check: the thread_id from the list'),
       thread_ids: z.array(z.string()).optional().describe('archive / restore: the thread_ids they said yes to'),
       max: z.number().optional().describe('list: how many threads, newest first (default and most 50)'),
       page_token: z.string().optional().describe('list: the next batch - exactly the page_token the previous list gave'),
@@ -539,8 +712,8 @@ const TOOL_DEFS = [
     jsonSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'read', 'archive', 'restore', 'remember', 'forget'], description: 'list (default) | read | archive | restore | remember | forget' },
-        thread_id: { type: 'string', description: 'read: the thread_id from the list' },
+        action: { type: 'string', enum: ['list', 'read', 'check', 'archive', 'restore', 'remember', 'forget'], description: 'list (default) | read | check | archive | restore | remember | forget' },
+        thread_id: { type: 'string', description: 'read / check: the thread_id from the list' },
         thread_ids: { type: 'array', items: { type: 'string' }, description: 'archive / restore: the thread_ids they said yes to' },
         max: { type: 'number', description: 'list: how many threads, newest first (default and most 50)' },
         page_token: { type: 'string', description: 'list: the next batch - exactly the page_token the previous list gave' },
@@ -594,5 +767,5 @@ require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
 module.exports = {
   registerWingguyInboxTools, legacyToolList, legacyToolCall, TOOL_DEFS, runInbox,
-  _test: { cleanBody, bodyText, senderTags, senderAddress, attachmentNames, wingguyMailBackend, resolveInbox, gmailThreadLink },
+  _test: { cleanBody, bodyText, senderTags, senderAddress, attachmentNames, wingguyMailBackend, resolveInbox, gmailThreadLink, parseAddressList, nameInText, writtenSince },
 };
