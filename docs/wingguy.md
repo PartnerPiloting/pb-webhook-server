@@ -5538,6 +5538,21 @@ candidate). `WISPR_OAUTH_CLIENT_ID` = the public client id Wispr issued when Win
 - A dropped connection: one email per logout with a one-click reconnect link; the chat says so
   plainly with the same link; after a reconnect everything since the last good check is collected.
 
+**Back-to-back calls in one Wispr recording (added 2026-11-13, later the same day).** Wispr's
+transcript has no times, so the Fathom/Granola clock-based splitters cannot be used. Instead
+`services/wisprSplitService.js` reads the VOICES: the first guest's voice stops for good, a goodbye is
+said, a new guest's voice starts, while the coach runs the whole way through. Tried read-only on Guy's
+seven real Wispr recordings: it cut exactly one (16 Sep, Matt then Owen) on the line after the goodbye
+and left the other six whole. A recording is only SPLIT when the calendar agrees
+(`wisprFeedService.planRecordingSplit`): each part goes to a booking by NAME (Wispr's label matches the
+booking), or in ORDER when there are exactly as many back-to-back bookings as parts and no name says
+otherwise. A part with no booking is still split off but stored under nobody with the "who was this call
+with?" question. Parts file as `<wispr id>#1`, `#2`. Anything doubtful (no goodbye, no booking found,
+names contradict) files as ONE call with the review queue's "may be more than one call" warning.
+`WISPR_SPLIT_ENABLED=false` turns splitting off (warning only). Cannot work when Wispr hears a single
+voice for the whole recording. Tests: `node tests/wispr-split.test.js`.
+
+
 **Tests.** `node tests/wispr-feed.test.js` (stand-ins for Wispr), `node
 tests/wispr-transcript-tools.test.js` (the two transcript tools with the feed plugged in),
 `node tests/wispr-live-smoke.test.js` (LIVE, read-only: Wispr's public sign-in settings and a

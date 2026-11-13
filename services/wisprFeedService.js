@@ -39,10 +39,11 @@ const cfg = require('./wisprConfig');
 const auth = require('./wisprAuth');
 const wisprClient = require('./wisprClient');
 const { getStore, publicConnection } = require('./wisprStore');
+const splitter = require('./wisprSplitService');
 
 const SOURCE = cfg.SOURCE;
 // Decided for good - never looked at again.
-const FINAL = new Set(['filed', 'unnamed', 'duplicate', 'skipped-short', 'tombstoned']);
+const FINAL = new Set(['filed', 'unnamed', 'duplicate', 'skipped-short', 'tombstoned', 'split']);
 
 function liveLog() {
   try { return require('../utils/loggerHelper').createSafeLogger('SYSTEM', null, 'wispr_feed'); } catch (_) { return console; }
@@ -66,6 +67,8 @@ function liveDeps() {
     relevantCalendarEvents: fathom.relevantCalendarEvents,
     pickAlignedEvent: fathom.pickAlignedEvent,
     calendarParticipantEmails: fathom.calendarParticipantEmails,
+    dedupeEvents: (events, coachNames) => require('./fathomSplitService').dedupeMeetingEvents(events, coachNames),
+    providerRecordingIngestedAny: db.providerRecordingIngestedAny,
     findLeadByName: inbound.findLeadByName,
     findLeadByEmail: inbound.findLeadByEmail,
     learnEmailForLead: inbound.learnEmailForLead,
@@ -200,7 +203,7 @@ function otherRecorder(coach) {
 // One recording
 // ---------------------------------------------------------------------------
 
-async function matchPeople({ coach, participants, span, transcript }, deps) {
+async function matchPeople({ coach, participants, span, transcript, events: knownEvents }, deps) {
   const user = (participants && participants.user) || {};
   const coachEmails = [coach.googleCalendarEmail, coach.calendarEmail, coach.clientEmailAddress, user.email]
     .map((e) => String(e || '').toLowerCase().trim()).filter(Boolean);
@@ -248,7 +251,7 @@ async function matchPeople({ coach, participants, span, transcript }, deps) {
   let calendarUnmatched = [];
   if (!matched.length && span) {
     try {
-      const events = await deps.relevantCalendarEvents(
+      const events = Array.isArray(knownEvents) ? knownEvents : await deps.relevantCalendarEvents(
         { recording_start_time: span.startIso, recording_end_time: span.endIso }, coach, deps.calendarEvents,
       );
       aligned = deps.pickAlignedEvent(events, span.startIso, span.endIso);
@@ -300,7 +303,7 @@ async function processRecording({ tenant, coach, m, session, onDemand }, deps) {
     await store.upsertRecording(tenant, m.id, { outcome: 'tombstoned', title: brief.title, startedAt: brief.start, endedAt: brief.end, detail: 'deleted by the client - never re-filed' });
     return { action: 'tombstoned', ...brief };
   }
-  if (await deps.providerRecordingIngested(SOURCE, String(m.id))) {
+  if (await deps.providerRecordingIngested(SOURCE, String(m.id))) { // the WHOLE recording, filed as one
     await store.upsertRecording(tenant, m.id, { outcome: 'filed', title: brief.title, startedAt: brief.start, endedAt: brief.end, detail: 'already in the store' });
     return { action: 'already-filed', ...brief };
   }
@@ -335,35 +338,81 @@ async function processRecording({ tenant, coach, m, session, onDemand }, deps) {
     if (e && e.code === 'WISPR_UNAUTHORIZED') throw e;
     log.warn(`wispr: ${tenant} rec=${m.id} participants unavailable (${e.message}) - matching without attendee emails`);
   }
-  const who = await matchPeople({ coach, participants, span, transcript }, deps);
-  const identified = who.matched.length > 0 || who.pendingLeads.length > 0;
-  const coachName = coach.clientName || 'Coach';
-  const durationSeconds = Math.round((span.endMs - span.startMs) / 1000);
 
+  // Back-to-back calls in one recording: split only when the voices AND the calendar agree.
+  const sp = await planRecordingSplit({ tenant, coach, m, span, transcript, participants }, deps);
+  if (sp.segments) {
+    const parts = [];
+    for (const seg of sp.segments) {
+      const part = await fileOne({
+        tenant, coach, ledgerKey: `${m.id}#${seg.index}`, providerRecordingId: `${m.id}#${seg.index}`,
+        title: seg.title, transcript: seg.text, startIso: seg.startIso, endIso: seg.endIso, who: seg.who, summary: '',
+        note: `part ${seg.index} of ${sp.segments.length} of one Wispr recording (${seg.mappedBy ? `matched to its booking by ${seg.mappedBy}` : 'no booking found for this part'}${seg.timesEstimated ? '; times estimated' : ''})`,
+      }, deps);
+      parts.push({ ...part, id: `${m.id}#${seg.index}`, attendees: brief.attendees });
+    }
+    const failed = parts.filter((p) => p.action === 'failed');
+    if (!failed.length) {
+      await store.upsertRecording(tenant, m.id, {
+        outcome: 'split', title: brief.title, startedAt: brief.start, endedAt: brief.end,
+        detail: `split into ${parts.length} calls at the guest changeover: ${parts.map((p) => `#${p.meetingId}`).join(', ')}`,
+      });
+    }
+    log.info(`wispr: ${tenant} rec=${m.id} SPLIT into ${parts.length} calls (${sp.why}): ${parts.map((p) => `#${p.meetingId || '?'} "${p.title}"`).join(' + ')}${failed.length ? ` - ${failed.length} part(s) FAILED, will retry` : ''}`);
+    return { action: 'split', parts, ...brief };
+  }
+  // Parts of this recording are already in the store from an earlier pass that split it. Whatever
+  // the calendar says today, it is never ALSO filed whole.
+  if (deps.providerRecordingIngestedAny && await deps.providerRecordingIngestedAny(SOURCE, String(m.id))) {
+    await store.upsertRecording(tenant, m.id, { outcome: 'split', title: brief.title, startedAt: brief.start, endedAt: brief.end, detail: 'already filed in parts' });
+    return { action: 'already-filed', ...brief };
+  }
+  if (sp.needsSplit) log.info(`wispr: ${tenant} rec=${m.id} may hold more than one call (${sp.why}) - filing as ONE with a warning in the review queue`);
+
+  const who = await matchPeople({ coach, participants, span, transcript, events: sp.tightEvents }, deps);
+  const coachName = coach.clientName || 'Coach';
   let title = String(m.title || '').trim();
   if (!title && who.aligned && who.aligned.summary) title = String(who.aligned.summary).trim();
   if (!title && who.matched.length) title = `${who.matched.map((x) => x.name).join(' & ')} & ${coachName}`;
   if (!title) title = `Unnamed Wispr recording - ${fmtLocal(span.startMs, coach.timezone)}`;
 
+  const one = await fileOne({
+    tenant, coach, ledgerKey: String(m.id), providerRecordingId: String(m.id),
+    title, transcript, startIso: span.startIso, endIso: span.endIso, who, summary: full.summary,
+    needsSplit: sp.needsSplit, note: sp.needsSplit ? `may hold more than one call: ${sp.why}` : '',
+  }, deps);
+  return { ...one, ...brief, title };
+}
+
+/**
+ * File ONE call (a whole recording, or one part of a split one) through the shared import
+ * pipeline, learn any addresses, and write the feed's ledger row for it.
+ */
+async function fileOne({ tenant, coach, ledgerKey, providerRecordingId, title, transcript, startIso, endIso, who, summary, needsSplit = false, note = '' }, deps) {
+  const { store, log } = deps;
+  const identified = who.matched.length > 0 || who.pendingLeads.length > 0;
+  const durationSeconds = Math.max(0, Math.round((Date.parse(endIso) - Date.parse(startIso)) / 1000));
+
   let guess = null;
   if (!identified) {
-    guess = await guessWho({ transcript, summary: full.summary, coach, coachNames: who.coachNames }, deps);
+    guess = await guessWho({ transcript, summary, coach, coachNames: who.coachNames }, deps);
   }
 
   const r = await deps.importTranscript({
     title,
     source: SOURCE,
     transcriptText: transcript,
-    meetingStart: span.startIso,
+    meetingStart: startIso,
     durationSeconds,
     coachClientId: tenant,
-    providerRecordingId: String(m.id),
+    providerRecordingId,
     pendingLeads: who.pendingLeads,
     matchedLeads: who.matched,
+    ...(needsSplit ? { needsSplit: true } : {}),
   });
   if (!r.ok) {
-    log.warn(`wispr: ${tenant} rec=${m.id} FAILED to file: ${r.error}`);
-    return { action: 'failed', why: r.error, ...brief };
+    log.warn(`wispr: ${tenant} rec=${providerRecordingId} FAILED to file: ${r.error}`);
+    return { action: 'failed', why: r.error, title };
   }
 
   if (!r.duplicate) {
@@ -372,29 +421,183 @@ async function processRecording({ tenant, coach, m, session, onDemand }, deps) {
         try { await deps.learnEmailForLead(coach, mm.leadId, mm.email, { preferWork: true }); } catch (e) { log.warn(`wispr: learn email failed for ${mm.leadId}: ${e.message}`); }
       }
     }
-    for (const l of who.learn) {
+    for (const l of (who.learn || [])) {
       try { await deps.learnEmailForLead(coach, l.leadId, l.email, { preferWork: true }); } catch (e) { log.warn(`wispr: learn email failed for ${l.leadId}: ${e.message}`); }
     }
   }
 
   const unnamed = !identified;
-  await store.upsertRecording(tenant, m.id, {
-    outcome: unnamed ? 'unnamed' : 'filed',
-    meetingId: r.meetingId,
-    title,
-    startedAt: span.startIso,
-    endedAt: span.endIso,
-    needsName: unnamed,
-    guess: guess || null,
-    detail: unnamed
+  // A re-run that finds the call already filed must not reopen a question the client has answered.
+  const prior = r.duplicate ? await store.getRecording(tenant, ledgerKey) : null;
+  if (!prior) {
+    const what = unnamed
       ? 'no calendar booking and no attendee matched - stored unlinked, waiting on "who was this with?"'
-      : `${who.matched.length} lead(s) linked${who.pendingLeads.length ? `, ${who.pendingLeads.length} person(s) not in the database yet` : ''}`,
-  });
-  log.info(`wispr: ${tenant} rec=${m.id} -> meeting #${r.meetingId} "${title}" (${transcript.length} chars, ${who.matched.length} lead(s)${who.pendingLeads.length ? `, ${who.pendingLeads.length} pending` : ''}${unnamed ? `, NEEDS A NAME${guess ? ` - guess ${guess.name}` : ''}` : ''})`);
+      : `${who.matched.length} lead(s) linked${who.pendingLeads.length ? `, ${who.pendingLeads.length} person(s) not in the database yet` : ''}`;
+    await store.upsertRecording(tenant, ledgerKey, {
+      outcome: unnamed ? 'unnamed' : 'filed',
+      meetingId: r.meetingId,
+      title,
+      startedAt: startIso,
+      endedAt: endIso,
+      needsName: unnamed,
+      guess: guess || null,
+      detail: note ? `${what}; ${note}` : what,
+    });
+  }
+  log.info(`wispr: ${tenant} rec=${providerRecordingId} -> meeting #${r.meetingId} "${title}"${r.duplicate ? ' (already filed)' : ''} (${transcript.length} chars, ${who.matched.length} lead(s)${who.pendingLeads.length ? `, ${who.pendingLeads.length} pending` : ''}${unnamed ? `, NEEDS A NAME${guess ? ` - guess ${guess.name}` : ''}` : ''})`);
   return {
-    action: unnamed ? 'unnamed' : 'filed', meetingId: String(r.meetingId), leads: who.matched.map((x) => ({ leadId: x.leadId, name: x.name, via: x.via })),
-    guess, ...brief, title,
+    action: unnamed ? 'unnamed' : 'filed', meetingId: String(r.meetingId), duplicate: !!r.duplicate,
+    leads: who.matched.map((x) => ({ leadId: x.leadId, name: x.name, via: x.via })), guess, title, start: startIso, end: endIso,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Back-to-back calls in one recording
+// ---------------------------------------------------------------------------
+
+function splitEnabled() {
+  return String(process.env.WISPR_SPLIT_ENABLED || '').trim().toLowerCase() !== 'false';
+}
+
+const MIN = 60 * 1000;
+
+/**
+ * Should this recording be filed as several calls? Two opinions must agree:
+ *   1. THE VOICES (services/wisprSplitService.js): one guest finishes, a goodbye is said, a new
+ *      guest starts.
+ *   2. THE CALENDAR: the coach's own calendar shows the bookings those calls belong to. Each part
+ *      is given to a booking only on real evidence - the guest's name on Wispr's label matches the
+ *      booking, or there are exactly as many back-to-back bookings as parts and nothing contradicts
+ *      taking them in order. A part with no booking is still split off, but stored under nobody
+ *      with the "who was this call with?" question - never guessed.
+ * Anything short of that files the recording as ONE call, with a warning when it looks like two.
+ *
+ * @returns {{ segments: object[]|null, needsSplit: boolean, why: string, tightEvents: object[]|undefined }}
+ */
+async function planRecordingSplit({ tenant, coach, m, span, transcript, participants }, deps) {
+  const { log } = deps;
+  const user = (participants && participants.user) || {};
+  const coachNames = [coach.clientName, user.name].filter(Boolean);
+  const coachEmails = [coach.googleCalendarEmail, coach.calendarEmail, coach.clientEmailAddress, user.email]
+    .map((e) => String(e || '').toLowerCase().trim()).filter(Boolean);
+  const none = (why, extra = {}) => ({ segments: null, needsSplit: false, why, ...extra });
+
+  let plan;
+  try { plan = splitter.planChangeover(transcript, { coachNames }); } catch (e) {
+    log.warn(`wispr: split planning threw for rec=${m.id}: ${e.message}`);
+    return none('split planning failed');
+  }
+
+  // Wispr tied this note to a calendar event => its start/end are that BOOKING's times, and the
+  // recording may have begun well before. Otherwise they are the real recording times.
+  const calendarTimes = !!(String(m.title || '').trim() || (m.attendees || []).length);
+  const winStart = calendarTimes ? span.startMs - 75 * MIN : span.startMs;
+  const winEnd = calendarTimes ? span.endMs + 15 * MIN : span.endMs;
+  const readEvents = async () => {
+    try {
+      const raw = await deps.relevantCalendarEvents(
+        { recording_start_time: new Date(winStart).toISOString(), recording_end_time: new Date(winEnd).toISOString() }, coach, deps.calendarEvents,
+      );
+      return (deps.dedupeEvents ? deps.dedupeEvents(raw || [], coachNames) : (raw || []))
+        .filter((ev) => Number.isFinite(Date.parse(ev.start)) && Number.isFinite(Date.parse(ev.end)))
+        .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+    } catch (e) {
+      log.warn(`wispr: calendar read for split failed (rec=${m.id}): ${e.message}`);
+      return [];
+    }
+  };
+
+  if (!plan.candidate) {
+    // Voices cannot separate it. If the REAL recording time covers two bookings, say so.
+    if (!calendarTimes) {
+      const events = await readEvents();
+      const inside = events.filter((ev) => Math.min(Date.parse(ev.end), span.endMs) - Math.max(Date.parse(ev.start), span.startMs) >= 10 * MIN);
+      if (inside.length > 1) return none(`it runs across ${inside.length} bookings (${plan.why})`, { needsSplit: true, tightEvents: events });
+      return none(plan.why, { tightEvents: events });
+    }
+    return none(plan.why);
+  }
+  if (!plan.strong) return none(plan.why, { needsSplit: true });
+  if (!splitEnabled()) return none('the voices change over mid-recording, but splitting is switched off', { needsSplit: true });
+
+  const events = await readEvents();
+  if (!events.length) return none('the voices change over mid-recording, but no booking was found on the calendar to confirm it', { needsSplit: true });
+
+  const segs = plan.segments;
+  const evInfo = events.map((ev) => {
+    const people = deps.calendarParticipantEmails([ev], coachEmails) || [];
+    return { ev, people, names: [...people.map((p) => p.name).filter(Boolean), ...people.map((p) => String(p.email || '').split('@')[0].replace(/[._-]+/g, ' ')), String(ev.summary || '')] };
+  });
+  // "Roland intro" / "Owen Pyrah & Guy Wilson": a first name anywhere in the booking's names or title.
+  const agrees = (seg, info) => {
+    if (!seg.guestNames.length) return false;
+    const words = new Set(info.names.join(' ').toLowerCase().split(/[^a-z']+/).filter((w) => w.length > 1));
+    return seg.guestNames.some((n) => words.has(String(n).toLowerCase().split(/\s+/)[0]));
+  };
+
+  const assigned = new Array(segs.length).fill(null); // index into evInfo
+  const how = new Array(segs.length).fill(null);
+  const used = new Set();
+  // 1. By NAME - only when it points one way.
+  segs.forEach((seg, i) => {
+    const hits = evInfo.map((info, j) => (agrees(seg, info) ? j : -1)).filter((j) => j >= 0);
+    if (hits.length === 1 && !used.has(hits[0])) { assigned[i] = hits[0]; how[i] = 'name'; used.add(hits[0]); }
+  });
+  // 2. By ORDER - exactly as many back-to-back bookings as parts, and no name says otherwise.
+  const backToBack = events.every((ev, j) => j === 0 || Date.parse(ev.start) - Date.parse(events[j - 1].end) <= 30 * MIN);
+  if (events.length === segs.length && backToBack) {
+    const nameOrderOk = segs.every((_, i) => assigned[i] == null || assigned[i] === i);
+    if (nameOrderOk) {
+      segs.forEach((seg, i) => {
+        if (assigned[i] != null || used.has(i)) return;
+        if (seg.guestNames.length && !agrees(seg, evInfo[i])) return; // a real name that is NOT this booking's: leave it unnamed
+        assigned[i] = i; how[i] = 'order'; used.add(i);
+      });
+    }
+  }
+  // The parts must sit in the same order as their bookings.
+  const order = assigned.filter((x) => x != null);
+  if (order.some((x, k) => k > 0 && x <= order[k - 1])) return none('the voices change over, but the bookings do not line up with the order of the calls', { needsSplit: true });
+  if (!order.length) {
+    return none(events.length < 2
+      ? 'the voices change over mid-recording, but the calendar shows one booking and neither voice could be tied to it by name'
+      : 'the voices change over mid-recording, but no part could be tied to a booking', { needsSplit: true });
+  }
+
+  // Times: a part with a booking takes the booking's times. A part without one is placed next to
+  // its neighbour, its length worked out from how much was said.
+  const known = segs.map((seg, i) => (assigned[i] == null ? null : { s: Date.parse(events[assigned[i]].start), e: Date.parse(events[assigned[i]].end), chars: seg.chars }));
+  const kn = known.filter(Boolean);
+  const msPerChar = kn.reduce((a, k) => a + (k.e - k.s), 0) / Math.max(1, kn.reduce((a, k) => a + k.chars, 0));
+  const times = known.map((k) => (k ? { s: k.s, e: k.e, est: false } : null));
+  for (let pass = 0; pass < segs.length; pass++) {
+    segs.forEach((seg, i) => {
+      if (times[i]) return;
+      const len = Math.min(Math.max(seg.chars * msPerChar, 2 * MIN), 4 * 60 * MIN);
+      if (times[i + 1]) times[i] = { s: times[i + 1].s - len, e: times[i + 1].s, est: true };
+      else if (times[i - 1]) times[i] = { s: times[i - 1].e, e: times[i - 1].e + len, est: true };
+    });
+  }
+
+  const coachName = coach.clientName || 'Coach';
+  const out = [];
+  for (let i = 0; i < segs.length; i++) {
+    const seg = segs[i];
+    const info = assigned[i] == null ? null : evInfo[assigned[i]];
+    // Who: the booking's people, matched the usual way. No booking: only a real name on Wispr's label.
+    const people = info
+      ? info.people.map((p) => ({ name: p.name || '', emails: [p.email], is_self: false }))
+      : seg.guestNames.map((n) => ({ name: n, emails: [], is_self: false }));
+    const who = await matchPeople({ coach, participants: { user, participants: people }, span: null, transcript: seg.text }, deps);
+    let title = info ? String(info.ev.summary || '').trim() : '';
+    if (!title && who.matched.length) title = `${who.matched.map((x) => x.name).join(' & ')} & ${coachName}`;
+    if (!title) title = `Unnamed Wispr recording - ${fmtLocal(times[i].s, coach.timezone)}${seg.guestNames.length ? ` (${seg.guestNames.join(', ')})` : ''}`;
+    out.push({
+      index: seg.index, text: seg.text, title, who, mappedBy: how[i], timesEstimated: times[i].est,
+      startIso: new Date(times[i].s).toISOString(), endIso: new Date(times[i].e).toISOString(),
+    });
+  }
+  return { segments: out, needsSplit: false, why: `${plan.why}; ${order.length} of ${segs.length} part(s) matched to a booking` };
 }
 
 // ---------------------------------------------------------------------------
@@ -472,6 +675,14 @@ async function runPass(tenant, { onDemand }, deps) {
         if (e && e.code === 'WISPR_UNAUTHORIZED') throw e;
         r = { action: 'failed', why: e.message, id: m.id };
         log.warn(`wispr: ${tenant} rec=${m.id} THREW: ${e.message}`);
+      }
+      if (r.action === 'split') {
+        for (const p of r.parts) {
+          if (p.action === 'filed') out.filed.push(p);
+          else if (p.action === 'unnamed') out.unnamed.push(p);
+          else if (p.action === 'failed') out.failed.push(p);
+        }
+        continue;
       }
       if (r.action === 'filed') out.filed.push(r);
       else if (r.action === 'unnamed') out.unnamed.push(r);
@@ -944,5 +1155,5 @@ module.exports = {
   // status
   getConnectionStatus, getFeedStatus, statusLine,
   // pure, for tests
-  spanOf, isDouble, nameCandidates, attendeesMention, fmtLocal, _resetForTests,
+  spanOf, isDouble, nameCandidates, attendeesMention, fmtLocal, planRecordingSplit, _resetForTests,
 };

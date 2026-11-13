@@ -208,6 +208,8 @@ async function importTranscript(opts) {
     coachClientId,
     ...(providerRecordingId ? { providerRecordingId } : {}),
     ...(Array.isArray(opts.pendingLeads) && opts.pendingLeads.length ? { pendingLeads: opts.pendingLeads } : {}),
+    // The warning sign in the review queue: this recording may hold more than one call.
+    ...(opts.needsSplit === true ? { needsSplit: true } : {}),
   });
   if (!ins.ok) return { ok: false, error: ins.error || 'failed to insert meeting' };
   // The database already holds this recording: a re-run, not a second meeting.
