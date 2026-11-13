@@ -79,6 +79,9 @@ function liveDeps() {
     findOverlappingMeetings: db.findOverlappingMeetings,
     addMeetingLead: db.addMeetingLead,
     updateMeetingTitle: db.updateMeetingTitle,
+    listMeetingsBySource: db.listMeetingsBySource,
+    listMeetingLeads: db.listMeetingLeads,
+    deleteMeeting: db.deleteMeetingForCoach,
     isCaptureBlocked: (source, id) => require('./capturePolicyStore').isCaptureBlocked(source, id),
     sendMail: (fields) => mailgun.sendMailgunMessage(fields),
     fromAddress: (name) => mailgun.fromAddress(name),
@@ -702,6 +705,8 @@ async function runPass(tenant, { onDemand }, deps) {
       lastResult: line,
     });
     log.info(`wispr: ${tenant} ${onDemand ? 'on-demand check' : 'poll pass'} since ${since}: ${line}`);
+    // Tidy up: a Wispr copy that another recorder has since filed as well.
+    try { out.superseded = await removeSupersededCopies(tenant, deps); } catch (e) { log.warn(`wispr: doubles tidy-up failed for ${tenant}: ${e.message}`); }
     return out;
   } catch (e) {
     if (e && e.code === 'WISPR_UNAUTHORIZED') {
@@ -718,6 +723,59 @@ async function runPass(tenant, { onDemand }, deps) {
   } finally {
     try { if (session) await session.close(); } catch (_) { /* nothing to do */ }
   }
+}
+
+/**
+ * The doubles check at filing time only works one way round: it stops a Wispr copy when another
+ * recorder got there FIRST. When Wispr files first (an on-demand check straight after a call) and
+ * Fathom files the same call a few minutes later, both copies sit in the store. This finds those
+ * and removes the WISPR one - the other recorder's copy has times on every line and better speaker
+ * names. Before it goes, any lead the Wispr copy was linked to is carried across, so naming a call
+ * is never undone. The same half-the-recording rule as filing, plus one more: a much LONGER copy
+ * from the other recorder (an unsplit lump of several calls) is not treated as the same call.
+ * Runs at the end of every pass. Returns the meeting ids removed.
+ */
+async function removeSupersededCopies(tenant, deps) {
+  if (!deps.listMeetingsBySource || !deps.deleteMeeting) return [];
+  const { store, log } = deps;
+  const since = new Date(deps.now() - 3 * 24 * 3600 * 1000).toISOString();
+  const mine = await deps.listMeetingsBySource(tenant, SOURCE, since);
+  const removed = [];
+  for (const w of mine) {
+    const s = Date.parse(w.meeting_start);
+    if (!Number.isFinite(s)) continue;
+    let e = Date.parse(w.meeting_end);
+    if (!Number.isFinite(e) || e <= s) e = s + (Number(w.duration_seconds) > 0 ? Number(w.duration_seconds) * 1000 : 60 * 60 * 1000);
+    const span = { startMs: s, endMs: e, startIso: new Date(s).toISOString(), endIso: new Date(e).toISOString() };
+    const others = (await deps.findOverlappingMeetings(tenant, span.startIso, span.endIso))
+      .filter((r) => String(r.source || '') !== SOURCE && String(r.id) !== String(w.id));
+    const lengthOf = (r) => {
+      const rs = Date.parse(r.meeting_start); let re = Date.parse(r.meeting_end);
+      if (!Number.isFinite(re) || re <= rs) re = rs + (Number(r.duration_seconds) > 0 ? Number(r.duration_seconds) * 1000 : 60 * 60 * 1000);
+      return re - rs;
+    };
+    const twin = others.find((r) => isDouble(span, r) && lengthOf(r) <= 2.5 * (span.endMs - span.startMs));
+    if (!twin) continue;
+    // Carry the Wispr copy's lead links across first - a call the client named stays named.
+    try {
+      const links = deps.listMeetingLeads ? await deps.listMeetingLeads(w.id) : [];
+      for (const l of links) await deps.addMeetingLead(twin.id, l.airtable_lead_id, tenant, 'carried-from-wispr');
+    } catch (e2) {
+      log.warn(`wispr: ${tenant} could not carry lead links from #${w.id} to #${twin.id} (${e2.message}) - keeping both copies`);
+      continue;
+    }
+    const del = await deps.deleteMeeting(w.id, tenant);
+    if (!del || !del.ok) { log.warn(`wispr: ${tenant} could not remove doubled Wispr copy #${w.id}: ${(del && del.error) || 'unknown'}`); continue; }
+    if (w.provider_recording_id) {
+      await store.upsertRecording(tenant, String(w.provider_recording_id), {
+        outcome: 'duplicate', meetingId: twin.id, needsName: false,
+        detail: `Wispr copy #${w.id} removed - the same call was filed by ${twin.source || 'another recorder'} as #${twin.id}`,
+      });
+    }
+    removed.push(String(w.id));
+    log.info(`wispr: ${tenant} removed doubled Wispr copy #${w.id} - the same call is filed by ${twin.source || 'another recorder'} as #${twin.id}`);
+  }
+  return removed;
 }
 
 /**
@@ -1155,5 +1213,5 @@ module.exports = {
   // status
   getConnectionStatus, getFeedStatus, statusLine,
   // pure, for tests
-  spanOf, isDouble, nameCandidates, attendeesMention, fmtLocal, planRecordingSplit, _resetForTests,
+  spanOf, isDouble, nameCandidates, attendeesMention, fmtLocal, planRecordingSplit, removeSupersededCopies, _resetForTests,
 };

@@ -5562,9 +5562,10 @@ no-pass knock on the connector).
 - How long a connection survives with nobody touching it is still being measured by the separate
   test kit on Guy's machine (checks 14 and 21 Nov). The feed renews every ~2.5 days, so it is
   never idle that long.
-- Reverse doubles: if Wispr files first and Fathom files the same call later, both are kept (the
-  Fathom path does not check for a Wispr copy). The 20-minute head start makes this rare on the
-  poll; an on-demand check straight after a call can cause it.
+- Reverse doubles (Wispr files first, Fathom files the same call later): FIXED the same day.
+  `removeSupersededCopies` runs at the end of every pass and removes the Wispr copy once another
+  recorder has filed the same call, carrying any lead link across first. Tested with stand-ins only
+  (`node tests/wispr-doubles.test.js`); not yet seen on a real call.
 - The legacy `/mcp/:token` endpoint's own `recall_latest_transcript` does not do the on-demand
   check (the `/mcp2` connector that claude.ai uses does).
 - "name my last recording" and "skip it" are registered phrases but have not been typed into a

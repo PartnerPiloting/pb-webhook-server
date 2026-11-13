@@ -1977,6 +1977,27 @@ async function findOverlappingMeetings(coachClientId, startIso, endIso, { padMin
   }
 }
 
+/** A tenant's FILED meetings from one recorder since a date, newest first (the Wispr doubles tidy-up reads these). */
+async function listMeetingsBySource(coachClientId, source, sinceIso, { limit = 50 } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT m.id, m.title, m.source, m.meeting_start, m.meeting_end, m.duration_seconds, m.provider_recording_id
+       FROM recall_meetings m
+       WHERE m.coach_client_id = $1 AND m.source = $2 AND m.meeting_start >= $3
+         AND COALESCE(LENGTH(TRIM(m.transcript_text)), 0) > 0
+       ORDER BY m.meeting_start DESC LIMIT $4`,
+      [String(coachClientId).trim(), String(source), new Date(sinceIso).toISOString(), Math.min(Math.max(Number(limit) || 50, 1), 200)],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
 /** Rename ONE meeting the tenant owns (e.g. an unnamed recording once the client says who it was with). */
 async function updateMeetingTitle(meetingId, coachClientId, title) {
   const mid = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
@@ -2048,6 +2069,7 @@ module.exports = {
   listMeetingsForCoach,
   findMeetingsForCoach,
   findOverlappingMeetings,
+  listMeetingsBySource,
   updateMeetingTitle,
   deleteMeetingForCoach,
   purgeMeetingsForCoach,
