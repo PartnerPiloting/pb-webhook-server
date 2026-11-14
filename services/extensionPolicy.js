@@ -36,6 +36,7 @@ function loadPolicy() {
   policyCache = {
     pausedVersions: Array.isArray(raw.pausedVersions) ? raw.pausedVersions.map((v) => cleanVersion(v)).filter(Boolean) : [],
     notices: raw.notices && typeof raw.notices === 'object' ? raw.notices : {},
+    rawCaptureClients: raw.rawCapture && Array.isArray(raw.rawCapture.clients) ? raw.rawCapture.clients.map((c) => String(c).trim()).filter(Boolean) : [],
   };
   return policyCache;
 }
@@ -105,9 +106,19 @@ function pausedSaveResponse(policy = loadPolicy()) {
   return { paused: true, saved: false, message: pausedToast(policy) };
 }
 
+/**
+ * Should this client's extension send the plain list of what it saw in a conversation (0.3.43+)?
+ * The list in content/extension-policy.json decides - "*" is everyone. See services/captureShadow.js.
+ */
+function wantsSeen(clientId, policy = loadPolicy()) {
+  const id = String(clientId == null ? '' : clientId).trim();
+  const list = (policy && policy.rawCaptureClients) || [];
+  return !!id && (list.includes('*') || list.includes(id));
+}
+
 function _resetCachesForTests() { policyCache = null; currentCache = null; }
 
 module.exports = {
   VERSION_HEADER, loadPolicy, currentVersion, cleanVersion, compareVersions, isPaused,
-  extensionStatus, pausedSaveResponse, pausedToast, _resetCachesForTests,
+  extensionStatus, pausedSaveResponse, pausedToast, wantsSeen, _resetCachesForTests,
 };

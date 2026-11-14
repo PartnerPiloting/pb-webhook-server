@@ -10,6 +10,8 @@ const { gluedPrefix } = require('../../../utils/emailGluedPrefix');
 const { checkCaptureDates, captureAlertEmail, shouldAlert, dropForgedToday, isDroppedMessage } = require('../../../utils/captureDateGuard');
 const extensionPolicy = require('../../../services/extensionPolicy');
 const { sendAlertEmail } = require('../../../services/emailNotificationService');
+const captureShadow = require('../../../services/captureShadow');
+const { recordSeen: recordExtensionSeen } = require('../../../services/extensionDistStore');
 const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
@@ -2437,6 +2439,11 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
       logger.warn(`LinkedIn Routes: save refused - extension ${extVersion} is paused (${req.client.clientId}, lead ${leadId})`);
       return res.json(extensionPolicy.pausedSaveResponse());
     }
+    // Which extension version is really running, noted on every save as well as on the Wingguy
+    // routes - a client who sends messages without opening the panel was missing from the ledger.
+    if (extVersion && req.client?.clientId) recordExtensionSeen({ clientId: req.client.clientId, version: extVersion }).catch(() => {});
+    // Should this client's extension send what it SAW of the conversation (services/captureShadow.js)?
+    const wantSeen = extensionPolicy.wantsSeen(req.client?.clientId);
 
     // If replaceNotes is provided, skip section validation (full replacement mode)
     if (replaceNotes !== undefined) {
@@ -2703,10 +2710,26 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     const updatedLead = updatedRecords[0];
     
     logger.info(`LinkedIn Routes: Quick update successful for lead ${leadId}`);
-    
+
+    // The server's own reading of what the extension saw, compared with the extension's answer
+    // (step 1 of moving the reading here - a shadow: it runs beside the save, after it, and can
+    // neither change nor fail it). Only for clients switched on in content/extension-policy.json.
+    if (wantSeen && section === 'linkedin' && content && req.body.seen && typeof req.body.seen === 'object') {
+      captureShadow.recordSighting({
+        clientId: req.client.clientId,
+        leadId,
+        leadName: `${currentLead.fields['First Name'] || ''} ${currentLead.fields['Last Name'] || ''}`.trim(),
+        extensionVersion: extVersion,
+        seen: req.body.seen,
+        extensionContent: content,
+        sendAlert: sendAlertEmail,
+      }).catch((e) => logger.warn(`LinkedIn Routes: capture shadow failed (non-fatal): ${e.message}`));
+    }
+
     res.json({
       success: true,
       leadId,
+      wantSeen,
       autoCeased: !!(autoCease && autoCease.cease),
       autoCeaseQuietDays: autoCease && autoCease.cease ? autoCease.quietDays : undefined,
       updatedFields: Object.keys(updates),

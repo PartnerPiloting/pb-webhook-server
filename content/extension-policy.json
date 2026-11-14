@@ -1,6 +1,8 @@
 {
   "_about": "What the server tells a client's browser extension about its own version. The extension (0.3.41+) sends its version with every request and shows whatever notice comes back, so this wording and the pause list change with a deploy - no new extension needed. services/extensionPolicy.js reads this; tests/extension-policy.test.js checks it.",
   "_pause": "To stop a faulty version saving conversations: add its exact version string to pausedVersions, commit, push. Drafting keeps working; only saving to the lead record stops, and the client sees the paused notice with the update button. Remove it again once nobody is on that version.",
+  "_rawCapture": "Whose extension also sends the server a plain list of what it SAW in a LinkedIn conversation (0.3.43+), so the server can do the reading itself and compare (services/captureShadow.js, utils/threadReader.js). Client IDs as on the master Clients record; \"*\" means everyone. Nobody else's extension even builds the list. Widen it here, commit, push - no new extension needed.",
+  "rawCapture": { "clients": ["Guy-Wilson"] },
   "pausedVersions": [],
   "notices": {
     "portalBehind": "A new version of Wingguy is ready - about 30 seconds to update.",

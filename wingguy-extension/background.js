@@ -266,7 +266,7 @@ function handleMessage(message, sender, sendResponse) {
   // Quick update lead with conversation (email/phone: contact details the lead proffered in the
   // thread — the server treats them as the new primary, folding a displaced email into Alt Emails)
   if (message.type === 'QUICK_UPDATE') {
-    handleQuickUpdate(message.leadId, message.content, message.section, { email: message.email, phone: message.phone, sendProven: message.sendProven === true })
+    handleQuickUpdate(message.leadId, message.content, message.section, { email: message.email, phone: message.phone, sendProven: message.sendProven === true, seen: message.seen })
       .then(result => sendResponse({ success: true, data: result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -1088,6 +1088,9 @@ async function handleQuickUpdate(leadId, content, section = 'linkedin', extras =
       // treats a save with no sendProven at all as coming from that older extension.
       sendProven: extras.sendProven === true,
       capturedOnSend: extras.sendProven === true,
+      // What the scrape saw, for the server's own reading (0.3.43) - present only when the server
+      // has asked this client for it; undefined drops out of the JSON.
+      seen: extras.seen,
       email: extras.email,
       phone: extras.phone
     })
