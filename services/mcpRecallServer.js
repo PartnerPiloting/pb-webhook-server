@@ -450,6 +450,14 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
         + "you already know how they like things written - call wingguy_rules_list, then wingguy_rule_get on the instructions "
         + "that apply, and follow them. They are this client's own instructions, they change, and anything you remember of "
         + "them may be out of date. Then make the draft with wingguy_create_draft. "
+        // 14 Nov 2026: Meagan said never to use "leave it to me" / "leave it with me"; her Claude saved it to its own
+        // memory and told her so. Claude's memory never reaches the drafts Wingguy writes in the portal and extension.
+        + "BANNED WORDS AND HOW THEY LIKE THINGS WRITTEN: when they say a word or phrase must never be used (\"never use X\", "
+        + "\"stop saying X\", \"don't write X\", \"I hate the word X\"), call wingguy_banned_words with it straight away. When "
+        + "they tell you how they like things written (\"keep it shorter\", \"never sound salesy\"), use wingguy_rule_propose. "
+        + "NEVER save these only to your own memory and NEVER just promise to remember them - your memory reaches only this "
+        + "chat, while Wingguy writes their drafts in the portal and the extension too, and only Wingguy's own list and "
+        + "instructions reach those. Then say back exactly what was added. "
         + "INBOX: when they ask to go through, check, sort or clear their inbox or their email (\"go through my inbox\", "
         + "\"what's in my email?\", \"anything I need to deal with?\"), call wingguy_inbox - never a Gmail or Outlook connector. "
         + "It is their own mailbox, it knows who their clients and contacts are, checks every to-do live before passing it "
