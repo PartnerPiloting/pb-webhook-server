@@ -7,6 +7,12 @@
  * from then on Wingguy collects their Wispr calls by itself. The server builds the link and says
  * where the connection stands; no token ever reaches this page.
  *
+ * WORDING (Guy, 14 Nov 2026): written for a client who has never heard of Wispr - "optional extra",
+ * what it is for, that it sits ALONGSIDE the recorder above (not a fourth choice), where to get it,
+ * and that they must start and stop it by hand. Wispr's own auto-start was tested on Guy's laptop
+ * that day and did not fire, so the page must not imply recording is automatic. The page cannot
+ * tell whether Wispr is installed, hence the "don't have it yet / already recording" pair.
+ *
  * HIDDEN unless the server says the feed is switched on for this client (WISPR_FEED_TENANTS) - it
  * answers { hidden: true } for everyone else, and this renders nothing at all.
  *
@@ -15,6 +21,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { getBackendBase } from '../services/api';
+
+// Guy's Wispr referral link - where a client who has never used Wispr goes to get it.
+const WISPR_GET_IT_URL = 'https://wisprflow.ai/r?GUY717';
 
 function whenText(iso) {
   try {
@@ -53,11 +62,33 @@ export default function WisprSection({ authHeaders }) {
 
   return (
     <div className="mt-6 pt-6 border-t border-gray-200">
-      <h4 className="text-base font-semibold text-gray-900">Wispr Flow Notetaker</h4>
+      <h4 className="text-base font-semibold text-gray-900">Wispr Flow Notetaker - optional extra</h4>
       <p className="mt-1 text-sm text-gray-600">
-        Record with Wispr Flow? Connect it once and Wingguy collects those calls by itself - nothing
-        joins your calls, and there is no key to paste. Wingguy can only read your recordings; it
-        cannot change or delete anything in Wispr.
+        For the calls your recorder above cannot reach - someone else&apos;s Zoom, Google Meet, Teams,
+        or a call in person. Wispr records on your own computer, so nothing joins the call. It works
+        alongside your recorder above; you do not have to choose.
+      </p>
+
+      {!connected && !dropped ? (
+        <p className="mt-3 text-sm text-gray-600">
+          <strong className="text-gray-900">Don&apos;t have Wispr yet?</strong>{' '}
+          <a href={WISPR_GET_IT_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Get it here</a>,
+          install it, and record one test call first. Its free plan includes the Notetaker.
+        </p>
+      ) : null}
+
+      <p className="mt-3 text-sm text-gray-600">
+        {!connected && !dropped ? (
+          <><strong className="text-gray-900">Already recording with Wispr?</strong> Connect it once and Wingguy </>
+        ) : 'Wingguy '}
+        picks up every call you record, by itself - there is no key to paste. Wingguy can only read
+        your recordings; it cannot change or delete anything in Wispr.
+      </p>
+
+      <p className="mt-3 text-sm text-gray-600">
+        <strong className="text-gray-900">One thing Wispr needs from you:</strong> start it as you join
+        a call (the round dot on the Wispr bar) and press Stop as you hang up. It does not reliably
+        start by itself.
       </p>
 
       {connected ? (
