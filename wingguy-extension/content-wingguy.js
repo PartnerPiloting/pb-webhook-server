@@ -1590,7 +1590,61 @@
   // A name-ish profile link sets the sender (rows link the sender; "View X's profile" strips to X;
   // grouped continuations carry the last sender forward). <p> elements are the message text — multiple
   // <p>s sharing a parent are ONE multi-paragraph message. Composer content is excluded.
+  // ---- sighting (pure; tested by tests/thread-reader.test.js) ----
+  // What the scrape SAW, in page order, with no judgement applied - sent to the server beside the
+  // usual answer so the server can do the reading itself (0.3.43; utils/threadReader.js on the
+  // server says why and documents each event). Step 1 is a trial: the server only compares its
+  // reading with ours. `sighting` is non-null only while a capture that the server asked for is
+  // scraping, so every other scrape, and every client the server has not switched on, runs exactly
+  // the code it ran before. Nothing in here may throw into a scrape.
+  let sighting = null; // { ui, events, over, parents, n }
+  const SIGHTING_MAX_EVENTS = 4000;
+  const SIGHTING_MAX_CHARS = 400000;
+  function newSighting() {
+    return { ui: '', events: [], over: false, parents: (typeof WeakMap === 'function' ? new WeakMap() : null), n: 0 };
+  }
+  function see(ev) {
+    try {
+      if (!sighting) return;
+      if (sighting.events.length >= SIGHTING_MAX_EVENTS) { sighting.over = true; return; }
+      sighting.events.push(ev);
+    } catch (_) { /* never in the scrape's way */ }
+  }
+  // Which parent a paragraph sits in, as a small number: paragraphs sharing one are one message.
+  function seeGroup(el) {
+    try {
+      if (!sighting || !el || !sighting.parents) return 0;
+      let g = sighting.parents.get(el);
+      if (!g) { g = ++sighting.n; sighting.parents.set(el, g); }
+      return g;
+    } catch (_) { return 0; }
+  }
+  // The finished sighting for one save, or undefined when there is none to send. `now` is injectable.
+  function buildSeen(s, info = {}, now = new Date()) {
+    try {
+      if (!s) return undefined;
+      if (s.over) return { v: 1, skipped: 'too many events', n: s.events.length };
+      let tz = '';
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { /* optional */ }
+      const seen = {
+        v: 1,
+        ui: s.ui || '',
+        events: s.events,
+        today: [now.getFullYear(), now.getMonth() + 1, now.getDate()],
+        at: now.toISOString(),
+        tz,
+        header: { name: String(info.name || ''), profileUrl: String(info.profileUrl || '') },
+        send: { proven: info.sendProven === true },
+      };
+      const size = JSON.stringify(seen).length;
+      if (size > SIGHTING_MAX_CHARS) return { v: 1, skipped: 'too big', n: size };
+      return seen;
+    } catch (_) { return undefined; }
+  }
+  // ---- end sighting ----
+
   function scrapeNewUiThread(convo) {
+    if (sighting) sighting.ui = 'new';
     const out = [];
     let lastSender = '', curDay = '', lastTime = '';
     let buf = null; // { sender, day, time, parent, parts[] } — merges sibling <p>s into one message
@@ -1606,6 +1660,7 @@
       if (insideWingguy(node) || node.closest(selStr('composer_box'))) continue;
       if (node.tagName === 'TIME') {
         const t = cleanText(node.textContent);
+        if (sighting) see({ k: 't', x: t });
         const m = t.match(/\d{1,2}:\d{2}\s*(?:AM|PM)?/i);
         if (m) lastTime = m[0].replace(/\s+/g, ' ');
         else if (t) { const label = dayLabelOf(t); if (label) setDay(label); else if (t.length < 30) unreadable.push(t); }
@@ -1614,6 +1669,7 @@
       }
       if (node.tagName === 'A' && /\/in\//.test(node.getAttribute('href') || '')) {
         let t = cleanText(node.getAttribute('aria-label') || node.textContent);
+        if (sighting) see({ k: 'a', x: t });
         const vm = t.match(/^view\s+(.+?)[’']s\s+profile$/i);
         if (vm) t = vm[1];
         if (looksLikeName(t) && !/profile/i.test(t)) { if (buf && buf.sender !== t) flush(); lastSender = t; }
@@ -1622,6 +1678,7 @@
       if (node.tagName === 'P') {
         const text = cleanText(node.textContent);
         if (!text) continue;
+        if (sighting) see({ k: 'p', x: text, g: seeGroup(node.parentElement) });
         if (buf && buf.parent === node.parentElement) buf.parts.push(text);
         else { flush(); buf = { sender: lastSender, day: curDay, time: lastTime, parent: node.parentElement, parts: [text] }; }
         continue;
@@ -1629,6 +1686,7 @@
       // Any other LEAF whose text is a day label, outside a message paragraph ("Today" as a message is
       // a message). This is the read that does not depend on LinkedIn's element choice.
       if (node.childElementCount === 0 && !node.closest('p')) {
+        if (sighting) { const raw = cleanText(node.textContent); if (raw && raw.length <= 30) see({ k: 'l', x: raw }); }
         const label = dayLabelOf(node.textContent);
         if (label) { setDay(label); flush(); }
       }
@@ -1657,6 +1715,7 @@
       return out;
     }
     lastScrapeScoped = !!container;
+    if (sighting) sighting.ui = 'classic';
     const root = container || document;
     // Walk EVERY element in document order. A message row carries text, sender and time; a day label
     // sets the day every later row falls under (real dates on the record). Sender/time carry forward
@@ -1680,6 +1739,7 @@
         const bodyEl = node.querySelector(bodySel);
         // blockText, not textContent: a line break must stay a word boundary (Craig Carolan, 2026-10-19).
         const text = cleanText(blockText(bodyEl));
+        if (sighting) see({ k: 'r', s: name || '', t: time || '', x: text });
         if (text) out.push({ sender: lastSender || 'Unknown', text, day: curDay, time: lastTime });
         return;
       }
@@ -1690,6 +1750,11 @@
       const t = cleanText(node.textContent);
       if (!t || t.length > 30) return;
       if (!isHeading && node.closest(bodySel)) return;
+      if (sighting) {
+        let inRow = false;
+        try { const r = node.closest(rowSel); inRow = !!r && msgItems[msgItems.length - 1] === r; } catch (_) { /* not in a row */ }
+        see({ k: 'l', x: t, h: isHeading, inRow });
+      }
       const label = dayLabelOf(t);
       if (!label) { if (isHeading) unreadable.push(t); return; }
       if (label === curDay) return;
@@ -2241,7 +2306,15 @@
   // running capture uses. See newestIsNewSince.
   let sendBaseline = null;
   let captureBaseline = null;
+  // Has the server asked this client for sightings? It says so in the version check and in every
+  // save's reply; until it has, nothing extra is built or sent.
+  let seeWanted = null;
+  function wantsSighting() {
+    try { return seeWanted === true || (seeWanted === null && !!(extStatus && extStatus.seen === true)); } catch (_) { return false; }
+  }
   function scheduleCapture(anchorEl, wasSend) {
+    // Ask "how is my version?" now (cached for 30 minutes) so the answer is in by capture time.
+    try { refreshExtStatus().catch(() => {}); } catch (_) { /* optional */ }
     if (wasSend && !sendBaseline) {
       try { sendBaseline = { key: threadNewestKey(scrapeOpenThread(anchorEl && anchorEl.isConnected ? anchorEl : undefined)) }; }
       catch (e) { console.log('[Wingguy] could not fingerprint the thread before the send (non-fatal):', e.message); }
@@ -2320,7 +2393,12 @@
       // disagree (a container element is its own closestConversationContainer match). Scraped BEFORE the
       // identity gates below so a refusal can still offer the captured text through the rescue card.
       if (convo) await expandThreadSeeMore(convo); // read full text, never a collapsed bubble
-      thread = convo ? scrapeOpenThread(convo) : [];
+      // When the server has asked for it, this one scrape also notes what it saw (sighting block).
+      let saw = null;
+      try {
+        sighting = wantsSighting() ? newSighting() : null;
+        thread = convo ? scrapeOpenThread(convo) : [];
+      } finally { saw = sighting; sighting = null; }
       if (!thread.length) {
         console.log('[Wingguy] capture skipped — no thread read');
         showCaptureRescue({
@@ -2376,6 +2454,8 @@
       // has to take "this was just sent" on trust again.
       const sendProven = newestIsNewSince(captureBaseline, thread);
       const content = formatThreadForApi(thread, { leadName: hdr.name, sentSince: captureBaseline });
+      // What the scrape saw, for the server's own reading (undefined unless the server asked).
+      const seen = buildSeen(saw, { name: hdr.name, profileUrl, sendProven });
 
       const lookup = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: profileUrl });
       const leads = (lookup && lookup.leads) || [];
@@ -2423,7 +2503,9 @@
 
       const extras = profferedExtras(thread, leadFirst, leadLast, lead.email, lead.phone);
       if (extras.email || extras.phone) console.log('[Wingguy] lead proffered contact details →', extras);
-      const qres = await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', sendProven, ...extras });
+      const qres = await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', sendProven, seen, ...extras });
+      // The server says with every save whether it wants sightings from this client.
+      if (qres && typeof qres.wantSeen === 'boolean') seeWanted = qres.wantSeen;
       // The server paused this version between the panel opening and this save: nothing was saved.
       if (qres && qres.paused) {
         extStatus = { ...(extStatus || {}), ok: true, paused: true, toast: qres.message }; extStatusAt = Date.now();

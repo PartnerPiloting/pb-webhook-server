@@ -648,6 +648,9 @@ module.exports = function mountWingguy(app) {
         current: extensionPolicy.currentVersion(),
         lane,
       }),
+      // Whether this client's extension should also send what it saw of each conversation
+      // (services/captureShadow.js). Decided here so it changes with a deploy.
+      seen: extensionPolicy.wantsSeen(req.client.clientId),
     });
   });
 
