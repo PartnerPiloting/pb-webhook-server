@@ -1,0 +1,213 @@
+{
+  "note": "14 Nov 2026: Guy sent \"You don't make 'em - you find 'em\" from his own Gmail to every active client (BCC). Recorded so the planner never sends the piece to them again.",
+  "touches": [
+    {
+      "clientId": "Alex-Solti",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "alex@futurefunding.com.au",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Ashley-Knowles",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "ashley@securitribe.com",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "David-Gould",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "dajomigo@gmail.com",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Dean-Hobin",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "dean@timeandfocus.com.au",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Sam-Noble",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "info@findmefirst.com.au",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Paul-Faix",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "paul@fortix.com.au",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Guy-McPhee",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "guy.mcphee@gmail.com",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Joshua-Tunstall",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "joshua@procurespot.com",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Julian-Davis",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "julian@xapi.com.au",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Matthew-Bulat",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "matthew.bulat@gmail.com",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Michael-Spicer",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "maps888@gmail.com",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Owen-Pyrah",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "owen@acjtech.com",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Rick-Wong",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "rwong@salesxceleration.com",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Roland-Illyes",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "roland@gracex.io",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Steve-Nelson",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "steve.nelson@24hrbp.com",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    },
+    {
+      "clientId": "Meagan-Smith",
+      "kind": "one-pager",
+      "key": "you-dont-make-em",
+      "form": "full",
+      "sentAt": "2026-11-14T04:00:00.000Z",
+      "recipient": "meagan@meagainagency.com.au",
+      "reason": "Sent by Guy from his Gmail to all active clients",
+      "meta": {
+        "via": "gmail-bcc",
+        "subject": "You don't make 'em - you find 'em"
+      }
+    }
+  ]
+}

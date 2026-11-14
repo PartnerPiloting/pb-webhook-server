@@ -55,6 +55,7 @@ const client = [
   'choose-the-room',             // 4  step 1
   'who-do-i-reach-out-to',       // 5  step 2 (craft)
   'introduction-before-we-spoke',// 6  proof - breather
+  'you-dont-make-em',            // you find the right people, you can't make them - get good guys scouting (Guy 2026-11-14)
   'score-on-attitude',           // 7  step 3 (craft)
   'twenty-second-thank-you',     // 8  step 4
   'patience-curve',              // 9  expectations
