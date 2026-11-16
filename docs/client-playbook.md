@@ -352,6 +352,30 @@ can feed Linked Helper as many searches as you like.
 
 ---
 
+## NARROWING A SEARCH - YEARS OF EXPERIENCE, TIME IN THE ROLE, AND LINKEDIN GROUPS
+
+Sometimes a job title and a city aren't enough, and you want people who have been around a while, or
+who belong to a particular group. All three of these need Sales Navigator. Premium doesn't have them.
+
+**Years of experience.** In Sales Navigator's lead filters, open **Years of experience**. It works in
+bands, and the top band is **More than 10 years** - there is no setting for 20. So choose More than
+10 years, and let **Seniority level** do the rest: tick Owner, Partner, CXO or Director and you'll
+land on the people you had in mind.
+
+**Time in the current role.** Open **Years in current position** and tick **6 to 10 years** and
+**More than 10 years**. The band below is 3 to 5 years, which lets in people only three years into
+the job, so leave it off unless the list comes back too short.
+
+**Members of a LinkedIn group.** Open the **Groups** filter, start typing the group's name and pick it
+from the list. That gives you its members. To narrow to one kind of member - advisory board members,
+say - add **Current job title** and type "Advisory Board".
+
+**Then the usual finish.** Keep it to 2nd and 3rd degree connections, look down the first page and
+make sure these are people you'd like to know, and copy the address from the top of the page. Say
+**top up my campaign with this search** and paste the link.
+
+---
+
 ## INMAIL CREDITS - WHAT THEY ARE, AND WHY YOU DON'T NEED THEM
 
 If LinkedIn tells you you've used up your InMail credits, nothing in your setup is broken - and
@@ -1521,6 +1545,39 @@ switched on in this browser - tell me and we'll sort it.
 
 **Not in your list yet?** That's fine - Wingguy still drafts. If you'd like them added, just tell it
 in the Wingguy window ("add them to my list") and they'll be there next time.
+
+---
+
+## YOUR RECONNECT LIST - THE PEOPLE YOU ALREADY KNOW
+
+The best place to start isn't strangers. Over the years you've had hundreds of LinkedIn conversations
+that simply stopped - someone said "happy to chat", or asked you to try them after their trip, and
+life got in the way. Those people already said yes to you once, and a reply from someone who knows
+you is far more likely than one from a stranger.
+
+**What Wingguy does.** It reads your old LinkedIn conversations, works out how each one ended, and
+brings you the ones worth picking up - about twenty each morning, on your Follow-Ups screen, under
+your normal follow-ups. Each person comes with the reason they're there and one thing to pick up on.
+
+**Setting it up.** Three steps, and we do them together.
+
+1. I send you a link and you connect your LinkedIn. Two minutes. It only lets Wingguy read - it never
+   posts, connects or sends anything - and it switches itself off after a month.
+2. Your conversations arrive by themselves, the most recent first. A big inbox takes a few days.
+3. On our next call, say **set up my reconnect list**. You tell Wingguy, in your own words, who you'd
+   like to hear from again and who you wouldn't. It scores thirty of your real conversations so you
+   can tell it where it's wrong, and when it looks right it reads the rest. You see what that costs
+   before you say yes - a few dollars, once, on your Claude key.
+
+**Working the list.** Click the person's name, open the message thread and type **/wg**. Wingguy reads
+the old conversation and drafts the message: one specific thing from their side, then a small ask.
+Read it, change what you like, press send. About a minute each. Not someone you want a conversation
+with? Skip them for 90 days, or choose Never.
+
+**Haven't had the link from me yet?** Email me and I'll send it.
+
+**If it's your email that needs reconnecting** - your mailbox says "Disconnected account" - that's a
+different topic. Ask about your disconnected mailbox.
 
 ---
 

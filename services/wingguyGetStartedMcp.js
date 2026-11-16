@@ -460,6 +460,16 @@ const TOPIC_ALIASES = [
   // Roland, 12 Nov 2026: the browser's own error, shown raw in the panel - "The message port closed
   // before a response was received". Above the extension alias, which his question also matches.
   [[/message port|port closed|context invalidated/], '"COULDN'],
+  // Two Learning gaps written 16 Nov 2026.
+  // Dean: "reconnect" - the Reconnect list had a tour beat but no topic. "Reconnect" is also what a
+  // client says about a dropped mailbox or the machine page, so those two are caught first.
+  [[/\breconnect\w*\b/, /\b(mailbox|e-?mails?|outlook|gmail|calendar)\b/], 'YOUR MAILBOX SAYS'],
+  [[/\breconnecting\b/, /\b(page|tab|machine|screen)\b/], 'OPEN YOUR LINKED HELPER MACHINE'],
+  // Rick: "filter my search for people with more than 20 years' experience and 5 years in their
+  // current role, to top up my campaign" (was pulled to the top-up topic) and "a search of members
+  // of a specific LinkedIn group".
+  [[/\byears?\b/, /\b(experience|role|position)\b/], 'NARROWING A SEARCH'],
+  [[/\bgroups?\b/, /\b(linkedin|search(es)?|members?)\b/], 'NARROWING A SEARCH'],
   [[/\b(extensions?|add-?on|plug-?in)\b/], 'THE BROWSER EXTENSION'],
   [[/\b(install|add|get|update|updating)\b/, /\b(chrome|edge|browser)\b/], 'THE BROWSER EXTENSION'],
   // Three Learning gaps written 10 Nov 2026 - each original question was being pulled elsewhere by an
