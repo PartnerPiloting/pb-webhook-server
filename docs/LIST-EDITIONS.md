@@ -11,7 +11,7 @@ them without chasing anyone one by one, and an unsubscribe tells him where he st
   added with the **Weekly** button on the Today tab (Waiting on you, Worth picking up again, Reconnect) or with
   `wingguy_list_edition action=add`. The button also takes them off the chase list - the weekly email becomes the
   touch - and a reply still brings them back to the top.
-- **Left off every week:** active clients (they have their own weekly email), anyone tagged `unsubscribed`, addresses
+- **Left off every week:** active clients (they get the client copy, "Hi Network Builders", below), anyone tagged `unsubscribed`, addresses
   that bounced in the last 30 days, Guy himself.
 - **The launch (Wed 4 Nov 2026) and every newcomer's first email** is the fixed "What does better mean?" piece. Old
   Mindset Mastery readers get "Mindset Mastery is back, with a new name..." on top; Weekly-button adds and later
@@ -42,6 +42,40 @@ unapproved edition lapsed at Wednesday noon (status `missed`); that no longer ha
 **Running thread (Guy, 9 Nov 2026):** network building serves life, not just work - time, family, travel,
 relationships, memories. The closer and the welcome piece carry it every week; the writer is told to weave it in
 where the idea honestly fits, and never to mention a travel product.
+
+## The client copy - "Hi Network Builders" (Guy, 16 Nov 2026)
+
+Code: `services/clientEdition.js`. Tests: `node tests/client-edition.test.js`.
+
+**Why.** The per-client weekly emails (`docs/CLIENT-TOUCH-PLANNER.md`) need Guy to review each one, and he does
+not get to them: on 11 Nov all 7 lapsed, and in the 16 Nov review he approved 1 of 6. Every problem that week came
+from the personal parts (a repeat, an out-of-date note, flagged lines). Clients are also left off the list above, so
+they never saw its ideas. Guy: "all I would have to do is shape 1 for prospects and 1 for clients."
+
+- **The same edition, to every active client.** Same idea, same paragraphs. The greeting is "Hi Network Builders,",
+  the prospect closer is replaced by one short line ("If this one raises a question, just hit reply." - PROPOSED,
+  Guy to confirm), and the footer is the client's own weekly-email unsubscribe link. No name, and no claim about any
+  one client's situation, progress or numbers - that is what lets it go unread.
+- **It goes unless he holds it**, Wednesday from 9:30am Brisbane, straight after the list edition starts going.
+  Holding the list edition holds it too. It can be held for one week by itself (the list still goes). An edit or
+  swap of the edition changes both.
+- **Everyone active gets it** - onboarding or not, and whether or not Guy wrote to them that week (Guy, 16 Nov).
+  Left off: exactly the planner's never-sent list (`clientTouchPicker.neverSentReason`) - not active, paused,
+  winding down, on the leave-off list, unsubscribed, no address, a recent bounce, no unsubscribe token, "nothing
+  until <date>". Read from a fresh record at the moment of sending.
+- **OFF until Guy starts it.** `wingguy_list_edition action=clients_on` starts it from the coming Wednesday;
+  `clients_off` stops it. Before that it can be read (`clients`) and tested (`clients_test`) but never sends.
+  `clients_hold` / `clients_release` are the one-week hold.
+- **Sending.** Mailgun, from `guy@knowaguy.com.au`, Reply-To Guy's mailbox - the same as the list, NOT his own
+  Gmail as the per-client emails use. One row per client per week in `client_edition_sends`; never twice. Each send
+  is put on the client's touch record as kind `mindset` (the newsletter kind), so it never counts as Guy having
+  touched base. A summary reaches Guy when it has gone: how many, who was left off and why.
+- **The same switches hold it on staging**: `LIST_EDITION_SEND`, `SCHEDULED_SEND_ENABLED`, `CLIENT_TOUCH_SEND_ENABLED`.
+- The Monday heads-up says whether the client copy is going that week.
+
+**Not built yet (the rest of the 16 Nov plan):** switching off the per-client weekly emails and moving their
+signals ("3 clients are running low") into Guy's Monday heads-up; the welcome series for new clients (a fixed
+order of thinking pieces, approved once, Mondays); the client copy on the portal's Scheduled page.
 
 ## Sending
 

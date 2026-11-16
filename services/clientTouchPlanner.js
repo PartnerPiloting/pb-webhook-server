@@ -1909,6 +1909,10 @@ async function previewFor(week, clientId) {
 }
 
 module.exports = {
+  // read by the client copy of the list edition (services/clientEdition.js)
+  clientsWithCards,
+  bouncedAddresses,
+  stripeCancellationAt,
   buildPlan,
   sendApproved,
   sendGuard,

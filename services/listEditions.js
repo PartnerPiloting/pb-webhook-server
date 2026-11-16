@@ -257,6 +257,20 @@ async function withDb(fn, fallback) {
           PRIMARY KEY (tenant_id, email, source)
         );
         CREATE TABLE IF NOT EXISTS list_state (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
+        -- "Hi Network Builders": the same edition, sent to clients (services/clientEdition.js).
+        CREATE TABLE IF NOT EXISTS client_edition_sends (
+          id BIGSERIAL PRIMARY KEY,
+          tenant_id TEXT NOT NULL,
+          send_date DATE NOT NULL,
+          client_id TEXT NOT NULL,
+          email TEXT NOT NULL,
+          name TEXT,
+          status TEXT NOT NULL DEFAULT 'queued',
+          mailgun_id TEXT,
+          error TEXT,
+          sent_at TIMESTAMPTZ,
+          UNIQUE (tenant_id, send_date, client_id)
+        );
       `);
       schemaEnsured = true;
     }
@@ -731,8 +745,12 @@ async function tick(nowMs = Date.now(), tenantId = TENANT) {
   const today = ymd(nowMs);
   if (ed.status === 'draft' && !ed.nudgedAt && dow(today) === NUDGE.day && p.hour >= NUDGE.hour && today === addDays(sendDate, -2)) {
     await q('UPDATE list_editions SET nudged_at = now() WHERE id = $1', [ed.id]);
+    // The client copy ("Hi Network Builders", services/clientEdition.js) goes with it when it is on.
+    let clients = '';
+    try { clients = (await require('./clientEdition').statusLine(tenantId, { sendDate })).trim(); } catch (_) { clients = ''; }
     await notifyGuy(tenantId, `This week's ${SERIES} edition goes ${dayLabel(sendDate)}`, [
       `"${ed.title}" goes to your list on ${dayLabel(sendDate)} from 9:30am. You don't need to do anything.`,
+      ...(clients ? [clients] : []),
       'To read it, change it or hold it this week: the Scheduled page in your portal, or say "let\'s do this week\'s emails" to Claude.',
     ].join('\n\n'));
   }
@@ -767,6 +785,8 @@ function startListEditions() {
     ticking = true;
     try {
       await tick();
+      // The client copy follows the list edition, never leads it. Its own failure never stops the list.
+      try { await require('./clientEdition').tick(Date.now(), TENANT); } catch (e) { console.error(`[clientEdition] tick failed (non-fatal): ${e.message}`); }
       if (Date.now() - lastUnsubCheck > 60 * 60 * 1000) { lastUnsubCheck = Date.now(); await watchUnsubscribes(TENANT); }
     } catch (e) { console.error(`[listEditions] tick failed (non-fatal): ${e.message}`); } finally { ticking = false; }
   };
@@ -783,4 +803,6 @@ module.exports = {
   buildEdition, editionFor, editionById, statusText, showText, approve, hold, edit, swap, testSend, forPage, addToList, audience, tick, watchUnsubscribes, unsubscribeByToken,
   startListEditions, __setTestPool,
   LIST_TAG, SERIES, LAUNCH, INTRO, CLOSER, WELCOME_LINE, BACK_LINE, INTRO_SUBJECT,
+  // shared with the client copy (services/clientEdition.js) - one store, one sender, one switch
+  internals: { q, getState, setState, esc, para, wrapHtml, dayLabel, sendAtMs, sendSwitchOn, replyToFor, notifyGuy },
 };

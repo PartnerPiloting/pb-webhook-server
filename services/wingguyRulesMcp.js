@@ -811,8 +811,17 @@ async function runListEdition(args = {}, tenant = TENANT) {
   const d = String(args.week || '').trim();
   const sendDate = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : le.nextSendDate(Date.now());
   try {
-    if (action === 'status') return { text: (await le.statusText(tenant)).text };
-    if (action === 'show') { const r = await le.showText(tenant, { sendDate }); return { text: r.text, isError: !!r.isError }; }
+    // "Hi Network Builders" - the same edition to every client (services/clientEdition.js, Guy 16 Nov 2026).
+    const ce = require('./clientEdition');
+    const clientsLine = async () => { try { return `\n${await ce.statusLine(tenant, { sendDate })}`; } catch (_) { return ''; } };
+    if (action === 'clients') return { text: (await ce.showText(tenant, { sendDate })).text };
+    if (action === 'clients_on') return { text: (await ce.turnOn(tenant, { sendDate })).text };
+    if (action === 'clients_off') return { text: (await ce.turnOff(tenant)).text };
+    if (action === 'clients_hold') return { text: (await ce.hold(tenant, { sendDate })).text };
+    if (action === 'clients_release') return { text: (await ce.release(tenant, { sendDate })).text };
+    if (action === 'clients_test') { const r = await ce.testSend(tenant, { sendDate }); return { text: r.text, isError: !r.ok }; }
+    if (action === 'status') return { text: `${(await le.statusText(tenant)).text}${await clientsLine()}` };
+    if (action === 'show') { const r = await le.showText(tenant, { sendDate }); return { text: `${r.text}${r.isError ? '' : await clientsLine()}`, isError: !!r.isError }; }
     if (action === 'write') {
       const r = await le.buildEdition(tenant, sendDate, { direction: args.text || '' });
       if (!r.ok) return { text: r.text, isError: true };
@@ -830,7 +839,7 @@ async function runListEdition(args = {}, tenant = TENANT) {
     else if (action === 'hold') r = await le.hold(tenant, ed.id);
     else if (action === 'edit') r = await le.edit(tenant, ed.id, { title: args.title, body: args.body });
     else if (action === 'swap' || action === 'redraft') r = await le.swap(tenant, sendDate, { idea: action === 'swap' ? args.idea : null, direction: args.text || '' });
-    else return { text: 'action is one of: status, show, write, approve, edit, swap, redraft, hold, test, add', isError: true };
+    else return { text: 'action is one of: status, show, write, approve, edit, swap, redraft, hold, test, add, clients, clients_on, clients_off, clients_hold, clients_release, clients_test', isError: true };
     if (!r.ok) return { text: r.text, isError: true };
     if (['swap', 'redraft', 'edit'].includes(action)) return { text: `${r.text}\n\n${(await le.showText(tenant, { sendDate })).text}` };
     return { text: r.text };
@@ -1422,9 +1431,9 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_list_edition',
-    description: 'Coach-only: "Network building, rethought" - Guy\'s weekly email to his LIST of prospects (the people tagged mindset mastery - the old Mindset Mastery list - plus anyone added with the Weekly button on the Today tab). NOT the client emails (those are wingguy_weekly_emails). ONE email a week, the same for everyone except the name; it goes Wednesday from 9:30am Brisbane, one email per person from guy@knowaguy.com.au with replies to Guy\'s inbox - EVERY WEEK, WITHOUT Guy\'s approval, unless he holds it (Guy, 9 Nov 2026). Approving early is optional; only hold stops it. Never tell him it is waiting for his OK. In "let\'s do this week\'s emails" it comes FIRST. THE WAY TO RUN IT: action=show prints the edition in full as a regular gets it, who it goes to (how many, how many first-timers, who is left off and why) and the next two ideas coming up; read it to Guy plainly, then do what he says: approve; edit (his own words: title and/or body, blank line between paragraphs - an edit counts as approved); swap (idea = another idea from the library by name, e.g. "Never Eat Alone" - it is rewritten and waits for approval); redraft (text = his direction for how it should be told); hold (nothing goes this week); write (write the edition now if it is not written yet); test (a test copy of each version to Guy only - the inbox-or-spam check); add (put someone on the list: email or name). Every edition tells ONE idea through network building, then a fixed closer inviting a reply, the sign-off and the unsubscribe line. A newcomer\'s first email is the fixed "What does better mean?" piece. Never approve, edit or swap anything Guy has not said to.',
+    description: 'Coach-only: "Network building, rethought" - Guy\'s weekly email to his LIST of prospects (the people tagged mindset mastery - the old Mindset Mastery list - plus anyone added with the Weekly button on the Today tab). NOT the client emails (those are wingguy_weekly_emails). ONE email a week, the same for everyone except the name; it goes Wednesday from 9:30am Brisbane, one email per person from guy@knowaguy.com.au with replies to Guy\'s inbox - EVERY WEEK, WITHOUT Guy\'s approval, unless he holds it (Guy, 9 Nov 2026). Approving early is optional; only hold stops it. Never tell him it is waiting for his OK. In "let\'s do this week\'s emails" it comes FIRST. THE WAY TO RUN IT: action=show prints the edition in full as a regular gets it, who it goes to (how many, how many first-timers, who is left off and why) and the next two ideas coming up; read it to Guy plainly, then do what he says: approve; edit (his own words: title and/or body, blank line between paragraphs - an edit counts as approved); swap (idea = another idea from the library by name, e.g. "Never Eat Alone" - it is rewritten and waits for approval); redraft (text = his direction for how it should be told); hold (nothing goes this week); write (write the edition now if it is not written yet); test (a test copy of each version to Guy only - the inbox-or-spam check); add (put someone on the list: email or name). Every edition tells ONE idea through network building, then a fixed closer inviting a reply, the sign-off and the unsubscribe line. A newcomer\'s first email is the fixed "What does better mean?" piece. THE CLIENT COPY - "Hi Network Builders" (Guy, 16 Nov 2026): the SAME idea and words also go to every active client that Wednesday, greeted "Hi Network Builders," with a short closing line and their own unsubscribe link, whether or not Guy wrote to them that week - unless he holds it. It is OFF until Guy starts it. action=clients shows it in full, who gets it and who is left off and why; clients_on starts it from the coming Wednesday ("start the client email"); clients_off stops it; clients_hold holds it for one week (the list still goes); clients_release undoes that; clients_test sends Guy a test copy. Holding the list edition holds the client copy too, and an edit or swap changes both. Never start, stop or hold it unless Guy says to. Never approve, edit or swap anything Guy has not said to.',
     zodSchema: {
-      action: z.enum(['status', 'show', 'write', 'approve', 'edit', 'swap', 'redraft', 'hold', 'test', 'add']).optional().describe('status (default) | show | write | approve | edit | swap | redraft | hold | test | add'),
+      action: z.enum(['status', 'show', 'write', 'approve', 'edit', 'swap', 'redraft', 'hold', 'test', 'add', 'clients', 'clients_on', 'clients_off', 'clients_hold', 'clients_release', 'clients_test']).optional().describe('status (default) | show | write | approve | edit | swap | redraft | hold | test | add | clients | clients_on | clients_off | clients_hold | clients_release | clients_test'),
       week: z.string().optional().describe('YYYY-MM-DD of the Wednesday; default the coming one'),
       title: z.string().optional().describe('edit: a new title (the subject is "Network building, rethought - <title>")'),
       body: z.string().optional().describe('edit: Guy\'s words for the body - blank line between paragraphs'),
@@ -1436,7 +1445,7 @@ const TOOL_DEFS = [
     jsonSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['status', 'show', 'write', 'approve', 'edit', 'swap', 'redraft', 'hold', 'test', 'add'], description: 'status (default) | show | write | approve | edit | swap | redraft | hold | test | add' },
+        action: { type: 'string', enum: ['status', 'show', 'write', 'approve', 'edit', 'swap', 'redraft', 'hold', 'test', 'add', 'clients', 'clients_on', 'clients_off', 'clients_hold', 'clients_release', 'clients_test'], description: 'status (default) | show | write | approve | edit | swap | redraft | hold | test | add | clients | clients_on | clients_off | clients_hold | clients_release | clients_test' },
         week: { type: 'string', description: 'YYYY-MM-DD of the Wednesday; default the coming one' },
         title: { type: 'string', description: 'edit: a new title' },
         body: { type: 'string', description: 'edit: Guy\'s words for the body - blank line between paragraphs' },
