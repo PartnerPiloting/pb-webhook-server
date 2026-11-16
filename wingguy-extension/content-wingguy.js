@@ -3501,8 +3501,15 @@
       // "Failed to fetch", a bare "529 {…}", "Chat failed: 500") with our own calm fallback, so the
       // user never sees a status code or JSON blob.
       const msg = (e && e.message) || '';
-      const looksFriendly = /\s/.test(msg) && msg.length > 25 && !/^\d{3}\b/.test(msg) && !/^[A-Za-z ]+failed:/i.test(msg);
-      appendBubble('sys', looksFriendly ? msg : "Couldn't reach Wingguy right now - give it a moment and try again.");
+      // The browser's own words for "the page lost the extension's worker" ("The message port closed
+      // before a response was received.", "Extension context invalidated.") are whole sentences, so
+      // they passed the looksFriendly test and were shown raw - Roland Illyes, 12 Nov 2026, asked
+      // Wingguy Learning what it meant. They get our own words and the one thing that fixes it (0.3.44).
+      const browserDropped = CHAT_TRANSIENT.test(msg) || /extension context invalidated/i.test(msg);
+      const looksFriendly = !browserDropped && /\s/.test(msg) && msg.length > 25 && !/^\d{3}\b/.test(msg) && !/^[A-Za-z ]+failed:/i.test(msg);
+      appendBubble('sys', browserDropped
+        ? "Wingguy lost its link to your browser for a moment - press Send again. If it happens twice, refresh this LinkedIn page and type /wg again."
+        : (looksFriendly ? msg : "Couldn't reach Wingguy right now - give it a moment and try again."));
     } finally {
       if (chatState) chatState.busy = false;
       const btn = document.getElementById('wg-chat-send');

@@ -457,6 +457,9 @@ const TOPIC_ALIASES = [
   // The browser extension (10 Nov 2026): Paul "add Wingguy Chrome extension to chrome", "chrome extension",
   // Roland "extension". The panel's own error keeps its topic, so it sits first.
   [[/couldn.?t reach wingguy/], '"COULDN'],
+  // Roland, 12 Nov 2026: the browser's own error, shown raw in the panel - "The message port closed
+  // before a response was received". Above the extension alias, which his question also matches.
+  [[/message port|port closed|context invalidated/], '"COULDN'],
   [[/\b(extensions?|add-?on|plug-?in)\b/], 'THE BROWSER EXTENSION'],
   [[/\b(install|add|get|update|updating)\b/, /\b(chrome|edge|browser)\b/], 'THE BROWSER EXTENSION'],
   // Three Learning gaps written 10 Nov 2026 - each original question was being pulled elsewhere by an

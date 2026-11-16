@@ -1258,6 +1258,12 @@ go to the Setup and help tab. If the browser extension card is amber, a new vers
 **Update it**, then open **Updating later** at the bottom of that page and follow its three steps.
 About 30 seconds.
 
+**If it says "The message port closed before a response was received".** That one is your browser
+talking, not Wingguy. It means the LinkedIn page lost touch with the extension for a moment - usually
+because the browser put the extension to sleep, or the extension was updated while the page was open.
+Nothing was sent and nothing is lost. Press Send again. If you see it a second time, refresh the
+LinkedIn page and type **/wg** again - that reconnects the two, and it's the whole fix.
+
 **If it still fails, check your Claude key.** Wingguy writes your drafts on your own Anthropic
 account. If the monthly spend limit you set has been reached, or the credit has run out, Anthropic
 turns the request away. Usually the panel tells you so in plain words, but if it doesn't, sign in at
