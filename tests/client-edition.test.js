@@ -167,6 +167,15 @@ check('staging never sends: with the send switch off the tick stops before readi
   try { assert.strictEqual(await C.tick(WED_10AM, 'T'), 'switch-off'); } finally { delete process.env.CLIENT_TOUCH_SEND_ENABLED; }
   assert.strictEqual(pool.calls.length, 0);
 });
+check("for Monday's heads-up: the email itself when it is going, only the reason when it is not", async () => {
+  L.__setTestPool(fakePool({ state: { 'clients:start': '2026-11-25' }, editionRow: row({ status: 'draft' }) }));
+  const on = await C.headsUpPart('T', { sendDate: '2026-11-25' });
+  assert.ok(on.mail && on.mail.html.includes('Hi Network Builders,') && /unless you hold it/.test(on.line));
+  L.__setTestPool(fakePool({ editionRow: row({ status: 'draft' }) }));
+  const off = await C.headsUpPart('T', { sendDate: '2026-11-25' });
+  assert.strictEqual(off.mail, null);
+  assert.ok(/not going - the client email has not been started yet/.test(off.line));
+});
 check('starting it names the Wednesday it starts from; holding it leaves the list alone', async () => {
   const state = {};
   L.__setTestPool(fakePool({ state }));

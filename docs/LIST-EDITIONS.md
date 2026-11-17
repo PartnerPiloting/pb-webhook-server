@@ -32,7 +32,7 @@ them without chasing anyone one by one, and an unsubscribe tells him where he st
 | --- | --- |
 | From the Saturday before | The edition is written |
 | Any time before Wednesday 9:30am | Optional: Guy reads, edits, swaps or holds it - in chat (it comes first in "let's do this week's emails"; tool `wingguy_list_edition`) or on the portal's Scheduled page (Approve / Edit / Send me a test / Hold this week) |
-| Monday 3pm | One heads-up email to Guy if he has not looked at it - it goes either way |
+| Monday 3pm | One heads-up email to Guy if he has not looked at it, with the email IN FULL - the list version and, when it is going, the client version (Guy, 17 Nov 2026: the title alone meant going to look). It goes either way |
 | Wednesday 9:30am | It goes, one email per person, 20 every 5 minutes |
 | When the last one has gone | A summary to Guy: how many sent, who was left off and why |
 
@@ -71,7 +71,7 @@ they never saw its ideas. Guy: "all I would have to do is shape 1 for prospects 
   is put on the client's touch record as kind `mindset` (the newsletter kind), so it never counts as Guy having
   touched base. A summary reaches Guy when it has gone: how many, who was left off and why.
 - **The same switches hold it on staging**: `LIST_EDITION_SEND`, `SCHEDULED_SEND_ENABLED`, `CLIENT_TOUCH_SEND_ENABLED`.
-- The Monday heads-up says whether the client copy is going that week.
+- The Monday heads-up shows the client copy in full when it is going that week, and says why when it is not.
 
 **Not built yet (the rest of the 16 Nov plan):** switching off the per-client weekly emails and moving their
 signals ("3 clients are running low") into Guy's Monday heads-up; the welcome series for new clients (a fixed

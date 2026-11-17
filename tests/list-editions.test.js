@@ -32,6 +32,21 @@ check('a regular gets the idea, the closer with the I Know A Guy link, the sign-
   assert.ok(!/Weekly Edition|Mindset Mastery/.test(r.html), 'no header block');
   assert.ok(!/[–—]/.test(r.html));
 });
+check("Monday's heads-up carries the email in full: the list version, and the client version when it is going", () => {
+  const ed = { kind: 'idea', title: 'Dig the well', paragraphs: ['First.', 'Second.'], source: 'book' };
+  const listMail = L.render({ edition: ed, variant: 'regular', firstName: 'Sarah', siteUrl: 'https://example.com/' });
+  const clientMail = require('../services/clientEdition').render({ edition: ed, unsubUrl: '#' });
+  const both = L.headsUp({ edition: ed, sendDate: '2026-11-25', listMail, clientMail });
+  assert.ok(both.includes("You don't need to do anything."));
+  assert.ok(both.indexOf('TO YOUR LIST') < both.indexOf('Hi Sarah,') && both.indexOf('Hi Sarah,') < both.indexOf('TO YOUR CLIENTS'));
+  assert.ok(both.indexOf('TO YOUR CLIENTS') < both.indexOf('Hi Network Builders,'));
+  assert.strictEqual(both.split('First.').length - 1, 2, 'the idea appears once in each version');
+  assert.ok(both.includes('Wednesday 25 Nov'));
+  const listOnly = L.headsUp({ edition: ed, sendDate: '2026-11-25', listMail, clientsLine: '  Clients ("Hi Network Builders"): not going - the client email has not been started yet.' });
+  assert.ok(!listOnly.includes('Hi Network Builders,') && !listOnly.includes('TO YOUR CLIENTS'));
+  assert.ok(listOnly.includes('not going - the client email has not been started yet.'));
+  assert.ok(!/[–—]/.test(both));
+});
 check('a Beth idea carries her P.S. credit after the sign-off; a book does not', () => {
   const beth = L.render({ edition: { kind: 'idea', title: 'T', paragraphs: ['x'], source: 'beth' }, variant: 'regular', firstName: 'Sam' }).html;
   assert.ok(beth.indexOf('(I know a) Guy') < beth.indexOf('P.S. This week'));

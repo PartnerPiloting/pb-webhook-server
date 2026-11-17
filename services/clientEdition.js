@@ -164,6 +164,16 @@ async function statusLine(tenantId, { sendDate, nowMs = Date.now() } = {}) {
   return why ? `  Clients ("Hi Network Builders"): not going - ${why}.` : `  Clients ("Hi Network Builders"): the same idea goes to your clients on ${dayLabel(d)} unless you hold it.`;
 }
 
+/** For Monday's heads-up to Guy: the line saying whether it goes, and the email itself when it does. */
+async function headsUpPart(tenantId, { sendDate, nowMs = Date.now() } = {}) {
+  const d = sendDate || le.nextSendDate(nowMs);
+  const [sw, edition] = await Promise.all([switches(d), le.editionFor(tenantId, d)]);
+  const why = blockedReason({ ...sw, sendDate: d, edition });
+  if (why) return { line: `Clients ("Hi Network Builders"): not going - ${why}.`, mail: null };
+  // '#': the heads-up shows the footer as a client sees it; each real email carries their own link.
+  return { line: `Clients ("Hi Network Builders"): the same idea goes to your clients on ${dayLabel(d)} unless you hold it.`, mail: render({ edition, unsubUrl: '#' }) };
+}
+
 async function showText(tenantId, { sendDate, nowMs = Date.now() } = {}) {
   const d = sendDate || le.nextSendDate(nowMs);
   const [sw, edition] = await Promise.all([switches(d), le.editionFor(tenantId, d)]);
@@ -283,6 +293,6 @@ module.exports = {
   // pure, tested
   render, pickClients, blockedReason,
   // actions
-  audience, statusLine, showText, turnOn, turnOff, hold, release, testSend, tick,
+  audience, statusLine, headsUpPart, showText, turnOn, turnOff, hold, release, testSend, tick,
   GREETING, CLIENT_CLOSER, START_KEY,
 };

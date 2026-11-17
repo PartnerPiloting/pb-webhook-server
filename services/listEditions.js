@@ -121,6 +121,26 @@ function render({ edition, variant, firstName, siteUrl = SITE_FALLBACK, unsubUrl
   return { subject: `${SERIES} - ${edition.title}`, html };
 }
 
+/**
+ * Monday's heads-up to Guy: what goes on Wednesday, in full - the list version and, when it is
+ * going, the client version ("Hi Network Builders"). Pure.
+ */
+function headsUp({ edition, sendDate, listMail, clientMail = null, clientsLine = '' }) {
+  const box = (label, mail) => [
+    `<p style="margin:28px 0 6px;font-size:12px;letter-spacing:.04em;color:#777">${esc(label)}</p>`,
+    '<div style="border:1px solid #ddd;border-radius:6px;padding:4px 18px">',
+    `<p style="color:#555"><b>Subject:</b> ${esc(mail.subject)}</p>`,
+    mail.html,
+    '</div>',
+  ].join('\n');
+  return wrapHtml([
+    para(esc(`"${edition.title}" goes ${dayLabel(sendDate)} from 9:30am Brisbane. You don't need to do anything.`)),
+    para(esc('To change it or hold it this week: the Scheduled page in your portal, or say "let\'s do this week\'s emails" to Claude. Change the words once and both versions change.')),
+    box('TO YOUR LIST - as a regular gets it', listMail),
+    clientMail ? box('TO YOUR CLIENTS - the same for every client', clientMail) : (clientsLine ? para(esc(clientsLine.trim())) : ''),
+  ].filter(Boolean).join('\n'));
+}
+
 function htmlToText(html) {
   return String(html || '').replace(/<\/p>/gi, '\n\n').replace(/<a [^>]*href="([^"]+)"[^>]*>([^<]*)<\/a>/gi, '$2 ($1)').replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/\n{3,}/g, '\n\n').trim();
@@ -745,14 +765,23 @@ async function tick(nowMs = Date.now(), tenantId = TENANT) {
   const today = ymd(nowMs);
   if (ed.status === 'draft' && !ed.nudgedAt && dow(today) === NUDGE.day && p.hour >= NUDGE.hour && today === addDays(sendDate, -2)) {
     await q('UPDATE list_editions SET nudged_at = now() WHERE id = $1', [ed.id]);
-    // The client copy ("Hi Network Builders", services/clientEdition.js) goes with it when it is on.
-    let clients = '';
-    try { clients = (await require('./clientEdition').statusLine(tenantId, { sendDate })).trim(); } catch (_) { clients = ''; }
-    await notifyGuy(tenantId, `This week's ${SERIES} edition goes ${dayLabel(sendDate)}`, [
+    // Guy, 17 Nov 2026: the heads-up carries the email in full, both versions - the title alone meant
+    // going to look. If building it fails, he still gets the short note.
+    const short = [
       `"${ed.title}" goes to your list on ${dayLabel(sendDate)} from 9:30am. You don't need to do anything.`,
-      ...(clients ? [clients] : []),
       'To read it, change it or hold it this week: the Scheduled page in your portal, or say "let\'s do this week\'s emails" to Claude.',
-    ].join('\n\n'));
+    ].join('\n\n');
+    const subject = `This week's ${SERIES} edition goes ${dayLabel(sendDate)}`;
+    try {
+      const [url, replyTo] = await Promise.all([siteUrl(tenantId), replyToFor(tenantId)]);
+      const listMail = render({ edition: ed, variant: ed.kind === 'intro' ? (sendDate === LAUNCH ? 'back' : 'welcome') : 'regular', firstName: 'Sarah', siteUrl: url });
+      let clients = { line: '', mail: null };
+      try { clients = await require('./clientEdition').headsUpPart(tenantId, { sendDate }); } catch (_) { /* the list part still goes */ }
+      await mailOne({ to: replyTo, subject, html: headsUp({ edition: ed, sendDate, listMail, clientMail: clients.mail, clientsLine: clients.line }), replyTo, tag: 'list-edition-note' });
+    } catch (e) {
+      console.error(`[listEditions] full heads-up failed, sending the short one: ${e.message}`);
+      await notifyGuy(tenantId, subject, short);
+    }
   }
   // 3. Send day. Guy, 9 Nov 2026: it goes every week without his say-so - only a hold stops it.
   if (nowMs < sendAt) return;
@@ -797,7 +826,7 @@ function startListEditions() {
 
 module.exports = {
   // pure, tested
-  nextSendDate, render, ideaQueue, pickRecipients, variantFor, isUnsubscribeReply, firstNameOf, draftPrompt, htmlToText,
+  nextSendDate, render, headsUp, ideaQueue, pickRecipients, variantFor, isUnsubscribeReply, firstNameOf, draftPrompt, htmlToText,
   // store + actions
   unsubUrlFor, UNSUB_MAIL_SUBJECT,
   buildEdition, editionFor, editionById, statusText, showText, approve, hold, edit, swap, testSend, forPage, addToList, audience, tick, watchUnsubscribes, unsubscribeByToken,
