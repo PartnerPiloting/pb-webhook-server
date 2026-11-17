@@ -30,6 +30,13 @@ function HomeContent() {
       
       // If no token or client ID, show error (don't redirect - stay on page with message)
       if (!token && !clientId) {
+        // On the branded address with no login: the browser may still know them on the old
+        // address. Ask it once (app/carry-over); it sends them back here with their link, or with
+        // carried=0 when it does not know them either - which stops it asking again.
+        if (window.location.hostname === 'portal.knowaguy.com.au' && searchParams.get('carried') !== '0') {
+          window.location.replace('https://pb-webhook-server.vercel.app/carry-over');
+          return;
+        }
         setNoSession(true);
         setIsValidating(false);
         return;
