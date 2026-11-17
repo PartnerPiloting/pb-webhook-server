@@ -1383,7 +1383,7 @@ function dayLabel(week) {
 const REVIEW_LINE = "Go through them with Claude: say \"let's do this week's emails\".";
 
 function screenUrlFor() {
-  return process.env.CLIENT_TOUCH_SCREEN_URL || 'https://pb-webhook-server.vercel.app/coached-clients';
+  return process.env.CLIENT_TOUCH_SCREEN_URL || `${require('../utils/portalUrl').PORTAL_BASE_URL}/coached-clients`;
 }
 
 /** The preview email to Guy - every row, what it is and why, the opening - and the one link to the screen. */

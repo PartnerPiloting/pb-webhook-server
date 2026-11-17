@@ -31,7 +31,7 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const log = createSafeLogger('SYSTEM', null, 'pending_notify');
 
 const BCC = String(process.env.PENDING_NOTIFY_BCC || '').trim();
-const PORTAL_BASE = (process.env.PORTAL_BASE_URL || 'https://pb-webhook-server.vercel.app').replace(/\/$/, '');
+const { PORTAL_BASE_URL: PORTAL_BASE } = require('../utils/portalUrl');
 const DIGEST_INTERVAL_DAYS = Number(process.env.PENDING_DIGEST_INTERVAL_DAYS) || 7;
 
 function notifyEnabled() {

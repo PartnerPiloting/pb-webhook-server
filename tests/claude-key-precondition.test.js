@@ -249,7 +249,7 @@ check('extension: OPEN_CLAUDE_KEY opens their own key box with the sign-in it ho
   const w = backgroundWorld(() => ({}));
   const r = await w.send({ type: 'OPEN_CLAUDE_KEY' });
   assert.strictEqual(r.success, true);
-  assert.deepStrictEqual(w.opened, ['https://pb-webhook-server.vercel.app/my-wingguy/setup?token=tok-nokey#claude-key']);
+  assert.deepStrictEqual(w.opened, ['https://portal.knowaguy.com.au/my-wingguy/setup?token=tok-nokey#claude-key']);
 });
 
 check('extension: /wg checks the key after refresh/connect/wrong-person and before the page is read', () => {

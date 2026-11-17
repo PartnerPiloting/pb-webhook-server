@@ -30,7 +30,7 @@ const { createLogger } = require('../utils/contextLogger');
 
 const defaultLogger = createLogger({ runId: 'JOIN', clientId: 'SYSTEM', operation: 'join_provisioning' });
 
-const PORTAL_BASE_URL = 'https://pb-webhook-server.vercel.app';
+const { PORTAL_BASE_URL } = require('../utils/portalUrl');
 const GUY_EMAIL = 'guyralphwilson@gmail.com';
 const COACH_ID = 'Guy-Wilson';
 

@@ -651,7 +651,7 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
   if (found.error) return { text: found.error, isError: true };
 
   const c = found.client;
-  const portalUrl = c.portalToken ? `https://pb-webhook-server.vercel.app/?token=${c.portalToken}` : '(no token set)';
+  const portalUrl = c.portalToken ? `${require('../utils/portalUrl').PORTAL_BASE_URL}/?token=${c.portalToken}` : '(no token set)';
   const lines = [
     `Client: ${c.clientName} (${c.clientId})`,
     `Status: ${c.status || 'unknown'}${c.serviceLevel ? ` · ${c.serviceLevel}` : ''}`,

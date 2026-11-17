@@ -465,7 +465,7 @@ function buildLinks(client) {
     try { installer = require('./extensionInstallCommand').buildInstallCommands(token); } catch (_) { installer = null; }
   }
   return {
-    portalUrl: token ? `https://pb-webhook-server.vercel.app/?token=${token}` : null,
+    portalUrl: token ? `${require('../utils/portalUrl').PORTAL_BASE_URL}/?token=${token}` : null,
     connectorUrl: token ? `https://pb-webhook-server.onrender.com/mcp2/${token}` : null,
     installerWindows: installer ? installer.windows : null,
     installerMac: installer ? installer.mac : null,

@@ -21,7 +21,7 @@ import {
  * and waiting - the prompt is inert until Enter is pressed.
  */
 
-const PORTAL_BASE_URL = 'https://pb-webhook-server.vercel.app';
+const PORTAL_BASE_URL = 'https://portal.knowaguy.com.au';
 // The repo Claude Code opens for "onboard <name>". `repo` resolves to whichever local clone the
 // coach last ran `claude` in, so the same link works on every machine they use.
 const ONBOARD_REPO = 'PartnerPiloting/pb-webhook-server';

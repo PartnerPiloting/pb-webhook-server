@@ -18,7 +18,7 @@ const WINGGUY_ENDPOINTS = {
 // the credentials to this worker. Used by OPEN_PORTAL so the panel can offer a button instead of
 // telling a client to go and find their Portal themselves.
 const PORTAL_ENDPOINTS = {
-  production: 'https://pb-webhook-server.vercel.app/',
+  production: 'https://portal.knowaguy.com.au/',
   staging: 'https://pb-webhook-server-staging.vercel.app/'
 };
 

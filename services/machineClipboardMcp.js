@@ -160,7 +160,7 @@ async function runOpenMachine(args = {}, tenant = TENANT) {
 // portal link is that same token - so handing it back to its own caller gives away nothing the
 // caller does not already hold. Same coach gate as the machine link for "open Rick's portal".
 
-const PORTAL_BASE_URL = (process.env.PORTAL_BASE_URL || 'https://pb-webhook-server.vercel.app').replace(/\/$/, '');
+const { PORTAL_BASE_URL } = require('../utils/portalUrl');
 
 async function runOpenPortal(args = {}, tenant = TENANT) {
   const target = await resolveTarget(args.client, tenant);

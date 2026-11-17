@@ -88,7 +88,7 @@ function getServiceLevelNumber(serviceLevel: string): string {
 function buildClientUrl(clientCode: string, serviceLevel: string): string {
   const level = getServiceLevelNumber(serviceLevel);
   // Use production URL - this is for onboarding real clients
-  return `https://pb-webhook-server.vercel.app/?testClient=${encodeURIComponent(clientCode)}&level=${level}`;
+  return `https://portal.knowaguy.com.au/?testClient=${encodeURIComponent(clientCode)}&level=${level}`;
 }
 
 // Only two actual service levels in the system
@@ -575,11 +575,11 @@ export default function OnboardClientPage() {
                     ) : (portalToken || result.portalUrl) ? (
                       <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                         <code className="flex-1 min-w-0 text-sm bg-gray-50 px-3 py-2.5 rounded border border-gray-200 text-gray-800 break-all overflow-x-auto font-mono">
-                          {result.portalUrl || `https://pb-webhook-server.vercel.app/?token=${portalToken}`}
+                          {result.portalUrl || `https://portal.knowaguy.com.au/?token=${portalToken}`}
                         </code>
                         <button
                           type="button"
-                          onClick={() => handleCopyUrl(result.portalUrl || `https://pb-webhook-server.vercel.app/?token=${portalToken}`)}
+                          onClick={() => handleCopyUrl(result.portalUrl || `https://portal.knowaguy.com.au/?token=${portalToken}`)}
                           className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap flex items-center justify-center gap-2"
                         >
                           {copiedUrl ? (

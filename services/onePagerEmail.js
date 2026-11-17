@@ -20,7 +20,7 @@ const shell = require('./onePagerShell');
 const MANIFEST = require('../config/onePagerSeriesManifest');
 
 const DEFAULT_BASE_URL = 'https://pb-webhook-server.onrender.com';
-const PORTAL_BASE_URL = 'https://pb-webhook-server.vercel.app';
+const { PORTAL_BASE_URL } = require('../utils/portalUrl');
 
 // Both audiences get a standalone email #1 before the arc: prospects a
 // permission intro, clients the orientation.

@@ -3309,7 +3309,7 @@ router.post("/api/regenerate-my-token", async (req, res) => {
     const newToken = crypto.randomBytes(18).toString('base64url');
     
     // Always use production portal URL (main) - clients receive links that work in production
-    const portalBaseUrl = 'https://pb-webhook-server.vercel.app';
+    const portalBaseUrl = require('../utils/portalUrl').PORTAL_BASE_URL;
     const portalUrl = `${portalBaseUrl}/?token=${newToken}`;
     
     // Update Airtable
@@ -10791,7 +10791,7 @@ router.post("/api/onboard-client", async (req, res) => {
     let portalUrl = null;
     try {
       portalToken = crypto.randomBytes(18).toString('base64url');
-      const portalBaseUrl = 'https://pb-webhook-server.vercel.app';
+      const portalBaseUrl = require('../utils/portalUrl').PORTAL_BASE_URL;
       portalUrl = `${portalBaseUrl}/?token=${portalToken}`;
       await masterBase('Clients').update(createdRecord.id, { 'Portal Token': portalToken });
       logger.info(`Generated portal token for ${clientId}`);
@@ -11168,7 +11168,7 @@ router.post("/api/coached-clients/:coachClientId/regenerate-token/:clientId", as
     const newToken = crypto.randomBytes(18).toString('base64url');
     
     // Always use production portal URL (main) - clients receive links that work in production
-    const portalBaseUrl = 'https://pb-webhook-server.vercel.app';
+    const portalBaseUrl = require('../utils/portalUrl').PORTAL_BASE_URL;
     const portalUrl = `${portalBaseUrl}/?token=${newToken}`;
     
     // Update Airtable (use recordId from getClientsByCoach)
