@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-code-jobs-reminder.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

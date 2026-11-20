@@ -792,7 +792,12 @@ async function runInbox(args = {}, tenant = TENANT, deps = {}) {
   const inbox = await resolveInbox(tenant, deps);
   if (inbox.error) return { text: inbox.error, isError: true };
   try {
-    if (action === 'list') return await runList(args, inbox, tenant, deps);
+    if (action === 'list') {
+      const out = await runList(args, inbox, tenant, deps);
+      // Waiting Claude Code jobs (Guy only) - one line, so the hand-off list is in front of him.
+      const jobs = await require('./wingguyCodeJobsMcp').nudgeFor(tenant, deps.codeJobs || {});
+      return jobs && !out.isError ? { ...out, text: `${out.text}\n\n${jobs}` } : out;
+    }
     if (action === 'read') return await runRead(args, inbox);
     if (action === 'check') return await runCheck(args, inbox);
     return await runMove(args, inbox, action === 'archive');
