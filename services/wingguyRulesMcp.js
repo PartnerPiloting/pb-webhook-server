@@ -859,7 +859,9 @@ async function runWeeklyEmails(args = {}, tenant = TENANT) {
       const out = await planner.weekReview(tenant, week);
       let list = '';
       try { list = `${(await require('./listEditions').statusText(tenant)).text}\n(The list edition comes first: wingguy_list_edition action=show, then approve / edit / swap / hold.)\n\n`; } catch (_) { list = ''; }
-      return { text: `${list}${out.text}\n\nNext: go through the WAITING ones one at a time with action=show, client=<name>. For each, Guy decides: approve, edit, swap, skip, pin, or change the thought.` };
+      // Waiting Claude Code jobs (Guy only) - one line, so the hand-off list is in front of him on Mondays.
+      const jobs = await require('./wingguyCodeJobsMcp').nudgeFor(tenant);
+      return { text: `${list}${out.text}${jobs ? `\n\n${jobs}` : ''}\n\nNext: go through the WAITING ones one at a time with action=show, client=<name>. For each, Guy decides: approve, edit, swap, skip, pin, or change the thought.` };
     }
     if (!args.client) return { text: 'Which client? Pass client (a name or id).', isError: true };
     const r = await actions.resolveClient(tenant, args.client);

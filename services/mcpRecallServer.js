@@ -39,6 +39,7 @@ const { registerWingguyInboxTools } = require('./wingguyInboxMcp');
 const { registerWingguyTopUpTools } = require('./wingguyTopUpMcp');
 const { registerWingguyCampaignSettingsTools } = require('./wingguyCampaignSettingsMcp');
 const { registerWisprTools } = require('./wisprMcp');
+const { registerWingguyCodeJobsTools } = require('./wingguyCodeJobsMcp');
 const connectorSeen = require('./connectorSeenStore');
 
 const BASE = '/mcp2';
@@ -572,6 +573,8 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
   registerWingguyCampaignSettingsTools(server, coachClientId);
   // Wispr feed: "who was this call with?" - only for tenants the feed is switched on for.
   registerWisprTools(server, coachClientId);
+  // Claude Code jobs ("send that to Claude Code" - Chat's hand-off list for repo work). Guy only.
+  registerWingguyCodeJobsTools(server, coachClientId);
 
   return server;
 }
