@@ -165,7 +165,9 @@ not an oracle, and editing it teaches Wingguy at the same time.
 find on your own. The one to lead with: people you've met on a recorded call can be added as leads
 without a LinkedIn URL at all, and their transcripts attach to them properly. Then prep-me-for-my
 -meetings, the follow-up queue, and your history with any person - pick the two or three that fit
-this client rather than touring the whole cabinet.
+this client rather than touring the whole cabinet. And one for every client: after a few weeks of
+sends Wingguy will nag about unreviewed edits - type "review my edits - have a stab at the patterns
+and save them" and Claude turns your changes into instructions.
 
 **Step 14 - Linked Helper, last on purpose, and where it should run. [live]** The engine that fills
 your database goes in last, once everything above is proven, your targeting has had a few weeks to
@@ -1045,6 +1047,19 @@ is in and their history is attached - they'll get scored once we have their prof
   them a list.
 - **"What's my history with this person?"** - the mail and meeting record in one answer.
 - **Their portal** - the setup page, their instructions, and the review screen.
+
+**Always say this one, whatever else you pick - the edits nag (added 20 Nov 2026).** Every time they
+change a Wingguy draft before sending it, Wingguy keeps both versions. After a few weeks of sends,
+Wingguy starts telling them they have "unreviewed edits". Most people ignore it or think they have
+to go through them one by one. They don't. Set it up now, so the first nag doesn't come as a surprise.
+Say:
+
+"Once you've had a few weeks of sends, Wingguy will nag you about unreviewed edits. That's every
+time you changed one of its drafts before you sent it - it keeps what it wrote next to what you
+actually sent. Don't ignore it, and don't do it by hand. Just type 'review my edits - have a stab at
+the patterns and save them', and Claude will go through the lot, pick up the habits, and turn your
+changes into instructions. You can always change or undo them. I did my first hundred sitting by a
+pool."
 
 ---
 
