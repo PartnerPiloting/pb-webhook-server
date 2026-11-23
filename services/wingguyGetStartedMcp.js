@@ -471,6 +471,11 @@ const TOPIC_ALIASES = [
   // client says about a dropped mailbox or the machine page, so those two are caught first.
   [[/\breconnect\w*\b/, /\b(mailbox|e-?mails?|outlook|gmail|calendar)\b/], 'YOUR MAILBOX SAYS'],
   [[/\breconnecting\b/, /\b(page|tab|machine|screen)\b/], 'OPEN YOUR LINKED HELPER MACHINE'],
+  // 23 Nov 2026: "how does Reconnect work?" tied 1-1 on title words with the Linked Helper basics topic
+  // ("...the loop that makes them work") and lost on file order; "explain how Reconnect works" went to
+  // SETTING UP WINGGUY ("where it works"). Guy's all-clients email tells clients to ask exactly that.
+  // The first pattern keeps "how do I reconnect my connector / extension / machine" out of it.
+  [[/^(?![\s\S]*\b(connector|claude|extension|machine|linked ?helper|lh|vps|key)\b)/, /\breconnect\b/, /\b(works?|explain|list|past|old|connections?|conversations?|is)\b/], 'YOUR RECONNECT LIST'],
   // Rick: "filter my search for people with more than 20 years' experience and 5 years in their
   // current role, to top up my campaign" (was pulled to the top-up topic) and "a search of members
   // of a specific LinkedIn group".

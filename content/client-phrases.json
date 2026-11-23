@@ -277,6 +277,19 @@
       ]
     },
     {
+      "phrase": "explain how Reconnect works",
+      "tool": "wingguy_learn",
+      "topic": "YOUR RECONNECT LIST",
+      "note": "In Guy's all-clients email \"Wingguy is more than /wg - and it's on your phone\" (23 Nov 2026), sent by hand - not in a repo doc.",
+      "where": [],
+      "near_misses": [
+        { "text": "how does Reconnect work?", "expect": "YOUR RECONNECT LIST" },
+        { "text": "what is Reconnect", "expect": "YOUR RECONNECT LIST" },
+        { "text": "how do I reconnect my mailbox", "not": "YOUR RECONNECT LIST" },
+        { "text": "how do I reconnect the Wingguy connector in Claude", "not": "YOUR RECONNECT LIST" }
+      ]
+    },
+    {
       "phrase": "set up my reconnect list",
       "tool": "wingguy_reconnect_setup",
       "where": [
