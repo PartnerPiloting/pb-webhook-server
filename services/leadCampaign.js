@@ -93,8 +93,9 @@ function keepRealCampaign(existingFields = {}, incomingRaw) {
   return { name: fromLh || chosen, raw };
 }
 
-/** Lead Search's "no tag and no note" filter: nothing in {Search Terms} and nothing in {Notes}. */
-const UNLABELLED_FORMULA = 'AND(NOT({Search Terms}), NOT({Notes}))';
+/** Lead Search's "no tag" filter: nothing in {Search Terms}. (It first asked for no note as well -
+ * notes fill in by themselves, so that was almost never true. Guy, 23 Nov 2026.) */
+const UNLABELLED_FORMULA = 'NOT({Search Terms})';
 
 const filterReady = (clientId) => FILTER_READY.includes('*') || FILTER_READY.includes(String(clientId || ''));
 
@@ -145,7 +146,10 @@ async function writeFields(write, fields, logger = log) {
 function describeLead(fields = {}) {
   const fromLh = campaignNameFromRaw(fields['Raw Profile Data']);
   const stored = String(fields[FIELD] || '').trim();
-  return { campaign: fromLh || stored, campaignLocked: !!fromLh };
+  // The field wins over the name in the saved profile: it follows a rename on the machine
+  // (followRenames), the saved profile keeps the name as it was on the day. A client can never
+  // write the field on a lead Linked Helper sent, so it is still not theirs to change.
+  return { campaign: fromLh ? (stored || fromLh) : stored, campaignLocked: !!fromLh };
 }
 
 const cache = new Map(); // clientId -> { at, value }
@@ -262,6 +266,102 @@ function shapeOptions(clientId, live, onLeads, fieldMissing) {
  * A client choosing the campaign for a lead that has none. value '' clears their own choice.
  * Returns { ok, status, error?, campaign?, campaignLocked? }.
  */
+/**
+ * RENAMED CAMPAIGNS (Guy, 23 Nov 2026): rename a campaign in Linked Helper and the leads it already
+ * sent take the NEW name. Matched on Linked Helper's campaign id in {Raw Profile Data}, never on the
+ * name, so two campaigns that once shared a name are not mixed up. A lead whose campaign is no longer
+ * on the machine (archived, deleted) keeps the name it has. Only the {Campaign} field changes -
+ * {Raw Profile Data} and everything scoring reads are left exactly as they were.
+ *
+ *   liveById - { <campaign id>: <its name on the machine now> }
+ *   names    - the {Campaign} values to look under (every name on the leads that is not a current
+ *              name, unless the caller knows the exact old name)
+ * Returns { changes: [{ id, from, to, count }], updated }. apply=false counts and writes nothing.
+ */
+async function followRenames(base, liveById = {}, { names = null, apply = true } = {}) {
+  const current = new Set(Object.values(liveById));
+  let look = names;
+  if (!look) look = (await tallyNamesOnLeads(base)).names.map((n) => n.name).filter((n) => !current.has(n));
+  const tally = new Map();
+  const updates = [];
+  for (const oldName of look) {
+    const formula = `{${FIELD}} = "${escapeFormula(oldName)}"`;
+    // Look at a handful first: a name that belongs to a campaign no longer on the machine can sit
+    // on thousands of leads, and reading every saved profile to learn nothing is minutes wasted.
+    const sample = await base('Leads').select({ fields: ['Raw Profile Data'], filterByFormula: formula, maxRecords: 20 }).firstPage();
+    if (!sample.some((r) => liveById[campaignIdOf(r.fields['Raw Profile Data'])])) continue;
+    await new Promise((resolve, reject) => {
+      base('Leads').select({ fields: [FIELD, 'Raw Profile Data'], filterByFormula: formula, pageSize: 100 }).eachPage(
+        (records, next) => {
+          for (const r of records) {
+            const raw = r.fields['Raw Profile Data'];
+            if (!campaignNameFromRaw(raw)) continue;          // the client's own choice - never touched
+            const id = campaignIdOf(raw);
+            const to = id ? liveById[id] : '';
+            if (!to || to === oldName) continue;
+            const key = `${id}\t${oldName}\t${to}`;
+            tally.set(key, (tally.get(key) || 0) + 1);
+            updates.push({ id: r.id, fields: { [FIELD]: String(to).slice(0, MAX_NAME) } });
+          }
+          next();
+        },
+        (err) => (err ? reject(err) : resolve()),
+      );
+    });
+  }
+  let updated = 0;
+  if (apply) {
+    for (let i = 0; i < updates.length; i += 10) {
+      await base('Leads').update(updates.slice(i, i + 10));
+      updated += Math.min(10, updates.length - i);
+      await new Promise((r) => setTimeout(r, 220));         // under Airtable's 5 requests a second
+    }
+  }
+  const changes = [...tally.entries()].map(([k, count]) => { const [id, from, to] = k.split('\t'); return { id: Number(id), from, to, count }; });
+  return { changes, updated };
+}
+
+/** { id: name } of the campaigns on the client's machine now. Empty when there is no machine list. */
+async function liveCampaignsById(clientId) {
+  const listed = await lhCampaignList.listCampaigns(clientId, {});
+  if (listed.source !== 'machine') return {};                // only the machine's own full list is trusted for this
+  const out = {};
+  for (const c of listed.campaigns) if (c.live && c.name) out[c.id] = c.name;
+  return out;
+}
+
+const following = new Set(); // clients with a rename run in flight
+
+/** One client's leads brought into line with the machine's current names. Never throws. */
+async function followRenamesForClient(clientId, base, opts = {}) {
+  if (following.has(clientId)) return { changes: [], updated: 0, busy: true };
+  following.add(clientId);
+  try {
+    const liveById = await liveCampaignsById(clientId);
+    if (!Object.keys(liveById).length) return { changes: [], updated: 0, noMachineList: true };
+    const result = await followRenames(base, liveById, opts);
+    if (result.updated) cache.delete(clientId);
+    for (const c of result.changes) log.info(`lead-campaign: ${clientId} campaign #${c.id} "${c.from}" -> "${c.to}": ${c.count} lead(s)${opts.apply === false ? ' (count only)' : ''}`);
+    return result;
+  } catch (e) {
+    log.warn(`lead-campaign: renames not followed for ${clientId}: ${e.message}`);
+    return { changes: [], updated: 0, error: e.message };
+  } finally {
+    following.delete(clientId);
+  }
+}
+
+/** The machine just reported a campaign under a new name (services/lhCampaignList.js saveList). */
+async function onMachineRenames(clientId, renames = []) {
+  if (!renames.length) return null;
+  const { getClientBase } = require('../config/airtableClient');
+  const base = await getClientBase(clientId);
+  if (!base) return null;
+  // Give the new list a moment to be saved - followRenamesForClient reads it back.
+  await new Promise((r) => setTimeout(r, 3000));
+  return followRenamesForClient(clientId, base, { names: [...new Set(renames.map((r) => r.from))] });
+}
+
 async function setLeadCampaign({ clientId, base, leadId, value }) {
   const wanted = String(value === undefined || value === null ? '' : value).trim();
   let record;
@@ -294,4 +394,5 @@ module.exports = {
   FIELD, NONE, OWN_CONNECTIONS, keepRealCampaign, FILTER_READY, filterReady, RECENT_SHORTCUT, recentShortcut, UNLABELLED_FORMULA,
   _setQuickMs: (ms) => { QUICK_MS = ms; }, campaignNameFromRaw, filterFormula, isMissingFieldError,
   describeLead, writeFields, getOptions, setLeadCampaign, tallyNamesOnLeads,
+  followRenames, followRenamesForClient, onMachineRenames,
 };

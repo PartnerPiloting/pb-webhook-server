@@ -72,9 +72,9 @@ check('filter: all = no formula; "No campaign" = blank field; a name = exact mat
   assert.strictEqual(leadCampaign.filterFormula('The "A" list'), '{Campaign} = "The \\"A\\" list"');
 });
 
-check('a lead Linked Helper sent is locked to that campaign, even if the field says otherwise', () => {
-  assert.deepStrictEqual(leadCampaign.describeLead({ 'Raw Profile Data': raw('Legal ICP 50-201'), Campaign: 'Campaign 1' }),
-    { campaign: 'Legal ICP 50-201', campaignLocked: true });
+check('a lead Linked Helper sent is locked; it shows the field (which follows a rename), not the name saved on the day', () => {
+  assert.deepStrictEqual(leadCampaign.describeLead({ 'Raw Profile Data': raw('Legal ICP 50-201'), Campaign: 'Partner Campaign' }),
+    { campaign: 'Partner Campaign', campaignLocked: true });
   // not caught up yet: the field is blank but the lead still shows its campaign
   assert.deepStrictEqual(leadCampaign.describeLead({ 'Raw Profile Data': raw('Campaign 1') }), { campaign: 'Campaign 1', campaignLocked: true });
 });
@@ -168,8 +168,8 @@ check('catch-up: fills a blank, skips one already right, never touches a lead no
   assert.deepStrictEqual(planFor({ 'Raw Profile Data': raw('Campaign 1'), Campaign: 'Campaign 1' }), { action: 'skip', name: 'Campaign 1', was: 'Campaign 1' });
   assert.deepStrictEqual(planFor({ Campaign: 'Campaign 1' }), { action: 'none', name: '', was: 'Campaign 1' });
   assert.deepStrictEqual(planFor({}), { action: 'none', name: '', was: '' });
-  // Linked Helper wins a disagreement, the same as a new lead arriving
-  assert.strictEqual(planFor({ 'Raw Profile Data': raw('Legal ICP 50-201'), Campaign: 'Campaign 1' }).action, 'set');
+  // a lead that already carries a campaign is left alone - it may hold the new name after a rename
+  assert.strictEqual(planFor({ 'Raw Profile Data': raw('Legal ICP 50-201'), Campaign: 'Partner Campaign' }).action, 'skip');
 });
 
 check('a big base: a first ask answers with the names found so far (no counts), the next one has it all', async () => {
@@ -196,12 +196,12 @@ check('a big base: a first ask answers with the names found so far (no counts), 
   assert.strictEqual(await leadCampaign.getOptions('Big-Client', slow), full);
 });
 
-check('"Recently connected" and the no-tag-no-note marker: Guy only for now; the filter means both blank', async () => {
+check('"Recently connected" and the no-tag marker: Guy only for now; the filter means Search Terms is blank', async () => {
   machine = live('Campaign 1');
   const base = fakeBase([{ id: 'a', fields: { Campaign: 'Campaign 1' } }]);
   assert.strictEqual((await leadCampaign.getOptions('Guy-Wilson', base, { fresh: true })).recentShortcut, true);
   assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).recentShortcut, false);
-  assert.strictEqual(leadCampaign.UNLABELLED_FORMULA, 'AND(NOT({Search Terms}), NOT({Notes}))');
+  assert.strictEqual(leadCampaign.UNLABELLED_FORMULA, 'NOT({Search Terms})');
 });
 
 check('"My own connections" never replaces a campaign a lead already has', () => {
@@ -225,6 +225,64 @@ check('"My own connections" never replaces a campaign a lead already has', () =>
   assert.strictEqual(leadCampaign.keepRealCampaign({ 'Raw Profile Data': own, Campaign: 'My own connections' }, own), null);
   // and a real campaign arriving is never held back, whatever was there
   assert.strictEqual(leadCampaign.keepRealCampaign({ 'Raw Profile Data': own, Campaign: 'My own connections' }, raw('Legal ICP')), null);
+});
+
+/** A leads base that understands the one formula followRenames uses: {Campaign} = "name". */
+function namedBase(records) {
+  const updates = [];
+  const match = (formula) => {
+    const m = String(formula || '').match(/^\{Campaign\} = "(.*)"$/);
+    const want = m ? m[1].replace(/\\"/g, '"') : null;
+    return records.filter((r) => (want === null ? r.fields.Campaign : r.fields.Campaign === want)).map((r) => ({ id: r.id, fields: r.fields, get: (k) => r.fields[k] }));
+  };
+  const table = () => ({
+    select: (opts = {}) => ({
+      firstPage: async () => match(opts.filterByFormula).slice(0, opts.maxRecords || 100),
+      eachPage: (onPage, done) => onPage(match(opts.filterByFormula), () => done()),
+    }),
+    update: async (rows) => { for (const u of rows) { updates.push(u); Object.assign(records.find((r) => r.id === u.id).fields, u.fields); } return rows; },
+  });
+  table.updates = updates;
+  return table;
+}
+const rawOf = (id, name) => JSON.stringify({ id: 'x', campaign_id: id, campaign_name: name });
+
+check('a renamed campaign: its older leads take the new name - matched on the campaign id, never the name', async () => {
+  const records = [
+    { id: 'a', fields: { Campaign: 'Legal ICP 50-201', 'Raw Profile Data': rawOf(5, 'Legal ICP 50-201') } },
+    { id: 'b', fields: { Campaign: 'Legal ICP 50-201', 'Raw Profile Data': rawOf(5, 'Legal ICP 50-201') } },
+    { id: 'c', fields: { Campaign: 'Partner Campaign', 'Raw Profile Data': rawOf(5, 'Partner Campaign') } },
+    // same old NAME, but a different campaign (#9) that is no longer on the machine: keeps its name
+    { id: 'd', fields: { Campaign: 'Legal ICP 50-201', 'Raw Profile Data': rawOf(9, 'Legal ICP 50-201') } },
+    // an archived campaign nobody renamed: untouched
+    { id: 'e', fields: { Campaign: 'Old visits', 'Raw Profile Data': rawOf(1, 'Old visits') } },
+    // the client's own choice on a lead nobody sent: untouched even though the name is an old one
+    { id: 'f', fields: { Campaign: 'Legal ICP 50-201' } },
+  ];
+  const base = namedBase(records);
+  const live = { 3: 'Legal ICP', 5: 'Partner Campaign' };
+  const dry = await leadCampaign.followRenames(base, live, { apply: false });
+  assert.deepStrictEqual(dry, { changes: [{ id: 5, from: 'Legal ICP 50-201', to: 'Partner Campaign', count: 2 }], updated: 0 });
+  assert.strictEqual(base.updates.length, 0);
+  const done = await leadCampaign.followRenames(base, live);
+  assert.strictEqual(done.updated, 2);
+  assert.deepStrictEqual(records.map((r) => r.fields.Campaign), ['Partner Campaign', 'Partner Campaign', 'Partner Campaign', 'Legal ICP 50-201', 'Old visits', 'Legal ICP 50-201']);
+  // the saved profile is never touched - scoring reads the campaign id off it
+  assert.strictEqual(records[0].fields['Raw Profile Data'], rawOf(5, 'Legal ICP 50-201'));
+  // and a second run finds nothing to do
+  assert.deepStrictEqual(await leadCampaign.followRenames(base, live), { changes: [], updated: 0 });
+});
+
+check('the machine list: a rename is spotted by id; our own plumbing campaign is never listed', () => {
+  assert.deepStrictEqual(
+    lhCampaignList.renamesBetween(
+      [{ id: 5, name: 'Legal ICP 50-201' }, { id: 3, name: 'Legal ICP' }, { id: 1, name: '' }],
+      [{ id: 5, name: 'Partner Campaign' }, { id: 3, name: 'Legal ICP' }, { id: 1, name: 'Named at last' }, { id: 6, name: 'Brand new' }]),
+    [{ id: 5, from: 'Legal ICP 50-201', to: 'Partner Campaign' }]);
+  assert.deepStrictEqual(lhCampaignList.renamesBetween(null, [{ id: 5, name: 'Partner Campaign' }]), []);
+  const cleaned = lhCampaignList.cleanList([{ id: 50, name: 'My connections - holding list (collect only)', paused: true }, { id: 51, name: 'My own connections' }]);
+  assert.deepStrictEqual(cleaned.map((c) => c.name), ['My own connections']);
+  assert.deepStrictEqual(lhCampaignList.withoutInternal([{ id: 50, name: 'My connections - holding list (collect only)' }, { id: 40, name: 'Fractional in profile' }]).map((c) => c.id), [40]);
 });
 
 (async () => {

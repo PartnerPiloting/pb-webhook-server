@@ -9,9 +9,11 @@
  *   node scripts/backfill-lead-campaign.js --client=Roland-Illyes            # dry run: counts only
  *   node scripts/backfill-lead-campaign.js --client=Roland-Illyes --apply    # write
  *
- * Safe to run again: a lead whose {Campaign} already matches is skipped. A lead Linked Helper did
- * not send is never touched, so a client's own choice on a hand-added lead survives. Where the two
- * disagree, Linked Helper wins (the same rule as a new lead arriving) and the line is printed.
+ * Safe to run again: only a BLANK {Campaign} is filled. A lead that already carries a campaign is
+ * left alone - it may hold the campaign's new name after a rename on the machine. A lead Linked
+ * Helper did not send is never touched, so a client's own choice on a hand-added lead survives.
+ * After the catch-up, bring renamed campaigns into line once:
+ *   POST /api/linkedin/lead-campaigns/follow-renames  (it also runs by itself on every later rename)
  *
  * Needs AIRTABLE_API_KEY + MASTER_CLIENTS_BASE_ID. The base must already have the field
  * (scripts/ensure-client-fields.js).
@@ -28,7 +30,10 @@ function planFor(fields = {}) {
   const name = campaignNameFromRaw(fields['Raw Profile Data']);
   const was = String(fields[FIELD] || '').trim();
   if (!name) return { action: 'none', name: '', was };
-  if (was === name) return { action: 'skip', name, was };
+  // A lead that already carries a campaign is left alone. Its value may be the campaign's NEW name
+  // (a rename on the machine is followed - services/leadCampaign.js followRenames), and writing
+  // the name from the saved profile back over it would undo that. Only a blank is filled.
+  if (was) return { action: 'skip', name: was, was };
   return { action: 'set', name, was };
 }
 

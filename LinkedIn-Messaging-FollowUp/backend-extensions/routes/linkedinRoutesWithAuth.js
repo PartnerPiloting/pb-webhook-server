@@ -381,7 +381,7 @@ router.get('/leads/search', async (req, res) => {
     if (connection === 'connected') filterParts.push('{Date Connected}');
     if (connection === 'not_connected') filterParts.push('NOT({Date Connected})');
     if (campaignFormula) filterParts.push(campaignFormula);
-    // "No tag and no note" (23 Nov 2026): people the client has not labelled in any way yet
+    // "No tag" (23 Nov 2026): people the client has not tagged yet
     if (unlabelled === '1') filterParts.push(leadCampaign.UNLABELLED_FORMULA);
 
     // Always exclude multi-tenant entries
@@ -1652,6 +1652,25 @@ function sanitizeAltEmailsString(raw, primaryEmail) {
  * GET /api/linkedin/leads/:id
  * Get a specific lead by ID
  */
+/**
+ * POST /api/linkedin/lead-campaigns/follow-renames[?dry=1]
+ * Bring this client's {Campaign} values into line with the campaign names on their machine now
+ * (a campaign renamed in Linked Helper - services/leadCampaign.js followRenames). It also runs by
+ * itself whenever the machine reports a rename; this is the catch-up and the repair. dry=1 counts
+ * and writes nothing. Safe to repeat: a second run finds nothing to change.
+ */
+router.post('/lead-campaigns/follow-renames', async (req, res) => {
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const dry = req.query.dry === '1';
+    const result = await leadCampaign.followRenamesForClient(req.client.clientId, airtableBase, { apply: !dry });
+    res.json({ ok: !result.error, dry, ...result });
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /lead-campaigns/follow-renames:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 /**
  * GET /api/linkedin/lead-campaigns
  * What the portal's campaign pickers need: { filterReady, campaigns: [{name, count, live}],

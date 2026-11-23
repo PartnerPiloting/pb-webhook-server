@@ -224,7 +224,7 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   // Each campaign's week (16 Oct 2026), kept for the Monday numbers email
   // (services/lhWeeklyCampaignReport.js). Not awaited, never throws; an older watchdog sends none.
   if (campaignReport && Array.isArray(campaignReport.campaigns)) {
-    require('../services/lhWeeklyCampaignReport').saveSnapshot(client.clientId || clientId, campaignReport.campaigns);
+    require('../services/lhWeeklyCampaignReport').saveSnapshot(client.clientId || clientId, require('../services/lhCampaignList').withoutInternal(campaignReport.campaigns));
   }
   // Every unarchived campaign (23 Oct 2026) - the "applies to" picker on scoring attributes and the
   // Today campaign picker (services/lhCampaignList.js). Same: not awaited, never throws.

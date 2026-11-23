@@ -43,6 +43,19 @@ const LeadSearchEnhanced = ({
   const [unlabelled, setUnlabelled] = useState(false);
   const recentActive = connection === 'connected' && sortField === 'Date Connected' && sortDirection === 'desc';
 
+  // A typed name finds the person whatever the filters say (Guy, 23 Nov 2026: "a client searching
+  // for a particular lead must see everyone"). The filters stay as they are on screen and come
+  // back the moment the name box is cleared.
+  const nameSetsFiltersAside = showRecentShortcut && !!String(nameSearch || '').trim();
+  const sendSearch = (s) => {
+    if (!onSearch) return;
+    if (showRecentShortcut && String(s.nameQuery || '').trim()) {
+      onSearch({ nameQuery: s.nameQuery, priority: 'all', searchTerms: '', connection: 'all', campaign: 'all', unlabelled: false });
+    } else {
+      onSearch(s);
+    }
+  };
+
   // Export modal state
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [exportType, setExportType] = useState(null); // 'emails' | 'phones' | 'linkedin'
@@ -211,7 +224,7 @@ const LeadSearchEnhanced = ({
     // Not a LinkedIn URL, update state and trigger normal search
     setNameSearch(value);
     if (onSearch) {
-      onSearch({
+      sendSearch({
         nameQuery: value,
         priority,
         searchTerms,
@@ -229,7 +242,7 @@ const LeadSearchEnhanced = ({
     
     // Trigger search with current filters
     if (onSearch) {
-      onSearch({
+      sendSearch({
         nameQuery: nameSearch,
         priority: value,
         searchTerms,
@@ -245,7 +258,7 @@ const LeadSearchEnhanced = ({
     const value = e.target.value;
     setConnection(value);
     if (onSearch) {
-      onSearch({
+      sendSearch({
         nameQuery: nameSearch,
         priority,
         searchTerms,
@@ -261,7 +274,7 @@ const LeadSearchEnhanced = ({
     const value = e.target.value;
     setCampaign(value);
     if (onSearch) {
-      onSearch({
+      sendSearch({
         nameQuery: nameSearch,
         priority,
         searchTerms,
@@ -277,16 +290,24 @@ const LeadSearchEnhanced = ({
     setConnection('connected');
     if (onSortChange) onSortChange('Date Connected', 'desc');
     if (onSearch) {
-      onSearch({ nameQuery: nameSearch, priority, searchTerms, connection: 'connected', campaign, unlabelled });
+      sendSearch({ nameQuery: nameSearch, priority, searchTerms, connection: 'connected', campaign, unlabelled });
     }
   };
 
-  // "Only people with no tag and no note"
+  // "All leads": everyone, best score first - how the page opens. Also lifts the Connected filter
+  // the other view set.
+  const handleAllLeads = () => {
+    setConnection('all');
+    if (onSortChange) onSortChange('AI Score', 'desc');
+    sendSearch({ nameQuery: nameSearch, priority, searchTerms, connection: 'all', campaign, unlabelled });
+  };
+
+  // "Only people with no tag"
   const handleUnlabelledChange = (e) => {
     const value = !!e.target.checked;
     setUnlabelled(value);
     if (onSearch) {
-      onSearch({ nameQuery: nameSearch, priority, searchTerms, connection, campaign, unlabelled: value });
+      sendSearch({ nameQuery: nameSearch, priority, searchTerms, connection, campaign, unlabelled: value });
     }
   };
 
@@ -297,7 +318,7 @@ const LeadSearchEnhanced = ({
     setSearchTerms(termsString);
 
     if (onSearch) {
-      onSearch({
+      sendSearch({
         nameQuery: nameSearch,
         priority,
         searchTerms: termsString,
@@ -738,26 +759,32 @@ const LeadSearchEnhanced = ({
         )}
         
         {showRecentShortcut && (
-          <div className="mb-4 flex flex-wrap items-center gap-4">
-            <button
-              type="button"
-              id="lead-search-recently-connected"
-              onClick={handleRecentlyConnected}
-              className={`px-3 py-2 rounded-lg text-sm font-medium border ${recentActive ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-700 border-blue-300 hover:bg-blue-50'}`}
-              title="People you are connected to, newest connection first"
-            >
-              Recently connected
-            </button>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                id="lead-search-unlabelled"
-                checked={unlabelled}
-                onChange={handleUnlabelledChange}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              Only people with no tag and no note
-            </label>
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div id="lead-search-view" role="group" aria-label="Which leads to show" className="inline-flex rounded-lg border border-blue-300 overflow-hidden">
+              <button
+                type="button"
+                id="lead-search-all-leads"
+                aria-pressed={!recentActive}
+                onClick={handleAllLeads}
+                className={`px-4 py-2 text-sm font-medium ${!recentActive ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 hover:bg-blue-50'}`}
+                title="Everyone, best score first"
+              >
+                All leads
+              </button>
+              <button
+                type="button"
+                id="lead-search-recently-connected"
+                aria-pressed={recentActive}
+                onClick={handleRecentlyConnected}
+                className={`px-4 py-2 text-sm font-medium border-l border-blue-300 ${recentActive ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 hover:bg-blue-50'}`}
+                title="People you are connected to, newest connection first"
+              >
+                Recently connected
+              </button>
+            </div>
+            <span className="text-sm text-gray-500">
+              {recentActive ? 'People you are connected to, newest first' : 'Everyone, best score first'}
+            </span>
           </div>
         )}
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
@@ -778,6 +805,11 @@ const LeadSearchEnhanced = ({
                 onChange={handleNameSearchChange}
               />
             </div>
+            {nameSetsFiltersAside && (
+              <p id="lead-search-name-note" className="mt-2 text-xs text-gray-600">
+                Searching everyone. Your filters are set aside while a name is typed.
+              </p>
+            )}
           </div>
 
           {/* Priority Filter - narrow, 1 column */}
@@ -796,16 +828,16 @@ const LeadSearchEnhanced = ({
               <option value="Three">Three</option>
             </select>
             <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">
-              Connected/Not Connected
+              {showRecentShortcut ? 'LinkedIn connection' : 'Connected/Not Connected'}
             </label>
             <select
               value={connection}
               onChange={handleConnectionChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
             >
-              <option value="all">All</option>
-              <option value="connected">Connected</option>
-              <option value="not_connected">Not connected</option>
+              <option value="all">{showRecentShortcut ? 'Everyone' : 'All'}</option>
+              <option value="connected">{showRecentShortcut ? 'Connected to you' : 'Connected'}</option>
+              <option value="not_connected">{showRecentShortcut ? 'Not connected yet' : 'Not connected'}</option>
             </select>
             {showCampaignFilter && (
               <>
@@ -827,6 +859,18 @@ const LeadSearchEnhanced = ({
                   <option value="__none__">No campaign</option>
                 </select>
               </>
+            )}
+            {showRecentShortcut && (
+              <label className="flex items-center gap-2 text-sm text-gray-700 mt-4">
+                <input
+                  type="checkbox"
+                  id="lead-search-unlabelled"
+                  checked={unlabelled}
+                  onChange={handleUnlabelledChange}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                Only people with no tag
+              </label>
             )}
           </div>
           {/* Search Terms Filter - more space, 4 columns */}
@@ -873,7 +917,7 @@ const LeadSearchEnhanced = ({
           )}
           {unlabelled && (
             <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs">
-              No tag and no note
+              No tag
             </span>
           )}
           {campaign !== 'all' && (

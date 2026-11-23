@@ -26,6 +26,32 @@ const log = createSafeLogger('SYSTEM', null, 'lh_campaign_list');
 
 const MAX_CAMPAIGNS = 100;
 
+/**
+ * Campaigns on a machine that are our own plumbing and that no client should ever see in a picker,
+ * a list or an email. The holding list only collects from My Connections for
+ * scripts/linked-helper/lh-own-connections.py (Guy, 23 Nov 2026). Dropped where the machine's
+ * report comes in, so nothing downstream has to remember.
+ */
+const INTERNAL_CAMPAIGNS = ['My connections - holding list (collect only)'];
+const isInternal = (name) => INTERNAL_CAMPAIGNS.includes(String(name || '').trim());
+/** A machine report's campaign array with the plumbing taken out. Anything not an array comes back as it was. */
+const withoutInternal = (list) => (Array.isArray(list) ? list.filter((c) => !(c && isInternal(c.name))) : list);
+
+/**
+ * Campaigns whose NAME changed between two machine lists, matched on the Linked Helper campaign id:
+ * [{ id, from, to }]. A campaign that is new, gone, or had no name before is not a rename.
+ */
+function renamesBetween(before = [], after = []) {
+  const was = new Map((before || []).map((c) => [Number(c.id), String(c.name || '').trim()]));
+  const out = [];
+  for (const c of after || []) {
+    const from = was.get(Number(c.id));
+    const to = String(c.name || '').trim();
+    if (from && to && from !== to) out.push({ id: Number(c.id), from, to });
+  }
+  return out;
+}
+
 let pool;
 let schemaEnsured = false;
 
@@ -71,6 +97,7 @@ function cleanList(list) {
     if (!c || typeof c !== 'object') continue;
     const id = Number(c.id);
     if (!Number.isInteger(id) || id <= 0) continue;
+    if (isInternal(c.name)) continue;
     out.push({ id, name: String(c.name || '').trim().slice(0, 80), paused: !!c.paused });
   }
   return out;
@@ -81,6 +108,13 @@ async function saveList(clientId, list) {
   const campaigns = cleanList(list);
   if (!clientId || !campaigns) return false;
   try {
+    // A campaign renamed on the machine: the leads it sent take the new name (Guy, 23 Nov 2026 -
+    // services/leadCampaign.js followRenames). Spotted here, where the old list is still in hand.
+    const prev = await readRow('lh_campaign_lists', clientId);
+    const renames = renamesBetween(prev && prev.campaigns, campaigns);
+    if (renames.length) {
+      setImmediate(() => require('./leadCampaign').onMachineRenames(String(clientId), renames).catch(() => {}));
+    }
     await withClient((client) => client.query(
       `INSERT INTO lh_campaign_lists (client_id, campaigns, reported_at) VALUES ($1, $2, now())
        ON CONFLICT (client_id) DO UPDATE SET campaigns = $2, reported_at = now()`,
@@ -217,4 +251,5 @@ function namesById(campaigns = []) {
   return out;
 }
 
-module.exports = { saveList, listCampaigns, mergeSources, tallyLeadCampaigns, cleanList, namesById, attachLeadCampaigns, MAX_CAMPAIGNS };
+module.exports = {
+  INTERNAL_CAMPAIGNS, isInternal, withoutInternal, renamesBetween, saveList, listCampaigns, mergeSources, tallyLeadCampaigns, cleanList, namesById, attachLeadCampaigns, MAX_CAMPAIGNS };
