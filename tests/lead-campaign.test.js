@@ -204,6 +204,29 @@ check('"Recently connected" and the no-tag-no-note marker: Guy only for now; the
   assert.strictEqual(leadCampaign.UNLABELLED_FORMULA, 'AND(NOT({Search Terms}), NOT({Notes}))');
 });
 
+check('"My own connections" never replaces a campaign a lead already has', () => {
+  const own = JSON.stringify({ id: 'x', campaign_id: 51, campaign_name: 'My own connections', headline: 'new' });
+  // sent by a real campaign: name and id are put back on the incoming profile
+  const real = leadCampaign.keepRealCampaign({ 'Raw Profile Data': raw('Legal ICP'), Campaign: 'Legal ICP' }, own);
+  assert.strictEqual(real.name, 'Legal ICP');
+  assert.strictEqual(real.raw.campaign_name, 'Legal ICP');
+  assert.strictEqual(real.raw.campaign_id, 5);
+  assert.strictEqual(real.raw.headline, 'new');
+  assert.strictEqual(real.raw.wingguy_also_seen_in, 'My own connections');
+  // the client chose one by hand on a lead nobody sent: kept, and still theirs to change
+  const chosen = leadCampaign.keepRealCampaign({ Campaign: 'Partner Campaign' }, JSON.parse(own));
+  assert.strictEqual(chosen.name, 'Partner Campaign');
+  assert.strictEqual(chosen.raw.campaign_name, undefined);
+  assert.strictEqual(chosen.raw.campaign_id, undefined);
+  assert.strictEqual(leadCampaign.describeLead({ Campaign: 'Partner Campaign', 'Raw Profile Data': JSON.stringify(chosen.raw) }).campaignLocked, false);
+  // nothing to protect: a brand new person, a lead with no campaign, one already "My own connections"
+  assert.strictEqual(leadCampaign.keepRealCampaign({}, own), null);
+  assert.strictEqual(leadCampaign.keepRealCampaign({ 'Raw Profile Data': '{"id":"x"}' }, own), null);
+  assert.strictEqual(leadCampaign.keepRealCampaign({ 'Raw Profile Data': own, Campaign: 'My own connections' }, own), null);
+  // and a real campaign arriving is never held back, whatever was there
+  assert.strictEqual(leadCampaign.keepRealCampaign({ 'Raw Profile Data': own, Campaign: 'My own connections' }, raw('Legal ICP')), null);
+});
+
 (async () => {
   for (const run of pending) await run();
   if (failures) { console.error(`\n${failures} failed`); process.exit(1); }

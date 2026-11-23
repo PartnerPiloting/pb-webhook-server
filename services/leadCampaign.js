@@ -22,6 +22,7 @@
 
 const { lhCampaignNameOf } = require('./wingguyRulesSource');
 const lhCampaignList = require('./lhCampaignList');
+const { campaignIdOf } = require('./campaignScope');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'lead_campaign');
@@ -47,6 +48,50 @@ const FILTER_READY = ['Roland-Illyes', 'Guy-Wilson'];
  */
 const RECENT_SHORTCUT = ['Guy-Wilson'];
 const recentShortcut = (clientId) => RECENT_SHORTCUT.includes('*') || RECENT_SHORTCUT.includes(String(clientId || ''));
+
+/**
+ * The catch-all campaign on a client's machine for connections no campaign sent (Guy, 23 Nov 2026:
+ * every LinkedIn connection reaches Wingguy through the Linked Helper machine, however the person
+ * was met). scripts/linked-helper/lh-own-connections.py feeds it each night. It is a campaign like
+ * any other EXCEPT that it never replaces a real one - see keepRealCampaign.
+ */
+const OWN_CONNECTIONS = 'My own connections';
+
+/**
+ * A lead arriving from the catch-all campaign that ALREADY has a campaign keeps it.
+ * The machine script skips anyone who is in another campaign, so this is the second lock: a lead
+ * sent from another machine, an archived campaign, or given a campaign by the client by hand.
+ *
+ *   existingFields - the lead's Airtable fields as they are now
+ *   incomingRaw    - what Linked Helper just sent (object or JSON string)
+ * Returns null when there is nothing to protect, else { name, raw } where raw is the incoming
+ * profile with the lead's own campaign put back (scoring reads campaign_id off it).
+ */
+function keepRealCampaign(existingFields = {}, incomingRaw) {
+  if (campaignNameFromRaw(incomingRaw) !== OWN_CONNECTIONS) return null;
+  const sentBy = campaignNameFromRaw(existingFields['Raw Profile Data']);
+  const stored = String(existingFields[FIELD] || '').trim();
+  const fromLh = sentBy && sentBy !== OWN_CONNECTIONS ? sentBy : '';
+  const chosen = !fromLh && stored && stored !== OWN_CONNECTIONS ? stored : '';
+  if (!fromLh && !chosen) return null;
+  let raw;
+  try {
+    raw = typeof incomingRaw === 'string' ? JSON.parse(incomingRaw) : { ...(incomingRaw || {}) };
+  } catch (_) {
+    return null;
+  }
+  raw.wingguy_also_seen_in = OWN_CONNECTIONS;
+  if (fromLh) {
+    raw.campaign_name = fromLh;
+    const id = campaignIdOf(existingFields['Raw Profile Data']);
+    if (id === null || id === undefined) delete raw.campaign_id; else raw.campaign_id = id;
+  } else {
+    // the client's own choice on a lead nobody sent: stays their choice, and stays theirs to change
+    delete raw.campaign_name;
+    delete raw.campaign_id;
+  }
+  return { name: fromLh || chosen, raw };
+}
 
 /** Lead Search's "no tag and no note" filter: nothing in {Search Terms} and nothing in {Notes}. */
 const UNLABELLED_FORMULA = 'AND(NOT({Search Terms}), NOT({Notes}))';
@@ -246,7 +291,7 @@ async function setLeadCampaign({ clientId, base, leadId, value }) {
 }
 
 module.exports = {
-  FIELD, NONE, FILTER_READY, filterReady, RECENT_SHORTCUT, recentShortcut, UNLABELLED_FORMULA,
+  FIELD, NONE, OWN_CONNECTIONS, keepRealCampaign, FILTER_READY, filterReady, RECENT_SHORTCUT, recentShortcut, UNLABELLED_FORMULA,
   _setQuickMs: (ms) => { QUICK_MS = ms; }, campaignNameFromRaw, filterFormula, isMissingFieldError,
   describeLead, writeFields, getOptions, setLeadCampaign, tallyNamesOnLeads,
 };

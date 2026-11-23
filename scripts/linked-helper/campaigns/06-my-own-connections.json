@@ -1,0 +1,55 @@
+{
+  "_comment": [
+    "My own connections, part 2 - the SENDER (Guy, 23 Nov 2026: every LinkedIn connection reaches",
+    "Wingguy through the Linked Helper machine, however the person was met). Visit the profile,",
+    "send the person to the client's webhook. NO invite, NO message. Nobody is ever in it except",
+    "people lh-own-connections.py put there: connected on or after the switch-on date and in no",
+    "other campaign, at most 8 a night. Runs just after midnight so it never competes with the",
+    "invitation campaign and is finished before the 02:30 backup. Times are the MACHINE'S local time.",
+    "{{WEBHOOK_URL}} is filled from /etc/linked-helper-machine.conf (CLIENT_ID or LH_WEBHOOK_URL).",
+    "NOT part of the default build - lh-own-connections.py builds it on a machine that is switched on"
+  ],
+  "name": "My own connections",
+  "description": "Wingguy: connections no campaign sent. Visit, then send to Wingguy. No invite, no message.",
+  "actions": [
+    {
+      "name": "",
+      "actionType": "VisitAndExtract",
+      "actionSettings": {},
+      "coolDownMinutes": 30,
+      "maxActionResultsPerIteration": 8,
+      "workingHours": { "days": "all", "windows": [["00:00", "02:15"]] }
+    },
+    {
+      "name": "",
+      "actionType": "SendPersonToWebhook",
+      "actionSettings": {
+        "url": "{{WEBHOOK_URL}}",
+        "convertMultiLine": true,
+        "exportAsFlatObject": true,
+        "exportSettings": {
+          "educations": 3,
+          "messengers": 2,
+          "positions": 10,
+          "phoneNumbers": 2,
+          "websites": 3,
+          "languages": 3,
+          "thirdPartyEmails": 3,
+          "fullMessagingHistory": false,
+          "campaignMessagingHistory": false,
+          "positionFields": {
+            "title": true,
+            "description": true,
+            "locationName": true,
+            "dateStart": true,
+            "dateEnd": true,
+            "defaultPositionFlag": true
+          }
+        }
+      },
+      "coolDownMinutes": 1,
+      "maxActionResultsPerIteration": 8,
+      "workingHours": { "days": "all", "windows": [["00:00", "02:25"]] }
+    }
+  ]
+}

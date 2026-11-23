@@ -271,6 +271,15 @@ async function upsertLead(
             if (fields[guarded] === "") delete fields[guarded];
         }
 
+        // A lead that already has a campaign keeps it when the catch-all "My own connections"
+        // campaign sends the same person (services/leadCampaign.js keepRealCampaign).
+        const kept = leadCampaign.keepRealCampaign(existing[0].fields, originalLeadData);
+        if (kept) {
+            delete fields[leadCampaign.FIELD];
+            fields[LEAD_FIELDS.RAW_PROFILE_DATA] = JSON.stringify(kept.raw);
+            logger.info(`leadService/upsertLead: ${existing[0].id} arrived from "${leadCampaign.OWN_CONNECTIONS}" but keeps its campaign "${kept.name}"`);
+        }
+
         // Validate field names before sending to Airtable
         const validatedFields = createValidatedObject(fields);
         await writeLeadFields((f) => airtableBase(CLIENT_TABLES.LEADS).update(existing[0].id, f), validatedFields);

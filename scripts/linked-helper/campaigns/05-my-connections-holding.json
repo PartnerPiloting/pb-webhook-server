@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "My own connections, part 1 - the HOLDING LIST (Guy, 23 Nov 2026). One step: collect from the",
+    "My Connections page. Nothing in it can act on a person - no visit, no invite, no message, no",
+    "webhook. It stays PAUSED; lh-own-connections.py switches it on for a few minutes each night,",
+    "reads the top of the list (newest first, each person with the date they connected) and stops",
+    "the runner. The repeat is a year so Linked Helper never re-reads on its own.",
+    "NOT part of the default build - lh-own-connections.py builds it on a machine that is switched on"
+  ],
+  "name": "My connections - holding list (collect only)",
+  "description": "Wingguy: only collects from My Connections. No visit, no invite, no message, no webhook.",
+  "actions": [
+    {
+      "name": "Collect from My Connections (Wingguy)",
+      "actionType": "AutoCollectPeople",
+      "actionSettings": {
+        "collectingSource": {
+          "autoCollectSourceType": "LinkedInURL",
+          "linkedInCollectingType": "my-connections",
+          "linkedInCollectingUrl": "https://www.linkedin.com/mynetwork/invite-connect/connections/"
+        },
+        "repeatIntervalInMs": 31536000000
+      },
+      "coolDown": 0,
+      "maxActionResultsPerIteration": -1,
+      "workingHours": "always"
+    }
+  ]
+}
