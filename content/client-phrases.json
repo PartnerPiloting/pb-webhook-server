@@ -49,6 +49,11 @@
         "services/lhTopUp.js"
       ],
       "near_misses": [
+    {
+      "phrase": "how many messages can I safely send a day on LinkedIn",
+      "not": "YOUR DAILY FOLLOW-UP LIST",
+      "expect": "THANKS FOR CONNECTING"
+    },
         { "text": "who should I search for next on LinkedIn", "expect": "FINDING YOUR AUDIENCE WITH CLAUDE" },
         { "text": "help me write a boolean search", "expect": "FINDING YOUR AUDIENCE WITH CLAUDE" }
       ]

@@ -1522,6 +1522,13 @@ profile and writes the message right there. Mark them Messaged and they leave th
 if they're not worth a personal note. Your place is kept, so you can do three today and ten
 tomorrow.
 
+**Got a backlog? Clear it steadily, not in one sitting.** If acceptances have piled up, don't try to
+thank them all in a day. Do 20 to 30 a day, highest score first, and a backlog of 70 is gone in three
+or four days. LinkedIn doesn't publish a limit, but Linked Helper's own guide is about 150 actions a
+day in total - and that counts what you do by hand as well as what your campaign does. Twenty to
+thirty messages sits well inside that, with your campaign running alongside. The screen keeps your
+place, so you pick up tomorrow where you stopped today.
+
 **How it comes to sound like you.** Guy finds the drafts often sound more like him than he does at
 the end of a long day - but that's earned, not switched on. The instructions it writes from already
 read like a person, not a machine. Then you shape them to how you talk (see *your instructions*),

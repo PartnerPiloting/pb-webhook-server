@@ -498,6 +498,11 @@ const TOPIC_ALIASES = [
   // Above the invite-note alias, which "what do I put in the Tags box on the invite step" also matches.
   // "tag" alone is NOT a key - "tag this lead" is Wingguy's own tagging, a different thing.
   [[/\btags?\b/, /\b(invites?|invitations?|steps?|linked ?helper|lh|clon\w+)\b/], 'A SECOND LINKED HELPER CAMPAIGN'],
+  // Roland, 22 Nov 2026: "How many thanks-for-connecting or follow-up messages can I safely send per day by
+  // hand with /wg, when I have a backlog of 70+?" - answered in THANKS FOR CONNECTING (20 to 30 a day).
+  // "how many" must sit with message + a per-day/safety word, so "how many people are in my campaign" misses.
+  [[/\bhow many\b/, /\bmessag\w+\b/, /\b(day|daily|safe|safely|limits?)\b/], 'THANKS FOR CONNECTING'],
+  [[/\bbacklog\b/, /\b(messag\w+|thank\w*|connections?|accept\w+)\b/], 'THANKS FOR CONNECTING'],
   // the note that rides on the connection request: "connection request note", "invite wording",
   // "what should the note on my connection request say?", "what do I write in my invite"
   [[/\b(connection requests?|invites?|invitations?)\b/, /\b(notes?|wording|text|message|say|write|put)\b/], 'THANKS FOR CONNECTING'],
