@@ -220,11 +220,11 @@ async function buildOptions(clientId, base, progress) {
   let live = [];
   try {
     const listed = await lhCampaignList.listCampaigns(clientId, {});
-    live = listed.campaigns.filter((c) => c.live && c.name).map((c) => c.name);
+    live = listed.campaigns.filter((c) => c.live && c.name);
   } catch (e) {
     log.warn(`lead-campaign: machine list not read for ${clientId}: ${e.message}`);
   }
-  progress.live = live;
+  progress.live = live.filter((c) => c.sends !== false).map((c) => c.name);
 
   let onLeads = { names: [], capped: false };
   let fieldMissing = false;
@@ -236,7 +236,12 @@ async function buildOptions(clientId, base, progress) {
       log.warn(`lead-campaign: names on leads not read for ${clientId}: ${e.message}`);
     }
   }
-  return shapeOptions(clientId, live, onLeads, fieldMissing);
+  // A campaign that can never send anyone to Wingguy - no send-to-webhook step: removals, a
+  // collect-only list, a test - is not a choice a client can use, so it is left out (Guy, 23 Nov
+  // 2026). Unless leads carry its name: then it is real to the client and it stays.
+  const carried = new Set(onLeads.names.map((n) => n.name));
+  const shown = live.filter((c) => c.sends !== false || carried.has(c.name)).map((c) => c.name);
+  return shapeOptions(clientId, shown, onLeads, fieldMissing);
 }
 
 function shapeOptions(clientId, live, onLeads, fieldMissing) {

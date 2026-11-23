@@ -285,6 +285,24 @@ check('the machine list: a rename is spotted by id; our own plumbing campaign is
   assert.deepStrictEqual(lhCampaignList.withoutInternal([{ id: 50, name: 'My connections - holding list (collect only)' }, { id: 40, name: 'Fractional in profile' }]).map((c) => c.id), [40]);
 });
 
+check('a campaign that can never send anyone to Wingguy is left out of the list - unless leads carry its name', async () => {
+  machine = [
+    { id: 40, name: 'Fractional in profile', live: true, sends: true },
+    { id: 45, name: 'Remove approved connections', live: true, sends: false },
+    { id: 48, name: 'Top-up test', live: true, sends: false },
+    { id: 7, name: 'Old style, no webhook step', live: true, sends: false },
+    { id: 9, name: 'From an older watchdog', live: true },          // says nothing = assume it sends
+  ];
+  const base = fakeBase([{ id: 'a', fields: { Campaign: 'Old style, no webhook step' } }]);
+  const o = await leadCampaign.getOptions('Guy-Wilson', base, { fresh: true });
+  assert.deepStrictEqual(o.campaigns.map((c) => c.name).sort(), ['Fractional in profile', 'From an older watchdog', 'Old style, no webhook step']);
+  assert.deepStrictEqual(o.campaigns.find((c) => c.name === 'Old style, no webhook step'), { name: 'Old style, no webhook step', count: 1, live: true });
+  assert.deepStrictEqual(o.choices, ['Fractional in profile', 'From an older watchdog', 'Old style, no webhook step']);
+  // the flag survives the machine list's clean-up, and only when the machine sent one
+  assert.deepStrictEqual(lhCampaignList.cleanList([{ id: 45, name: 'Remove approved connections', paused: true, sends: false }, { id: 9, name: 'Older' }]),
+    [{ id: 45, name: 'Remove approved connections', paused: true, sends: false }, { id: 9, name: 'Older', paused: false }]);
+});
+
 (async () => {
   for (const run of pending) await run();
   if (failures) { console.error(`\n${failures} failed`); process.exit(1); }

@@ -98,7 +98,11 @@ function cleanList(list) {
     const id = Number(c.id);
     if (!Number.isInteger(id) || id <= 0) continue;
     if (isInternal(c.name)) continue;
-    out.push({ id, name: String(c.name || '').trim().slice(0, 80), paused: !!c.paused });
+    const row = { id, name: String(c.name || '').trim().slice(0, 80), paused: !!c.paused };
+    // sends: does the campaign have a send-to-webhook step (lh-watchdog.py all_campaigns)? Only kept
+    // when the machine said so - an older watchdog says nothing, and nothing means "assume it does".
+    if (typeof c.sends === 'boolean') row.sends = c.sends;
+    out.push(row);
   }
   return out;
 }
@@ -178,7 +182,7 @@ function mergeSources({ machine = null, snapshot = null, fromLeads = [] } = {}) 
   const byId = new Map();
   const put = (id, patch) => byId.set(id, { id, name: '', paused: false, live: false, leads: 0, ...(byId.get(id) || {}), ...patch });
   const full = machine && Array.isArray(machine.campaigns) ? machine.campaigns : null;
-  for (const c of full || []) put(Number(c.id), { name: c.name || '', paused: !!c.paused, live: true });
+  for (const c of full || []) put(Number(c.id), { name: c.name || '', paused: !!c.paused, live: true, ...(typeof c.sends === 'boolean' ? { sends: c.sends } : {}) });
   if (!full && snapshot && Array.isArray(snapshot.campaigns)) {
     for (const c of snapshot.campaigns) if (Number(c.id) > 0) put(Number(c.id), { name: c.name || '', paused: !!c.paused, live: true });
   }

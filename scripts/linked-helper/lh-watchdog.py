@@ -475,9 +475,27 @@ def all_campaigns(con):
     (services/lhCampaignList.js). Best-effort: its own failure costs only this list.
     """
     try:
-        return [{"id": int(cid), "name": str(name or "")[:80], "paused": bool(paused)}
-                for cid, name, paused in con.execute(
-                    "SELECT id, name, is_paused FROM campaigns WHERE is_archived = 0 ORDER BY id LIMIT 100")]
+        # "sends" (Guy, 23 Nov 2026): does the campaign have a send-to-webhook step at all? One that
+        # does not (removals, a collect-only list, a test) can never send anyone to Wingguy, so the
+        # server leaves it out of the client's Campaign list (services/leadCampaign.js). Asked for
+        # separately so that a database it cannot be read from still gets the plain list.
+        try:
+            senders = {int(r[0]) for r in con.execute(
+                "SELECT DISTINCT a.campaign_id FROM actions a "
+                "JOIN action_versions av ON av.action_id = a.id "
+                "JOIN action_configs ac ON ac.id = av.config_id "
+                "WHERE ac.actionType LIKE 'Send%ToWebhook'")}
+        except Exception as e:
+            print(f"campaign webhook steps unreadable (non-fatal): {e}")
+            senders = None
+        out = []
+        for cid, name, paused in con.execute(
+                "SELECT id, name, is_paused FROM campaigns WHERE is_archived = 0 ORDER BY id LIMIT 100"):
+            row = {"id": int(cid), "name": str(name or "")[:80], "paused": bool(paused)}
+            if senders is not None:
+                row["sends"] = int(cid) in senders
+            out.append(row)
+        return out
     except Exception as e:
         print(f"campaign list unreadable (non-fatal): {e}")
         return None

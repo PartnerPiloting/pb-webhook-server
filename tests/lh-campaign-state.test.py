@@ -160,8 +160,17 @@ with tempfile.TemporaryDirectory() as root:
           p.get("paused") is True and p.get("waiting") == 4 and p.get("accepted_7d") is None and p.get("cohort_accepted") is None)
     every = lhw.campaign_state("777", data_dir=root).get("all_campaigns")
     check("all campaigns: every unarchived campaign, finished ones included, archived left out (the scoring picker)",
-          every == [{"id": 1, "name": "Connect", "paused": False}, {"id": 2, "name": "Old paused", "paused": True},
-                    {"id": 3, "name": "Finished", "paused": False}])
+          [{k: c[k] for k in ("id", "name", "paused")} for c in (every or [])]
+          == [{"id": 1, "name": "Connect", "paused": False}, {"id": 2, "name": "Old paused", "paused": True},
+              {"id": 3, "name": "Finished", "paused": False}])
+    # "sends" (23 Nov 2026): only a campaign with a send-to-webhook step can send anyone to Wingguy.
+    con = sqlite3.connect(os.path.join(root, "Partitions", "linked-helper-account-777-main", "lh.db"))
+    con.executescript("INSERT INTO action_configs VALUES (900,'SendPersonToWebhook');"
+                      "INSERT INTO actions VALUES (90,1); INSERT INTO action_versions VALUES (9000,90,900);")
+    con.commit()
+    sends = {c["id"]: c.get("sends") for c in lhw.all_campaigns(con)}
+    con.close()
+    check("all campaigns: says which campaigns have a send-to-webhook step", sends == {1: True, 2: False, 3: False})
 
 with tempfile.TemporaryDirectory() as root:
     # A campaign created a minute ago: no steps, nobody loaded. It must still be in the list.
