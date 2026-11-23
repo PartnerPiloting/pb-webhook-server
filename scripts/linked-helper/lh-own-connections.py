@@ -74,7 +74,8 @@ def say(*a):
 
 
 def load(name, filename):
-    for d in (HERE, "/usr/local/bin", "/usr/local/share/linked-helper/campaigns"):
+    # /usr/local/bin first: update-lh-machine.sh keeps that copy current; the one beside the recipes can be months old
+    for d in ("/usr/local/bin", HERE, "/usr/local/share/linked-helper/campaigns"):
         p = os.path.join(d, filename)
         if os.path.exists(p):
             spec = importlib.util.spec_from_file_location(name, p)
