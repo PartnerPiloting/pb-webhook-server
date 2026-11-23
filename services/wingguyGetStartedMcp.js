@@ -460,6 +460,12 @@ const TOPIC_ALIASES = [
   // Roland, 12 Nov 2026: the browser's own error, shown raw in the panel - "The message port closed
   // before a response was received". Above the extension alias, which his question also matches.
   [[/message port|port closed|context invalidated/], '"COULDN'],
+  // Roland, 23 Nov 2026: "Can I use /wg and the Wingguy extension on my phone (LinkedIn mobile app or
+  // mobile browser) when I am at an event without my laptop, or is it desktop Chrome or Edge only?"
+  // Above the extension alias, which his question also matches. The first pattern keeps a question
+  // about a phone CALL (its transcript) on the PHONE CALLS topic.
+  [[/^(?![\s\S]*\b(calls?|called|calling|transcripts?|record\w*)\b)/, /\b(phones?|mobiles?|iphone|android|ipad|tablet)\b/, /\b(wg|wingguy|extensions?|linkedin|browser|chrome|edge|laptop|events?)\b/], 'WINGGUY ON YOUR PHONE'],
+  [[/\bwithout\b/, /\b(laptop|computer)\b/], 'WINGGUY ON YOUR PHONE'],
   // Two Learning gaps written 16 Nov 2026.
   // Dean: "reconnect" - the Reconnect list had a tour beat but no topic. "Reconnect" is also what a
   // client says about a dropped mailbox or the machine page, so those two are caught first.

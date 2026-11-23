@@ -1554,6 +1554,38 @@ in the Wingguy window ("add them to my list") and they'll be there next time.
 
 ---
 
+## WINGGUY ON YOUR PHONE - /WG NEEDS YOUR LAPTOP, AND WHAT WORKS AT AN EVENT
+
+The short answer: **/wg works on your computer only** - in Chrome or Edge, on a laptop or a desktop.
+It doesn't work in the LinkedIn app on your phone, and it doesn't work in your phone's browser
+either. Same story on a tablet.
+
+**Why.** /wg comes from the browser extension, and phones won't take it. The LinkedIn app is closed
+to add-ons altogether, and the phone versions of Chrome and Edge can't load an extension like ours.
+So nothing's broken and there's no setting to change - it's simply a computer thing.
+
+**What does work on your phone: Wingguy in your Claude app.** The Wingguy you talk to in Claude isn't
+tied to your laptop. Open the Claude app on your phone, signed in the same way as on your computer,
+and it's there. At an event, that covers the three things that matter:
+
+- **Before you walk in.** Ask about anyone you expect to see - where you left things, what was said
+  last time. Thirty seconds in the car park.
+- **The moment you've met someone.** Tell Wingguy who they are, where you met and what you talked
+  about, and ask it to add them to your list. If you have their LinkedIn profile link, paste that in
+  too. Two minutes while it's fresh beats trying to remember six people the next morning.
+- **When a message really can't wait.** Ask Wingguy to write it, copy it, and paste it into the
+  LinkedIn app yourself. One thing to know: on your phone it's working from what's already saved
+  about that person, not from the conversation on your screen. So tell it anything that was just
+  said, and for someone brand new, give it the gist of your chat.
+
+**The habit I'd suggest.** At the event, connect with them on LinkedIn on the spot and tell Wingguy
+about them in the Claude app. Then that evening or the next morning, sit down at your laptop, open
+each conversation and type **/wg** - that's where it has their whole profile and the whole
+conversation in front of it. A message the next morning is still quick, and nobody at an event is
+waiting on a message from you before they've got home.
+
+---
+
 ## YOUR RECONNECT LIST - THE PEOPLE YOU ALREADY KNOW
 
 The best place to start isn't strangers. Over the years you've had hundreds of LinkedIn conversations
