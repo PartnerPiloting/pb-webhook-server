@@ -39,6 +39,10 @@ function getPool() {
   return pool;
 }
 
+/** {Source} values that only a person adding someone by hand produces (services/wingguyLeads.js createLead,
+ * the portal's People you've met). */
+const HAND_ADDED_SOURCES = ['They Reached Out To Me', 'Follow-Up Personally'];
+
 async function ensureSchema(client) {
   await client.query(`
     CREATE TABLE IF NOT EXISTS wingguy_backlog_worklist (
@@ -132,9 +136,12 @@ async function runBacklogAudit(tenant) {
   // Same degrade ladder as the sweep's lead read (2026-08-15): the Series fields are Guy-only
   // extras and Reconnect On rolled out over time — a base missing either must not fail the audit.
   const CORE_FIELDS = ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Date Connected', 'LinkedIn Profile URL'];
+  // Source (23 Nov 2026): a hand-added person is no longer dated as a LinkedIn connection unless they
+  // are one, so the "connected" test below needs another way to know the coach knows them.
   const AUDIT_ATTEMPTS = [
-    [...CORE_FIELDS, 'Series Sent Count', 'Series Unsubscribed', 'Reconnect On'],
-    [...CORE_FIELDS, 'Reconnect On'],
+    [...CORE_FIELDS, 'Source', 'Series Sent Count', 'Series Unsubscribed', 'Reconnect On'],
+    [...CORE_FIELDS, 'Source', 'Reconnect On'],
+    [...CORE_FIELDS, 'Source'],
     CORE_FIELDS,
   ];
   let records;
@@ -173,6 +180,9 @@ async function runBacklogAudit(tenant) {
     const who = { first, last: f['Last Name'] || '' };
     const theyEngaged = (sig && sig.lastInboundMs) || li.lines.some((l) => senderIsLead(l.sender, who, { name: coach.clientName }));
     const connected = !!f['Date Connected'];
+    // Added by hand (Claude, the panel, a reply to the meeting email, People you've met): the coach
+    // knows this person, connected on LinkedIn or not - never "ignored cold outreach".
+    const handAdded = HAND_ADDED_SOURCES.includes(String((f['Source'] && f['Source'].name) || f['Source'] || '').trim());
 
     if (!lastMs) { skipped.never++; continue; }                                  // no interaction at all
     if (lastMs > quietCut) { skipped.live++; continue; }                          // daily brief's territory
@@ -180,7 +190,7 @@ async function runBacklogAudit(tenant) {
     if (String(f['Cease FUP'] && f['Cease FUP'].name || f['Cease FUP'] || '') === 'Yes') { skipped.cease++; continue; }
     if (Number(f['Series Sent Count'] || 0) > 0 && f['Series Unsubscribed'] !== true) { skipped.series++; continue; }
     if (f['Reconnect On']) { skipped.stamped++; continue; }                       // already captured
-    if (!theyEngaged && !connected) { skipped.never++; continue; }                // pure ignored cold outreach
+    if (!theyEngaged && !connected && !handAdded) { skipped.never++; continue; }                // pure ignored cold outreach
 
     candidates.push({
       key: (email || `${first} ${f['Last Name'] || ''}`.trim()).toLowerCase(),

@@ -175,6 +175,7 @@ const AGENT_TOOLS = [
         location: { type: 'string', description: 'Where they\'re based (e.g. "Sydney, New South Wales") — only if the profile in view, the thread, or Guy stated it; never a guess. Drives the lead-timezone maths for meeting times.' },
         introducedBy: { type: 'string', description: 'When this person was INTRODUCED to Guy by someone else (a third name pulled into a thread): the introducer\'s name. Filed as the first line of Notes.' },
         notes: { type: 'string', description: 'Optional short context for the record (e.g. how they came in).' },
+        connected: { type: 'boolean', description: 'true ONLY when this person is already a 1st-degree LinkedIn connection - Guy says he accepted their request / they are connected, or the page in view is a normal LinkedIn message thread with them. Leave it out for someone introduced in a thread, met on a call or at an event: a person who is not connected must not be dated as one.' },
       },
     },
   },
@@ -1672,6 +1673,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         location: (input && input.location) || (sameAsProfile ? profile.location : '') || '',
         introducedBy: (input && input.introducedBy) || '',
         notes: (input && input.notes) || '',
+        connected: !!(input && input.connected === true),
         ownEmails: coachOwnEmails(coach),
       });
       // Whether we created the record or matched an existing one, this turn's later tools

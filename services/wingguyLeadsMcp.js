@@ -9,8 +9,8 @@
  *
  * Deliberately SHAPED, not free-form: it writes only the intake fields and dedups FIRST (LinkedIn slug,
  * then first+last name), so a person already in the base is handed back rather than duplicated, and a
- * fresh create lands the way live inflow does (Connected, Date Connected stamped) — slotting into the
- * pipeline instead of becoming an orphan the scoring/FUP logic never sees. Contact-info enrichment
+ * fresh create is dated as a LinkedIn connection ONLY when the caller says the person is one
+ * (linkedin_connected - services/wingguyLeads.js createLead, 23 Nov 2026). Contact-info enrichment
  * (phone/email from LinkedIn) is the browser extension's job and does NOT happen here — the connector
  * has no LinkedIn tab to read — so email/phone are filed only if the caller already has them.
  *
@@ -53,6 +53,8 @@ async function runCreateLead(args = {}, tenant = TENANT) {
     location: String(args.location || '').trim(),
     introducedBy: String(args.introduced_by || '').trim(),
     notes: String(args.notes || '').trim(),
+    // Only a real 1st-degree LinkedIn connection is dated as connected (Guy, 23 Nov 2026).
+    connected: args.linkedin_connected === true,
   });
 
   if (!r || !r.ok) {
@@ -97,7 +99,7 @@ async function runCreateLead(args = {}, tenant = TENANT) {
     ? ''
     : ' ⚠ NO LOCATION on file — their timezone is unknown, so do NOT offer meeting times yet: ask where they\'re based (or ask whoever introduced them), then save it with wingguy_update_lead.';
   return {
-    text: `Created ${who} in the CRM${detail} — filed Connected and dated today, so they enter the pipeline. Record ${r.leadRecordId}.${attachedNote}${locNote} `
+    text: `Created ${who} in the CRM${detail} — ${(r.fields && r.fields['Date Connected']) ? 'filed as a LinkedIn connection, dated today' : 'NOT marked as a LinkedIn connection (the date fills in by itself if they connect later)'}. Record ${r.leadRecordId}.${attachedNote}${locNote} `
       + `Phone/email from LinkedIn aren't pulled from here (that's the browser extension's job) — file an email later if one surfaces.`,
   };
 }
@@ -305,6 +307,7 @@ const TOOL_DEFS = [
       location: z.string().optional().describe('Where they\'re based, as specific as known (e.g. "Sydney, New South Wales") — drives the lead-timezone maths for meeting times. Only what the thread, their profile, or the coach actually stated; never a guess.'),
       introduced_by: z.string().optional().describe('For an introduction: the name of the person who introduced them (filed as the first line of Notes).'),
       notes: z.string().optional().describe('Optional short context for the record (e.g. how they came in).'),
+      linkedin_connected: z.boolean().optional().describe('true ONLY when the coach says this person is already a 1st-degree LinkedIn connection of theirs (e.g. "I just accepted their request", "we are connected"). Leave it out for someone met at an event, on a call, by email or by introduction - a person who is not connected must not be dated as one.'),
     },
     jsonSchema: {
       type: 'object',
@@ -317,6 +320,7 @@ const TOOL_DEFS = [
         location: { type: 'string', description: 'Where they\'re based, as specific as known (e.g. "Sydney, New South Wales") — drives the lead-timezone maths for meeting times. Only what the thread, their profile, or the coach actually stated; never a guess.' },
         introduced_by: { type: 'string', description: 'For an introduction: the name of the person who introduced them (filed as the first line of Notes).' },
         notes: { type: 'string', description: 'Optional short context for the record (e.g. how they came in).' },
+        linkedin_connected: { type: 'boolean', description: 'true ONLY when the coach says this person is already a 1st-degree LinkedIn connection of theirs (e.g. "I just accepted their request", "we are connected"). Leave it out for someone met at an event, on a call, by email or by introduction - a person who is not connected must not be dated as one.' },
       },
       required: [],
     },

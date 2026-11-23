@@ -117,9 +117,18 @@ async function updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary = '',
 
 // Create a NEW lead in the client's Leads base — the ONE creation the chat agent can do, added for the
 // "I just accepted a connection who isn't in my CRM yet" moment (Guy, 2026-07-07). Deliberately SHAPED,
-// not free-form: it writes ONLY the intake fields and only after a dedup check, so it mirrors how live
-// inflow lands (a Connected Candidate with Date Connected set) and slots into the pipeline instead of
-// becoming an orphan the scoring/FUP logic never sees. The narrow companion to updateLeadEmails.
+// not free-form: it writes ONLY the intake fields and only after a dedup check. The narrow companion
+// to updateLeadEmails.
+// CONNECTED OR NOT (Guy, 23 Nov 2026): this used to file EVERY hand-added person as Connected with
+// Date Connected = now, so someone met at an event who is not on LinkedIn showed as "Connected to
+// you" on Lead Search and sat in "New connections to welcome". {Date Connected} now means what it
+// says: it is set ONLY when the caller states the person is a 1st-degree LinkedIn connection
+// (`connected: true`). Otherwise it stays blank, and the real date arrives by itself when they do
+// connect (the Linked Helper webhook, or the nightly "My own connections" collection).
+// Nothing needed the false date to keep a hand-added lead in play: scoring picks on {Scoring
+// Status}, follow-ups on {Follow-Up Date}, Top Scoring Leads on status 'Candidate' (which this
+// never wrote). The one thing that read it - the quiet-conversation audit's "not just ignored cold
+// outreach" test - now also counts a hand-added Source (services/wingguyBacklogAudit.js).
 // INTRODUCTIONS (Guy, 2026-09-02): when a lead pulls a THIRD person into a thread, that person needs a
 // record before the coach replies to them - so the create also takes `location` (drives the lead-timezone
 // maths; a missing one is exactly how the Paul mis-booking happened) and `introducedBy` (filed as the
@@ -130,8 +139,8 @@ async function updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary = '',
 async function createLead(airtableBaseId, {
   firstName = '', lastName = '', linkedinUrl = '', email = '', phone = '', notes = '',
   location = '', introducedBy = '',
-  source = 'They Reached Out To Me', connectionStatus = 'Connected', status = 'In Process',
-  dateConnectedISO = '', ownEmails = null,
+  source = 'They Reached Out To Me', connectionStatus = '', status = 'In Process',
+  connected = false, dateConnectedISO = '', ownEmails = null,
 } = {}) {
   if (!airtableBaseId) return { ok: false, error: 'no CRM base for this client' };
 
@@ -165,15 +174,18 @@ async function createLead(airtableBaseId, {
   const loc = String(location || '').trim();
   if (loc) fields['Location'] = loc;
   if (source) fields['Source'] = source;
-  if (connectionStatus) fields['LinkedIn Connection Status'] = connectionStatus;
+  // Connected only on the caller's word (or an explicit 'Connected' status from an older caller).
+  const isConnected = connected === true || connectionStatus === 'Connected';
+  const statusToWrite = isConnected ? 'Connected' : connectionStatus;
+  if (statusToWrite) fields['LinkedIn Connection Status'] = statusToWrite;
   if (status) fields['Status'] = status;
   // Provenance first: "Introduced by X" leads the Notes so anyone reading the record knows how they came in.
   const intro = String(introducedBy || '').trim();
   const noteText = [intro ? `Introduced by ${intro}` : '', String(notes || '').trim()].filter(Boolean).join('\n');
   if (noteText) fields['Notes'] = noteText;
-  // A lead is "connected" iff {Date Connected} is set — so when we file them as Connected, stamp it.
-  // Caller may pass an explicit ISO; otherwise use now (this is the moment Guy accepted them).
-  if (connectionStatus === 'Connected') fields['Date Connected'] = dateConnectedISO || new Date().toISOString();
+  // A lead is "connected" iff {Date Connected} is set - so it is stamped only for a real connection.
+  // Caller may pass an explicit ISO; otherwise use now (the moment the coach accepted them).
+  if (isConnected) fields['Date Connected'] = dateConnectedISO || new Date().toISOString();
 
   const created = await base('Leads').create([{ fields }]);
   const rec = created && created[0];

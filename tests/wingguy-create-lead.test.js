@@ -50,8 +50,15 @@ function stubBase({ existing = [] } = {}) {
       await acheck('ok + created', () => assert.ok(r.ok && r.created, JSON.stringify(r)));
       await acheck('got a new record id', () => assert.ok(r.leadRecordId, JSON.stringify(r)));
       await acheck('name + LinkedIn URL written', () => assert.ok(r.fields['First Name'] === 'Alonso' && /alonso-reyes/.test(r.fields['LinkedIn Profile URL'])));
-      await acheck('filed as Connected', () => assert.strictEqual(r.fields['LinkedIn Connection Status'], 'Connected'));
-      await acheck('Date Connected stamped (so it counts as connected)', () => assert.ok(r.fields['Date Connected']));
+      // 23 Nov 2026: a hand-added person is NOT a LinkedIn connection unless the caller says so
+      await acheck('NOT filed as Connected', () => assert.ok(!r.fields['LinkedIn Connection Status'], JSON.stringify(r.fields)));
+      await acheck('NO Date Connected (blank = not connected)', () => assert.ok(!r.fields['Date Connected'], JSON.stringify(r.fields)));
+      await acheck('still filed In Process with a hand-added Source', () => assert.ok(r.fields['Status'] === 'In Process' && r.fields['Source'] === 'They Reached Out To Me'));
+      const c = await wingguyLeads.createLead('baseX', { firstName: 'Bea', lastName: 'Okafor', linkedinUrl: 'https://linkedin.com/in/bea-okafor', connected: true });
+      await acheck('connected: true -> filed as Connected', () => assert.strictEqual(c.fields['LinkedIn Connection Status'], 'Connected'));
+      await acheck('connected: true -> Date Connected stamped', () => assert.ok(c.fields['Date Connected']));
+      const d = await wingguyLeads.createLead('baseX', { firstName: 'Cy', lastName: 'Lund', connected: true, dateConnectedISO: '2026-11-01T00:00:00.000Z' });
+      await acheck('an explicit connected date is kept', () => assert.strictEqual(d.fields['Date Connected'], '2026-11-01T00:00:00.000Z'));
       await acheck('no email written when none given', () => assert.ok(!r.fields['Email']));
     } finally { clientService.getClientBase = orig; }
   }
