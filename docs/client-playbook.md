@@ -1556,33 +1556,61 @@ in the Wingguy window ("add them to my list") and they'll be there next time.
 
 ## WINGGUY ON YOUR PHONE - /WG NEEDS YOUR LAPTOP, AND WHAT WORKS AT AN EVENT
 
-The short answer: **/wg works on your computer only** - in Chrome or Edge, on a laptop or a desktop.
-It doesn't work in the LinkedIn app on your phone, and it doesn't work in your phone's browser
-either. Same story on a tablet.
+The short answer: **/wg is for your computer only, but nearly everything else Wingguy does comes
+with you on your phone.** So an event without your laptop is no problem at all.
 
-**Why.** /wg comes from the browser extension, and phones won't take it. The LinkedIn app is closed
-to add-ons altogether, and the phone versions of Chrome and Edge can't load an extension like ours.
-So nothing's broken and there's no setting to change - it's simply a computer thing.
+**The one thing that stays on the laptop: /wg.** Typing /wg inside LinkedIn works in Chrome or Edge,
+on a laptop or a desktop. It doesn't work in the LinkedIn app on your phone, and it doesn't work in
+your phone's browser either. Same story on a tablet. The reason is simple - /wg comes from the
+browser extension, and phones won't take it. The LinkedIn app is closed to add-ons altogether, and
+the phone versions of Chrome and Edge can't load an extension like ours. Nothing's broken and
+there's no setting to change.
 
-**What does work on your phone: Wingguy in your Claude app.** The Wingguy you talk to in Claude isn't
-tied to your laptop. Open the Claude app on your phone, signed in the same way as on your computer,
-and it's there. At an event, that covers the three things that matter:
+**What you do have on your phone: Wingguy in your Claude app.** The Wingguy you talk to in Claude
+isn't tied to your laptop. Open the Claude app on your phone, signed in the same way as on your
+computer, and it's there - the same list of people, the same instructions, the same calendar and
+email. There's nothing extra to install. You talk to it in plain English, exactly as you do at your
+desk, and on a phone you can simply speak it instead of typing.
 
-- **Before you walk in.** Ask about anyone you expect to see - where you left things, what was said
-  last time. Thirty seconds in the car park.
-- **The moment you've met someone.** Tell Wingguy who they are, where you met and what you talked
-  about, and ask it to add them to your list. If you have their LinkedIn profile link, paste that in
-  too. Two minutes while it's fresh beats trying to remember six people the next morning.
-- **When a message really can't wait.** Ask Wingguy to write it, copy it, and paste it into the
-  LinkedIn app yourself. One thing to know: on your phone it's working from what's already saved
-  about that person, not from the conversation on your screen. So tell it anything that was just
-  said, and for someone brand new, give it the gist of your chat.
+Here's what that gives you at an event.
 
-**The habit I'd suggest.** At the event, connect with them on LinkedIn on the spot and tell Wingguy
-about them in the Claude app. Then that evening or the next morning, sit down at your laptop, open
-each conversation and type **/wg** - that's where it has their whole profile and the whole
-conversation in front of it. A message the next morning is still quick, and nobody at an event is
-waiting on a message from you before they've got home.
+**1. Before you walk in - look people up.** Give Wingguy a name and it tells you what's on their
+record: where you left things, the last messages between you, what was said on your last call.
+Something like *"What do I know about Sarah Chen? I'm about to see her."* Thirty seconds in the car
+park, and you walk in remembering.
+
+**2. The moment you've met someone - add them.** Tell Wingguy who they are, where you met and what
+you talked about, and ask it to add them to your list. Something like *"Add Tom Reilly - met him at
+the chamber breakfast this morning, he runs a freight business in Newcastle and wants to talk about
+his sales team."* If you can copy the link to their LinkedIn profile from the LinkedIn app, paste
+that in too - it's what ties the record to the right person. They're in your list on the spot, with
+your note on the record. Two minutes while it's fresh beats trying to remember six people the next
+morning.
+
+**3. Tag them with where you met.** In the same breath, ask Wingguy to tag them - *"and tag him
+chamber breakfast"*. A tag and a search term are the same thing in Wingguy: it goes into Search
+Terms on their record, which is what your lists are built from. So every person carries where they
+came from, and you did it while you were still in the room.
+
+**4. Need to message someone there and then - ask Wingguy to write it.** Tell it who the message is
+for and what it's about, and it writes the LinkedIn message following your instructions, the same
+ones /wg uses. Copy it, open the LinkedIn app, paste it into the conversation, read it once more and
+press send yourself. For someone already in your list, that's close to what /wg gives you - just a
+few more taps. The one difference: on your phone Wingguy can't see the conversation on your screen
+or read a new person's profile, so it works from what's saved on their record and what you tell it.
+Tell it anything that was just said, and for someone you've only just met, give it the gist of your
+chat.
+
+**And everything else you ask Wingguy in Claude works the same.** Getting a meeting in the diary,
+drafting an email into your Drafts folder, asking whether someone has replied - it's the same
+Wingguy, so it's all there on your phone.
+
+**The habit I'd suggest.** At the event, connect with each person on LinkedIn on the spot, then add
+and tag them in the Claude app before you move on. Send a message from your phone only if it really
+can't wait. Then that evening or the next morning, sit down at your laptop, open each conversation
+and type **/wg** - that's where it has their whole profile and the whole conversation in front of
+it. A message the next morning is still quick, and nobody at an event is waiting on a message from
+you before they've got home.
 
 ---
 
