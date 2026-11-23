@@ -21,7 +21,8 @@ export default function LeadSearchTableDirect({
   sortField: propSortField = null, // Server-side sort field from parent
   sortDirection: propSortDirection = null, // Server-side sort direction from parent  
   onSortChange = null, // Callback when sort changes (for server-side sorting)
-  showCampaign = false // Show the Campaign column (the Lead Search campaign filter is on for this client)
+  showCampaign = false, // Show the Campaign column (the Lead Search campaign filter is on for this client)
+  flagUnlabelled = false // Mark people who have no tag and no note yet
 }) {
   // Use local state only if no parent-controlled sort (backwards compatible)
   const [localSortKey, setLocalSortKey] = useState('AI Score');
@@ -203,6 +204,16 @@ export default function LeadSearchTableDirect({
         : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
     }
     const value = getCellValue(lead, key);
+    if (key === 'fullName' && flagUnlabelled && !String(lead['Search Terms'] || '').trim() && !String(lead['Notes'] || lead.notes || '').trim()) {
+      return (
+        <span>
+          {value || <span className="text-gray-400 text-sm">-</span>}
+          <span className="block mt-1">
+            <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800" title="Nothing in Search Terms and nothing in Notes yet">No tag or note</span>
+          </span>
+        </span>
+      );
+    }
     return value || <span className="text-gray-400 text-sm">-</span>;
   };
 

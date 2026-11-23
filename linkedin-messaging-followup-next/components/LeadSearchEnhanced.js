@@ -38,6 +38,10 @@ const LeadSearchEnhanced = ({
     return () => { alive = false; };
   }, []);
   const showCampaignFilter = !!(campaignOptions && campaignOptions.filterReady);
+  // "Recently connected" shortcut + "no tag or note" marker (23 Nov 2026) - only where the server says so.
+  const showRecentShortcut = !!(campaignOptions && campaignOptions.recentShortcut);
+  const [unlabelled, setUnlabelled] = useState(false);
+  const recentActive = connection === 'connected' && sortField === 'Date Connected' && sortDirection === 'desc';
 
   // Export modal state
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -212,7 +216,8 @@ const LeadSearchEnhanced = ({
         priority,
         searchTerms,
         connection,
-        campaign
+        campaign,
+        unlabelled
       });
     }
   };
@@ -229,7 +234,8 @@ const LeadSearchEnhanced = ({
         priority: value,
         searchTerms,
         connection,
-        campaign
+        campaign,
+        unlabelled
       });
     }
   };
@@ -244,7 +250,8 @@ const LeadSearchEnhanced = ({
         priority,
         searchTerms,
         connection: value,
-        campaign
+        campaign,
+        unlabelled
       });
     }
   };
@@ -259,8 +266,27 @@ const LeadSearchEnhanced = ({
         priority,
         searchTerms,
         connection,
-        campaign: value
+        campaign: value,
+        unlabelled
       });
+    }
+  };
+
+  // "Recently connected": people you are connected to, newest connection first - one click.
+  const handleRecentlyConnected = () => {
+    setConnection('connected');
+    if (onSortChange) onSortChange('Date Connected', 'desc');
+    if (onSearch) {
+      onSearch({ nameQuery: nameSearch, priority, searchTerms, connection: 'connected', campaign, unlabelled });
+    }
+  };
+
+  // "Only people with no tag and no note"
+  const handleUnlabelledChange = (e) => {
+    const value = !!e.target.checked;
+    setUnlabelled(value);
+    if (onSearch) {
+      onSearch({ nameQuery: nameSearch, priority, searchTerms, connection, campaign, unlabelled: value });
     }
   };
 
@@ -276,7 +302,8 @@ const LeadSearchEnhanced = ({
         priority,
         searchTerms: termsString,
         connection,
-        campaign
+        campaign,
+        unlabelled
       });
     }
   };
@@ -710,6 +737,29 @@ const LeadSearchEnhanced = ({
           </div>
         )}
         
+        {showRecentShortcut && (
+          <div className="mb-4 flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              id="lead-search-recently-connected"
+              onClick={handleRecentlyConnected}
+              className={`px-3 py-2 rounded-lg text-sm font-medium border ${recentActive ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-700 border-blue-300 hover:bg-blue-50'}`}
+              title="People you are connected to, newest connection first"
+            >
+              Recently connected
+            </button>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                id="lead-search-unlabelled"
+                checked={unlabelled}
+                onChange={handleUnlabelledChange}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Only people with no tag and no note
+            </label>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           {/* Name Search - narrower, 1 column */}
           <div className="md:col-span-1">
@@ -821,6 +871,11 @@ const LeadSearchEnhanced = ({
               {connection === 'connected' ? 'Connected' : 'Not connected'}
             </span>
           )}
+          {unlabelled && (
+            <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs">
+              No tag and no note
+            </span>
+          )}
           {campaign !== 'all' && (
             <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs">
               Campaign: {campaign === '__none__' ? 'No campaign' : campaign}
@@ -894,6 +949,7 @@ const LeadSearchEnhanced = ({
           sortDirection={sortDirection}
           onSortChange={onSortChange}
           showCampaign={showCampaignFilter}
+          flagUnlabelled={showRecentShortcut}
         />
       </div>
       {/* Export Modal */}

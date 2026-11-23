@@ -216,7 +216,7 @@ api.interceptors.response.use(
 );
 
 // Lead search and management functions
-export const searchLeads = async (query, priority = 'all', searchTerms = '', limit = 25, offset = 0, sortField = null, sortDirection = null, connection = 'all', campaign = 'all') => {
+export const searchLeads = async (query, priority = 'all', searchTerms = '', limit = 25, offset = 0, sortField = null, sortDirection = null, connection = 'all', campaign = 'all', unlabelled = false) => {
   try {
     const clientId = getCurrentClientId();
     if (!clientId) {
@@ -251,6 +251,11 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
     // Campaign filter: a Linked Helper campaign name, or '__none__' (omitted for 'all')
     if (campaign && campaign !== 'all') {
       params.campaign = campaign;
+    }
+
+    // Only people with no tag and no note
+    if (unlabelled) {
+      params.unlabelled = 1;
     }
 
     // Add search terms parameter if provided
@@ -317,7 +322,7 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
 // The campaign pickers (23 Nov 2026): { filterReady, campaigns: [{name, count, live}], countsCapped,
 // choices: [name] }. Never throws - a failure just means no picker.
 export const getLeadCampaigns = async ({ fresh = false } = {}) => {
-  const empty = { filterReady: false, campaigns: [], countsCapped: false, choices: [] };
+  const empty = { filterReady: false, campaigns: [], countsCapped: false, choices: [], recentShortcut: false };
   try {
     const clientId = getCurrentClientId();
     if (!clientId) return empty;
@@ -328,6 +333,7 @@ export const getLeadCampaigns = async ({ fresh = false } = {}) => {
       campaigns: Array.isArray(d.campaigns) ? d.campaigns : [],
       countsCapped: !!d.countsCapped,
       choices: Array.isArray(d.choices) ? d.choices : [],
+      recentShortcut: !!d.recentShortcut,
     };
   } catch (e) {
     console.error('getLeadCampaigns error', e.response?.data || e.message);

@@ -172,6 +172,38 @@ check('catch-up: fills a blank, skips one already right, never touches a lead no
   assert.strictEqual(planFor({ 'Raw Profile Data': raw('Legal ICP 50-201'), Campaign: 'Campaign 1' }).action, 'set');
 });
 
+check('a big base: a first ask answers with the names found so far (no counts), the next one has it all', async () => {
+  machine = live('Fractional in profile');
+  let finish;
+  const slow = () => ({
+    select: () => ({
+      eachPage: (onPage, done) => {
+        // first page arrives at once, the rest of the base a little later
+        onPage([{ get: () => 'Old campaign' }], () => { finish = () => { onPage([{ get: () => 'Old campaign' }], () => done()); }; });
+      },
+    }),
+  });
+  leadCampaign._setQuickMs(20);
+  const early = await leadCampaign.getOptions('Big-Client', slow);
+  leadCampaign._setQuickMs(8000);
+  assert.strictEqual(early.countsCapped, true);
+  assert.deepStrictEqual(early.campaigns.map((c) => c.name), ['Fractional in profile', 'Old campaign']);
+  finish();
+  const full = await leadCampaign.getOptions('Big-Client', slow, { fresh: true });
+  assert.strictEqual(full.countsCapped, false);
+  assert.deepStrictEqual(full.campaigns.find((c) => c.name === 'Old campaign'), { name: 'Old campaign', count: 2, live: false });
+  // and it is remembered: the next ordinary ask gets the full answer without reading again
+  assert.strictEqual(await leadCampaign.getOptions('Big-Client', slow), full);
+});
+
+check('"Recently connected" and the no-tag-no-note marker: Guy only for now; the filter means both blank', async () => {
+  machine = live('Campaign 1');
+  const base = fakeBase([{ id: 'a', fields: { Campaign: 'Campaign 1' } }]);
+  assert.strictEqual((await leadCampaign.getOptions('Guy-Wilson', base, { fresh: true })).recentShortcut, true);
+  assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).recentShortcut, false);
+  assert.strictEqual(leadCampaign.UNLABELLED_FORMULA, 'AND(NOT({Search Terms}), NOT({Notes}))');
+});
+
 (async () => {
   for (const run of pending) await run();
   if (failures) { console.error(`\n${failures} failed`); process.exit(1); }

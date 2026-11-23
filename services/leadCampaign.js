@@ -29,7 +29,8 @@ const log = createSafeLogger('SYSTEM', null, 'lead_campaign');
 const FIELD = 'Campaign';
 const NONE = '__none__';   // the filter's "No campaign" choice
 const MAX_NAME = 120;
-const SCAN_CAP = 5000;     // leads read when tallying names for the filter
+const SCAN_CAP = 40000;    // leads read when tallying names for the filter (Guy's own base holds ~17,700)
+let QUICK_MS = 8000;       // how long a page load waits for that tally before answering with what it has
 const CACHE_MS = 5 * 60 * 1000;
 
 /**
@@ -38,7 +39,17 @@ const CACHE_MS = 5 * 60 * 1000;
  * under "No campaign" although Linked Helper sent it. Add a client here once their catch-up has
  * run (or '*' once every base has had it). The field itself fills in for everyone from go-live.
  */
-const FILTER_READY = ['Roland-Illyes'];
+const FILTER_READY = ['Roland-Illyes', 'Guy-Wilson'];
+
+/**
+ * Lead Search's "Recently connected" shortcut and its "No tag or note" marker (Guy, 23 Nov 2026).
+ * On for these clients only while Guy looks at it on his own portal - '*' turns it on for everyone.
+ */
+const RECENT_SHORTCUT = ['Guy-Wilson'];
+const recentShortcut = (clientId) => RECENT_SHORTCUT.includes('*') || RECENT_SHORTCUT.includes(String(clientId || ''));
+
+/** Lead Search's "no tag and no note" filter: nothing in {Search Terms} and nothing in {Notes}. */
+const UNLABELLED_FORMULA = 'AND(NOT({Search Terms}), NOT({Notes}))';
 
 const filterReady = (clientId) => FILTER_READY.includes('*') || FILTER_READY.includes(String(clientId || ''));
 
@@ -95,8 +106,9 @@ function describeLead(fields = {}) {
 const cache = new Map(); // clientId -> { at, value }
 
 /** Names on the leads, with counts: [{ name, count }], plus whether the read hit the cap. */
-async function tallyNamesOnLeads(base) {
+async function tallyNamesOnLeads(base, progress = {}) {
   const counts = new Map();
+  progress.counts = counts; // readable while the read is still going
   let read = 0;
   let capped = false;
   await new Promise((resolve, reject) => {
@@ -128,6 +140,33 @@ async function tallyNamesOnLeads(base) {
 async function getOptions(clientId, base, { fresh = false } = {}) {
   const hit = cache.get(clientId);
   if (!fresh && hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  // A big base takes about a minute to tally (Guy's own: 17,700 leads). So an answer that has gone
+  // stale is still given at once while a new one is worked out behind it, and a first-ever ask
+  // waits QUICK_MS and then answers with the names found so far, without counts.
+  let building = inflight.get(clientId);
+  if (!building) {
+    const progress = {};
+    const promise = buildOptions(clientId, base, progress)
+      .then((value) => { cache.set(clientId, { at: Date.now(), value }); return value; })
+      .finally(() => inflight.delete(clientId));
+    building = { promise, progress };
+    inflight.set(clientId, building);
+  }
+  if (fresh) return building.promise;
+  if (hit) { building.promise.catch(() => {}); return hit.value; }
+  let timer;
+  const early = new Promise((resolve) => { timer = setTimeout(() => resolve(null), QUICK_MS); });
+  const done = await Promise.race([building.promise, early]);
+  clearTimeout(timer);
+  if (done) return done;
+  building.promise.catch(() => {});
+  const soFar = [...(building.progress.counts || new Map()).entries()].map(([name, count]) => ({ name, count }));
+  return shapeOptions(clientId, building.progress.live || [], { names: soFar, capped: true }, false);
+}
+
+const inflight = new Map(); // clientId -> { promise, progress }
+
+async function buildOptions(clientId, base, progress) {
 
   let live = [];
   try {
@@ -136,18 +175,22 @@ async function getOptions(clientId, base, { fresh = false } = {}) {
   } catch (e) {
     log.warn(`lead-campaign: machine list not read for ${clientId}: ${e.message}`);
   }
+  progress.live = live;
 
   let onLeads = { names: [], capped: false };
   let fieldMissing = false;
   if (base) {
     try {
-      onLeads = await tallyNamesOnLeads(base);
+      onLeads = await tallyNamesOnLeads(base, progress);
     } catch (e) {
       fieldMissing = isMissingFieldError(e);
       log.warn(`lead-campaign: names on leads not read for ${clientId}: ${e.message}`);
     }
   }
+  return shapeOptions(clientId, live, onLeads, fieldMissing);
+}
 
+function shapeOptions(clientId, live, onLeads, fieldMissing) {
   const byName = new Map();
   for (const name of live) byName.set(name, { name, count: 0, live: true });
   for (const { name, count } of onLeads.names) {
@@ -165,8 +208,8 @@ async function getOptions(clientId, base, { fresh = false } = {}) {
     campaigns,
     countsCapped: onLeads.capped,
     choices: choices.sort((a, b) => a.localeCompare(b)),
+    recentShortcut: recentShortcut(clientId),
   };
-  cache.set(clientId, { at: Date.now(), value });
   return value;
 }
 
@@ -203,6 +246,7 @@ async function setLeadCampaign({ clientId, base, leadId, value }) {
 }
 
 module.exports = {
-  FIELD, NONE, FILTER_READY, filterReady, campaignNameFromRaw, filterFormula, isMissingFieldError,
+  FIELD, NONE, FILTER_READY, filterReady, RECENT_SHORTCUT, recentShortcut, UNLABELLED_FORMULA,
+  _setQuickMs: (ms) => { QUICK_MS = ms; }, campaignNameFromRaw, filterFormula, isMissingFieldError,
   describeLead, writeFields, getOptions, setLeadCampaign, tallyNamesOnLeads,
 };

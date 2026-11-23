@@ -289,7 +289,7 @@ router.get('/leads/search', async (req, res) => {
   
   try {
     const airtableBase = await getAirtableBase(req);
-    const { query, priority, q, searchTerms, limit, offset, sortField, sortDirection, connection, campaign } = req.query;
+    const { query, priority, q, searchTerms, limit, offset, sortField, sortDirection, connection, campaign, unlabelled } = req.query;
     // Campaign filter: a campaign name, or "__none__" for people no campaign sent (2026-11-23)
     const campaignFormula = leadCampaign.filterFormula(campaign);
     
@@ -381,6 +381,8 @@ router.get('/leads/search', async (req, res) => {
     if (connection === 'connected') filterParts.push('{Date Connected}');
     if (connection === 'not_connected') filterParts.push('NOT({Date Connected})');
     if (campaignFormula) filterParts.push(campaignFormula);
+    // "No tag and no note" (23 Nov 2026): people the client has not labelled in any way yet
+    if (unlabelled === '1') filterParts.push(leadCampaign.UNLABELLED_FORMULA);
 
     // Always exclude multi-tenant entries
     filterParts.push(`NOT(OR(
