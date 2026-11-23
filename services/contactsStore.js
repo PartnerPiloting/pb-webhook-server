@@ -420,7 +420,7 @@ async function findPeople(coachClientId, query, { limit = 8, notLeads = false } 
         LIMIT 60`,
       params,
     );
-    return rankMatches(r.rows, q).slice(0, Math.max(1, Math.min(25, limit)));
+    return rankMatches(r.rows, q).slice(0, Math.max(1, Math.min(60, limit)));
   } catch (e) {
     console.warn(`[contactsStore] findPeople failed (${tenant}): ${e.message}`);
     return [];

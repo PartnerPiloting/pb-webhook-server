@@ -320,16 +320,18 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
 };
 
 // Lead Search's "Found in your contacts" (23 Nov 2026): people in the client's contacts matching a
-// typed name who are not leads yet. Never throws - a failure is just an empty list.
+// typed name who are not leads yet: { contacts: [...], more: bool }. Never throws - a failure is just
+// an empty list.
 export const searchLeadContacts = async (q) => {
+  const none = { contacts: [], more: false };
   try {
     const clientId = getCurrentClientId();
-    if (!clientId || String(q || '').trim().length < 3) return [];
+    if (!clientId || String(q || '').trim().length < 3) return none;
     const res = await api.get('/contacts/search', { params: { clientId, q: String(q).trim() } });
-    return Array.isArray(res.data?.contacts) ? res.data.contacts : [];
+    return { contacts: Array.isArray(res.data?.contacts) ? res.data.contacts : [], more: !!res.data?.more };
   } catch (e) {
     console.error('searchLeadContacts error', e.response?.data || e.message);
-    return [];
+    return none;
   }
 };
 

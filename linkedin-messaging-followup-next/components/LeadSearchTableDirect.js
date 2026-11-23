@@ -7,6 +7,10 @@ import InlineEditableSelect from './InlineEditableSelect';
 // Lazy load inline editor so first paint stays light
 const InlineSearchTermsEditor = dynamic(() => import('./InlineSearchTermsEditor'), { ssr: false, loading: () => <span className="text-xs text-gray-400">…</span> });
 
+const KIND_LEAD = 'px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800';
+const KIND_CONTACT = 'px-2 py-0.5 rounded-full text-xs bg-gray-200 text-gray-800';
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
 // Self-contained table with the same props shape used by LeadSearchEnhanced
 export default function LeadSearchTableDirect({
   leads = [],
@@ -22,7 +26,13 @@ export default function LeadSearchTableDirect({
   sortDirection: propSortDirection = null, // Server-side sort direction from parent  
   onSortChange = null, // Callback when sort changes (for server-side sorting)
   showCampaign = false, // Show the Campaign column (the Lead Search campaign filter is on for this client)
-  flagUnlabelled = false // Mark people who have no tag yet
+  flagUnlabelled = false, // Mark people who have no tag yet
+  // A name is typed and contacts ride along (Lead Search, 23 Nov 2026): every row says Lead or
+  // Contact, and the people in `contacts` - who are NOT leads - follow the leads in the same table.
+  showKind = false,
+  contacts = [], // [{ id, name, email, phone, linkedin, company, knownFrom, add: { state, leadRecordId, text } }]
+  contactsMore = false, // more contacts matched than are shown
+  onAddContact = null
 }) {
   // Use local state only if no parent-controlled sort (backwards compatible)
   const [localSortKey, setLocalSortKey] = useState('AI Score');
@@ -204,17 +214,63 @@ export default function LeadSearchTableDirect({
         : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
     }
     const value = getCellValue(lead, key);
-    if (key === 'fullName' && flagUnlabelled && !String(lead['Search Terms'] || '').trim()) {
+    if (key === 'fullName') {
+      const noTag = flagUnlabelled && !String(lead['Search Terms'] || '').trim();
+      if (showKind || noTag) {
+        return (
+          <span>
+            {value || <span className="text-gray-400 text-sm">-</span>}
+            <span className="block mt-1 space-x-1">
+              {showKind ? <span className={KIND_LEAD}>Lead</span> : null}
+              {noTag ? <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800" title="Nothing in Search Terms yet">No tag</span> : null}
+            </span>
+          </span>
+        );
+      }
+    }
+    return value || <span className="text-gray-400 text-sm">-</span>;
+  };
+
+  // One cell of a CONTACT row: only what a contact has. Score, priority, status, connected, campaign
+  // and tags are a lead's, so they stay blank.
+  const renderContactCell = (c, column) => {
+    const { key } = column;
+    const added = c.add && c.add.state === 'added';
+    if (key === 'fullName') {
       return (
         <span>
-          {value || <span className="text-gray-400 text-sm">-</span>}
+          {c.name || c.email || 'Unnamed'}
           <span className="block mt-1">
-            <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800" title="Nothing in Search Terms yet">No tag</span>
+            <span className={added ? KIND_LEAD : KIND_CONTACT}>{added ? 'Lead' : 'Contact'}</span>
           </span>
+          {c.knownFrom ? <span className="block mt-1 text-xs text-gray-500 whitespace-normal">Wingguy knows them from: {c.knownFrom}</span> : null}
+          <span className="block mt-2">
+            {added ? (
+              <span className="text-xs text-green-700">Added to your leads - click the row to open</span>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); if (onAddContact) onAddContact(c); }}
+                disabled={c.add && c.add.state === 'adding'}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {c.add && c.add.state === 'adding' ? 'Adding…' : 'Add as lead'}
+              </button>
+            )}
+          </span>
+          {c.add && c.add.state === 'error' ? <span className="block mt-1 text-xs text-red-700 whitespace-normal">{c.add.text}</span> : null}
         </span>
       );
     }
-    return value || <span className="text-gray-400 text-sm">-</span>;
+    if (key === 'Company') return c.company || '';
+    if (key === 'email') return c.email || '';
+    if (key === 'phone') return c.phone || '';
+    if (key === 'linkedinProfileUrl') {
+      return c.linkedin
+        ? <a href={c.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline">Profile</a>
+        : '';
+    }
+    return '';
   };
 
   if (isLoading) {
@@ -232,7 +288,7 @@ export default function LeadSearchTableDirect({
     );
   }
 
-  if (!sortedLeads || sortedLeads.length === 0) {
+  if ((!sortedLeads || sortedLeads.length === 0) && !(showKind && contacts.length)) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-4">
@@ -259,7 +315,10 @@ export default function LeadSearchTableDirect({
     <div className="bg-white rounded-lg shadow">
       <div className="px-6 py-4 border-b border-gray-200">
         <h3 className="text-lg font-medium text-gray-900">
-          Search Results (showing {sortedLeads.length}{totalLeads ? ` of ${totalLeads}` : ''})
+          {showKind
+            ? `Search results: ${plural(totalLeads || sortedLeads.length, 'lead')}, ${plural(contacts.length, 'contact')}`
+            : `Search Results (showing ${sortedLeads.length}${totalLeads ? ` of ${totalLeads}` : ''})`}
+          {showKind && contactsMore ? <span className="ml-2 text-sm font-normal text-gray-500">(the first {contacts.length} contacts - more match, type more of the name)</span> : null}
           <span className="ml-2 text-sm font-normal text-gray-500">
             Sorted by {columns.find((col) => col.key === sortKey)?.label || sortKey} ({sortDir === 'asc' ? 'ascending' : 'descending'})
           </span>
@@ -310,6 +369,23 @@ export default function LeadSearchTableDirect({
                 ))}
               </tr>
             ))}
+            {showKind && contacts.map((c) => {
+              const added = c.add && c.add.state === 'added' && c.add.leadRecordId;
+              return (
+                <tr
+                  key={`contact-${c.id}`}
+                  data-kind={added ? 'lead' : 'contact'}
+                  onClick={() => { if (added && onLeadSelect) onLeadSelect({ id: c.add.leadRecordId }); }}
+                  className={added && onLeadSelect ? 'cursor-pointer hover:bg-gray-50' : 'bg-gray-50/50'}
+                >
+                  {columns.map((column) => (
+                    <td key={column.key} className="px-6 py-4 whitespace-nowrap text-sm align-top relative">
+                      {renderContactCell(c, column)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

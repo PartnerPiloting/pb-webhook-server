@@ -9,7 +9,11 @@
  *
  * Rules:
  *   - only ever in answer to a typed name / email (3+ characters). Contacts are never listed on
- *     their own and never mixed into the lead results.
+ *     their own.
+ *   - ONE LIST (Guy, 23 Nov 2026, replacing a separate section that hid itself when more than five
+ *     leads matched): the page shows the leads first and these contacts after them in the same
+ *     table, each row labelled Lead or Contact. Exports stay leads only - contacts are never sent to
+ *     the lead search or export routes, only to this one.
  *   - anyone who is already a lead is left out.
  *   - "Add as lead" goes through the same door as every other hand-add (wingguyLeads.createLead):
  *     dedupe first - by LinkedIn address, by name, and here by email as well - so it never makes a
@@ -26,7 +30,7 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const log = createSafeLogger('SYSTEM', null, 'lead_search_contacts');
 
 const MIN_QUERY = 3;
-const MAX_SHOWN = 6;
+const MAX_SHOWN = 25;                    // contacts shown under one search; more than this and the page says so
 const ADD_SOURCE = 'Follow-Up Personally';   // an existing choice in every base's Source list
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
@@ -66,19 +70,24 @@ function shape(r) {
   };
 }
 
-/** People in the client's contacts matching what was typed, who are not already leads. Never throws. */
+/**
+ * People in the client's contacts matching what was typed, who are not already leads:
+ * { contacts: [up to MAX_SHOWN], more: true when further people matched }. Never throws.
+ */
 async function searchContacts(clientId, query, { deps = {} } = {}) {
   const store = deps.store || require('./contactsStore');
   const q = String(query || '').trim();
-  if (!clientId || q.length < MIN_QUERY) return [];
-  if (/linkedin\.com\//i.test(q)) return [];          // a pasted profile link is a lead lookup, not a name
+  const none = { contacts: [], more: false };
+  if (!clientId || q.length < MIN_QUERY) return none;
+  if (/linkedin\.com\//i.test(q)) return none;        // a pasted profile link is a lead lookup, not a name
   try {
     // notLeads: a lead's main AND alternate addresses both carry its record id, so neither comes back.
-    const rows = await store.findPeople(clientId, q, { limit: 25, notLeads: true });
-    return groupByPerson(rows).filter((r) => !r.lead_record_id).slice(0, MAX_SHOWN).map(shape);
+    const rows = await store.findPeople(clientId, q, { limit: 60, notLeads: true });
+    const people = groupByPerson(rows).filter((r) => !r.lead_record_id);
+    return { contacts: people.slice(0, MAX_SHOWN).map(shape), more: people.length > MAX_SHOWN };
   } catch (e) {
     log.warn(`lead-search contacts: lookup failed for ${clientId}: ${e.message}`);
-    return [];
+    return none;
   }
 }
 

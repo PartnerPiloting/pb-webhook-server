@@ -55,26 +55,27 @@ console.log('lead-search-contacts tests');
 
 check('only for a typed name of 3+ characters; never for a pasted LinkedIn link', async () => {
   const deps = { store: fakeStore() };
-  assert.deepStrictEqual(await lsc.searchContacts('A', 'pa', { deps }), []);
-  assert.deepStrictEqual(await lsc.searchContacts('A', '', { deps }), []);
-  assert.deepStrictEqual(await lsc.searchContacts('A', 'https://www.linkedin.com/in/pat-lee', { deps }), []);
-  assert.strictEqual((await lsc.searchContacts('A', 'pat', { deps })).length, 1);
+  const none = { contacts: [], more: false };
+  assert.deepStrictEqual(await lsc.searchContacts('A', 'pa', { deps }), none);
+  assert.deepStrictEqual(await lsc.searchContacts('A', '', { deps }), none);
+  assert.deepStrictEqual(await lsc.searchContacts('A', 'https://www.linkedin.com/in/pat-lee', { deps }), none);
+  assert.strictEqual((await lsc.searchContacts('A', 'pat', { deps })).contacts.length, 1);
 });
 
 check('a contact shows name, email, phone, LinkedIn and where Wingguy knows them from', async () => {
-  const [c] = await lsc.searchContacts('A', 'pat lee', { deps: { store: fakeStore() } });
+  const [c] = (await lsc.searchContacts('A', 'pat lee', { deps: { store: fakeStore() } })).contacts;
   assert.deepStrictEqual(c, { id: '1', name: 'Pat Lee', email: 'pat@acme.example', otherEmails: [], phone: '0400 000 001',
     linkedin: 'https://www.linkedin.com/in/pat-lee/', company: 'Acme', knownFrom: 'you emailed them' });
 });
 
 check('anyone who is already a lead is left out - by their main or an alternate address', async () => {
-  assert.deepStrictEqual(await lsc.searchContacts('A', 'sam', { deps: { store: fakeStore() } }), []);
-  assert.deepStrictEqual(await lsc.searchContacts('A', 'sam.alt', { deps: { store: fakeStore() } }), []);
+  assert.deepStrictEqual((await lsc.searchContacts('A', 'sam', { deps: { store: fakeStore() } })).contacts, []);
+  assert.deepStrictEqual((await lsc.searchContacts('A', 'sam.alt', { deps: { store: fakeStore() } })).contacts, []);
 });
 
 check('one client never sees or adds another client\'s contact', async () => {
   const deps = fakeDeps();
-  assert.deepStrictEqual((await lsc.searchContacts('A', 'pat', { deps })).map((c) => c.id), ['1']);
+  assert.deepStrictEqual((await lsc.searchContacts('A', 'pat', { deps })).contacts.map((c) => c.id), ['1']);
   const r = await lsc.addContactAsLead('A', 'baseA', 5, { deps });
   assert.strictEqual(r.status, 404);
   assert.strictEqual(deps.created.length, 0);
@@ -116,6 +117,17 @@ check('never a duplicate: already a lead in the list, or the same email already 
   assert.ok(same.ok && same.exists && same.leadRecordId === 'recSAME', JSON.stringify(same));
   assert.strictEqual(b.created.length, 0);
   assert.deepStrictEqual(b.store.marked, [['A', 6, 'recSAME']]);
+});
+
+check('capped at 25 contacts, and it says when more matched', async () => {
+  const many = Array.from({ length: 30 }, (_, i) => ({ id: 100 + i, coach: 'A', email: `david${i}@x.example`, name: `David Person${i}`, lead_record_id: null, sources: ['mail-to'] }));
+  const store = { findPeople: async () => many };
+  const r = await lsc.searchContacts('A', 'david', { deps: { store } });
+  assert.strictEqual(r.contacts.length, 25);
+  assert.strictEqual(r.more, true);
+  const few = await lsc.searchContacts('A', 'david', { deps: { store: { findPeople: async () => many.slice(0, 7) } } });
+  assert.strictEqual(few.contacts.length, 7);
+  assert.strictEqual(few.more, false);
 });
 
 (async () => {

@@ -57,33 +57,41 @@ const LeadSearchEnhanced = ({
     }
   };
 
-  // "Found in your contacts" (23 Nov 2026): when a name is typed and few or no leads match, the
-  // people Wingguy knows from the client's email are offered underneath, each with Add as lead.
-  // Only ever in answer to a typed name, and never mixed into the lead results.
+  // CONTACTS IN THE SAME LIST (Guy, 23 Nov 2026): when a name or email of 3+ characters is typed,
+  // people Wingguy knows from the client's email who are NOT leads are shown after the leads in the
+  // same table, each row labelled Lead or Contact, a Contact row carrying Add as lead. (It replaced a
+  // separate section that hid itself when more than five leads matched.) They live in their own
+  // state and are handed only to the table - never merged into `leads`, so every export stays
+  // leads only.
   const [contactMatches, setContactMatches] = useState([]);
-  const [contactAdds, setContactAdds] = useState({}); // contact id -> { state: 'adding'|'added'|'exists'|'error', text }
+  const [contactsMore, setContactsMore] = useState(false);
+  const [contactAdds, setContactAdds] = useState({}); // contact id -> { state: 'adding'|'added'|'error', leadRecordId, text }
+  const nameTyped = showRecentShortcut && String(nameSearch || '').trim().length >= 3;
   useEffect(() => {
     const q = String(nameSearch || '').trim();
-    if (!showRecentShortcut || q.length < 3) { setContactMatches([]); return undefined; }
+    if (!showRecentShortcut || q.length < 3) { setContactMatches([]); setContactsMore(false); return undefined; }
     let alive = true;
     const t = setTimeout(() => {
-      searchLeadContacts(q).then((list) => { if (alive) { setContactMatches(list); setContactAdds({}); } });
+      searchLeadContacts(q).then((r) => { if (alive) { setContactMatches(r.contacts); setContactsMore(r.more); setContactAdds({}); } });
     }, 450);
     return () => { alive = false; clearTimeout(t); };
   }, [nameSearch, showRecentShortcut]);
   const handleAddContact = async (c) => {
     setContactAdds((prev) => ({ ...prev, [c.id]: { state: 'adding' } }));
     const r = await addContactAsLead(c.id);
-    if (!r || !r.ok) {
+    if (!r || !r.ok || !r.leadRecordId) {
       setContactAdds((prev) => ({ ...prev, [c.id]: { state: 'error', text: (r && r.error) || 'Could not add them' } }));
       return;
     }
-    setContactAdds((prev) => ({ ...prev, [c.id]: { state: r.exists ? 'exists' : 'added', text: r.name || c.name } }));
-    // run the search on screen again so the new lead shows in the results
-    if (onRefresh) onRefresh();
+    // The row turns into a lead row where it stands (label Lead, opens the record). The lead list
+    // is not re-run, so the same person can never show twice.
+    setContactAdds((prev) => ({ ...prev, [c.id]: { state: 'added', leadRecordId: r.leadRecordId } }));
   };
-  const showContacts = showRecentShortcut && !isLoading && contactMatches.length > 0
-    && String(nameSearch || '').trim().length >= 3 && (leads || []).length <= 5;
+  // Someone the lead search itself has just returned is a lead - never offer them again as a contact.
+  const leadEmails = new Set((leads || []).map((l) => String(l.Email || l.email || '').trim().toLowerCase()).filter(Boolean));
+  const contactRows = nameTyped
+    ? contactMatches.filter((c) => !c.email || !leadEmails.has(String(c.email).toLowerCase())).map((c) => ({ ...c, add: contactAdds[c.id] || {} }))
+    : [];
 
   // Export modal state
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -957,54 +965,6 @@ const LeadSearchEnhanced = ({
         </div>
       </div>
 
-      {showContacts && (
-        <div id="lead-search-contacts" className="bg-white rounded-lg shadow-sm border border-amber-200 p-6">
-          <h3 className="text-base font-medium text-gray-900">Found in your contacts</h3>
-          <p className="text-sm text-gray-600 mt-1 mb-3">
-            {(leads || []).length === 0 ? 'No lead matches that name.' : 'Not who you were looking for?'} These people are in your contacts but are not leads yet - Wingguy knows them from your email.
-          </p>
-          <ul className="divide-y divide-gray-100">
-            {contactMatches.map((c) => {
-              const add = contactAdds[c.id] || {};
-              return (
-                <li key={c.id} className="py-3 flex flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-gray-900">
-                      {c.name || c.email}{c.company ? <span className="font-normal text-gray-500"> - {c.company}</span> : null}
-                    </div>
-                    <div className="text-sm text-gray-600 break-words">
-                      {[c.email, c.phone].filter(Boolean).join(' · ') || 'No email or phone on file'}
-                      {c.linkedin ? (
-                        <>
-                          {' · '}
-                          <a href={c.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">LinkedIn</a>
-                        </>
-                      ) : null}
-                    </div>
-                    {c.knownFrom ? <div className="text-xs text-gray-500 mt-0.5">Wingguy knows them from: {c.knownFrom}</div> : null}
-                    {add.state === 'error' ? <div className="text-xs text-red-700 mt-1">{add.text}</div> : null}
-                  </div>
-                  {add.state === 'added' || add.state === 'exists' ? (
-                    <span className="px-3 py-2 rounded-lg text-sm bg-green-50 text-green-800 border border-green-200">
-                      {add.state === 'added' ? 'Added to your leads' : 'Already one of your leads'}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleAddContact(c)}
-                      disabled={add.state === 'adding'}
-                      className="px-3 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-                    >
-                      {add.state === 'adding' ? 'Adding…' : 'Add as lead'}
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-
       {/* Results Table */}
       <div className="space-y-4">
         {/* Bulk Export Actions */}
@@ -1071,6 +1031,10 @@ const LeadSearchEnhanced = ({
           onSortChange={onSortChange}
           showCampaign={showCampaignFilter}
           flagUnlabelled={showRecentShortcut}
+          showKind={nameTyped}
+          contacts={contactRows}
+          contactsMore={contactsMore}
+          onAddContact={handleAddContact}
         />
       </div>
       {/* Export Modal */}

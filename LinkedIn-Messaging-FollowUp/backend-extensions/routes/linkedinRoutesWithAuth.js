@@ -1660,12 +1660,11 @@ function sanitizeAltEmailsString(raw, primaryEmail) {
  */
 router.get('/contacts/search', async (req, res) => {
   try {
-    if (!leadCampaign.recentShortcut(req.client.clientId)) return res.json({ contacts: [] });
-    const contacts = await require('../../../services/leadSearchContacts').searchContacts(req.client.clientId, req.query.q);
-    res.json({ contacts });
+    if (!leadCampaign.recentShortcut(req.client.clientId)) return res.json({ contacts: [], more: false });
+    res.json(await require('../../../services/leadSearchContacts').searchContacts(req.client.clientId, req.query.q));
   } catch (error) {
     logger.error('LinkedIn Routes: Error in /contacts/search:', error);
-    res.json({ contacts: [] });
+    res.json({ contacts: [], more: false });
   }
 });
 
