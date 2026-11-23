@@ -426,6 +426,52 @@ async function findPeople(coachClientId, query, { limit = 8 } = {}) {
   }
 }
 
+/**
+ * One contact row by its id - but only if it belongs to this client. The id comes back from a
+ * browser (Lead Search's "Add as lead"), so it is never trusted on its own.
+ */
+async function getContact(coachClientId, id) {
+  const tenant = clip(coachClientId, 80);
+  const n = Number(id);
+  if (!tenant || !Number.isInteger(n) || n <= 0) return null;
+  const p = getPool();
+  if (!p) return null;
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const r = await client.query(
+      `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
+              lead_record_id, sources, last_seen_at, evidence
+         FROM wingguy_contacts WHERE coach_client_id = $1 AND id = $2`, [tenant, n]);
+    return r.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * The contact has just become a lead: say so on its row now, so Lead Search stops offering it
+ * without waiting for the nightly sweep. Same client filter. The sweep would set the same value.
+ */
+async function markAsLead(coachClientId, id, leadRecordId) {
+  const tenant = clip(coachClientId, 80);
+  const n = Number(id);
+  const rec = clip(leadRecordId, 40);
+  if (!tenant || !Number.isInteger(n) || n <= 0 || !rec) return false;
+  const p = getPool();
+  if (!p) return false;
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const r = await client.query(
+      `UPDATE wingguy_contacts SET lead_record_id = $3, updated_at = now()
+        WHERE coach_client_id = $1 AND id = $2 AND lead_record_id IS NULL`, [tenant, n, rec]);
+    return r.rowCount > 0;
+  } finally {
+    client.release();
+  }
+}
+
 /** Counts per source + last sweep times - the "is the warehouse stocked?" answer. */
 async function tenantStatus(coachClientId) {
   const tenant = clip(coachClientId, 80);
@@ -452,7 +498,7 @@ async function tenantStatus(coachClientId) {
 }
 
 module.exports = {
-  upsertContacts, findPeople, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
+  upsertContacts, findPeople, getContact, markAsLead, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
   // pure, for tests
   normaliseContact, rankMatches, cleanEmail, mergeContacts,
 };

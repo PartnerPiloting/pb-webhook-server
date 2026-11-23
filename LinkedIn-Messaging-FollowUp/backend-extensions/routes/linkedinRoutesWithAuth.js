@@ -1653,6 +1653,39 @@ function sanitizeAltEmailsString(raw, primaryEmail) {
  * Get a specific lead by ID
  */
 /**
+ * GET /api/linkedin/contacts/search?q=<name or email>
+ * Lead Search's "Found in your contacts": people in the client's contacts who match what was typed
+ * and are not already leads (services/leadSearchContacts.js). Only where the new Lead Search controls
+ * are on (leadCampaign.recentShortcut) - everyone else gets an empty list. Never an error.
+ */
+router.get('/contacts/search', async (req, res) => {
+  try {
+    if (!leadCampaign.recentShortcut(req.client.clientId)) return res.json({ contacts: [] });
+    const contacts = await require('../../../services/leadSearchContacts').searchContacts(req.client.clientId, req.query.q);
+    res.json({ contacts });
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /contacts/search:', error);
+    res.json({ contacts: [] });
+  }
+});
+
+/**
+ * POST /api/linkedin/contacts/:id/add-as-lead
+ * Add one of those contacts as a lead. Dedupes first; never marks them as a LinkedIn connection.
+ * The contact is re-read by id AND client, so an id from another client's list finds nothing.
+ */
+router.post('/contacts/:id/add-as-lead', async (req, res) => {
+  try {
+    if (!leadCampaign.recentShortcut(req.client.clientId)) return res.status(404).json({ ok: false, error: 'Not available' });
+    const result = await require('../../../services/leadSearchContacts').addContactAsLead(req.client.clientId, req.client.airtableBaseId, req.params.id);
+    res.status(result.status || (result.ok ? 200 : 500)).json(result);
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /contacts/:id/add-as-lead:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/linkedin/lead-campaigns/follow-renames[?dry=1]
  * Bring this client's {Campaign} values into line with the campaign names on their machine now
  * (a campaign renamed in Linked Helper - services/leadCampaign.js followRenames). It also runs by

@@ -319,6 +319,31 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
   }
 };
 
+// Lead Search's "Found in your contacts" (23 Nov 2026): people in the client's contacts matching a
+// typed name who are not leads yet. Never throws - a failure is just an empty list.
+export const searchLeadContacts = async (q) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId || String(q || '').trim().length < 3) return [];
+    const res = await api.get('/contacts/search', { params: { clientId, q: String(q).trim() } });
+    return Array.isArray(res.data?.contacts) ? res.data.contacts : [];
+  } catch (e) {
+    console.error('searchLeadContacts error', e.response?.data || e.message);
+    return [];
+  }
+};
+
+// Add one of those contacts as a lead: { ok, created, exists, leadRecordId, name, error }.
+export const addContactAsLead = async (contactId) => {
+  try {
+    const clientId = getCurrentClientId();
+    const res = await api.post(`/contacts/${encodeURIComponent(contactId)}/add-as-lead`, {}, { params: { clientId } });
+    return res.data || { ok: false, error: 'No answer from the server' };
+  } catch (e) {
+    return { ok: false, error: e.response?.data?.error || e.message };
+  }
+};
+
 // The campaign pickers (23 Nov 2026): { filterReady, campaigns: [{name, count, live}], countsCapped,
 // choices: [name] }. Never throws - a failure just means no picker.
 export const getLeadCampaigns = async ({ fresh = false } = {}) => {

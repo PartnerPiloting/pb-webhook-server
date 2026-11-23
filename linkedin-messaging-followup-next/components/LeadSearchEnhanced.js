@@ -4,7 +4,7 @@ import HelpButton from './HelpButton';
 import SearchTermsField from './SearchTermsField';
 import LeadSearchTableDirect from './LeadSearchTableDirect';
 import { formatLinkedInUrl, generateProfileKey } from '../utils/helpers';
-import { getLeadByLinkedInUrl, getLeadCampaigns } from '../services/api';
+import { getLeadByLinkedInUrl, getLeadCampaigns, searchLeadContacts, addContactAsLead } from '../services/api';
 import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from '../utils/clientUtils';
 
 // (Former flag gate removed)
@@ -55,6 +55,34 @@ const LeadSearchEnhanced = ({
       onSearch(s);
     }
   };
+
+  // "Found in your contacts" (23 Nov 2026): when a name is typed and few or no leads match, the
+  // people Wingguy knows from the client's email are offered underneath, each with Add as lead.
+  // Only ever in answer to a typed name, and never mixed into the lead results.
+  const [contactMatches, setContactMatches] = useState([]);
+  const [contactAdds, setContactAdds] = useState({}); // contact id -> { state: 'adding'|'added'|'exists'|'error', text }
+  useEffect(() => {
+    const q = String(nameSearch || '').trim();
+    if (!showRecentShortcut || q.length < 3) { setContactMatches([]); return undefined; }
+    let alive = true;
+    const t = setTimeout(() => {
+      searchLeadContacts(q).then((list) => { if (alive) { setContactMatches(list); setContactAdds({}); } });
+    }, 450);
+    return () => { alive = false; clearTimeout(t); };
+  }, [nameSearch, showRecentShortcut]);
+  const handleAddContact = async (c) => {
+    setContactAdds((prev) => ({ ...prev, [c.id]: { state: 'adding' } }));
+    const r = await addContactAsLead(c.id);
+    if (!r || !r.ok) {
+      setContactAdds((prev) => ({ ...prev, [c.id]: { state: 'error', text: (r && r.error) || 'Could not add them' } }));
+      return;
+    }
+    setContactAdds((prev) => ({ ...prev, [c.id]: { state: r.exists ? 'exists' : 'added', text: r.name || c.name } }));
+    // run the same search again so the new lead shows in the results above
+    sendSearch({ nameQuery: nameSearch, priority, searchTerms, connection, campaign, unlabelled });
+  };
+  const showContacts = showRecentShortcut && !isLoading && contactMatches.length > 0
+    && String(nameSearch || '').trim().length >= 3 && (leads || []).length <= 5;
 
   // Export modal state
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -927,6 +955,54 @@ const LeadSearchEnhanced = ({
           )}
         </div>
       </div>
+
+      {showContacts && (
+        <div id="lead-search-contacts" className="bg-white rounded-lg shadow-sm border border-amber-200 p-6">
+          <h3 className="text-base font-medium text-gray-900">Found in your contacts</h3>
+          <p className="text-sm text-gray-600 mt-1 mb-3">
+            {(leads || []).length === 0 ? 'No lead matches that name.' : 'Not the person above?'} These people are not leads yet - Wingguy knows them from your email.
+          </p>
+          <ul className="divide-y divide-gray-100">
+            {contactMatches.map((c) => {
+              const add = contactAdds[c.id] || {};
+              return (
+                <li key={c.id} className="py-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900">
+                      {c.name || c.email}{c.company ? <span className="font-normal text-gray-500"> - {c.company}</span> : null}
+                    </div>
+                    <div className="text-sm text-gray-600 break-words">
+                      {[c.email, c.phone].filter(Boolean).join(' · ') || 'No email or phone on file'}
+                      {c.linkedin ? (
+                        <>
+                          {' · '}
+                          <a href={c.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">LinkedIn</a>
+                        </>
+                      ) : null}
+                    </div>
+                    {c.knownFrom ? <div className="text-xs text-gray-500 mt-0.5">Wingguy knows them from: {c.knownFrom}</div> : null}
+                    {add.state === 'error' ? <div className="text-xs text-red-700 mt-1">{add.text}</div> : null}
+                  </div>
+                  {add.state === 'added' || add.state === 'exists' ? (
+                    <span className="px-3 py-2 rounded-lg text-sm bg-green-50 text-green-800 border border-green-200">
+                      {add.state === 'added' ? 'Added to your leads' : 'Already one of your leads'}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleAddContact(c)}
+                      disabled={add.state === 'adding'}
+                      className="px-3 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      {add.state === 'adding' ? 'Adding…' : 'Add as lead'}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {/* Results Table */}
       <div className="space-y-4">
