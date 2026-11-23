@@ -465,6 +465,29 @@
   ],
   "near_misses": [
     {
+      "phrase": "how do I export all my contacts to a spreadsheet",
+      "not": "WORKING YOUR LIST IN THE PORTAL",
+      "expect": "EXPORTING YOUR CONTACTS"
+    },
+    {
+      "phrase": "can I download my leads as a CSV",
+      "not": "NEW LEADS",
+      "expect": "EXPORTING YOUR CONTACTS"
+    },
+    {
+      "phrase": "how do I get a CSV I exported from a Linked Helper campaign off the machine and onto my own computer",
+      "not": "EXPORTING YOUR CONTACTS"
+    },
+    {
+      "phrase": "how do I bulk import my existing LinkedIn connections from the Connections.csv export into Wingguy",
+      "not": "EXPORTING YOUR CONTACTS"
+    },
+    {
+      "phrase": "show me my follow-up list",
+      "not": "EXPORTING YOUR CONTACTS",
+      "expect": "YOUR DAILY FOLLOW-UP LIST"
+    },
+    {
       "phrase": "what do I put in the Tags box on the invite step",
       "not": "THANKS FOR CONNECTING",
       "expect": "A SECOND LINKED HELPER CAMPAIGN"

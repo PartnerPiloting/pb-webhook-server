@@ -454,6 +454,12 @@ const MATCH_STOPWORDS = new Set(['what', 'about', 'your', 'you', 'the', 'and', '
 // exists to prevent. (Bare "connection" is deliberately NOT a key - "my connection sent me a
 // text" is not about the invite note.)
 const TOPIC_ALIASES = [
+  // Sam, 17 Nov 2026: "How do I export all my Wingguy contacts/leads to a CSV or spreadsheet?" - the portal's
+  // Export All to CSV button, topic EXPORTING YOUR CONTACTS. NOT for getting a file off the Linked Helper
+  // machine (Roland), nor for loading a Connections.csv INTO Wingguy (Sam, Steve) - both still gaps, so
+  // they are fenced out and stay a miss.
+  // FIRST in the list: his question lists "phone" among the columns, which the phone alias below would take.
+  [[/^(?![\s\S]*\b(machine|linked ?helper|lh|import\w*|bulk\S*|upload\w*|connections\.csv)\b)/, /\b(export\w*|csv|spreadsheets?|excel|download\w*)\b/, /\b(contacts?|leads?|list|people|everyone|connections?)\b/], 'EXPORTING YOUR CONTACTS'],
   // The browser extension (10 Nov 2026): Paul "add Wingguy Chrome extension to chrome", "chrome extension",
   // Roland "extension". The panel's own error keeps its topic, so it sits first.
   [[/couldn.?t reach wingguy/], '"COULDN'],

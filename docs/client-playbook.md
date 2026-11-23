@@ -2294,6 +2294,29 @@ It works whether your mail is Gmail, Outlook or Zoho, once your mailbox is conne
 
 ---
 
+## EXPORTING YOUR CONTACTS - GETTING YOUR LIST INTO A SPREADSHEET
+
+Everything Wingguy holds on your people is yours, and you can take a copy whenever you like.
+
+**Where it is.** Say **open my portal** and go to **Your CRM** (on the older menu it's called Lead
+Search & Update). Under the search and filters there's a row that says "Export matching leads". Click
+**Export All to CSV** and a file downloads to your computer. It opens in Excel or Google Sheets.
+
+**Everyone, or just some.** The button exports whoever the screen is showing. With no search and no
+filters, that's your whole list. Narrow it first - by search term, campaign, priority or connection -
+and you get just those people.
+
+**What's in it.** One row per person. Their name, email, phone and LinkedIn link come first, then
+their score, status, the date you connected and your next follow-up date. After that comes everything
+Linked Helper collected from their profile - company, location, industry and so on - so you can sort
+and slice it your own way.
+
+**What it's for.** Merging your people into another list, building an invite list for an event, or
+just having your own copy. It's a snapshot - Wingguy carries on as before, and you can export again
+any time.
+
+---
+
 ## YOUR PACE - CHOOSING IT AND HOLDING IT
 
 Consistency beats intensity here, so we make it concrete.
