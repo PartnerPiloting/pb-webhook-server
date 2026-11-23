@@ -482,6 +482,11 @@ const TOPIC_ALIASES = [
   [[/\bsegments?\b/], 'SEVERAL SEARCHES IN ONE CAMPAIGN'],
   // Steve: "/wg on first-level connections I'm already in conversation with ... typing WG does nothing"
   [[/\bwg\b/, /\b(existing|already|conversations?|first.level|1st|nothing|not working)\b/], '/WG ON PEOPLE'],
+  // Dean, 22 Nov 2026: "Do I need to set Tags on the invite step of my Linked Helper campaign?" - the Tags
+  // box he met while cloning. Answered in the second-campaign topic (Wingguy goes by the campaign's name).
+  // Above the invite-note alias, which "what do I put in the Tags box on the invite step" also matches.
+  // "tag" alone is NOT a key - "tag this lead" is Wingguy's own tagging, a different thing.
+  [[/\btags?\b/, /\b(invites?|invitations?|steps?|linked ?helper|lh|clon\w+)\b/], 'A SECOND LINKED HELPER CAMPAIGN'],
   // the note that rides on the connection request: "connection request note", "invite wording",
   // "what should the note on my connection request say?", "what do I write in my invite"
   [[/\b(connection requests?|invites?|invitations?)\b/, /\b(notes?|wording|text|message|say|write|put)\b/], 'THANKS FOR CONNECTING'],

@@ -436,6 +436,16 @@
   ],
   "near_misses": [
     {
+      "phrase": "what do I put in the Tags box on the invite step",
+      "not": "THANKS FOR CONNECTING",
+      "expect": "A SECOND LINKED HELPER CAMPAIGN"
+    },
+    {
+      "phrase": "do I need to set Tags on the invite step of my Linked Helper campaign",
+      "not": "YOUR FIRST CAMPAIGN",
+      "expect": "A SECOND LINKED HELPER CAMPAIGN"
+    },
+    {
       "phrase": "how do I clone my campaign",
       "not": "KEEPING YOUR CAMPAIGN FED",
       "expect": "A SECOND LINKED HELPER CAMPAIGN"

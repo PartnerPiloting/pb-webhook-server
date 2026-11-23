@@ -789,6 +789,12 @@ Then, in the clone:
 4. **Set how many it sends** (below), then start it.
 5. **Give it its own thank-you** - see Campaign instructions.
 
+**You'll see a Tags box on the invite step - leave it empty.** Linked Helper lets you tag people as
+they pass through a step, so you can sort them inside Linked Helper later. Wingguy doesn't use tags.
+It knows which campaign someone came from by the campaign's name - which is why renaming the clone
+matters and tagging doesn't. If your clone carried a tag across from the original, it does no harm.
+Leave it be.
+
 **Setting how many each campaign sends**
 
 **If I look after your Linked Helper machine,** you don't need to touch the settings yourself. In
