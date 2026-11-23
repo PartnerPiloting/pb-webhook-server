@@ -1208,6 +1208,9 @@ and follow its three steps: download the new version, unzip it into the same fol
 (choose Replace when Windows asks), and press the refresh arrow on the Wingguy card in your extensions
 page. About 30 seconds. Most improvements happen on my side, so you won't need to do this often.
 
+**On your phone?** /wg stays on your computer, but Wingguy in your Claude app comes with you - see
+Wingguy on your phone.
+
 **Stuck?** Don't guess - message me and we'll do it together on a quick call. It takes two minutes.
 
 ---
