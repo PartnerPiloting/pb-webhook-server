@@ -383,8 +383,10 @@ async function lastSweepAt(coachClientId, source) {
 /**
  * The lookup. Every token of the query must appear somewhere in name / email / company for the
  * caller's tenant; the SQL narrows, rankMatches orders. Returns up to `limit` rows, best first.
+ * notLeads: only people who are NOT lead records (Lead Search's "Found in your contacts") - asked
+ * for in the SQL, because with a common first name the 60-row cut is otherwise all leads.
  */
-async function findPeople(coachClientId, query, { limit = 8 } = {}) {
+async function findPeople(coachClientId, query, { limit = 8, notLeads = false } = {}) {
   const tenant = clip(coachClientId, 80);
   const q = clip(query, 120);
   if (!tenant || !q) return [];
@@ -414,6 +416,7 @@ async function findPeople(coachClientId, query, { limit = 8 } = {}) {
               lead_record_id, sources, last_seen_at, evidence
          FROM wingguy_contacts
         WHERE coach_client_id = $1 ${clauses.length ? 'AND ' + clauses.join(' AND ') : ''}
+              ${notLeads ? 'AND lead_record_id IS NULL' : ''}
         LIMIT 60`,
       params,
     );

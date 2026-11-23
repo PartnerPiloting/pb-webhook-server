@@ -73,9 +73,8 @@ async function searchContacts(clientId, query, { deps = {} } = {}) {
   if (!clientId || q.length < MIN_QUERY) return [];
   if (/linkedin\.com\//i.test(q)) return [];          // a pasted profile link is a lead lookup, not a name
   try {
-    const rows = await store.findPeople(clientId, q, { limit: 25 });
-    // Fold a person's several addresses into one line first, THEN drop the leads - so a lead's
-    // alternate address can never slip through as "not a lead".
+    // notLeads: a lead's main AND alternate addresses both carry its record id, so neither comes back.
+    const rows = await store.findPeople(clientId, q, { limit: 25, notLeads: true });
     return groupByPerson(rows).filter((r) => !r.lead_record_id).slice(0, MAX_SHOWN).map(shape);
   } catch (e) {
     log.warn(`lead-search contacts: lookup failed for ${clientId}: ${e.message}`);
