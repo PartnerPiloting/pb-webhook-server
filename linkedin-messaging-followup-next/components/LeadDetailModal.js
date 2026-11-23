@@ -457,6 +457,9 @@ const LeadDetailModal = ({
                 searchTerms: safeRender(lead.searchTerms || lead['Search Terms']),
                 searchTokensCanonical: safeRender(lead.searchTokensCanonical || lead['Search Tokens (canonical)']),
                 source: safeRender(lead.source || lead['Source']),
+                // Campaign (23 Nov 2026): the name, and whether Linked Helper set it (then read-only)
+                campaign: lead.campaign || '',
+                campaignLocked: lead.campaignLocked,
                 // Contact fields (previously omitted -> caused blank email/phone in form when using modal)
                 email: safeRender(lead.email || lead['Email']),
                 phone: safeRender(lead.phone || lead['Phone']),

@@ -4,7 +4,7 @@ import HelpButton from './HelpButton';
 import SearchTermsField from './SearchTermsField';
 import LeadSearchTableDirect from './LeadSearchTableDirect';
 import { formatLinkedInUrl, generateProfileKey } from '../utils/helpers';
-import { getLeadByLinkedInUrl } from '../services/api';
+import { getLeadByLinkedInUrl, getLeadCampaigns } from '../services/api';
 import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from '../utils/clientUtils';
 
 // (Former flag gate removed)
@@ -28,6 +28,16 @@ const LeadSearchEnhanced = ({
   const [priority, setPriority] = useState('all');
   const [connection, setConnection] = useState('all');
   const [searchTerms, setSearchTerms] = useState('');
+  // Campaign filter (23 Nov 2026): 'all' | '__none__' (no campaign sent them) | a campaign name.
+  // The list comes from the server; the picker only shows once it says this client is ready.
+  const [campaign, setCampaign] = useState('all');
+  const [campaignOptions, setCampaignOptions] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    getLeadCampaigns().then((o) => { if (alive) setCampaignOptions(o); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const showCampaignFilter = !!(campaignOptions && campaignOptions.filterReady);
 
   // Export modal state
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -94,6 +104,7 @@ const LeadSearchEnhanced = ({
       if (nameSearch) p.set('q', nameSearch);
       if (priority !== 'all') p.set('priority', priority);
       if (connection !== 'all') p.set('connection', connection);
+      if (campaign !== 'all') p.set('campaign', campaign);
       if (searchTerms) p.set('searchTerms', searchTerms);
       p.set('type', 'csv'); // New type that returns all fields
       p.set('format', 'csv');
@@ -200,7 +211,8 @@ const LeadSearchEnhanced = ({
         nameQuery: value,
         priority,
         searchTerms,
-        connection
+        connection,
+        campaign
       });
     }
   };
@@ -216,7 +228,8 @@ const LeadSearchEnhanced = ({
         nameQuery: nameSearch,
         priority: value,
         searchTerms,
-        connection
+        connection,
+        campaign
       });
     }
   };
@@ -230,7 +243,23 @@ const LeadSearchEnhanced = ({
         nameQuery: nameSearch,
         priority,
         searchTerms,
-        connection: value
+        connection: value,
+        campaign
+      });
+    }
+  };
+
+  // Handle campaign filter change
+  const handleCampaignChange = (e) => {
+    const value = e.target.value;
+    setCampaign(value);
+    if (onSearch) {
+      onSearch({
+        nameQuery: nameSearch,
+        priority,
+        searchTerms,
+        connection,
+        campaign: value
       });
     }
   };
@@ -246,7 +275,8 @@ const LeadSearchEnhanced = ({
         nameQuery: nameSearch,
         priority,
         searchTerms: termsString,
-        connection
+        connection,
+        campaign
       });
     }
   };
@@ -289,6 +319,8 @@ const LeadSearchEnhanced = ({
         if (nameSearch) p.set('q', nameSearch);
         if (priority !== 'all') p.set('priority', priority);
         if (connection !== 'all') p.set('connection', connection);
+        if (campaign !== 'all') p.set('campaign', campaign);
+      if (campaign !== 'all') p.set('campaign', campaign);
         if (searchTerms) p.set('searchTerms', searchTerms);
         p.set('type', exportType);
         p.set('format', 'txt');
@@ -379,6 +411,8 @@ const LeadSearchEnhanced = ({
   if (nameSearch) params.set('q', nameSearch);
     if (priority !== 'all') params.set('priority', priority);
     if (searchTerms) params.set('searchTerms', searchTerms);
+    if (connection !== 'all') params.set('connection', connection);
+    if (campaign !== 'all') params.set('campaign', campaign);
     params.set('limit', String(PAGE_LIMIT));
     // Add clientId for authentication - try getCurrentClientId first, then URL params
     let cid = getCurrentClientId();
@@ -564,6 +598,7 @@ const LeadSearchEnhanced = ({
       if (nameSearch) p.set('q', nameSearch);
       if (priority !== 'all') p.set('priority', priority);
       if (connection !== 'all') p.set('connection', connection);
+      if (campaign !== 'all') p.set('campaign', campaign);
       if (searchTerms) p.set('searchTerms', searchTerms);
       p.set('type', exportType || 'linkedin');
       p.set('format', fmt);
@@ -722,6 +757,27 @@ const LeadSearchEnhanced = ({
               <option value="connected">Connected</option>
               <option value="not_connected">Not connected</option>
             </select>
+            {showCampaignFilter && (
+              <>
+                <label htmlFor="lead-search-campaign" className="block text-sm font-medium text-gray-700 mb-2 mt-4">
+                  Campaign
+                </label>
+                <select
+                  id="lead-search-campaign"
+                  value={campaign}
+                  onChange={handleCampaignChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                >
+                  <option value="all">All</option>
+                  {campaignOptions.campaigns.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}{c.count && !campaignOptions.countsCapped ? ` (${c.count})` : ''}{c.live ? '' : ' - not a current campaign'}
+                    </option>
+                  ))}
+                  <option value="__none__">No campaign</option>
+                </select>
+              </>
+            )}
           </div>
           {/* Search Terms Filter - more space, 4 columns */}
           <div className="md:col-span-4">
@@ -763,6 +819,11 @@ const LeadSearchEnhanced = ({
           {connection !== 'all' && (
             <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
               {connection === 'connected' ? 'Connected' : 'Not connected'}
+            </span>
+          )}
+          {campaign !== 'all' && (
+            <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs">
+              Campaign: {campaign === '__none__' ? 'No campaign' : campaign}
             </span>
           )}
         </div>
@@ -832,6 +893,7 @@ const LeadSearchEnhanced = ({
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={onSortChange}
+          showCampaign={showCampaignFilter}
         />
       </div>
       {/* Export Modal */}

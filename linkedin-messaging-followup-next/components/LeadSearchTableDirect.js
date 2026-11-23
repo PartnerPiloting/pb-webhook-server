@@ -20,7 +20,8 @@ export default function LeadSearchTableDirect({
   hideFooter = false, // when true, suppress internal footer so parent can render a unified pagination bar
   sortField: propSortField = null, // Server-side sort field from parent
   sortDirection: propSortDirection = null, // Server-side sort direction from parent  
-  onSortChange = null // Callback when sort changes (for server-side sorting)
+  onSortChange = null, // Callback when sort changes (for server-side sorting)
+  showCampaign = false // Show the Campaign column (the Lead Search campaign filter is on for this client)
 }) {
   // Use local state only if no parent-controlled sort (backwards compatible)
   const [localSortKey, setLocalSortKey] = useState('AI Score');
@@ -30,6 +31,7 @@ export default function LeadSearchTableDirect({
   const sortKey = propSortField ?? localSortKey;
   const sortDir = propSortDirection ?? localSortDir;
 
+  // The Campaign column shows only where the Lead Search campaign filter does (showCampaign).
   const columns = [
     { key: 'fullName', label: 'Name', sortable: true },
     { key: 'Company', label: 'Company', sortable: true },
@@ -38,6 +40,7 @@ export default function LeadSearchTableDirect({
     { key: 'Priority', label: 'Priority', sortable: true },
     { key: 'Status', label: 'Status', sortable: true },
     { key: 'Date Connected', label: 'Connected', sortable: true, isDate: true },
+    ...(showCampaign ? [{ key: 'campaign', label: 'Campaign', sortable: false }] : []),
     { key: 'searchTerms', label: 'Search Terms', sortable: false },
     { key: 'linkedinProfileUrl', label: 'LinkedIn', sortable: false },
   { key: 'email', label: 'Email', sortable: false },

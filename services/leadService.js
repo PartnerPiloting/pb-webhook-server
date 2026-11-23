@@ -27,6 +27,9 @@ const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
 const { CLIENT_TABLES, LEAD_FIELDS, SCORING_STATUS_VALUES, CONNECTION_STATUS_VALUES, LEAD_STATUS_VALUES, CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 const { stripCredentialSuffixes, isBrokenLastName, deriveNameFromFull } = require('../utils/nameNormalizer');
+const leadCampaign = require('./leadCampaign');
+
+const writeLeadFields = (write, fields) => leadCampaign.writeFields(write, fields, logger);
 
 // Duplicate check by LinkedIn address, computed at query time (2026-09-04). This replaces the
 // old `{Profile Key} = key` lookup: Profile Key was a formula field the Airtable API cannot
@@ -187,6 +190,12 @@ async function upsertLead(
         [LEAD_FIELDS.VIEW_IN_SALES_NAVIGATOR]: viewInSalesNavigatorUrl || null
     };
 
+    // The Linked Helper campaign that sent this lead, as its own field so the portal can filter on
+    // it (services/leadCampaign.js). Only ever set from what Linked Helper sent: a lead arriving with
+    // no campaign leaves the field alone, so a client's own choice on a hand-added lead survives.
+    const lhCampaignName = leadCampaign.campaignNameFromRaw(originalLeadData);
+    if (lhCampaignName) fields[leadCampaign.FIELD] = lhCampaignName;
+
     // --- MODIFIED Scoring Status Handling ---
     if (scoringStatus !== undefined) { // Only include if explicitly passed (e.g., "To Be Scored" for new leads)
         fields[LEAD_FIELDS.SCORING_STATUS] = scoringStatus;
@@ -264,7 +273,7 @@ async function upsertLead(
 
         // Validate field names before sending to Airtable
         const validatedFields = createValidatedObject(fields);
-        await airtableBase(CLIENT_TABLES.LEADS).update(existing[0].id, validatedFields);
+        await writeLeadFields((f) => airtableBase(CLIENT_TABLES.LEADS).update(existing[0].id, f), validatedFields);
         recordId = existing[0].id; 
     } else {
         isNewLead = true;
@@ -283,7 +292,7 @@ async function upsertLead(
         
         // Validate field names before sending to Airtable (filters out fields that don't exist in client's base)
         const validatedFields = createValidatedObject(fields);
-        const createdRecords = await airtableBase(CLIENT_TABLES.LEADS).create([{ fields: validatedFields }]);
+        const createdRecords = await writeLeadFields((f) => airtableBase(CLIENT_TABLES.LEADS).create([{ fields: f }]), validatedFields);
         recordId = createdRecords[0].id; 
     }
     

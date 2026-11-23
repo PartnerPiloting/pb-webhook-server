@@ -33,6 +33,10 @@ const LeadSearchUpdate = () => {
   const [connection, setConnection] = useState('all');
   const connectionRef = useRef('all');
   connectionRef.current = connection;
+  // Campaign filter ('all' | '__none__' | a campaign name) - through a ref, same as connection.
+  const [campaign, setCampaign] = useState('all');
+  const campaignRef = useRef('all');
+  campaignRef.current = campaign;
   const [allLeads, setAllLeads] = useState([]); // Store all search results
   const [leads, setLeads] = useState([]); // Display leads (paginated subset)
   const [totalLeads, setTotalLeads] = useState(null); // Total matching records (null when no filters)
@@ -110,7 +114,7 @@ const LeadSearchUpdate = () => {
       const offset = (page - 1) * leadsPerPage;
       
       // Use backend search with pagination and sorting - returns { leads: [...], total: number|null }
-      const response = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset, currentSortField, currentSortDirection, connectionRef.current);
+      const response = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset, currentSortField, currentSortDirection, connectionRef.current, campaignRef.current);
       const results = response.leads || [];
       const total = response.total;
       
@@ -185,7 +189,7 @@ const LeadSearchUpdate = () => {
     // Trigger initial search with empty query to show first page of leads
     currentSearchRef.current += 1;
     performSearch('', priority, searchTerms, currentSearchRef.current, 1, sortField, sortDirection);
-  }, [performSearch, priority, searchTerms, sortField, sortDirection, connection]);
+  }, [performSearch, priority, searchTerms, sortField, sortDirection, connection, campaign]);
 
   // Effect to trigger search when query, priority, or searchTerms changes
   useEffect(() => {
@@ -203,7 +207,7 @@ const LeadSearchUpdate = () => {
       // Use debounced search for user typing
       debouncedSearch(search, priority, searchTerms, requestId, 1, sortField, sortDirection);
     }
-  }, [search, priority, searchTerms, connection, debouncedSearch, performSearch]);
+  }, [search, priority, searchTerms, connection, campaign, debouncedSearch, performSearch]);
 
   // Handle lead selection - fetch full details and open modal
   const handleLeadSelect = async (lead) => {
@@ -313,7 +317,7 @@ const LeadSearchUpdate = () => {
   };
 
   // Handle enhanced search from LeadSearchEnhanced component
-  const handleEnhancedSearch = ({ nameQuery, priority: newPriority, searchTerms: newSearchTerms, connection: newConnection }) => {
+  const handleEnhancedSearch = ({ nameQuery, priority: newPriority, searchTerms: newSearchTerms, connection: newConnection, campaign: newCampaign }) => {
     console.log('🔍 Enhanced search triggered:', { nameQuery, priority: newPriority, searchTerms: newSearchTerms });
     
     // Update all search states
@@ -321,6 +325,7 @@ const LeadSearchUpdate = () => {
     setPriority(newPriority || 'all');
     setSearchTerms(newSearchTerms || '');
     setConnection(newConnection || 'all');
+    setCampaign(newCampaign || 'all');
     
     // Only clear selected lead if modal is not open (don't interfere with modal viewing)
     if (!isModalOpen) {

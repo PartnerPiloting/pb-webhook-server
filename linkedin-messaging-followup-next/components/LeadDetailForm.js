@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import SearchTermsField from './SearchTermsField';
 import CollapsibleNotes from './CollapsibleNotes';
 import { deleteLead } from '../services/api';
+import LeadCampaignField from './LeadCampaignField';
 import { buildAuthUrl } from '../utils/clientUtils';
 
 // Import icons using require to avoid Next.js issues
@@ -902,7 +903,10 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
               );
             })()}
           </div>
-          
+
+          {/* Campaign: read-only when Linked Helper sent them, a list to choose from when nobody did */}
+          <LeadCampaignField lead={lead} />
+
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Status</label>
             <select

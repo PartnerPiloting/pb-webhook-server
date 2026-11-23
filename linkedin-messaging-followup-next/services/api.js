@@ -216,7 +216,7 @@ api.interceptors.response.use(
 );
 
 // Lead search and management functions
-export const searchLeads = async (query, priority = 'all', searchTerms = '', limit = 25, offset = 0, sortField = null, sortDirection = null, connection = 'all') => {
+export const searchLeads = async (query, priority = 'all', searchTerms = '', limit = 25, offset = 0, sortField = null, sortDirection = null, connection = 'all', campaign = 'all') => {
   try {
     const clientId = getCurrentClientId();
     if (!clientId) {
@@ -246,6 +246,11 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
     // Connection filter: 'connected' | 'not_connected' (omitted for 'all')
     if (connection && connection !== 'all') {
       params.connection = connection;
+    }
+
+    // Campaign filter: a Linked Helper campaign name, or '__none__' (omitted for 'all')
+    if (campaign && campaign !== 'all') {
+      params.campaign = campaign;
     }
 
     // Add search terms parameter if provided
@@ -306,6 +311,40 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
   } catch (error) {
     console.error('Search error:', error);
     throw new Error('Failed to search leads');
+  }
+};
+
+// The campaign pickers (23 Nov 2026): { filterReady, campaigns: [{name, count, live}], countsCapped,
+// choices: [name] }. Never throws - a failure just means no picker.
+export const getLeadCampaigns = async ({ fresh = false } = {}) => {
+  const empty = { filterReady: false, campaigns: [], countsCapped: false, choices: [] };
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) return empty;
+    const res = await api.get('/lead-campaigns', { params: { clientId, ...(fresh ? { fresh: 1 } : {}) } });
+    const d = res.data || {};
+    return {
+      filterReady: !!d.filterReady,
+      campaigns: Array.isArray(d.campaigns) ? d.campaigns : [],
+      countsCapped: !!d.countsCapped,
+      choices: Array.isArray(d.choices) ? d.choices : [],
+    };
+  } catch (e) {
+    console.error('getLeadCampaigns error', e.response?.data || e.message);
+    return empty;
+  }
+};
+
+// Choose the campaign for a lead that has none ('' clears it). Throws with the server's reason.
+export const setLeadCampaign = async (leadId, campaign) => {
+  if (!leadId) throw new Error('leadId required');
+  const clientId = getCurrentClientId();
+  if (!clientId) throw new Error('Client ID not available');
+  try {
+    const res = await api.patch(`/leads/${leadId}/campaign`, { campaign: campaign || '' }, { params: { clientId } });
+    return res.data;
+  } catch (e) {
+    throw new Error(e.response?.data?.error || 'Could not save the campaign');
   }
 };
 
@@ -404,7 +443,10 @@ export const getLeadById = async (leadId) => {
   postsRelevancePercentage: lead.postsRelevancePercentage,
   searchTerms: lead.searchTerms || lead['Search Terms'],
   searchTokensCanonical: lead.searchTokensCanonical || lead['Search Tokens (canonical)'],
-  lastMessageDate: lead.lastMessageDate
+  lastMessageDate: lead.lastMessageDate,
+  // The campaign that sent them; campaignLocked = Linked Helper set it (not the client's to change)
+  campaign: lead.campaign || '',
+  campaignLocked: lead.campaignLocked === undefined ? undefined : !!lead.campaignLocked
     };
     if (typeof window !== 'undefined') {
       try { window.__lastLead = mapped; } catch {}

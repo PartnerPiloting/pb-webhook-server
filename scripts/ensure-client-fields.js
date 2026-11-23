@@ -76,6 +76,11 @@ const LEADS_FIELDS = [
     options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' } }
   },
   {
+    name: 'Campaign',
+    type: 'singleLineText',
+    description: 'The Linked Helper campaign this person came from (services/leadCampaign.js). Filled in by itself, with the campaign NAME, for every lead Linked Helper sends - and then the client cannot change it, because scoring reads the same campaign off Raw Profile Data. Blank = no campaign sent them (added by hand, or by Reconnect); the client may then choose one of their own campaigns from a list on the lead in the portal. Lead Search filters on it, "No campaign" included. Plain text, not a select: campaign names come and go on the machine, and an unknown select choice would make Airtable refuse the whole lead. Existing leads are filled by scripts/backfill-lead-campaign.js, one client at a time. Added 2026-11-23 (Roland Illyes).'
+  },
+  {
     name: 'Cease FUP At',
     type: 'dateTime',
     description: "Engine-written timestamp of the moment Cease FUP was set (wingguy_cease_followups). The waiver line: a reply the lead was owed BEFORE this moment is considered deliberately let go and stops surfacing in follow-ups; an inbound NEWER than this still surfaces (a reply is a reply). Cleared when the lead is re-opened. Blank on leads ceased before the rollout = legacy always-surface behavior. Added 2026-07-28.",

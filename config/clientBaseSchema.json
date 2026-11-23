@@ -540,6 +540,10 @@
           "type": "multilineText"
         },
         {
+          "name": "Campaign",
+          "type": "singleLineText"
+        },
+        {
           "name": "Reconnect On",
           "type": "date",
           "options": {

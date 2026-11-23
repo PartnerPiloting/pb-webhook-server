@@ -45,6 +45,8 @@ const { authenticateUserWithTestMode } = require('../../../middleware/authMiddle
 
 // Import Airtable base function that can switch between client bases
 const { getClientBase } = require('../../../services/clientService');
+// The Campaign field on a lead + the Lead Search campaign filter (2026-11-23)
+const leadCampaign = require('../../../services/leadCampaign');
 // Load scoring attributes to compute dynamic max score
 const { loadPostScoringAirtableConfig } = require('../../../postAttributeLoader');
 
@@ -287,7 +289,9 @@ router.get('/leads/search', async (req, res) => {
   
   try {
     const airtableBase = await getAirtableBase(req);
-    const { query, priority, q, searchTerms, limit, offset, sortField, sortDirection, connection } = req.query;
+    const { query, priority, q, searchTerms, limit, offset, sortField, sortDirection, connection, campaign } = req.query;
+    // Campaign filter: a campaign name, or "__none__" for people no campaign sent (2026-11-23)
+    const campaignFormula = leadCampaign.filterFormula(campaign);
     
     // Support both 'query' and 'q' parameter names for backward compatibility
     const searchTerm = query || q;
@@ -302,7 +306,7 @@ router.get('/leads/search', async (req, res) => {
     let filterParts = [];
     
     // Track if any filters are applied (for total count optimization)
-    const hasFilters = (searchTerm && searchTerm.trim() !== '') || (priority && priority !== 'all') || (searchTerms && searchTerms.trim() !== '') || connection === 'connected' || connection === 'not_connected';
+    const hasFilters = (searchTerm && searchTerm.trim() !== '') || (priority && priority !== 'all') || (searchTerms && searchTerms.trim() !== '') || connection === 'connected' || connection === 'not_connected' || !!campaignFormula;
     
     // Add name, email, and LinkedIn URL search filter (only if search term provided)
     if (searchTerm && searchTerm.trim() !== '') {
@@ -376,7 +380,8 @@ router.get('/leads/search', async (req, res) => {
     // Connection filter: connected = has a Date Connected (the reliable signal), not = blank
     if (connection === 'connected') filterParts.push('{Date Connected}');
     if (connection === 'not_connected') filterParts.push('NOT({Date Connected})');
-    
+    if (campaignFormula) filterParts.push(campaignFormula);
+
     // Always exclude multi-tenant entries
     filterParts.push(`NOT(OR(
       SEARCH("multi", LOWER({First Name})) > 0,
@@ -549,7 +554,9 @@ router.get('/leads/search', async (req, res) => {
         company: f['Company Name'] || f['Company'] || '',
         jobTitle: f['Job Title'] || '',
         // Include all original fields for compatibility
-        ...f
+        ...f,
+        // The campaign that sent them (or the one the client chose) - after ...f so it wins
+        ...leadCampaign.describeLead(f)
       };
     });
 
@@ -580,7 +587,7 @@ router.get('/leads/export', async (req, res) => {
 
   try {
     const airtableBase = await getAirtableBase(req);
-  const { type = 'linkedin', format = 'txt', query, q, priority, searchTerms, limit, connection } = req.query;
+  const { type = 'linkedin', format = 'txt', query, q, priority, searchTerms, limit, connection, campaign } = req.query;
 
     const exportType = String(type).toLowerCase();
     const exportFormat = String(format).toLowerCase();
@@ -643,6 +650,9 @@ router.get('/leads/export', async (req, res) => {
     // Connection filter: connected = has a Date Connected (the reliable signal), not = blank
     if (connection === 'connected') filterParts.push('{Date Connected}');
     if (connection === 'not_connected') filterParts.push('NOT({Date Connected})');
+    // Campaign filter, same as /leads/search (2026-11-23)
+    const exportCampaignFormula = leadCampaign.filterFormula(campaign);
+    if (exportCampaignFormula) filterParts.push(exportCampaignFormula);
     filterParts.push(`NOT(OR(
       SEARCH("multi", LOWER({First Name})) > 0,
       SEARCH("multi", LOWER({Last Name})) > 0,
@@ -1640,6 +1650,42 @@ function sanitizeAltEmailsString(raw, primaryEmail) {
  * GET /api/linkedin/leads/:id
  * Get a specific lead by ID
  */
+/**
+ * GET /api/linkedin/lead-campaigns
+ * What the portal's campaign pickers need: { filterReady, campaigns: [{name, count, live}],
+ * countsCapped, choices: [name] }. See services/leadCampaign.js.
+ */
+router.get('/lead-campaigns', async (req, res) => {
+  try {
+    const airtableBase = await getAirtableBase(req);
+    res.json(await leadCampaign.getOptions(req.client.clientId, airtableBase, { fresh: req.query.fresh === '1' }));
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /lead-campaigns:', error);
+    res.json({ filterReady: false, campaigns: [], countsCapped: false, choices: [] });
+  }
+});
+
+/**
+ * PATCH /api/linkedin/leads/:id/campaign   body: { campaign: "<name from the list>" | "" }
+ * A client choosing the campaign for a lead that has none. Refused (409) when Linked Helper set it.
+ */
+router.patch('/leads/:id/campaign', async (req, res) => {
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const result = await leadCampaign.setLeadCampaign({
+      clientId: req.client.clientId,
+      base: airtableBase,
+      leadId: req.params.id,
+      value: (req.body || {}).campaign,
+    });
+    const { status, ...body } = result;
+    res.status(status).json(body);
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in PATCH /leads/:id/campaign:', error);
+    res.status(500).json({ ok: false, error: 'Failed to set the campaign', details: error.message });
+  }
+});
+
 router.get('/leads/:id', async (req, res) => {
   logger.info('LinkedIn Routes: GET /leads/:id called');
   logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
@@ -1708,7 +1754,9 @@ router.get('/leads/:id', async (req, res) => {
       aiProfileAssessment: f['AI Profile Assessment'],
       aiAttributeBreakdown: f['AI Attribute Breakdown'],
       // Include all original fields for compatibility
-      ...f
+      ...f,
+      // campaign + campaignLocked (true = Linked Helper set it; the client cannot change it)
+      ...leadCampaign.describeLead(f)
     };
 
   logger.info('[DEBUG /leads/:id] Source variants:', {
@@ -1854,6 +1902,9 @@ router.patch('/leads/:id', async (req, res) => {
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
       return res.status(400).json({ error: 'Body must be an object of fields to update' });
     }
+    // {Campaign} is only ever set by Linked Helper or through PATCH /leads/:id/campaign (which
+    // checks it is blank and the value is on the client's list) - never by a general save.
+    delete updates[leadCampaign.FIELD];
     // Defensive log: track any attempt to toggle Posts Actioned via API
     if (Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
       logger.warn(`[LinkedIn Routes] PATCH: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
@@ -1933,6 +1984,9 @@ router.put('/leads/:id', async (req, res) => {
     const updates = { ...req.body };
 
     logger.info('LinkedIn Routes: Updating lead:', leadId, 'with data:', updates);
+
+    // {Campaign} is only ever set by Linked Helper or through PATCH /leads/:id/campaign.
+    delete updates[leadCampaign.FIELD];
 
     // Alt Emails: sanitize a portal-sent value AND preserve a displaced primary. Two triggers:
     //   - the portal sent an {Alt Emails} value to store (clean/validate/dedupe, strip the primary), and/or
