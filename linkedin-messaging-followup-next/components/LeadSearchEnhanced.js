@@ -20,7 +20,8 @@ const LeadSearchEnhanced = ({
   onQuickFieldUpdate,
   sortField = 'AI Score',
   sortDirection = 'desc',
-  onSortChange
+  onSortChange,
+  onRefresh
 }) => {
   // Search states
   const [nameSearch, setNameSearch] = useState('');
@@ -78,8 +79,8 @@ const LeadSearchEnhanced = ({
       return;
     }
     setContactAdds((prev) => ({ ...prev, [c.id]: { state: r.exists ? 'exists' : 'added', text: r.name || c.name } }));
-    // run the same search again so the new lead shows in the results above
-    sendSearch({ nameQuery: nameSearch, priority, searchTerms, connection, campaign, unlabelled });
+    // run the search on screen again so the new lead shows in the results
+    if (onRefresh) onRefresh();
   };
   const showContacts = showRecentShortcut && !isLoading && contactMatches.length > 0
     && String(nameSearch || '').trim().length >= 3 && (leads || []).length <= 5;
@@ -960,7 +961,7 @@ const LeadSearchEnhanced = ({
         <div id="lead-search-contacts" className="bg-white rounded-lg shadow-sm border border-amber-200 p-6">
           <h3 className="text-base font-medium text-gray-900">Found in your contacts</h3>
           <p className="text-sm text-gray-600 mt-1 mb-3">
-            {(leads || []).length === 0 ? 'No lead matches that name.' : 'Not the person above?'} These people are not leads yet - Wingguy knows them from your email.
+            {(leads || []).length === 0 ? 'No lead matches that name.' : 'Not who you were looking for?'} These people are in your contacts but are not leads yet - Wingguy knows them from your email.
           </p>
           <ul className="divide-y divide-gray-100">
             {contactMatches.map((c) => {

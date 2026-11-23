@@ -381,6 +381,11 @@ const LeadSearchUpdate = () => {
         selectedLead={selectedLead}
         isLoading={isLoading}
         onSearch={handleEnhancedSearch}
+        onRefresh={() => {
+          // run the search on screen again, unchanged (e.g. a contact was just added as a lead)
+          const requestId = ++currentSearchRef.current;
+          performSearch(search, priority, searchTerms, requestId, currentPage, sortField, sortDirection);
+        }}
         onQuickFieldUpdate={handleQuickFieldUpdate}
         sortField={sortField}
         sortDirection={sortDirection}
