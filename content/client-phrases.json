@@ -266,6 +266,17 @@
       ]
     },
     {
+      "phrase": "can I use Wingguy on my phone?",
+      "tool": "wingguy_learn",
+      "topic": "WINGGUY ON YOUR PHONE",
+      "note": "In Guy's all-clients email \"Wingguy at events - it's on your phone\" (23 Nov 2026), sent by hand - not in a repo doc.",
+      "where": [],
+      "near_misses": [
+        { "text": "does /wg work on my mobile", "expect": "WINGGUY ON YOUR PHONE" },
+        { "text": "how do I get a phone call into Wingguy", "not": "WINGGUY ON YOUR PHONE" }
+      ]
+    },
+    {
       "phrase": "set up my reconnect list",
       "tool": "wingguy_reconnect_setup",
       "where": [
