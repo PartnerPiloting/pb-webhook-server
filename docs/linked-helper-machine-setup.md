@@ -899,3 +899,32 @@ Note also that Linked Helper's Launcher can start an account on a machine other 
 sitting at - "Open on remote machine and run campaigns" - so routine campaign work may not need a
 remote desktop session at all. Not yet tested; worth ten minutes.
 
+## My own connections - the connections no campaign sent (Guy's machine only, since 23 Nov 2026)
+
+What it does: every night just after midnight the machine reads the top of the client's LinkedIn
+"My Connections" list, and anyone who connected on or after the switch-on date and is in no
+campaign is visited and sent to Wingguy - at most 8 a night, the rest on later nights. No invite and
+no message is ever sent. In Wingguy they carry the campaign "My own connections".
+
+**It is OFF unless the machine config says otherwise.** Only Guy's own machine has it. Do not switch
+it on for a client without Guy saying so.
+
+- Script: `scripts/linked-helper/lh-own-connections.py` (its header has the full why and what was
+  proven). Recipes: `campaigns/05-my-connections-holding.json` (collect only, stays paused) and
+  `campaigns/06-my-own-connections.json` (visit, then webhook, 00:00-02:15).
+- Switch on: copy the script and the two recipes to `/usr/local/share/linked-helper/campaigns/`,
+  add `OWN_CONNECTIONS_SINCE=<YYYY-MM-DD>` (and optionally `OWN_CONNECTIONS_MAX=8`) to
+  `/etc/linked-helper-machine.conf`, and add `/etc/cron.d/lh-own-connections`:
+  `5 0 * * *` the script, and `*/20 * * * *` the script with `--recover`. The script builds both
+  campaigns itself on its first run.
+- Look before it acts: `lh-own-connections.py --dry-run` lists who would go tonight and touches nothing.
+- Log: `/var/log/lh-own-connections.log`. State: `/var/lib/lh-own-connections.json`.
+- During the read (about three minutes) it holds the other running campaigns and then stops and
+  restarts the campaigns runner - pausing a campaign does not stop a collect in flight. The list of
+  what it paused is on disk first (`/var/lib/lh-own-connections-hold.json`), the restore runs even
+  when the read fails, and `--recover` puts things back if a run died half-way.
+- Linked Helper pauses "My own connections" by itself once its queue is empty. That is normal; the
+  script switches it back on when it adds people.
+- Server side: a lead that already has a campaign keeps it when this one sends the same person
+  (`services/leadCampaign.js` `keepRealCampaign`).
+- Not on a cloud Linked Helper account: the script reads the machine's database, which is empty there.

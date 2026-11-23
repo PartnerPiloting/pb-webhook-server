@@ -382,6 +382,8 @@ def pass_on(m, own, people):
 def main():
     args = sys.argv[1:]
     dry = "--dry-run" in args
+    if "--recover" in args and not os.path.exists(HOLD_NOTE):
+        return 0                             # the normal answer, every 20 minutes: nothing was left paused
     m = Machine()
     if "--recover" in args:
         lock = open(LOCK, "w")
