@@ -308,6 +308,8 @@ export default function LeadSearchTableDirect({
     );
   }
 
+  // a contact just added from this list is a lead now - the count line says so
+  const addedCount = showKind ? contacts.filter((c) => c.add && c.add.state === 'added').length : 0;
   const startIndex = (currentPage - 1) * leadsPerPage + 1;
   const endIndex = Math.min(startIndex + sortedLeads.length - 1, totalLeads);
 
@@ -316,7 +318,7 @@ export default function LeadSearchTableDirect({
       <div className="px-6 py-4 border-b border-gray-200">
         <h3 className="text-lg font-medium text-gray-900">
           {showKind
-            ? `Search results: ${plural(totalLeads || sortedLeads.length, 'lead')}, ${plural(contacts.length, 'contact')}`
+            ? `Search results: ${plural((totalLeads || sortedLeads.length) + addedCount, 'lead')}, ${plural(contacts.length - addedCount, 'contact')}`
             : `Search Results (showing ${sortedLeads.length}${totalLeads ? ` of ${totalLeads}` : ''})`}
           {showKind && contactsMore ? <span className="ml-2 text-sm font-normal text-gray-500">(the first {contacts.length} contacts - more match, type more of the name)</span> : null}
           <span className="ml-2 text-sm font-normal text-gray-500">
