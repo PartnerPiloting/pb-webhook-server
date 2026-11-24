@@ -1669,6 +1669,37 @@ router.get('/contacts/search', async (req, res) => {
 });
 
 /**
+ * POST /api/linkedin/contacts  { name | firstName+lastName, email, phone, company, linkedin }
+ * Add a CONTACT by hand - someone Wingguy just keeps details for, not a lead (services/
+ * leadSearchContacts.js saveContact). Dedupes on email / LinkedIn address first.
+ */
+router.post('/contacts', async (req, res) => {
+  try {
+    if (!leadCampaign.recentShortcut(req.client.clientId)) return res.status(404).json({ ok: false, error: 'Not available' });
+    const result = await require('../../../services/leadSearchContacts').saveContact(req.client.clientId, req.client.airtableBaseId, req.body || {});
+    res.status(result.status || (result.ok ? 200 : 500)).json(result);
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in POST /contacts:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/linkedin/contacts/:id  { name?, company?, email?, phone?, linkedin? }
+ * Edit a contact from its details card. Re-read by id AND client; a lead's row is refused.
+ */
+router.patch('/contacts/:id', async (req, res) => {
+  try {
+    if (!leadCampaign.recentShortcut(req.client.clientId)) return res.status(404).json({ ok: false, error: 'Not available' });
+    const result = await require('../../../services/leadSearchContacts').editContact(req.client.clientId, req.params.id, req.body || {});
+    res.status(result.status || (result.ok ? 200 : 500)).json(result);
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in PATCH /contacts/:id:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/linkedin/contacts/:id/add-as-lead
  * Add one of those contacts as a lead. Dedupes first; never marks them as a LinkedIn connection.
  * The contact is re-read by id AND client, so an id from another client's list finds nothing.

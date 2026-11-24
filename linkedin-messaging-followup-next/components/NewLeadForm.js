@@ -1,5 +1,7 @@
 "use client";
-import React, { useState } from 'react';
+import ContactQuickForm from './ContactQuickForm';
+import { wantsNewLeadSearch } from '../services/api';
+import React, { useState, useEffect } from 'react';
 import { createLead, searchLeads } from '../services/api';
 import HelpButton from './HelpButton';
 
@@ -23,6 +25,25 @@ const LIVE_CHECK_TIMEOUT_MS = 45000; // hidden-tab read takes ~5-15s; be generou
 const PING_TIMEOUT_MS = 2500;
 
 const NewLeadForm = ({ onLeadCreated, initialValues }) => {
+  // LEAD OR CONTACT (Guy only for now, 24 Nov 2026): a lead is someone Wingguy works on with you, a
+  // contact is someone it just keeps details for. Until now every hand-add made a lead. Where the
+  // choice is on it sits under the heading; Lead stays the default and the lead form is untouched.
+  const [kindChoiceOn, setKindChoiceOn] = useState(false);
+  const [addKind, setAddKind] = useState('lead');
+  useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setKindChoiceOn(true); }); return () => { alive = false; }; }, []);
+  const kindChoice = kindChoiceOn ? (
+    <fieldset id="add-kind-choice" className="mb-6 p-4 rounded-lg border border-gray-200 bg-gray-50">
+      <legend className="px-1 text-sm font-medium text-gray-700">Who are you adding?</legend>
+      <label className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+        <input type="radio" name="add-kind" value="lead" checked={addKind === 'lead'} onChange={() => setAddKind('lead')} className="mt-1" />
+        <span><span className="font-medium">Lead</span> - Wingguy works on them with you</span>
+      </label>
+      <label className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer mt-2">
+        <input type="radio" name="add-kind" value="contact" checked={addKind === 'contact'} onChange={() => setAddKind('contact')} className="mt-1" />
+        <span><span className="font-medium">Contact</span> - Wingguy just keeps their details</span>
+      </label>
+    </fieldset>
+  ) : null;
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -494,6 +515,24 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
     }
   };
 
+  if (kindChoiceOn && addKind === 'contact') {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+        <div className="mb-6 pb-6 border-b border-gray-200">
+          <h2 className="text-2xl font-semibold text-gray-900 flex items-center">
+            {UserPlusIcon && <UserPlusIcon className="h-6 w-6 mr-2" />}
+            <span>New Contact</span>
+          </h2>
+          <p className="text-sm text-gray-600 mt-2">
+            Someone whose details you want kept in one place. Wingguy does not score them, follow them up or treat them as a LinkedIn connection.
+          </p>
+        </div>
+        {kindChoice}
+        <ContactQuickForm />
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
       <div className="mb-6 pb-6 border-b border-gray-200">
@@ -506,6 +545,8 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
           Create a new lead record. Required fields are marked with *
         </p>
       </div>
+
+      {kindChoice}
 
       {/* Message display */}
       {message.text && (

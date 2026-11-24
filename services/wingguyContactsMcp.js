@@ -28,6 +28,8 @@ function describeSources(sources) {
     'mail-to': 'you emailed them',
     'mail-from': 'they emailed you',
     'mail-thread': 'shared an email thread',
+    'manual': 'you added them',
+    'manual-claude': 'you asked Claude to save them',
   };
   return (sources || []).map((s) => labels[s] || (s.startsWith('ingest:') ? `your ${s.slice(7)} feed` : s)).join(', ');
 }
@@ -117,7 +119,61 @@ async function runContactsStatus(args = {}, tenant = TENANT, deps = {}) {
   };
 }
 
+/**
+ * "Save Jane Smith to my contacts, 0412 345 678" (Guy, 24 Nov 2026; planned as "step 4" in September).
+ * CREATE-ONLY and dedupe-first: someone who is already a lead or a contact (same email or LinkedIn
+ * address - never the name alone) is reported, not duplicated or changed. It never writes to the
+ * leads base. Guy-only for now (leadCampaign.recentShortcut) - everyone else is told it is not on yet.
+ */
+async function runSaveContact(args = {}, tenant = TENANT, deps = {}) {
+  const leadCampaign = deps.leadCampaign || require('./leadCampaign');
+  if (!leadCampaign.recentShortcut(tenant)) {
+    return { text: 'Saving contacts is not switched on for this account yet. To keep someone, add them as a lead with wingguy_create_lead.' };
+  }
+  const clientService = deps.clientService || require('./clientService');
+  const lsc = deps.leadSearchContacts || require('./leadSearchContacts');
+  const client = await clientService.getClientById(tenant);
+  const r = await lsc.saveContact(tenant, client && client.airtableBaseId, {
+    name: args.name, firstName: args.first_name, lastName: args.last_name,
+    email: args.email, phone: args.phone, company: args.company, linkedin: args.linkedin_url,
+  }, { source: 'manual-claude', ...(deps.inner ? { deps: deps.inner } : {}) });
+  if (!r.ok) return { text: `Not saved: ${r.error}`, isError: true };
+  if (r.exists && r.kind === 'lead') return { text: `${r.name} is already one of your leads (record ${r.leadRecordId}) - nothing new was saved. Use wingguy_update_lead to change their details.` };
+  if (r.exists) return { text: `${r.name} is already in your contacts${r.contact && r.contact.email ? ` (${r.contact.email})` : ''} - nothing new was saved, and their details were not changed.` };
+  const c = r.contact || {};
+  const bits = [c.email, c.phone, c.company].filter(Boolean).join(', ');
+  return { text: `Saved ${r.name} to your contacts${bits ? ` (${bits})` : ''}. They are a contact, not a lead - Wingguy keeps their details and does nothing else with them.` };
+}
+
 const TOOL_DEFS = [
+  {
+    name: 'wingguy_save_contact',
+    description:
+      'Save a person to the coach\'s CONTACTS - someone Wingguy just keeps details for, NOT a lead it works on. Use it when the coach says "save X to my contacts", "keep X\'s number", "add X to my contacts". Needs a name plus an email or a phone number; LinkedIn is optional. CREATE-ONLY: if the same email or LinkedIn address already belongs to a lead or a contact, nothing is saved and you are told who it is - it never changes an existing person and never matches on a name alone. To make someone a LEAD (scored, followed up) use wingguy_create_lead instead; if the coach just says "add X" and it is unclear which, ask.',
+    zodSchema: {
+      name: z.string().optional().describe('Their full name. Give this, or first_name and last_name.'),
+      first_name: z.string().optional().describe('First name.'),
+      last_name: z.string().optional().describe('Last name.'),
+      email: z.string().optional().describe('Their email address - only one the coach gave or that is on file; never a guess.'),
+      phone: z.string().optional().describe('Their phone number, as the coach wrote it.'),
+      company: z.string().optional().describe('Where they work, if stated.'),
+      linkedin_url: z.string().optional().describe('Their LinkedIn profile address, if known.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Their full name. Give this, or first_name and last_name.' },
+        first_name: { type: 'string', description: 'First name.' },
+        last_name: { type: 'string', description: 'Last name.' },
+        email: { type: 'string', description: 'Their email address - only one the coach gave or that is on file; never a guess.' },
+        phone: { type: 'string', description: 'Their phone number, as the coach wrote it.' },
+        company: { type: 'string', description: 'Where they work, if stated.' },
+        linkedin_url: { type: 'string', description: 'Their LinkedIn profile address, if known.' },
+      },
+      required: [],
+    },
+    run: runSaveContact,
+  },
   {
     name: 'wingguy_find_person',
     description:
@@ -184,4 +240,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // Sentences clients are told to type (content/client-phrases.json) are stamped into the descriptions.
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { registerWingguyContactsTools, legacyToolList, legacyToolCall, TOOL_DEFS, runFindPerson, runContactsStatus, groupByPerson, describeSources };
+module.exports = { registerWingguyContactsTools, legacyToolList, legacyToolCall, TOOL_DEFS, runFindPerson, runContactsStatus, runSaveContact, groupByPerson, describeSources };

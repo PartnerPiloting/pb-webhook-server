@@ -4,12 +4,13 @@
 // because looking someone up is the thing people come here for; the other lead screens are a row
 // of doors above it. The old URLs (/, /new-leads, /top-scoring-leads) all still work.
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { UserPlusIcon, TrophyIcon } from '@heroicons/react/24/outline';
 import { getClientProfile } from '../utils/clientUtils';
 import LeadSearchUpdate from './LeadSearchUpdate';
+import { wantsNewLeadSearch } from '../services/api';
 
 function Door({ href, icon: Icon, title, blurb }) {
   return (
@@ -27,10 +28,13 @@ function LeadsInner() {
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
   const features = getClientProfile()?.features || {};
+  // Contacts as well as leads (Guy only for now, 24 Nov 2026): the door says so where that is on.
+  const [contactsOn, setContactsOn] = useState(false);
+  useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setContactsOn(true); }); return () => { alive = false; }; }, []);
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Door href={`/new-leads?${qs}`} icon={UserPlusIcon} title="New leads" blurb="Just arrived, not yet sorted - and add someone by hand" />
+        <Door href={`/new-leads?${qs}`} icon={UserPlusIcon} title={contactsOn ? 'New leads & contacts' : 'New leads'} blurb={contactsOn ? 'Just arrived, not yet sorted - add someone by hand' : 'Just arrived, not yet sorted - and add someone by hand'} />
         {features.topScoringLeadsHidden !== true && (
           <Door href={`/top-scoring-leads?${qs}`} icon={TrophyIcon} title="Top scoring leads" blurb="Optional: your existing network, best fit first" />
         )}

@@ -507,8 +507,8 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
   });
 
   console.log('\nTOOL_DEFS shape:');
-  check('both transports get the same two tools', () => {
-    assert.deepStrictEqual(TOOL_DEFS.map((d) => d.name), ['wingguy_find_person', 'wingguy_contacts_status']);
+  check('both transports get the same three tools', () => {
+    assert.deepStrictEqual(TOOL_DEFS.map((d) => d.name), ['wingguy_save_contact', 'wingguy_find_person', 'wingguy_contacts_status']);
     for (const d of TOOL_DEFS) { assert.ok(d.jsonSchema && d.zodSchema && typeof d.run === 'function', d.name); }
   });
   check('cleanEmail rejects shapes that are not addresses', () => {

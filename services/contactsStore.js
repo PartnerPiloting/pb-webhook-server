@@ -60,6 +60,10 @@ async function ensureTable(client) {
   // column to a table that already exists (the warehouse was live from 2026-09-13), so every
   // later column needs its own idempotent ALTER here.
   await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS phone TEXT;`);
+  // manual (2026-11-24): the client added or edited this person BY HAND (the portal's contact form,
+  // the details card's Edit, or "save X to my contacts" in Claude). What a person typed outranks
+  // what a feed scraped, so the nightly sweep may only FILL BLANKS on such a row - see MANUAL_GUARD.
+  await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS manual BOOLEAN NOT NULL DEFAULT false;`);
   // Failure columns (2026-09-15). last_run_at means SUCCESS; without a record of attempts,
   // "this feed has no stamp" cannot tell a genuinely broken feed from one that simply did not
   // exist yet - which would have alerted on every tenant the night a new feed shipped.
@@ -209,6 +213,26 @@ function mergeContacts(rows) {
 // Writes
 // ---------------------------------------------------------------------------
 
+/**
+ * THE SWEEP NEVER OVERWRITES A HAND-MADE CONTACT (Guy, 24 Nov 2026).
+ * For an ordinary row a feed's newer non-blank value wins (the lead record or mailbox knows best).
+ * For a row marked `manual` it is the other way round: what the client typed stays, and a feed may
+ * only fill a field that is still blank. Nothing here ever deletes a row, and `manual` itself is
+ * never touched by an upsert - only addManualContact / updateContactFields set it.
+ * (sources, lead_record_id, evidence and last_seen_at still merge as before, so a hand-made contact
+ * who later becomes a lead is still recognised as one.)
+ */
+const GUARDED_COLS = ['email', 'name', 'first_name', 'last_name', 'company', 'headline', 'location', 'phone', 'linkedin_slug'];
+const MANUAL_GUARD = GUARDED_COLS.map((col) =>
+  `${col} = CASE WHEN wingguy_contacts.manual THEN COALESCE(wingguy_contacts.${col}, EXCLUDED.${col}) ELSE COALESCE(EXCLUDED.${col}, wingguy_contacts.${col}) END`).join(',\n           ');
+
+/** The same rule in plain JS, for one field - what the SQL above does to it. Pure; the tests use it. */
+function mergedValue(existing, incoming, manual) {
+  const has = (v) => v !== null && v !== undefined;
+  if (manual) return has(existing) ? existing : (has(incoming) ? incoming : null);
+  return has(incoming) ? incoming : (has(existing) ? existing : null);
+}
+
 const COLS = ['coach_client_id', 'contact_key', 'email', 'name', 'first_name', 'last_name', 'company',
   'headline', 'location', 'phone', 'linkedin_slug', 'lead_record_id', 'sources', 'last_seen_at', 'evidence', 'meta'];
 
@@ -239,15 +263,7 @@ async function upsertContacts(coachClientId, contacts = []) {
       await client.query(
         `INSERT INTO wingguy_contacts (${COLS.join(', ')}) VALUES ${values.join(', ')}
          ON CONFLICT (coach_client_id, contact_key) DO UPDATE SET
-           email = COALESCE(EXCLUDED.email, wingguy_contacts.email),
-           name = COALESCE(EXCLUDED.name, wingguy_contacts.name),
-           first_name = COALESCE(EXCLUDED.first_name, wingguy_contacts.first_name),
-           last_name = COALESCE(EXCLUDED.last_name, wingguy_contacts.last_name),
-           company = COALESCE(EXCLUDED.company, wingguy_contacts.company),
-           headline = COALESCE(EXCLUDED.headline, wingguy_contacts.headline),
-           location = COALESCE(EXCLUDED.location, wingguy_contacts.location),
-           phone = COALESCE(EXCLUDED.phone, wingguy_contacts.phone),
-           linkedin_slug = COALESCE(EXCLUDED.linkedin_slug, wingguy_contacts.linkedin_slug),
+           ${MANUAL_GUARD},
            lead_record_id = COALESCE(EXCLUDED.lead_record_id, wingguy_contacts.lead_record_id),
            sources = ARRAY(SELECT DISTINCT s FROM unnest(wingguy_contacts.sources || EXCLUDED.sources) AS s),
            evidence = CASE
@@ -413,7 +429,7 @@ async function findPeople(coachClientId, query, { limit = 8, notLeads = false } 
     await ensureTable(client);
     const r = await client.query(
       `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
-              lead_record_id, sources, last_seen_at, evidence
+              lead_record_id, sources, last_seen_at, evidence, manual
          FROM wingguy_contacts
         WHERE coach_client_id = $1 ${clauses.length ? 'AND ' + clauses.join(' AND ') : ''}
               ${notLeads ? 'AND lead_record_id IS NULL' : ''}
@@ -424,6 +440,142 @@ async function findPeople(coachClientId, query, { limit = 8, notLeads = false } 
   } catch (e) {
     console.warn(`[contactsStore] findPeople failed (${tenant}): ${e.message}`);
     return [];
+  } finally {
+    client.release();
+  }
+}
+
+const ROW_COLS = 'id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug, lead_record_id, sources, last_seen_at, evidence, manual';
+
+/** LinkedIn address or slug -> the slug we key on ('' when it is not a profile link). */
+function slugOf(v) {
+  const t = clip(v, 300);
+  if (!t) return '';
+  if (!/linkedin\.com/i.test(t)) return /^[a-z0-9-_%.]{3,120}$/i.test(t) ? t.toLowerCase() : '';
+  try { return require('../utils/linkedinCanonical').canonicalLinkedinSlug(t) || ''; } catch (_e) { return ''; }
+}
+
+/**
+ * Everyone this client holds under an email address or a LinkedIn profile - leads included (a lead's
+ * row carries lead_record_id). The dedupe check before a hand-add: NEVER a match on name alone.
+ */
+async function findByIdentity(coachClientId, { email = '', linkedin = '' } = {}) {
+  const tenant = clip(coachClientId, 80);
+  const e = cleanEmail(email);
+  const slug = slugOf(linkedin);
+  if (!tenant || (!e && !slug)) return [];
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const r = await client.query(
+      `SELECT ${ROW_COLS} FROM wingguy_contacts
+        WHERE coach_client_id = $1 AND (($2 <> '' AND lower(email) = $2) OR ($3 <> '' AND lower(linkedin_slug) = $3))
+        ORDER BY (lead_record_id IS NOT NULL) DESC, id LIMIT 5`, [tenant, e, slug.toLowerCase()]);
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Add ONE contact by hand. Needs a name and an email or a phone (the caller checks; here a row with
+ * nothing to key on is refused). Create-only: an existing row under the same key is left exactly as
+ * it is and handed back with created=false. Returns { ok, created, row } or { ok:false, error }.
+ */
+async function addManualContact(coachClientId, input = {}, { source = 'manual' } = {}) {
+  const tenant = clip(coachClientId, 80);
+  if (!tenant) return { ok: false, error: 'coach_client_id required' };
+  const email = cleanEmail(input.email);
+  const slug = slugOf(input.linkedin || input.linkedin_url || input.linkedin_slug);
+  const phone = clip(input.phone, 60);
+  const first = clip(input.first_name || input.firstName, 80);
+  const last = clip(input.last_name || input.lastName, 80);
+  const name = clip(input.name, 160) || [first, last].filter(Boolean).join(' ');
+  const digits = phone.replace(/\D/g, '');
+  // The key: the email when there is one (so a later mail-feed sighting lands on THIS row), else the
+  // LinkedIn profile, else the phone number.
+  const key = email || (slug ? `li:${slug.toLowerCase()}` : (digits.length >= 6 ? `phone:${digits}` : ''));
+  if (!key) return { ok: false, error: 'an email, a phone number or a LinkedIn address is needed' };
+  const src = clip(source, 40).toLowerCase().replace(/[^a-z0-9:_-]/g, '') || 'manual';
+  const p = getPool();
+  if (!p) return { ok: false, error: 'no database' };
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const ins = await client.query(
+      `INSERT INTO wingguy_contacts (coach_client_id, contact_key, email, name, first_name, last_name, company, location, phone, linkedin_slug, sources, last_seen_at, evidence, manual)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), $12, true)
+       ON CONFLICT (coach_client_id, contact_key) DO NOTHING
+       RETURNING ${ROW_COLS}`,
+      [tenant, key, email || null, name || null, first || null, last || null, clip(input.company, 120) || null,
+        clip(input.location, 120) || null, phone || null, slug || null, [src], clip(input.evidence, 160) || null]);
+    if (ins.rows[0]) return { ok: true, created: true, row: ins.rows[0] };
+    const had = await client.query(`SELECT ${ROW_COLS} FROM wingguy_contacts WHERE coach_client_id = $1 AND contact_key = $2`, [tenant, key]);
+    return { ok: true, created: false, row: had.rows[0] || null };
+  } catch (e) {
+    console.warn(`[contactsStore] addManualContact failed (${tenant}): ${e.message}`);
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Edit a contact's details by hand - name, company, email, phone, LinkedIn. Only the fields given
+ * are changed ('' clears one). The row becomes `manual`, so the sweep will not undo the edit.
+ * A lead's row is not edited here (the lead record is the truth for a lead).
+ * Returns { ok, row } | { ok:false, status, error }.
+ */
+async function updateContactFields(coachClientId, id, fields = {}) {
+  const tenant = clip(coachClientId, 80);
+  const n = Number(id);
+  if (!tenant || !Number.isInteger(n) || n <= 0) return { ok: false, status: 404, error: 'That contact was not found.' };
+  const p = getPool();
+  if (!p) return { ok: false, status: 500, error: 'no database' };
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const cur = (await client.query(`SELECT ${ROW_COLS}, contact_key FROM wingguy_contacts WHERE coach_client_id = $1 AND id = $2`, [tenant, n])).rows[0];
+    if (!cur) return { ok: false, status: 404, error: 'That contact was not found.' };
+    if (cur.lead_record_id) return { ok: false, status: 409, error: 'This person is one of your leads - change their details on the lead record.' };
+    const next = { ...cur };
+    if ('name' in fields) { next.name = clip(fields.name, 160) || null; next.first_name = null; next.last_name = null; }
+    if ('company' in fields) next.company = clip(fields.company, 120) || null;
+    if ('phone' in fields) next.phone = clip(fields.phone, 60) || null;
+    if ('linkedin' in fields) {
+      const raw = clip(fields.linkedin, 300);
+      const slug = slugOf(raw);
+      if (raw && !slug) return { ok: false, status: 400, error: 'That does not look like a LinkedIn profile address.' };
+      next.linkedin_slug = slug || null;
+    }
+    if ('email' in fields) {
+      const raw = clip(fields.email, 200);
+      const e = cleanEmail(raw);
+      if (raw && !e) return { ok: false, status: 400, error: 'That does not look like an email address.' };
+      next.email = e || null;
+    }
+    const digits = String(next.phone || '').replace(/\D/g, '');
+    if (!next.name) return { ok: false, status: 400, error: 'A contact needs a name.' };
+    if (!next.email && digits.length < 6) return { ok: false, status: 400, error: 'A contact needs an email or a phone number.' };
+    // The key follows the email (a mail-feed sighting must land on this row); a row that never had
+    // an email keeps the key it was born with unless it now gains one.
+    const key = next.email || (String(cur.contact_key).includes('@') ? (next.linkedin_slug ? `li:${String(next.linkedin_slug).toLowerCase()}` : `phone:${digits}`) : cur.contact_key);
+    try {
+      const up = await client.query(
+        `UPDATE wingguy_contacts SET contact_key = $3, email = $4, name = $5, first_name = $6, last_name = $7, company = $8, phone = $9,
+                linkedin_slug = $10, manual = true, updated_at = now()
+          WHERE coach_client_id = $1 AND id = $2 RETURNING ${ROW_COLS}`,
+        [tenant, n, key, next.email, next.name, next.first_name, next.last_name, next.company, next.phone, next.linkedin_slug]);
+      return { ok: true, row: up.rows[0] };
+    } catch (e) {
+      if (e.code === '23505') return { ok: false, status: 409, error: 'Another of your contacts already has that email address.' };
+      throw e;
+    }
+  } catch (e) {
+    console.warn(`[contactsStore] updateContactFields failed (${tenant}): ${e.message}`);
+    return { ok: false, status: 500, error: e.message };
   } finally {
     client.release();
   }
@@ -444,7 +596,7 @@ async function getContact(coachClientId, id) {
     await ensureTable(client);
     const r = await client.query(
       `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
-              lead_record_id, sources, last_seen_at, evidence
+              lead_record_id, sources, last_seen_at, evidence, manual
          FROM wingguy_contacts WHERE coach_client_id = $1 AND id = $2`, [tenant, n]);
     return r.rows[0] || null;
   } finally {
@@ -501,7 +653,7 @@ async function tenantStatus(coachClientId) {
 }
 
 module.exports = {
-  upsertContacts, findPeople, getContact, markAsLead, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
+  upsertContacts, findPeople, getContact, markAsLead, findByIdentity, addManualContact, updateContactFields, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
   // pure, for tests
-  normaliseContact, rankMatches, cleanEmail, mergeContacts,
+  normaliseContact, rankMatches, cleanEmail, mergeContacts, mergedValue, slugOf, MANUAL_GUARD, GUARDED_COLS,
 };

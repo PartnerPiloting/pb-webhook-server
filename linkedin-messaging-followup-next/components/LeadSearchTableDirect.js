@@ -50,7 +50,8 @@ export default function LeadSearchTableDirect({
   showKind = false,
   contacts = [], // [{ id, name, email, phone, linkedin, company, knownFrom, add: { state, leadRecordId, text } }]
   contactsMore = false, // more contacts matched than are shown
-  onAddContact = null
+  onAddContact = null,
+  onEditContact = null // (contact, fields) => { ok, contact, error } - Edit on the details card
 }) {
   // Use local state only if no parent-controlled sort (backwards compatible)
   const [localSortKey, setLocalSortKey] = useState('AI Score');
@@ -298,6 +299,18 @@ export default function LeadSearchTableDirect({
 
   // The details card a contact row opens.
   const [openContactId, setOpenContactId] = useState(null);
+  // Edit on the card: null = reading, otherwise the fields being typed.
+  const [editDraft, setEditDraft] = useState(null);
+  const [editState, setEditState] = useState({ saving: false, error: '' });
+  const closeCard = () => { setOpenContactId(null); setEditDraft(null); setEditState({ saving: false, error: '' }); };
+  const startEdit = (c) => { setEditState({ saving: false, error: '' }); setEditDraft({ name: c.name || '', company: c.company || '', email: c.email || '', phone: c.phone || '', linkedin: c.linkedin || '' }); };
+  const saveEdit = async (c) => {
+    if (!onEditContact) return;
+    setEditState({ saving: true, error: '' });
+    const r = await onEditContact(c, editDraft);
+    if (r && r.ok) { setEditDraft(null); setEditState({ saving: false, error: '' }); }
+    else setEditState({ saving: false, error: (r && r.error) || 'Could not save the changes.' });
+  };
   const openContact = showKind ? contacts.find((c) => c.id === openContactId) : null;
   // The warehouse holds one row per address, so the same person can sit on two rows: the card also
   // lists the other addresses found under exactly the same name in this search.
@@ -425,7 +438,7 @@ export default function LeadSearchTableDirect({
       </div>
 
       {openContact && (
-        <div id="contact-card" className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setOpenContactId(null)}>
+        <div id="contact-card" className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={closeCard}>
           <div role="dialog" aria-label="Contact details" className="bg-white rounded-lg shadow-xl w-full max-w-md p-6" onClick={stop}>
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -433,8 +446,32 @@ export default function LeadSearchTableDirect({
                 {openContact.company ? <div className="text-sm text-gray-600">{openContact.company}</div> : null}
                 <span className={`inline-block mt-1 ${openContact.add && openContact.add.state === 'added' ? KIND_LEAD : KIND_CONTACT}`}>{openContact.add && openContact.add.state === 'added' ? 'Lead' : 'Contact'}</span>
               </div>
-              <button type="button" aria-label="Close" onClick={() => setOpenContactId(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+              <button type="button" aria-label="Close" onClick={closeCard} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
             </div>
+            {editDraft ? (
+              <form id="contact-card-edit" className="mt-4 space-y-3 text-sm" onSubmit={(e) => { e.preventDefault(); saveEdit(openContact); }}>
+                {[['name', 'Name', 'text'], ['company', 'Company', 'text'], ['email', 'Email', 'email'], ['phone', 'Phone', 'tel'], ['linkedin', 'LinkedIn address', 'text']].map(([k, label, type]) => (
+                  <label key={k} className="block">
+                    <span className="text-xs uppercase tracking-wide text-gray-500">{label}</span>
+                    <input
+                      type={type}
+                      name={`contact-edit-${k}`}
+                      value={editDraft[k]}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, [k]: e.target.value }))}
+                      className="mt-0.5 w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                  </label>
+                ))}
+                {editState.error ? <p id="contact-card-edit-error" className="text-xs text-red-700">{editState.error}</p> : null}
+                <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-3">
+                  <button type="button" onClick={() => { setEditDraft(null); setEditState({ saving: false, error: '' }); }} className="text-sm text-gray-600 hover:underline">Cancel</button>
+                  <button type="submit" id="contact-card-save" disabled={editState.saving} className="text-sm font-medium bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700 disabled:opacity-60">
+                    {editState.saving ? 'Saving…' : 'Save changes'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
             <dl className="mt-4 space-y-3 text-sm">
               <div>
                 <dt className="text-xs uppercase tracking-wide text-gray-500">Email</dt>
@@ -470,11 +507,14 @@ export default function LeadSearchTableDirect({
               {openContact.add && openContact.add.state === 'added' ? (
                 <>
                   <span className="text-sm text-green-700">Added to your leads</span>
-                  <button type="button" id="contact-card-open-lead" onClick={() => { const id = openContact.add.leadRecordId; setOpenContactId(null); if (onLeadSelect && id) onLeadSelect({ id }); }} className="text-sm text-blue-700 hover:underline">Open their lead record</button>
+                  <button type="button" id="contact-card-open-lead" onClick={() => { const id = openContact.add.leadRecordId; closeCard(); if (onLeadSelect && id) onLeadSelect({ id }); }} className="text-sm text-blue-700 hover:underline">Open their lead record</button>
                 </>
               ) : (
                 <>
-                  <span className="text-xs text-gray-500">{openContact.add && openContact.add.state === 'error' ? <span className="text-red-700">{openContact.add.text}</span> : 'Not one of your leads.'}</span>
+                  <span className="text-xs text-gray-500">
+                    {openContact.add && openContact.add.state === 'error' ? <span className="block text-red-700">{openContact.add.text}</span> : null}
+                    {onEditContact ? <button type="button" id="contact-card-edit-open" onClick={() => startEdit(openContact)} className="text-sm text-blue-700 hover:underline">Edit details</button> : 'Not one of your leads.'}
+                  </span>
                   <button
                     type="button"
                     id="contact-card-add"
@@ -487,6 +527,8 @@ export default function LeadSearchTableDirect({
                 </>
               )}
             </div>
+              </>
+            )}
           </div>
         </div>
       )}

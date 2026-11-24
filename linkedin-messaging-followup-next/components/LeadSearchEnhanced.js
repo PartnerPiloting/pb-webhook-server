@@ -4,7 +4,7 @@ import HelpButton from './HelpButton';
 import SearchTermsField from './SearchTermsField';
 import LeadSearchTableDirect from './LeadSearchTableDirect';
 import { formatLinkedInUrl, generateProfileKey } from '../utils/helpers';
-import { getLeadByLinkedInUrl, getLeadCampaigns, searchLeadContacts, addContactAsLead } from '../services/api';
+import { getLeadByLinkedInUrl, getLeadCampaigns, searchLeadContacts, addContactAsLead, updateContact } from '../services/api';
 import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from '../utils/clientUtils';
 
 // (Former flag gate removed)
@@ -79,6 +79,12 @@ const LeadSearchEnhanced = ({
     }, 450);
     return () => { alive = false; clearTimeout(t); };
   }, [nameSearch, showRecentShortcut]);
+  // Edit on the details card: save, then show the new details on the row straight away.
+  const handleEditContact = async (c, fields) => {
+    const r = await updateContact(c.id, fields);
+    if (r && r.ok && r.contact) setContactMatches((prev) => prev.map((x) => (x.id === c.id ? { ...x, ...r.contact } : x)));
+    return r || { ok: false, error: 'No answer from the server' };
+  };
   const handleAddContact = async (c) => {
     setContactAdds((prev) => ({ ...prev, [c.id]: { state: 'adding' } }));
     const r = await addContactAsLead(c.id);
@@ -1042,6 +1048,7 @@ const LeadSearchEnhanced = ({
           contacts={contactRows}
           contactsMore={contactsMore}
           onAddContact={handleAddContact}
+          onEditContact={handleEditContact}
         />
       </div>
       {/* Export Modal */}

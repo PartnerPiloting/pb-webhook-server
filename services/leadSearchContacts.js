@@ -67,6 +67,7 @@ function shape(r) {
     linkedin: r.linkedin_slug ? `https://www.linkedin.com/in/${r.linkedin_slug}/` : '',
     company: r.company || '',
     knownFrom: describeSources(r.sources) || '',
+    manual: !!r.manual,
   };
 }
 
@@ -159,4 +160,88 @@ async function addContactAsLead(clientId, airtableBaseId, contactId, { deps = {}
   return { ok: true, status: 200, created: !!r.created, exists: !!r.exists, leadRecordId: r.leadRecordId, name: r.name || name };
 }
 
-module.exports = { searchContacts, addContactAsLead, nameParts, shape, findLeadByEmail, MIN_QUERY, MAX_SHOWN, ADD_SOURCE };
+/**
+ * ADD A CONTACT BY HAND (Guy, 24 Nov 2026): Wingguy is the one place for everyone a client knows.
+ * A lead is someone Wingguy works on with them; a contact is someone it just keeps details for.
+ * Until now every hand-add made a lead. This saves to the contacts store instead - never the leads
+ * base - under the source "you added them".
+ *
+ *   needs: a name, plus an email or a phone number. No LinkedIn address required.
+ *   dedupe first, on EMAIL or LINKEDIN ADDRESS only - never on a name alone: if the person is
+ *   already a lead or a contact nothing is created and that person is handed back.
+ *
+ * Returns { ok, status, created, exists, kind: 'contact'|'lead', contact?, leadRecordId?, name, error? }.
+ */
+async function saveContact(clientId, airtableBaseId, input = {}, { deps = {}, source = 'manual' } = {}) {
+  const store = deps.store || require('./contactsStore');
+  const clientService = deps.clientService || require('./clientService');
+  const wingguyLeads = deps.wingguyLeads || require('./wingguyLeads');
+  const text = (v) => String(v === undefined || v === null ? '' : v).trim();
+  const first = text(input.firstName || input.first_name);
+  const last = text(input.lastName || input.last_name);
+  const name = text(input.name) || [first, last].filter(Boolean).join(' ');
+  const emailRaw = text(input.email);
+  const email = store.cleanEmail ? store.cleanEmail(emailRaw) : emailRaw.toLowerCase();
+  const phone = text(input.phone);
+  const linkedinRaw = text(input.linkedin || input.linkedinUrl || input.linkedin_url);
+  const slug = linkedinRaw ? (store.slugOf ? store.slugOf(linkedinRaw) : '') : '';
+  if (!name) return { ok: false, status: 400, error: 'A contact needs a name.' };
+  if (emailRaw && !email) return { ok: false, status: 400, error: 'That does not look like an email address.' };
+  if (linkedinRaw && !slug) return { ok: false, status: 400, error: 'That does not look like a LinkedIn profile address.' };
+  if (!email && phone.replace(/\D/g, '').length < 6) return { ok: false, status: 400, error: 'A contact needs an email or a phone number.' };
+
+  // 1. already held in the contacts store (a lead's rows live there too)?
+  const held = await store.findByIdentity(clientId, { email, linkedin: slug });
+  if (held.length) {
+    const r = held[0];
+    const who = String(r.name || '').trim() || r.email || name;
+    if (r.lead_record_id) return { ok: true, status: 200, created: false, exists: true, kind: 'lead', leadRecordId: r.lead_record_id, name: who };
+    return { ok: true, status: 200, created: false, exists: true, kind: 'contact', contact: shape({ ...r, emails: r.email ? [r.email] : [] }), name: who };
+  }
+  // 2. a lead the nightly sweep has not copied across yet? Ask the leads base itself.
+  const base = airtableBaseId ? clientService.getClientBase(airtableBaseId) : null;
+  if (base) {
+    let lead = email ? await findLeadByEmail(base, email) : null;
+    if (!lead && slug && wingguyLeads.findLeadRecord) lead = await wingguyLeads.findLeadRecord(base, { linkedinUrl: `https://www.linkedin.com/in/${slug}/` });
+    if (lead) {
+      const who = `${lead.fields['First Name'] || ''} ${lead.fields['Last Name'] || ''}`.trim() || name;
+      return { ok: true, status: 200, created: false, exists: true, kind: 'lead', leadRecordId: lead.id, name: who };
+    }
+  }
+  const r = await store.addManualContact(clientId, { name, firstName: first, lastName: last, email, phone, company: text(input.company), linkedin: slug }, { source });
+  if (!r.ok || !r.row) return { ok: false, status: 500, error: r.error || 'The contact could not be saved.' };
+  return {
+    ok: true, status: 200, created: !!r.created, exists: !r.created, kind: r.row.lead_record_id ? 'lead' : 'contact',
+    ...(r.row.lead_record_id ? { leadRecordId: r.row.lead_record_id } : { contact: shape({ ...r.row, emails: r.row.email ? [r.row.email] : [] }) }),
+    name: String(r.row.name || '').trim() || name,
+  };
+}
+
+/**
+ * Edit a contact from its details card: name, company, email, phone, LinkedIn. The row is marked as
+ * hand-edited so the nightly sweep cannot put the old values back.
+ * Returns { ok, status, contact? , error? }.
+ */
+async function editContact(clientId, contactId, fields = {}, { deps = {} } = {}) {
+  const store = deps.store || require('./contactsStore');
+  const allowed = {};
+  for (const k of ['name', 'company', 'email', 'phone', 'linkedin']) if (k in (fields || {})) allowed[k] = fields[k];
+  if (!Object.keys(allowed).length) return { ok: false, status: 400, error: 'Nothing to change.' };
+  // a changed email or LinkedIn address must not collide with someone else the client already holds
+  const cur = await store.getContact(clientId, contactId);
+  if (!cur) return { ok: false, status: 404, error: 'That contact was not found.' };
+  const newEmail = 'email' in allowed ? String(allowed.email || '').trim().toLowerCase() : '';
+  const newLinkedin = 'linkedin' in allowed ? String(allowed.linkedin || '').trim() : '';
+  if ((newEmail && newEmail !== String(cur.email || '').toLowerCase()) || newLinkedin) {
+    const others = (await store.findByIdentity(clientId, { email: newEmail, linkedin: newLinkedin })).filter((r) => String(r.id) !== String(cur.id));
+    if (others.length) {
+      const o = others[0];
+      return { ok: false, status: 409, error: `${String(o.name || '').trim() || o.email || 'Someone else'} already has that ${newEmail && String(o.email || '').toLowerCase() === newEmail ? 'email address' : 'LinkedIn address'} - they are one of your ${o.lead_record_id ? 'leads' : 'contacts'}.` };
+    }
+  }
+  const r = await store.updateContactFields(clientId, contactId, allowed);
+  if (!r.ok) return { ok: false, status: r.status || 500, error: r.error };
+  return { ok: true, status: 200, contact: shape({ ...r.row, emails: r.row.email ? [r.row.email] : [] }) };
+}
+
+module.exports = { saveContact, editContact, searchContacts, addContactAsLead, nameParts, shape, findLeadByEmail, MIN_QUERY, MAX_SHOWN, ADD_SOURCE };

@@ -335,6 +335,36 @@ export const searchLeadContacts = async (q) => {
   }
 };
 
+// Is the new Lead Search / contacts wording on for this client (Guy only for now)? Asked ONCE per page
+// load and shared by every screen that needs it. Any failure = no.
+let newLeadSearchPromise = null;
+export const wantsNewLeadSearch = () => {
+  if (!newLeadSearchPromise) newLeadSearchPromise = getLeadCampaigns().then((o) => !!(o && o.recentShortcut)).catch(() => false);
+  return newLeadSearchPromise;
+};
+
+// Add a CONTACT by hand (not a lead): { ok, created, exists, kind: 'contact'|'lead', contact, name, error }.
+export const saveContact = async (fields) => {
+  try {
+    const clientId = getCurrentClientId();
+    const res = await api.post('/contacts', fields || {}, { params: { clientId } });
+    return res.data || { ok: false, error: 'No answer from the server' };
+  } catch (e) {
+    return { ok: false, error: e.response?.data?.error || e.message };
+  }
+};
+
+// Edit a contact from its details card: { ok, contact, error }.
+export const updateContact = async (contactId, fields) => {
+  try {
+    const clientId = getCurrentClientId();
+    const res = await api.patch(`/contacts/${encodeURIComponent(contactId)}`, fields || {}, { params: { clientId } });
+    return res.data || { ok: false, error: 'No answer from the server' };
+  } catch (e) {
+    return { ok: false, error: e.response?.data?.error || e.message };
+  }
+};
+
 // Add one of those contacts as a lead: { ok, created, exists, leadRecordId, name, error }.
 export const addContactAsLead = async (contactId) => {
   try {
