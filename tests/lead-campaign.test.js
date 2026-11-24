@@ -201,6 +201,9 @@ check('"Recently connected" and the no-tag marker: Guy only for now; the filter 
   const base = fakeBase([{ id: 'a', fields: { Campaign: 'Campaign 1' } }]);
   assert.strictEqual((await leadCampaign.getOptions('Guy-Wilson', base, { fresh: true })).recentShortcut, true);
   assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).recentShortcut, false);
+  // "connect on LinkedIn and they arrive by themselves" is only said where the nightly collection runs
+  assert.strictEqual((await leadCampaign.getOptions('Guy-Wilson', base, { fresh: true })).ownConnectionsArrive, true);
+  assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).ownConnectionsArrive, false);
   assert.strictEqual(leadCampaign.UNLABELLED_FORMULA, 'NOT({Search Terms})');
 });
 

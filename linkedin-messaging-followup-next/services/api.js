@@ -338,10 +338,22 @@ export const searchLeadContacts = async (q) => {
 // Is the new Lead Search / contacts wording on for this client (Guy only for now)? Asked ONCE per page
 // load and shared by every screen that needs it. Any failure = no.
 let newLeadSearchPromise = null;
+let leadOptionsOncePromise = null;
+let newLeadSearchKnown = null;
+const leadOptionsOnce = () => {
+  if (!leadOptionsOncePromise) leadOptionsOncePromise = Promise.resolve().then(() => getLeadCampaigns()).catch(() => null);
+  return leadOptionsOncePromise;
+};
 export const wantsNewLeadSearch = () => {
-  if (!newLeadSearchPromise) newLeadSearchPromise = getLeadCampaigns().then((o) => !!(o && o.recentShortcut)).catch(() => false);
+  if (!newLeadSearchPromise) newLeadSearchPromise = leadOptionsOnce().then((o) => { newLeadSearchKnown = !!(o && o.recentShortcut); return newLeadSearchKnown; }).catch(() => false);
   return newLeadSearchPromise;
 };
+// The same answer without waiting, once it is known this page load (null = not asked yet). Lets a
+// screen that must NOT show something start hidden instead of flashing it.
+export const newLeadSearchIfKnown = () => newLeadSearchKnown;
+// Does a person this client connects with on LinkedIn reach Wingguy by themselves (the nightly
+// "My own connections" collection runs on their machine)? Same single ask. Any failure = no.
+export const ownConnectionsArrive = () => leadOptionsOnce().then((o) => !!(o && o.ownConnectionsArrive)).catch(() => false);
 
 // Add a CONTACT by hand (not a lead): { ok, created, exists, kind: 'contact'|'lead', contact, name, error }.
 export const saveContact = async (fields) => {

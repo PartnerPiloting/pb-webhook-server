@@ -503,7 +503,7 @@ export default function LeadSearchTableDirect({
                 Leads are people Wingguy is working on with you. Contacts are people it has only come across, such as in your email. Search to look a contact up.
               </p>
             </dl>
-            <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
+            <div className="mt-5 pt-4 border-t border-gray-100 flex items-start justify-between gap-3">
               {openContact.add && openContact.add.state === 'added' ? (
                 <>
                   <span className="text-sm text-green-700">Added to your leads</span>
@@ -515,15 +515,18 @@ export default function LeadSearchTableDirect({
                     {openContact.add && openContact.add.state === 'error' ? <span className="block text-red-700">{openContact.add.text}</span> : null}
                     {onEditContact ? <button type="button" id="contact-card-edit-open" onClick={() => startEdit(openContact)} className="text-sm text-blue-700 hover:underline">Edit details</button> : 'Not one of your leads.'}
                   </span>
-                  <button
-                    type="button"
-                    id="contact-card-add"
-                    onClick={() => onAddContact && onAddContact(openContact)}
-                    disabled={openContact.add && openContact.add.state === 'adding'}
-                    className="text-sm text-gray-700 border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    {openContact.add && openContact.add.state === 'adding' ? 'Adding…' : 'Add as lead'}
-                  </button>
+                  <span className="text-right">
+                    <button
+                      type="button"
+                      id="contact-card-add"
+                      onClick={() => onAddContact && onAddContact(openContact)}
+                      disabled={openContact.add && openContact.add.state === 'adding'}
+                      className="text-sm text-gray-700 border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      {openContact.add && openContact.add.state === 'adding' ? 'Adding…' : 'Have Wingguy follow up with this person'}
+                    </button>
+                    <span id="contact-card-add-note" className="mt-1 block text-xs text-gray-500">Makes them a lead - follow-ups, tags and call transcripts.</span>
+                  </span>
                 </>
               )}
             </div>

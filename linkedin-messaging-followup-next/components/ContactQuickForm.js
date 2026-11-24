@@ -9,7 +9,9 @@ import { saveContact } from '../services/api';
 
 const EMPTY = { name: '', company: '', email: '', phone: '', linkedin: '' };
 
-export default function ContactQuickForm() {
+// linkedinHint: say that a LinkedIn connection arrives by itself - passed only for a client whose
+// machine runs the nightly own-connections collection (leadCampaign.OWN_CONNECTIONS_ARRIVE).
+export default function ContactQuickForm({ linkedinHint = false }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null); // { tone: 'ok'|'info'|'error', text }
@@ -65,6 +67,7 @@ export default function ContactQuickForm() {
         <label htmlFor="contact-linkedin" className="block text-sm font-medium text-gray-700 mb-1">LinkedIn address <span className="font-normal text-gray-500">(optional)</span></label>
         <input id="contact-linkedin" type="text" value={form.linkedin} onChange={set('linkedin')} className={field} placeholder="https://www.linkedin.com/in/username" />
       </div>
+      {linkedinHint ? <p id="contact-linkedin-hint" className="text-sm text-gray-600">Met them on LinkedIn? Connect there and they&apos;ll arrive here by themselves.</p> : null}
       <button type="submit" id="contact-quick-save" disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
         {saving ? 'Saving…' : 'Save contact'}
       </button>

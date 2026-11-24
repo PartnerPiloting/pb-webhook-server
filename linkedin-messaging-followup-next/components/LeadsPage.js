@@ -10,7 +10,7 @@ import { useSearchParams } from 'next/navigation';
 import { UserPlusIcon, TrophyIcon } from '@heroicons/react/24/outline';
 import { getClientProfile } from '../utils/clientUtils';
 import LeadSearchUpdate from './LeadSearchUpdate';
-import { wantsNewLeadSearch, getPendingPeople, getPossibleMatches } from '../services/api';
+import { wantsNewLeadSearch, ownConnectionsArrive, getPendingPeople, getPossibleMatches } from '../services/api';
 import ContactsImport from './ContactsImport';
 import ContactQuickForm from './ContactQuickForm';
 
@@ -28,13 +28,16 @@ function Door({ href, icon: Icon, title, blurb }) {
 
 // The card where contacts are on: "Add people" (Guy, 24 Nov 2026). The old card did two jobs under one
 // blurred heading - adding people, and showing people waiting for a decision. Now the top is about
-// ADDING (three buttons, each straight to its form), and what is WAITING is its own line that says
+// ADDING (two buttons, each straight to its form), and what is WAITING is its own line that says
 // what it is and is the thing you click to see it. A line only shows when its list has someone in
 // it; with nothing waiting the card is the title, the subtitle and the buttons.
 //   waitingCalls  - people from recorded calls who are not leads yet: the MAIN people only, the same
 //                   number as the "People you've met" heading list (not the "Also on those calls" extras)
 //   waitingDupes  - pairs in "Possible matches - same person twice?"
-function AddPeopleCard({ href, addLeadHref, icon: Icon, waitingCalls, waitingDupes, onAddContact, onImport }) {
+// There is no "Add a lead" here (Guy, 24 Nov 2026): a person added by hand is a CONTACT. Someone on
+// LinkedIn should arrive through LinkedIn (profile, score, Thanks for Connecting); a hand-typed
+// lead is an unscored shell. A contact becomes a lead from their details card when it is wanted.
+function AddPeopleCard({ href, icon: Icon, waitingCalls, waitingDupes, onAddContact, onImport }) {
   const btn = 'shrink-0 text-sm text-blue-700 border border-blue-300 rounded-lg px-3 py-1.5 hover:bg-blue-50 whitespace-nowrap';
   return (
     <div id="new-leads-door" className="bg-white border rounded-lg px-4 py-3 hover:border-gray-300">
@@ -46,7 +49,6 @@ function AddPeopleCard({ href, addLeadHref, icon: Icon, waitingCalls, waitingDup
         </span>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Link href={addLeadHref} id="add-lead-open" className={btn}>Add a lead</Link>
         <button type="button" id="add-contact-open" onClick={onAddContact} className={btn}>Add a contact</button>
         <button type="button" id="import-contacts-open" onClick={onImport} className={btn}>Import contacts</button>
       </div>
@@ -67,7 +69,7 @@ function AddPeopleCard({ href, addLeadHref, icon: Icon, waitingCalls, waitingDup
 }
 
 /** "Add a contact": the short form, straight away, over the page. */
-function AddContactPanel({ onClose }) {
+function AddContactPanel({ onClose, linkedinHint }) {
   return (
     <div id="add-contact-panel" className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
       <div role="dialog" aria-label="Add a contact" className="bg-white rounded-lg shadow-xl w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -76,7 +78,7 @@ function AddContactPanel({ onClose }) {
           <button type="button" aria-label="Close" onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
         </div>
         <p id="contact-form-purpose" className="mt-1 mb-4 text-sm text-gray-700">A contact is someone Wingguy just keeps their details for.</p>
-        <ContactQuickForm />
+        <ContactQuickForm linkedinHint={linkedinHint} />
       </div>
     </div>
   );
@@ -102,11 +104,19 @@ function LeadsInner() {
     return () => { alive = false; };
   }, [contactsOn]);
   useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setContactsOn(true); }); return () => { alive = false; }; }, []);
+  // "Connect there and they'll arrive here by themselves" - only where that is true for this client.
+  const [linkedinHint, setLinkedinHint] = useState(false);
+  useEffect(() => {
+    if (!contactsOn) return undefined;
+    let alive = true;
+    ownConnectionsArrive().then((yes) => { if (alive && yes) setLinkedinHint(true); });
+    return () => { alive = false; };
+  }, [contactsOn]);
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
         {contactsOn ? (
-          <AddPeopleCard href={`/new-leads?${qs}`} addLeadHref={`/new-leads?${qs ? `${qs}&` : ''}add=lead`} icon={UserPlusIcon} waitingCalls={waiting.calls} waitingDupes={waiting.dupes} onAddContact={() => setAddContactOpen(true)} onImport={() => setImportOpen(true)} />
+          <AddPeopleCard href={`/new-leads?${qs}`} icon={UserPlusIcon} waitingCalls={waiting.calls} waitingDupes={waiting.dupes} onAddContact={() => setAddContactOpen(true)} onImport={() => setImportOpen(true)} />
         ) : (
           <Door href={`/new-leads?${qs}`} icon={UserPlusIcon} title="New leads" blurb="Just arrived, not yet sorted - and add someone by hand" />
         )}
@@ -116,7 +126,7 @@ function LeadsInner() {
       </div>
       <LeadSearchUpdate />
       {importOpen ? <ContactsImport onClose={() => setImportOpen(false)} /> : null}
-      {addContactOpen ? <AddContactPanel onClose={() => setAddContactOpen(false)} /> : null}
+      {addContactOpen ? <AddContactPanel onClose={() => setAddContactOpen(false)} linkedinHint={linkedinHint} /> : null}
     </div>
   );
 }

@@ -50,6 +50,16 @@ const RECENT_SHORTCUT = ['Guy-Wilson'];
 const recentShortcut = (clientId) => RECENT_SHORTCUT.includes('*') || RECENT_SHORTCUT.includes(String(clientId || ''));
 
 /**
+ * Clients whose Linked Helper machine runs the nightly "My own connections" collection
+ * (scripts/linked-helper/lh-own-connections.py), so a person they connect with on LinkedIn by hand
+ * reaches Wingguy without being typed in. The portal only says "Connect there and they'll arrive
+ * here by themselves" where that is true (Guy, 24 Nov 2026). ADD A CLIENT HERE the day the
+ * collection is switched on on their machine - never before, or the sentence is a false promise.
+ */
+const OWN_CONNECTIONS_ARRIVE = ['Guy-Wilson'];
+const ownConnectionsArrive = (clientId) => OWN_CONNECTIONS_ARRIVE.includes('*') || OWN_CONNECTIONS_ARRIVE.includes(String(clientId || ''));
+
+/**
  * The catch-all campaign on a client's machine for connections no campaign sent (Guy, 23 Nov 2026:
  * every LinkedIn connection reaches Wingguy through the Linked Helper machine, however the person
  * was met). scripts/linked-helper/lh-own-connections.py feeds it each night. It is a campaign like
@@ -263,6 +273,7 @@ function shapeOptions(clientId, live, onLeads, fieldMissing) {
     countsCapped: onLeads.capped,
     choices: choices.sort((a, b) => a.localeCompare(b)),
     recentShortcut: recentShortcut(clientId),
+    ownConnectionsArrive: ownConnectionsArrive(clientId),
   };
   return value;
 }
@@ -396,7 +407,7 @@ async function setLeadCampaign({ clientId, base, leadId, value }) {
 }
 
 module.exports = {
-  FIELD, NONE, OWN_CONNECTIONS, keepRealCampaign, FILTER_READY, filterReady, RECENT_SHORTCUT, recentShortcut, UNLABELLED_FORMULA,
+  FIELD, NONE, OWN_CONNECTIONS, keepRealCampaign, FILTER_READY, filterReady, RECENT_SHORTCUT, recentShortcut, OWN_CONNECTIONS_ARRIVE, ownConnectionsArrive, UNLABELLED_FORMULA,
   _setQuickMs: (ms) => { QUICK_MS = ms; }, campaignNameFromRaw, filterFormula, isMissingFieldError,
   describeLead, writeFields, getOptions, setLeadCampaign, tallyNamesOnLeads,
   followRenames, followRenamesForClient, onMachineRenames,

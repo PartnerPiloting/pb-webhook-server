@@ -1,5 +1,5 @@
 "use client";
-import { wantsNewLeadSearch } from '../services/api';
+import { wantsNewLeadSearch, newLeadSearchIfKnown } from '../services/api';
 import React, { useState, useEffect } from 'react';
 import { createLead, searchLeads } from '../services/api';
 import HelpButton from './HelpButton';
@@ -24,20 +24,6 @@ const LIVE_CHECK_TIMEOUT_MS = 45000; // hidden-tab read takes ~5-15s; be generou
 const PING_TIMEOUT_MS = 2500;
 
 const NewLeadForm = ({ onLeadCreated, initialValues }) => {
-  // A lead and a contact are added from two separate buttons on the Your CRM card (Guy, 24 Nov 2026 -
-  // the Lead-or-Contact question that briefly sat here made him answer a question before he could
-  // type). So this is the LEAD form and nothing else; where the new wording is on it says in one
-  // line what a lead is, and arriving from "Add a lead" (?add=lead) brings it into view.
-  const [purposeLineOn, setPurposeLineOn] = useState(false);
-  useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setPurposeLineOn(true); }); return () => { alive = false; }; }, []);
-  const formTopRef = React.useRef(null);
-  useEffect(() => {
-    if (!purposeLineOn || typeof window === 'undefined') return;
-    if (new URLSearchParams(window.location.search).get('add') === 'lead' && formTopRef.current && formTopRef.current.scrollIntoView) {
-      // the whole form card, heading included
-      (formTopRef.current.parentElement || formTopRef.current).scrollIntoView({ block: 'start' });
-    }
-  }, [purposeLineOn]);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -522,7 +508,6 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
         </p>
       </div>
 
-      {purposeLineOn ? <p id="lead-form-purpose" ref={formTopRef} className="mb-6 text-sm text-gray-700">A lead is someone Wingguy works on with you.</p> : null}
 
       {/* Message display */}
       {message.text && (
@@ -1010,4 +995,14 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
   );
 };
 
-export default NewLeadForm;
+// Where hand-added people are CONTACTS (Guy's portal, 24 Nov 2026) there is no blank add-a-lead form
+// at all: someone on LinkedIn arrives through LinkedIn, and a hand-typed lead is an unscored shell.
+// Everyone else gets the form exactly as it was - this wrapper adds nothing to their page.
+// (Claude's wingguy_create_lead, introductions and the browser panel still create leads.)
+const NewLeadFormWhereAllowed = (props) => {
+  const [hidden, setHidden] = useState(newLeadSearchIfKnown() === true);
+  useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setHidden(true); }); return () => { alive = false; }; }, []);
+  return hidden ? null : <NewLeadForm {...props} />;
+};
+
+export default NewLeadFormWhereAllowed;
