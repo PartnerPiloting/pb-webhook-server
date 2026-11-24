@@ -1685,6 +1685,25 @@ router.post('/contacts', async (req, res) => {
 });
 
 /**
+ * POST /api/linkedin/contacts/import  { filename, text, listName, confirm }
+ * Import contacts from a file exported from Google Contacts, Outlook or a phone, or a plain list
+ * (services/contactsImport.js). Without confirm:true it only COUNTS - nothing is written until the
+ * client has seen the summary and confirmed, when the same file is sent again.
+ */
+router.post('/contacts/import', async (req, res) => {
+  try {
+    if (!leadCampaign.recentShortcut(req.client.clientId)) return res.status(404).json({ ok: false, error: 'Not available' });
+    const b = req.body || {};
+    const result = await require('../../../services/contactsImport').importContacts(req.client.clientId, req.client.airtableBaseId,
+      { text: String(b.text || ''), filename: String(b.filename || ''), listName: String(b.listName || '') }, { apply: b.confirm === true });
+    res.status(result.status || (result.ok ? 200 : 500)).json(result);
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in POST /contacts/import:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
  * PATCH /api/linkedin/contacts/:id  { name?, company?, email?, phone?, linkedin? }
  * Edit a contact from its details card. Re-read by id AND client; a lead's row is refused.
  */

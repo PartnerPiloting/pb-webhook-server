@@ -66,7 +66,8 @@ function shape(r) {
     phone: r.phone || '',
     linkedin: r.linkedin_slug ? `https://www.linkedin.com/in/${r.linkedin_slug}/` : '',
     company: r.company || '',
-    knownFrom: describeSources(r.sources) || '',
+    // an uploaded list is named: 'your list "Safe to Say"' says more than 'you imported them'
+    knownFrom: [...(r.lists || []).map((l) => `your list "${l}"`), describeSources((r.sources || []).filter((x) => !((r.lists || []).length && x === 'import')))].filter(Boolean).join(', '),
     manual: !!r.manual,
   };
 }

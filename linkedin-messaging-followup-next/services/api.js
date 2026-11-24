@@ -354,6 +354,18 @@ export const saveContact = async (fields) => {
   }
 };
 
+// Import contacts from a file. confirm:false only counts ({ ok, summary: { inFile, new, updated,
+// leadsUpdated, unchanged, skippedNoDetails, repeated, line } }); confirm:true saves.
+export const importContacts = async ({ filename, text, listName, confirm }) => {
+  try {
+    const clientId = getCurrentClientId();
+    const res = await api.post('/contacts/import', { filename, text, listName, confirm: confirm === true }, { params: { clientId }, timeout: 120000 });
+    return res.data || { ok: false, error: 'No answer from the server' };
+  } catch (e) {
+    return { ok: false, error: e.response?.data?.error || e.message };
+  }
+};
+
 // Edit a contact from its details card: { ok, contact, error }.
 export const updateContact = async (contactId, fields) => {
   try {

@@ -64,6 +64,9 @@ async function ensureTable(client) {
   // the details card's Edit, or "save X to my contacts" in Claude). What a person typed outranks
   // what a feed scraped, so the nightly sweep may only FILL BLANKS on such a row - see MANUAL_GUARD.
   await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS manual BOOLEAN NOT NULL DEFAULT false;`);
+  // lists (2026-11-24): the names of the uploaded lists this person came in on ("Safe to Say") - shown
+  // as where Wingguy knows them from. Its own column, so no feed's upsert can ever drop it.
+  await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS lists TEXT[] NOT NULL DEFAULT '{}';`);
   // Failure columns (2026-09-15). last_run_at means SUCCESS; without a record of attempts,
   // "this feed has no stamp" cannot tell a genuinely broken feed from one that simply did not
   // exist yet - which would have alerted on every tenant the night a new feed shipped.
@@ -429,7 +432,7 @@ async function findPeople(coachClientId, query, { limit = 8, notLeads = false } 
     await ensureTable(client);
     const r = await client.query(
       `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
-              lead_record_id, sources, last_seen_at, evidence, manual
+              lead_record_id, sources, last_seen_at, evidence, manual, lists
          FROM wingguy_contacts
         WHERE coach_client_id = $1 ${clauses.length ? 'AND ' + clauses.join(' AND ') : ''}
               ${notLeads ? 'AND lead_record_id IS NULL' : ''}
@@ -445,7 +448,7 @@ async function findPeople(coachClientId, query, { limit = 8, notLeads = false } 
   }
 }
 
-const ROW_COLS = 'id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug, lead_record_id, sources, last_seen_at, evidence, manual';
+const ROW_COLS = 'id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug, lead_record_id, sources, last_seen_at, evidence, manual, lists';
 
 /** LinkedIn address or slug -> the slug we key on ('' when it is not a profile link). */
 function slugOf(v) {
@@ -582,6 +585,100 @@ async function updateContactFields(coachClientId, id, fields = {}) {
 }
 
 /**
+ * Everything an import needs to know about who the client already holds: one light row per address.
+ * (16,000 rows for the biggest client - one query, a few hundred ms.)
+ */
+async function listForImport(coachClientId) {
+  const tenant = clip(coachClientId, 80);
+  if (!tenant) return [];
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const r = await client.query(
+      `SELECT id, contact_key, email, linkedin_slug, lead_record_id, name, company, phone, lists FROM wingguy_contacts WHERE coach_client_id = $1`, [tenant]);
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Write an import (services/contactsImport.js planned it; nothing here decides anything).
+ *   newPeople    [{ name, email, phone, company, linkedin (slug), otherEmails[] }]  -> new contact rows
+ *   contactFills [{ id, set: { name?, company?, phone?, linkedin_slug? }, addList }] -> blanks filled
+ *   list         the upload's list name ('' = none)
+ * New rows are `manual` with source 'import'. An existing key is never overwritten (DO NOTHING), and
+ * a fill is written as COALESCE(existing, new) - so even a row that changed since the preview keeps
+ * what it has. One transaction: an import either lands whole or not at all.
+ * Returns { ok, inserted, filled }.
+ */
+async function applyImport(coachClientId, { newPeople = [], contactFills = [], list = '' } = {}) {
+  const tenant = clip(coachClientId, 80);
+  if (!tenant) return { ok: false, error: 'coach_client_id required' };
+  const listName = clip(list, 60);
+  const lists = listName ? [listName] : [];
+  const rows = [];
+  for (const person of newPeople) {
+    const email = cleanEmail(person.email);
+    const phone = clip(person.phone, 60);
+    const digits = phone.replace(/\D/g, '');
+    const slug = slugOf(person.linkedin);
+    const key = email || (digits.length >= 6 ? `phone:${digits}` : '');
+    if (!key) continue;
+    const name = clip(person.name, 160) || null;
+    rows.push([key, email || null, name, clip(person.company, 120) || null, phone || null, slug || null]);
+    for (const other of person.otherEmails || []) {
+      const e = cleanEmail(other);
+      if (e && e !== email) rows.push([e, e, name, clip(person.company, 120) || null, null, null]);
+    }
+  }
+  const p = getPool();
+  if (!p) return { ok: false, error: 'no database' };
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    await client.query('BEGIN');
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += 500) {
+      const chunk = rows.slice(i, i + 500);
+      const r = await client.query(
+        `INSERT INTO wingguy_contacts (coach_client_id, contact_key, email, name, company, phone, linkedin_slug, sources, last_seen_at, manual, lists)
+         SELECT $1, v.k, v.e, v.n, v.c, v.ph, v.s, ARRAY['import'], now(), true, $8::text[]
+           FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) AS v(k, e, n, c, ph, s)
+         ON CONFLICT (coach_client_id, contact_key) DO NOTHING`,
+        [tenant, chunk.map((x) => x[0]), chunk.map((x) => x[1]), chunk.map((x) => x[2]), chunk.map((x) => x[3]), chunk.map((x) => x[4]), chunk.map((x) => x[5]), lists]);
+      inserted += r.rowCount;
+    }
+    let filled = 0;
+    for (let i = 0; i < contactFills.length; i += 500) {
+      const chunk = contactFills.slice(i, i + 500);
+      const r = await client.query(
+        `UPDATE wingguy_contacts c SET
+            name = COALESCE(c.name, v.n), company = COALESCE(c.company, v.c), phone = COALESCE(c.phone, v.ph),
+            linkedin_slug = COALESCE(c.linkedin_slug, v.s),
+            sources = ARRAY(SELECT DISTINCT x FROM unnest(c.sources || ARRAY['import']) AS x),
+            lists = ARRAY(SELECT DISTINCT x FROM unnest(c.lists || $7::text[]) AS x),
+            updated_at = now()
+           FROM unnest($2::bigint[], $3::text[], $4::text[], $5::text[], $6::text[]) AS v(id, n, c, ph, s)
+          WHERE c.coach_client_id = $1 AND c.id = v.id AND c.lead_record_id IS NULL`,
+        [tenant, chunk.map((x) => Number(x.id)), chunk.map((x) => clip(x.set && x.set.name, 160) || null), chunk.map((x) => clip(x.set && x.set.company, 120) || null),
+          chunk.map((x) => clip(x.set && x.set.phone, 60) || null), chunk.map((x) => (x.set && x.set.linkedin_slug ? slugOf(x.set.linkedin_slug) : null) || null), lists]);
+      filled += r.rowCount;
+    }
+    await client.query('COMMIT');
+    return { ok: true, inserted, filled };
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* nothing to roll back */ }
+    console.warn(`[contactsStore] applyImport failed (${tenant}): ${e.message}`);
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * One contact row by its id - but only if it belongs to this client. The id comes back from a
  * browser (Lead Search's "Add as lead"), so it is never trusted on its own.
  */
@@ -596,7 +693,7 @@ async function getContact(coachClientId, id) {
     await ensureTable(client);
     const r = await client.query(
       `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
-              lead_record_id, sources, last_seen_at, evidence, manual
+              lead_record_id, sources, last_seen_at, evidence, manual, lists
          FROM wingguy_contacts WHERE coach_client_id = $1 AND id = $2`, [tenant, n]);
     return r.rows[0] || null;
   } finally {
@@ -653,7 +750,7 @@ async function tenantStatus(coachClientId) {
 }
 
 module.exports = {
-  upsertContacts, findPeople, getContact, markAsLead, findByIdentity, addManualContact, updateContactFields, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
+  upsertContacts, findPeople, getContact, markAsLead, findByIdentity, addManualContact, updateContactFields, listForImport, applyImport, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
   // pure, for tests
   normaliseContact, rankMatches, cleanEmail, mergeContacts, mergedValue, slugOf, MANUAL_GUARD, GUARDED_COLS,
 };

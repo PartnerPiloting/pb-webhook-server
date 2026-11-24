@@ -30,6 +30,7 @@ function describeSources(sources) {
     'mail-thread': 'shared an email thread',
     'manual': 'you added them',
     'manual-claude': 'you asked Claude to save them',
+    'import': 'you imported them',
   };
   return (sources || []).map((s) => labels[s] || (s.startsWith('ingest:') ? `your ${s.slice(7)} feed` : s)).join(', ');
 }
