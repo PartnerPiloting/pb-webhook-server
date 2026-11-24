@@ -269,7 +269,7 @@ export default function LeadSearchTableDirect({
 
   // One cell of a CONTACT row. People look a contact up to SEE THEIR DETAILS (Guy, 24 Nov 2026), so
   // email and phone are the main thing on the row and clickable. Score, priority, status, connected,
-  // campaign and tags are a lead's and stay blank. Add as lead is not on the row - it is a quiet
+  // campaign and tags are a lead's and stay blank. "Make this contact a lead" is not on the row - it is a quiet
   // action inside the details card the row opens.
   const renderContactCell = (c, column) => {
     const { key } = column;
@@ -281,7 +281,7 @@ export default function LeadSearchTableDirect({
           <span className="block mt-1">
             <span className={added ? KIND_LEAD : KIND_CONTACT}>{added ? 'Lead' : 'Contact'}</span>
           </span>
-          {added ? <span className="block mt-1 text-xs text-green-700">Added to your leads</span> : null}
+          {added ? <span className="block mt-1 text-xs text-green-700">Now one of your leads</span> : null}
         </span>
       );
     }
@@ -506,7 +506,7 @@ export default function LeadSearchTableDirect({
             <div className="mt-5 pt-4 border-t border-gray-100 flex items-start justify-between gap-3">
               {openContact.add && openContact.add.state === 'added' ? (
                 <>
-                  <span className="text-sm text-green-700">Added to your leads</span>
+                  <span className="text-sm text-green-700">Now one of your leads</span>
                   <button type="button" id="contact-card-open-lead" onClick={() => { const id = openContact.add.leadRecordId; closeCard(); if (onLeadSelect && id) onLeadSelect({ id }); }} className="text-sm text-blue-700 hover:underline">Open their lead record</button>
                 </>
               ) : (
@@ -523,9 +523,9 @@ export default function LeadSearchTableDirect({
                       disabled={openContact.add && openContact.add.state === 'adding'}
                       className="text-sm text-gray-700 border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50 disabled:opacity-60"
                     >
-                      {openContact.add && openContact.add.state === 'adding' ? 'Adding…' : 'Have Wingguy follow up with this person'}
+                      {openContact.add && openContact.add.state === 'adding' ? 'Adding…' : 'Make this contact a lead'}
                     </button>
-                    <span id="contact-card-add-note" className="mt-1 block text-xs text-gray-500">Makes them a lead - follow-ups, tags and call transcripts.</span>
+                    <span id="contact-card-add-note" className="mt-1 block text-xs text-gray-500">Wingguy will then keep track of your conversations with them and remind you to follow up.</span>
                   </span>
                 </>
               )}
