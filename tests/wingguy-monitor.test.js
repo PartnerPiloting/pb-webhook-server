@@ -113,6 +113,27 @@ const slice = (selector_key, tenant, misses, founds, extra = {}) => ({
     assert.deepStrictEqual(pickLandmarkFindings(rows), []);
   });
 
+  await check('the 2026-11-24 alarm: About-spans misses only from pre-0.3.37 extensions → nothing', () => {
+    // The real rows: David on 0.3.36, Julian on 0.3.24, nobody else filing the key.
+    const rows = [
+      slice('profile_about_spans', 'David-Gould', 1, 0, { surface: 'profile', version: '0.3.36' }),
+      slice('profile_about_spans', 'Julian-Davis', 2, 0, { surface: 'profile', version: '0.3.24' }),
+    ];
+    assert.deepStrictEqual(pickLandmarkFindings(rows), []);
+  });
+
+  await check('About-spans blind on 0.3.37+ machines (a real About blinding) → still alerts', () => {
+    const rows = [
+      slice('profile_about_spans', 'Guy-Wilson', 2, 0, { surface: 'profile', version: '0.3.45' }),
+      slice('profile_about_spans', 'Roland-Illyes', 2, 0, { surface: 'profile', version: '0.3.37' }),
+      slice('profile_about_spans', 'Julian-Davis', 5, 0, { surface: 'profile', version: '0.3.24' }),
+    ];
+    const out = pickLandmarkFindings(rows);
+    assert.strictEqual(out.length, 1);
+    assert.strictEqual(out[0].misses, 4, 'old-version misses must not be counted in');
+    assert.strictEqual(out[0].tenants, 'Guy-Wilson, Roland-Illyes');
+  });
+
   await check('every INFO_KEY is a KNOWN_KEY (or the health row is binned at the door)', () => {
     const unknown = INFO_KEYS.filter((k) => !KNOWN_KEYS.includes(k));
     assert.deepStrictEqual(unknown, [], `not in KNOWN_KEYS: ${unknown.join(', ')}`);

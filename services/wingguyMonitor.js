@@ -125,6 +125,33 @@ async function landmarkFindings(client) {
   return pickLandmarkFindings(rows);
 }
 
+/** Landmarks whose health rows only mean something from a given extension version on. Older builds
+ *  graded the key a different way, and their misses say nothing about LinkedIn.
+ *
+ *  profile_about_spans: before 0.3.37 the self-check asked "do the old-build aria-hidden spans
+ *  exist?" - LinkedIn dropped those spans in Sep 2026, so an old extension misses EVERY time while
+ *  its About read works fine off the section text. 0.3.37 grades the key on "did the About read get
+ *  text". 2026-11-24: David Gould (0.3.36) and Julian Davis (0.3.24) were the only machines filing
+ *  this key at all, three misses between them, and the monitor emailed Guy "likely moved". The fix
+ *  for those two is updating their extension, not a store row. A row with no version is from an
+ *  unknown build, so it is treated as old too. */
+const MIN_TRUSTED_VERSION = {
+  profile_about_spans: '0.3.37',
+};
+
+/** a < b for dotted versions ("0.3.9" < "0.3.37"). Anything unparseable counts as older. */
+function versionBelow(a, b) {
+  const pa = String(a || '').split('.').map((n) => parseInt(n, 10));
+  const pb = String(b).split('.').map((n) => parseInt(n, 10));
+  if (!pa.length || pa.some((n) => Number.isNaN(n))) return true;
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x !== y) return x < y;
+  }
+  return false;
+}
+
 /** The alert rules, on the per-tenant/version slices the query above produces. Pure so the rules
  *  can be tested without a database (tests/wingguy-monitor.test.js). */
 function pickLandmarkFindings(rows, { missMin = MISS_MIN, missRate = MISS_RATE, recoveredFinds = RECOVERED_FINDS } = {}) {
@@ -134,6 +161,7 @@ function pickLandmarkFindings(rows, { missMin = MISS_MIN, missRate = MISS_RATE, 
   const info = new Set(INFO_KEYS);
   const slices = rows
     .filter((r) => !info.has(r.selector_key))
+    .filter((r) => !(MIN_TRUSTED_VERSION[r.selector_key] && versionBelow(r.version, MIN_TRUSTED_VERSION[r.selector_key])))
     .map((r) => ({ ...r, misses: Number(r.misses), founds: Number(r.founds), founds_after: Number(r.founds_after) || 0 }));
 
   // Per-tenant rule. OPTIONAL landmarks (SOFT_KEYS) are exempt: one person opening three brand-new
