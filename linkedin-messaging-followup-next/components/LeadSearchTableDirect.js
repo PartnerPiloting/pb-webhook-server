@@ -13,16 +13,18 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const stop = (e) => e.stopPropagation();
 const telHref = (phone) => `tel:${String(phone || '').replace(/[^\d+]/g, '')}`;
 
-/** Email and phone under a name, each one a link (mailto: / tel:). Clicking one never opens the row. */
-function ReachLines({ email, phone, strong = false }) {
+/** A person's email, phone and LinkedIn, each one a link (mailto: / tel: / their profile). Clicking one
+ * never opens the row. */
+function ReachLines({ email, phone, linkedin }) {
   const e = String(email || '').trim();
   const p = String(phone || '').trim();
-  if (!e && !p) return strong ? <span className="block mt-1 text-xs text-gray-400">No email or phone on file</span> : null;
-  const cls = strong ? 'block text-sm text-blue-700 hover:underline' : 'block text-xs text-blue-600 hover:underline';
+  const l = String(linkedin || '').trim();
+  if (!e && !p && !l) return <span className="text-gray-400">-</span>;
   return (
-    <span className="block mt-1">
-      {e ? <a href={`mailto:${e}`} onClick={stop} className={cls}>{e}</a> : null}
-      {p ? <a href={telHref(p)} onClick={stop} className={cls}>{p}</a> : null}
+    <span className="block space-y-0.5">
+      {e ? <a href={`mailto:${e}`} onClick={stop} className="block text-blue-700 hover:underline break-all">{e}</a> : null}
+      {p ? <a href={telHref(p)} onClick={stop} className="block text-blue-700 hover:underline whitespace-nowrap">{p}</a> : null}
+      {l ? <a href={l} target="_blank" rel="noopener noreferrer" onClick={stop} className="block text-xs text-gray-500 hover:underline">LinkedIn profile</a> : null}
     </span>
   );
 }
@@ -59,8 +61,14 @@ export default function LeadSearchTableDirect({
   const sortDir = propSortDirection ?? localSortDir;
 
   // The Campaign column shows only where the Lead Search campaign filter does (showCampaign).
+  // IN A NAME SEARCH (showKind - Guy, 24 Nov 2026): people look someone up to see their details, and
+  // Email / Phone / LinkedIn sat at the far right, off the screen, behind columns that are blank for
+  // a contact. So those three become ONE column, "Email & phone", directly after the name, and the
+  // table is set tighter with long text wrapping, so it fits a laptop without scrolling sideways.
+  // With no name typed - and for every other client - the columns are exactly as they were.
   const columns = [
     { key: 'fullName', label: 'Name', sortable: true },
+    ...(showKind ? [{ key: 'reach', label: 'Email & phone', sortable: false }] : []),
     { key: 'Company', label: 'Company', sortable: true },
     { key: 'location', label: 'Location', sortable: true },
     { key: 'AI Score', label: 'Score', sortable: true, isNumeric: true },
@@ -71,10 +79,18 @@ export default function LeadSearchTableDirect({
     // "Tags (Search Terms)" where the new Lead Search wording is on (Guy only for now, 24 Nov 2026) - the
     // same label as the filter heading and the lead record. The field itself is unchanged.
     { key: 'searchTerms', label: flagUnlabelled ? 'Tags (Search Terms)' : 'Search Terms', sortable: false },
-    { key: 'linkedinProfileUrl', label: 'LinkedIn', sortable: false },
-  { key: 'email', label: 'Email', sortable: false },
-  { key: 'phone', label: 'Phone', sortable: false },
+    ...(showKind ? [] : [
+      { key: 'linkedinProfileUrl', label: 'LinkedIn', sortable: false },
+      { key: 'email', label: 'Email', sortable: false },
+      { key: 'phone', label: 'Phone', sortable: false },
+    ]),
   ];
+  // Cell + heading spacing: the usual roomy one-line cells, or the tighter wrapping ones of a name search.
+  const WRAP = { fullName: 'max-w-[13rem]', reach: 'min-w-[15rem] max-w-[18rem]', Company: 'max-w-[11rem]', location: 'max-w-[9rem]', campaign: 'max-w-[11rem]', searchTerms: 'max-w-[10rem]' };
+  const cellClass = (key) => (showKind
+    ? `px-3 py-3 text-sm align-top relative ${WRAP[key] ? `whitespace-normal break-words ${WRAP[key]}` : 'whitespace-nowrap'}`
+    : 'px-6 py-4 whitespace-nowrap text-sm align-top relative');
+
 
   const getCellValue = (lead, key) => {
     if (key === 'fullName') {
@@ -161,6 +177,7 @@ export default function LeadSearchTableDirect({
 
   const renderCell = (lead, column) => {
     const { key } = column;
+    if (key === 'reach') return <ReachLines email={lead['Email'] || lead.email} phone={lead['Phone'] || lead.phone} linkedin={lead['LinkedIn Profile URL'] || lead.linkedinProfileUrl} />;
     if (key === 'searchTerms') return renderSearchTerms(lead);
     if (key === 'email') {
       return (
@@ -242,8 +259,6 @@ export default function LeadSearchTableDirect({
               {showKind ? <span className={KIND_LEAD}>Lead</span> : null}
               {noTag ? <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800" title="Nothing in Search Terms yet">No tag</span> : null}
             </span>
-            {/* a name is typed: the answer to "what's their number" sits on the row itself */}
-            {showKind ? <ReachLines email={lead['Email'] || lead.email} phone={lead['Phone'] || lead.phone} /> : null}
           </span>
         );
       }
@@ -265,11 +280,11 @@ export default function LeadSearchTableDirect({
           <span className="block mt-1">
             <span className={added ? KIND_LEAD : KIND_CONTACT}>{added ? 'Lead' : 'Contact'}</span>
           </span>
-          <ReachLines email={c.email} phone={c.phone} strong />
           {added ? <span className="block mt-1 text-xs text-green-700">Added to your leads</span> : null}
         </span>
       );
     }
+    if (key === 'reach') return <ReachLines email={c.email} phone={c.phone} linkedin={c.linkedin} />;
     if (key === 'Company') return c.company || '';
     if (key === 'email') return c.email ? <a href={`mailto:${c.email}`} onClick={stop} className="text-blue-600 hover:underline">{c.email}</a> : '';
     if (key === 'phone') return c.phone ? <a href={telHref(c.phone)} onClick={stop} className="text-blue-600 hover:underline">{c.phone}</a> : '';
@@ -351,7 +366,7 @@ export default function LeadSearchTableDirect({
                 <th
                   key={column.key}
                   onClick={() => handleHeaderClick(column.key)}
-                  className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${column.sortable ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                  className={`${showKind ? 'px-3' : 'px-6'} py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${column.sortable ? 'cursor-pointer hover:bg-gray-100' : ''}`}
                 >
                   <div className="flex items-center space-x-1">
                     <span>{column.label}</span>
@@ -380,7 +395,7 @@ export default function LeadSearchTableDirect({
                 {columns.map((column) => (
                   <td
                     key={column.key}
-                    className="px-6 py-4 whitespace-nowrap text-sm align-top relative"
+                    className={cellClass(column.key)}
                     style={{ overflow: 'visible' }}
                   >
                     {renderCell(lead, column)}
@@ -398,7 +413,7 @@ export default function LeadSearchTableDirect({
                   className="cursor-pointer bg-gray-50/50 hover:bg-gray-100"
                 >
                   {columns.map((column) => (
-                    <td key={column.key} className="px-6 py-4 whitespace-nowrap text-sm align-top relative">
+                    <td key={column.key} className={cellClass(column.key)}>
                       {renderContactCell(c, column)}
                     </td>
                   ))}
