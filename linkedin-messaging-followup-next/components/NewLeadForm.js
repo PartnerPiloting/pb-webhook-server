@@ -1,5 +1,4 @@
 "use client";
-import ContactQuickForm from './ContactQuickForm';
 import { wantsNewLeadSearch } from '../services/api';
 import React, { useState, useEffect } from 'react';
 import { createLead, searchLeads } from '../services/api';
@@ -25,25 +24,20 @@ const LIVE_CHECK_TIMEOUT_MS = 45000; // hidden-tab read takes ~5-15s; be generou
 const PING_TIMEOUT_MS = 2500;
 
 const NewLeadForm = ({ onLeadCreated, initialValues }) => {
-  // LEAD OR CONTACT (Guy only for now, 24 Nov 2026): a lead is someone Wingguy works on with you, a
-  // contact is someone it just keeps details for. Until now every hand-add made a lead. Where the
-  // choice is on it sits under the heading; Lead stays the default and the lead form is untouched.
-  const [kindChoiceOn, setKindChoiceOn] = useState(false);
-  const [addKind, setAddKind] = useState('lead');
-  useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setKindChoiceOn(true); }); return () => { alive = false; }; }, []);
-  const kindChoice = kindChoiceOn ? (
-    <fieldset id="add-kind-choice" className="mb-6 p-4 rounded-lg border border-gray-200 bg-gray-50">
-      <legend className="px-1 text-sm font-medium text-gray-700">Who are you adding?</legend>
-      <label className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
-        <input type="radio" name="add-kind" value="lead" checked={addKind === 'lead'} onChange={() => setAddKind('lead')} className="mt-1" />
-        <span><span className="font-medium">Lead</span> - Wingguy works on them with you</span>
-      </label>
-      <label className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer mt-2">
-        <input type="radio" name="add-kind" value="contact" checked={addKind === 'contact'} onChange={() => setAddKind('contact')} className="mt-1" />
-        <span><span className="font-medium">Contact</span> - Wingguy just keeps their details</span>
-      </label>
-    </fieldset>
-  ) : null;
+  // A lead and a contact are added from two separate buttons on the Your CRM card (Guy, 24 Nov 2026 -
+  // the Lead-or-Contact question that briefly sat here made him answer a question before he could
+  // type). So this is the LEAD form and nothing else; where the new wording is on it says in one
+  // line what a lead is, and arriving from "Add a lead" (?add=lead) brings it into view.
+  const [purposeLineOn, setPurposeLineOn] = useState(false);
+  useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setPurposeLineOn(true); }); return () => { alive = false; }; }, []);
+  const formTopRef = React.useRef(null);
+  useEffect(() => {
+    if (!purposeLineOn || typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('add') === 'lead' && formTopRef.current && formTopRef.current.scrollIntoView) {
+      // the whole form card, heading included
+      (formTopRef.current.parentElement || formTopRef.current).scrollIntoView({ block: 'start' });
+    }
+  }, [purposeLineOn]);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -515,24 +509,6 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
     }
   };
 
-  if (kindChoiceOn && addKind === 'contact') {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-        <div className="mb-6 pb-6 border-b border-gray-200">
-          <h2 className="text-2xl font-semibold text-gray-900 flex items-center">
-            {UserPlusIcon && <UserPlusIcon className="h-6 w-6 mr-2" />}
-            <span>New Contact</span>
-          </h2>
-          <p className="text-sm text-gray-600 mt-2">
-            Someone whose details you want kept in one place. Wingguy does not score them, follow them up or treat them as a LinkedIn connection.
-          </p>
-        </div>
-        {kindChoice}
-        <ContactQuickForm />
-      </div>
-    );
-  }
-
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
       <div className="mb-6 pb-6 border-b border-gray-200">
@@ -546,7 +522,7 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
         </p>
       </div>
 
-      {kindChoice}
+      {purposeLineOn ? <p id="lead-form-purpose" ref={formTopRef} className="mb-6 text-sm text-gray-700">A lead is someone Wingguy works on with you.</p> : null}
 
       {/* Message display */}
       {message.text && (
