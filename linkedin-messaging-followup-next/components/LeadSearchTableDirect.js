@@ -68,7 +68,9 @@ export default function LeadSearchTableDirect({
     { key: 'Status', label: 'Status', sortable: true },
     { key: 'Date Connected', label: 'Connected', sortable: true, isDate: true },
     ...(showCampaign ? [{ key: 'campaign', label: 'Campaign', sortable: false }] : []),
-    { key: 'searchTerms', label: 'Search Terms', sortable: false },
+    // "Tags (Search Terms)" where the new Lead Search wording is on (Guy only for now, 24 Nov 2026) - the
+    // same label as the filter heading and the lead record. The field itself is unchanged.
+    { key: 'searchTerms', label: flagUnlabelled ? 'Tags (Search Terms)' : 'Search Terms', sortable: false },
     { key: 'linkedinProfileUrl', label: 'LinkedIn', sortable: false },
   { key: 'email', label: 'Email', sortable: false },
   { key: 'phone', label: 'Phone', sortable: false },
@@ -445,6 +447,9 @@ export default function LeadSearchTableDirect({
                 <dt className="text-xs uppercase tracking-wide text-gray-500">Wingguy knows them from</dt>
                 <dd className="mt-0.5 text-gray-800">{openContact.knownFrom || 'your contacts'}</dd>
               </div>
+              <p id="contact-card-why" className="text-xs text-gray-500">
+                Leads are people Wingguy is working on with you. Contacts are people it has only come across, such as in your email. Search to look a contact up.
+              </p>
             </dl>
             <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
               {openContact.add && openContact.add.state === 'added' ? (

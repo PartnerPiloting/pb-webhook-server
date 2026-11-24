@@ -1,7 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import SearchTermsField from './SearchTermsField';
 import CollapsibleNotes from './CollapsibleNotes';
-import { deleteLead } from '../services/api';
+import { deleteLead, getLeadCampaigns } from '../services/api';
+
+// "Tags (Search Terms)" instead of "Search Terms" where the new Lead Search wording is on (Guy only
+// for now, 24 Nov 2026), so the lead record matches the filter heading and the results column. Asked
+// once per page load, not once per lead opened. Any failure = the old label.
+let newWordingPromise = null;
+const wantsNewWording = () => {
+  if (!newWordingPromise) newWordingPromise = getLeadCampaigns().then((o) => !!(o && o.recentShortcut)).catch(() => false);
+  return newWordingPromise;
+};
 import LeadCampaignField from './LeadCampaignField';
 import { buildAuthUrl } from '../utils/clientUtils';
 
@@ -118,6 +127,12 @@ const FOLLOW_UP_PRESETS = [
 
 const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   const [formData, setFormData] = useState({});
+  const [tagsLabel, setTagsLabel] = useState('Search Terms');
+  useEffect(() => {
+    let alive = true;
+    wantsNewWording().then((yes) => { if (alive && yes) setTagsLabel('Tags (Search Terms)'); });
+    return () => { alive = false; };
+  }, []);
   const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production';
   const [hasChanges, setHasChanges] = useState(false);
   const [editingField, setEditingField] = useState(null); // Track which field is being edited
@@ -975,7 +990,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
 
           {/* Search Terms (chips) */}
           <div className="flex items-start">
-            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Search Terms</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">{tagsLabel}</label>
             <div className="flex-1">
               <SearchTermsField
                 initialTerms={formData.searchTerms || formData.searchTokensCanonical || ''}
