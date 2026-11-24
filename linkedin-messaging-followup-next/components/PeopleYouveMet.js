@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getPendingPeople, skipPendingPerson, createLead, updateLead, lookupLead, mergePossibleMatch } from '../services/api';
+import { getPendingPeople, skipPendingPerson, createLead, updateLead, lookupLead, mergePossibleMatch, matchPendingPerson, attachPendingPerson } from '../services/api';
 
 // Icons via require, matching NewLeadForm's pattern
 let UserGroupIcon, UserPlusIcon, XMarkIcon, CheckIcon;
@@ -46,6 +46,13 @@ function splitName(name, email) {
  *         confirm. One at a time, so Airtable's rate limit is never hit. People added this way
  *         leave the list rather than each opening a LinkedIn box - with dozens that is a wall of
  *         rows; their LinkedIn address can go in later from Lead Search.
+ * Already a lead? -> (Guy, 2026-11-24) Add used to create a new lead with no check, so a duplicate was
+ *         one click away. Now Add first asks the server whether the person is already a lead:
+ *           - their email is on a lead  -> nothing is created; the transcripts attach to that lead.
+ *           - only their NAME matches   -> never merged, never blocked: the row asks "This may be
+ *             Jane Smith, already a lead" and you choose Same person or Different person.
+ *           - no match (nearly always)  -> exactly the one click it always was.
+ *         Add all does the same, and leaves the name-matches on the list for you to look at.
  * Extras -> (Rick Wong, 2026-09-24) he books a call with one person and others turn up. Anyone
  *         who only ever JOINED a call booked with someone else (not on the calendar booking)
  *         sits in a second group, "Also on those calls", saying whose call it was, with its own
@@ -62,6 +69,10 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
   // email -> { id, name, url, phase, match, err }. phase: ask | saving | saved | collision | combined
   const [added, setAdded] = useState({});
   const addedRef = useRef({});
+  // email -> [{ id, name, company, email }]: existing leads with the same NAME, waiting for the
+  // client to say "same person" or "different person". Never decided for them.
+  const [nameCheck, setNameCheck] = useState({});
+  const clearNameCheck = (email) => setNameCheck((prev) => { const n = { ...prev }; delete n[email]; return n; });
   useEffect(() => { addedRef.current = added; }, [added]);
 
   const load = useCallback(async () => {
@@ -103,8 +114,15 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
     return { lead, name: [firstName, lastName].filter(Boolean).join(' ') || p.email };
   };
 
+  // The person is ALREADY this lead: attach the waiting transcripts to it, create nothing.
+  const attachToExisting = async (p, lead) => {
+    const r = await attachPendingPerson(p.email, lead.id);
+    if (!r || !r.ok) throw new Error((r && r.error) || 'Could not attach the transcripts to that lead.');
+    return { id: lead.id, name: lead.name, attached: r.attachedMeetings || 0 };
+  };
+
   const handleAddAll = async () => {
-    const waiting = people.filter((p) => !added[p.email] && p.role !== 'extra');
+    const waiting = people.filter((p) => !added[p.email] && !nameCheck[p.email] && p.role !== 'extra');
     if (waiting.length === 0) return;
     const n = waiting.length;
     if (!window.confirm(`Add all ${n} ${n === 1 ? 'person' : 'people'} to Wingguy? Their meeting transcripts attach straight away. Adding can't be undone from here.`)) return;
@@ -112,11 +130,28 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
     setBulkSummary('');
     let ok = 0;
     let attached = 0;
+    let alreadyLeads = 0;
+    let needLook = 0;
     const failed = [];
     for (let i = 0; i < waiting.length; i++) {
       const p = waiting[i];
       setBulk({ done: i, total: n });
       try {
+        const m = await matchPendingPerson({ email: p.email, name: p.name });
+        if (m.kind === 'email') {
+          // already a lead under this address: attach, never a second record
+          const r = await attachToExisting(p, m.leads[0]);
+          alreadyLeads += 1;
+          attached += r.attached;
+          setPeople((prev) => prev.filter((x) => x.email !== p.email));
+          continue;
+        }
+        if (m.kind === 'name') {
+          // may be an existing lead: never added silently - left on the list with the question
+          needLook += 1;
+          setNameCheck((prev) => ({ ...prev, [p.email]: m.leads }));
+          continue;
+        }
         const { lead } = await createFromPending(p);
         ok += 1;
         attached += lead.attachedMeetings || 0;
@@ -128,24 +163,58 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
     }
     setBulk(null);
     // Refresh the page once at the end, not once per person.
-    if (ok > 0 && onAdded) onAdded();
+    if ((ok > 0 || alreadyLeads > 0) && onAdded) onAdded();
     let msg = `Added ${ok} ${ok === 1 ? 'person' : 'people'}`;
     if (attached > 0) msg += ` - ${attached} meeting ${attached === 1 ? 'transcript' : 'transcripts'} attached`;
     msg += '. Add their LinkedIn addresses any time from Lead Search.';
+    if (alreadyLeads > 0) msg += ` ${alreadyLeads} ${alreadyLeads === 1 ? 'was already a lead - their transcripts went onto that record' : 'were already leads - their transcripts went onto those records'}.`;
+    if (needLook > 0) msg += ` ${needLook} ${needLook === 1 ? 'person may already be a lead and was not added - have a look below' : 'people may already be leads and were not added - have a look below'}.`;
     setBulkSummary(msg);
     if (failed.length) setError(`Couldn't add ${failed.length}: ${failed.join(', ')} - they are still on the list, try again.`);
   };
 
-  const handleAdd = async (p) => {
+  // force = the client has already said "different person - add anyway".
+  const handleAdd = async (p, force = false) => {
     setBusyEmail(p.email);
     setError('');
     try {
+      if (!force) {
+        const m = await matchPendingPerson({ email: p.email, name: p.name });
+        if (m.kind === 'email') {
+          const r = await attachToExisting(p, m.leads[0]);
+          setRow(p.email, { id: r.id, name: r.name, url: '', phase: 'attached', match: null, err: '', attached: r.attached });
+          if (onAdded) onAdded();
+          return;
+        }
+        if (m.kind === 'name') {
+          setNameCheck((prev) => ({ ...prev, [p.email]: m.leads }));
+          return;
+        }
+      }
+      clearNameCheck(p.email);
       const { lead, name } = await createFromPending(p);
       setRow(p.email, { id: lead.id, name, url: '', phase: 'ask', match: null, err: '', attached: lead.attachedMeetings || 0 });
       if (onAdded) onAdded(lead);
     } catch (e) {
       console.error('PeopleYouveMet: add failed', e);
       setError(e?.message || 'Could not add that person just now - please try again.');
+    } finally {
+      setBusyEmail(null);
+    }
+  };
+
+  // "Same person" on a name match: the transcripts go onto the existing lead, nothing is created.
+  const handleSamePerson = async (p, lead) => {
+    setBusyEmail(p.email);
+    setError('');
+    try {
+      const r = await attachToExisting(p, lead);
+      clearNameCheck(p.email);
+      setRow(p.email, { id: r.id, name: r.name, url: '', phase: 'attached', match: null, err: '', attached: r.attached });
+      if (onAdded) onAdded();
+    } catch (e) {
+      console.error('PeopleYouveMet: same-person attach failed', e);
+      setError(e?.message || 'Could not attach the transcripts just now - please try again.');
     } finally {
       setBusyEmail(null);
     }
@@ -263,7 +332,7 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
   if (!loaded || (people.length === 0 && !bulkSummary)) return null;
   const mains = people.filter((p) => p.role !== 'extra');
   const extras = people.filter((p) => p.role === 'extra');
-  const waitingCount = mains.filter((p) => !added[p.email]).length;
+  const waitingCount = mains.filter((p) => !added[p.email] && !nameCheck[p.email]).length;
   const extrasWaiting = extras.filter((p) => !added[p.email]).length;
 
   const renderAddedRow = (p, row) => (
@@ -272,7 +341,7 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
         <div className="min-w-0">
           <div className="font-medium text-gray-900 truncate flex items-center">
             {CheckIcon && <CheckIcon className="h-4 w-4 text-green-600 mr-1" />}
-            {row.name} - added
+            {row.phase === 'attached' ? `${row.name} - already one of your leads` : `${row.name} - added`}
             {row.attached > 0 && (
               <span className="ml-2 text-xs font-normal text-green-700">
                 {row.attached === 1 ? '1 meeting transcript attached' : `${row.attached} meeting transcripts attached`}
@@ -290,6 +359,11 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
         </button>
       </div>
 
+      {row.phase === 'attached' && (
+        <div className="mt-2 text-sm text-green-700">
+          No new record was made - {row.attached > 0 ? 'the meeting transcripts went onto their existing record' : 'this address is now on their existing record'}.
+        </div>
+      )}
       {row.phase === 'saved' && (
         <div className="mt-2 text-sm text-green-700">LinkedIn address saved.</div>
       )}
@@ -355,6 +429,52 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
   const renderRow = (p) => {
     const row = added[p.email];
     if (row) return renderAddedRow(p, row);
+    const maybe = nameCheck[p.email];
+    if (maybe && maybe.length) {
+      return (
+        <li key={p.email} className="px-6 py-3 bg-amber-50" data-name-check="1">
+          <div className="font-medium text-gray-900 truncate">{p.name || p.email}</div>
+          <div className="text-sm text-gray-500 truncate">{p.email}</div>
+          {maybe.map((lead) => (
+            <div key={lead.id} className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-sm text-gray-800">
+                This may be <span className="font-medium">{lead.name}</span>, already a lead
+                {[lead.company, lead.email].filter(Boolean).length ? ` - ${[lead.company, lead.email].filter(Boolean).join(', ')}` : ''}.
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSamePerson(p, lead)}
+                disabled={busyEmail === p.email || !!bulk}
+                className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 shrink-0"
+                title="Same person - put the meeting transcripts on their existing record; no new record is made"
+              >
+                Same person
+              </button>
+            </div>
+          ))}
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => handleAdd(p, true)}
+              disabled={busyEmail === p.email || !!bulk}
+              className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+              title="A different person with the same name - add them as a new lead"
+            >
+              {busyEmail === p.email ? 'Working…' : 'Different person - add anyway'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { clearNameCheck(p.email); handleSkip(p.email); }}
+              disabled={busyEmail === p.email || !!bulk}
+              className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+              title="Skip - Wingguy won't suggest this person again"
+            >
+              Skip
+            </button>
+          </div>
+        </li>
+      );
+    }
     return (
       <li key={p.email} className="px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div className="min-w-0">

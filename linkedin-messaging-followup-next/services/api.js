@@ -663,6 +663,25 @@ export const getPendingPeople = async () => {
   return response.data?.people || [];
 };
 
+// Before Add: is this person already a lead? { kind: 'email'|'name'|null, leads: [{id,name,company,email}] }.
+// NEVER throws - if the check cannot be made the answer is "no match" and Add works as it always did.
+export const matchPendingPerson = async ({ email, name }) => {
+  try {
+    const response = await api.post('/pending-people/match', { email, name: name || '' });
+    const d = response.data || {};
+    return { kind: d.kind || null, leads: Array.isArray(d.leads) ? d.leads : [] };
+  } catch (e) {
+    console.warn('matchPendingPerson failed - adding without the check', e.response?.data || e.message);
+    return { kind: null, leads: [] };
+  }
+};
+
+// "Same person": attach the waiting transcripts to an EXISTING lead instead of creating a new one.
+export const attachPendingPerson = async (email, leadId) => {
+  const response = await api.post('/pending-people/attach', { email, leadId });
+  return response.data;
+};
+
 // Skip is final by design: the person drops off the list and is never asked about again.
 export const skipPendingPerson = async (email) => {
   const response = await api.post('/pending-people/skip', { email });

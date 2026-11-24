@@ -2450,6 +2450,39 @@ router.get('/pending-people', async (req, res) => {
 });
 
 /**
+ * POST /api/linkedin/pending-people/match  { email, name }
+ * Before Add: is this person already a lead? (services/pendingPeopleMatch.js) Answers
+ * { kind: 'email' | 'name' | null, leads: [{ id, name, company, email }] }. Reads only. Any failure
+ * answers "no match" - the Add button must keep working.
+ */
+router.post('/pending-people/match', async (req, res) => {
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const b = req.body || {};
+    res.json(await require('../../../services/pendingPeopleMatch').findExistingLead(airtableBase, { email: String(b.email || ''), name: String(b.name || '') }));
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /pending-people/match:', error);
+    res.json({ kind: null, leads: [] });
+  }
+});
+
+/**
+ * POST /api/linkedin/pending-people/attach  { email, leadId }
+ * "Same person": the one waiting under this address IS that existing lead. Nothing is created - the
+ * address is kept on the lead as an alternate and the waiting transcripts attach to it.
+ */
+router.post('/pending-people/attach', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const result = await require('../../../services/pendingPeopleMatch').attachToLead(req.client.clientId, req.client.airtableBaseId, { email: String(b.email || ''), leadId: String(b.leadId || '') });
+    res.status(result.status || (result.ok ? 200 : 500)).json(result);
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /pending-people/attach:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/linkedin/pending-people/skip  { email }
  * The client said no to this person. Final by design (agreed with Guy 2026-08-26): the entry
  * is stamped declined, drops off every list, and is never asked about again. The transcripts
