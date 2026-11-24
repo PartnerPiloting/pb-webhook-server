@@ -57,6 +57,9 @@ const LeadSearchEnhanced = ({
     }
   };
 
+  // WHY CONTACTS ARE HERE AT ALL (Guy, 24 Nov 2026): to SEE THEIR CONTACT DETAILS - "what's David's
+  // number" answered from the list - not mainly to turn them into leads. So email and phone lead
+  // each row, clickable, and Add as lead is a quiet action inside the row's details card.
   // CONTACTS IN THE SAME LIST (Guy, 23 Nov 2026): when a name or email of 3+ characters is typed,
   // people Wingguy knows from the client's email who are NOT leads are shown after the leads in the
   // same table, each row labelled Lead or Contact, a Contact row carrying Add as lead. (It replaced a
@@ -331,7 +334,8 @@ const LeadSearchEnhanced = ({
     }
   };
 
-  // "All leads": everyone, best score first - how the page opens. Also lifts the Connected filter
+  // "All Leads & Contacts" (the label since 24 Nov 2026 - contacts join the list when a name is
+  // typed): everyone, best score first - how the page opens. Also lifts the Connected filter
   // the other view set.
   const handleAllLeads = () => {
     setConnection('all');
@@ -804,9 +808,9 @@ const LeadSearchEnhanced = ({
                 aria-pressed={!recentActive}
                 onClick={handleAllLeads}
                 className={`px-4 py-2 text-sm font-medium ${!recentActive ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 hover:bg-blue-50'}`}
-                title="Everyone, best score first"
+                title="Everyone, best score first. Contacts appear when you search by name or email."
               >
-                All leads
+                All Leads &amp; Contacts
               </button>
               <button
                 type="button"
@@ -822,6 +826,7 @@ const LeadSearchEnhanced = ({
             <span className="text-sm text-gray-500">
               {recentActive ? 'People you are connected to, newest first' : 'Everyone, best score first'}
             </span>
+            <p id="lead-search-contacts-hint" className="w-full text-xs text-gray-500 -mt-1">Contacts appear when you search</p>
           </div>
         )}
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
@@ -837,7 +842,7 @@ const LeadSearchEnhanced = ({
               <input
                 type="text"
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                placeholder="Name, email, or LinkedIn URL..."
+                placeholder={showRecentShortcut ? 'Search your leads and contacts by name or email' : 'Name, email, or LinkedIn URL...'}
                 value={nameSearch}
                 onChange={handleNameSearchChange}
               />

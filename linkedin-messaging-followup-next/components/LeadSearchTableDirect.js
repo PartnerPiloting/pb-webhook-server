@@ -10,6 +10,22 @@ const InlineSearchTermsEditor = dynamic(() => import('./InlineSearchTermsEditor'
 const KIND_LEAD = 'px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800';
 const KIND_CONTACT = 'px-2 py-0.5 rounded-full text-xs bg-gray-200 text-gray-800';
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const stop = (e) => e.stopPropagation();
+const telHref = (phone) => `tel:${String(phone || '').replace(/[^\d+]/g, '')}`;
+
+/** Email and phone under a name, each one a link (mailto: / tel:). Clicking one never opens the row. */
+function ReachLines({ email, phone, strong = false }) {
+  const e = String(email || '').trim();
+  const p = String(phone || '').trim();
+  if (!e && !p) return strong ? <span className="block mt-1 text-xs text-gray-400">No email or phone on file</span> : null;
+  const cls = strong ? 'block text-sm text-blue-700 hover:underline' : 'block text-xs text-blue-600 hover:underline';
+  return (
+    <span className="block mt-1">
+      {e ? <a href={`mailto:${e}`} onClick={stop} className={cls}>{e}</a> : null}
+      {p ? <a href={telHref(p)} onClick={stop} className={cls}>{p}</a> : null}
+    </span>
+  );
+}
 
 // Self-contained table with the same props shape used by LeadSearchEnhanced
 export default function LeadSearchTableDirect({
@@ -220,10 +236,12 @@ export default function LeadSearchTableDirect({
         return (
           <span>
             {value || <span className="text-gray-400 text-sm">-</span>}
-            <span className="block mt-1 space-x-1">
+            <span className={showKind ? 'block mt-1 space-x-1' : 'block mt-1'}>
               {showKind ? <span className={KIND_LEAD}>Lead</span> : null}
               {noTag ? <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800" title="Nothing in Search Terms yet">No tag</span> : null}
             </span>
+            {/* a name is typed: the answer to "what's their number" sits on the row itself */}
+            {showKind ? <ReachLines email={lead['Email'] || lead.email} phone={lead['Phone'] || lead.phone} /> : null}
           </span>
         );
       }
@@ -231,8 +249,10 @@ export default function LeadSearchTableDirect({
     return value || <span className="text-gray-400 text-sm">-</span>;
   };
 
-  // One cell of a CONTACT row: only what a contact has. Score, priority, status, connected, campaign
-  // and tags are a lead's, so they stay blank.
+  // One cell of a CONTACT row. People look a contact up to SEE THEIR DETAILS (Guy, 24 Nov 2026), so
+  // email and phone are the main thing on the row and clickable. Score, priority, status, connected,
+  // campaign and tags are a lead's and stay blank. Add as lead is not on the row - it is a quiet
+  // action inside the details card the row opens.
   const renderContactCell = (c, column) => {
     const { key } = column;
     const added = c.add && c.add.state === 'added';
@@ -243,35 +263,30 @@ export default function LeadSearchTableDirect({
           <span className="block mt-1">
             <span className={added ? KIND_LEAD : KIND_CONTACT}>{added ? 'Lead' : 'Contact'}</span>
           </span>
-          {c.knownFrom ? <span className="block mt-1 text-xs text-gray-500 whitespace-normal">Wingguy knows them from: {c.knownFrom}</span> : null}
-          <span className="block mt-2">
-            {added ? (
-              <span className="text-xs text-green-700">Added to your leads - click the row to open</span>
-            ) : (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); if (onAddContact) onAddContact(c); }}
-                disabled={c.add && c.add.state === 'adding'}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-              >
-                {c.add && c.add.state === 'adding' ? 'Adding…' : 'Add as lead'}
-              </button>
-            )}
-          </span>
-          {c.add && c.add.state === 'error' ? <span className="block mt-1 text-xs text-red-700 whitespace-normal">{c.add.text}</span> : null}
+          <ReachLines email={c.email} phone={c.phone} strong />
+          {added ? <span className="block mt-1 text-xs text-green-700">Added to your leads</span> : null}
         </span>
       );
     }
     if (key === 'Company') return c.company || '';
-    if (key === 'email') return c.email || '';
-    if (key === 'phone') return c.phone || '';
+    if (key === 'email') return c.email ? <a href={`mailto:${c.email}`} onClick={stop} className="text-blue-600 hover:underline">{c.email}</a> : '';
+    if (key === 'phone') return c.phone ? <a href={telHref(c.phone)} onClick={stop} className="text-blue-600 hover:underline">{c.phone}</a> : '';
     if (key === 'linkedinProfileUrl') {
       return c.linkedin
-        ? <a href={c.linkedin} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline">Profile</a>
+        ? <a href={c.linkedin} target="_blank" rel="noopener noreferrer" onClick={stop} className="text-blue-600 hover:underline">Profile</a>
         : '';
     }
     return '';
   };
+
+  // The details card a contact row opens.
+  const [openContactId, setOpenContactId] = useState(null);
+  const openContact = showKind ? contacts.find((c) => c.id === openContactId) : null;
+  // The warehouse holds one row per address, so the same person can sit on two rows: the card also
+  // lists the other addresses found under exactly the same name in this search.
+  const sameNameEmails = openContact && String(openContact.name || '').trim()
+    ? contacts.filter((c) => c.id !== openContact.id && c.email && String(c.name || '').trim().toLowerCase() === String(openContact.name).trim().toLowerCase()).map((c) => c.email)
+    : [];
 
   if (isLoading) {
     return (
@@ -377,8 +392,8 @@ export default function LeadSearchTableDirect({
                 <tr
                   key={`contact-${c.id}`}
                   data-kind={added ? 'lead' : 'contact'}
-                  onClick={() => { if (added && onLeadSelect) onLeadSelect({ id: c.add.leadRecordId }); }}
-                  className={added && onLeadSelect ? 'cursor-pointer hover:bg-gray-50' : 'bg-gray-50/50'}
+                  onClick={() => { if (added && onLeadSelect) onLeadSelect({ id: c.add.leadRecordId }); else setOpenContactId(c.id); }}
+                  className="cursor-pointer bg-gray-50/50 hover:bg-gray-100"
                 >
                   {columns.map((column) => (
                     <td key={column.key} className="px-6 py-4 whitespace-nowrap text-sm align-top relative">
@@ -391,6 +406,70 @@ export default function LeadSearchTableDirect({
           </tbody>
         </table>
       </div>
+
+      {openContact && (
+        <div id="contact-card" className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setOpenContactId(null)}>
+          <div role="dialog" aria-label="Contact details" className="bg-white rounded-lg shadow-xl w-full max-w-md p-6" onClick={stop}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h4 className="text-lg font-medium text-gray-900">{openContact.name || openContact.email || 'Unnamed'}</h4>
+                {openContact.company ? <div className="text-sm text-gray-600">{openContact.company}</div> : null}
+                <span className={`inline-block mt-1 ${openContact.add && openContact.add.state === 'added' ? KIND_LEAD : KIND_CONTACT}`}>{openContact.add && openContact.add.state === 'added' ? 'Lead' : 'Contact'}</span>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setOpenContactId(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+            </div>
+            <dl className="mt-4 space-y-3 text-sm">
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-gray-500">Email</dt>
+                <dd className="mt-0.5 space-y-0.5">
+                  {[openContact.email, ...(openContact.otherEmails || [])].filter(Boolean).map((e) => (
+                    <a key={e} href={`mailto:${e}`} className="block text-blue-600 hover:underline break-all">{e}</a>
+                  ))}
+                  {!openContact.email ? <span className="text-gray-400">None on file</span> : null}
+                  {sameNameEmails.length ? (
+                    <span className="block pt-1 text-xs text-gray-500">Also under this name: {sameNameEmails.map((e, i) => (
+                      <React.Fragment key={e}>{i ? ', ' : ''}<a href={`mailto:${e}`} className="text-blue-600 hover:underline break-all">{e}</a></React.Fragment>
+                    ))}</span>
+                  ) : null}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-gray-500">Phone</dt>
+                <dd className="mt-0.5">{openContact.phone ? <a href={telHref(openContact.phone)} className="text-blue-600 hover:underline">{openContact.phone}</a> : <span className="text-gray-400">None on file</span>}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-gray-500">LinkedIn</dt>
+                <dd className="mt-0.5">{openContact.linkedin ? <a href={openContact.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{openContact.linkedin}</a> : <span className="text-gray-400">None on file</span>}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-gray-500">Wingguy knows them from</dt>
+                <dd className="mt-0.5 text-gray-800">{openContact.knownFrom || 'your contacts'}</dd>
+              </div>
+            </dl>
+            <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
+              {openContact.add && openContact.add.state === 'added' ? (
+                <>
+                  <span className="text-sm text-green-700">Added to your leads</span>
+                  <button type="button" id="contact-card-open-lead" onClick={() => { const id = openContact.add.leadRecordId; setOpenContactId(null); if (onLeadSelect && id) onLeadSelect({ id }); }} className="text-sm text-blue-700 hover:underline">Open their lead record</button>
+                </>
+              ) : (
+                <>
+                  <span className="text-xs text-gray-500">{openContact.add && openContact.add.state === 'error' ? <span className="text-red-700">{openContact.add.text}</span> : 'Not one of your leads.'}</span>
+                  <button
+                    type="button"
+                    id="contact-card-add"
+                    onClick={() => onAddContact && onAddContact(openContact)}
+                    disabled={openContact.add && openContact.add.state === 'adding'}
+                    className="text-sm text-gray-700 border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {openContact.add && openContact.add.state === 'adding' ? 'Adding…' : 'Add as lead'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {!hideFooter && (
         <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
