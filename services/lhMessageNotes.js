@@ -42,9 +42,16 @@ const LEADS_TABLE = 'Leads';
 
 // The message fields LH sends. `fallbackSender` is used ONLY when LH omits the "_from" name:
 // 'me' = the client (their outbound), 'lead' = the person they are talking to.
+//
+// TWO TIME FIELDS, AND ONLY ONE IS SAFE. LH sends `*_send_at` as its machine's LOCAL clock time
+// with no timezone on it (getLocalDateTimeString in LH's own source) and `*_send_at_iso` as the
+// real instant. Reading the local one with new Date() on a UTC server treats Sydney 8:19 AM as
+// 8:19 AM UTC, and the stamp then comes out 11 hours late (7:19 PM) - a note could even be dated
+// in the future (Rick Wong, 24 Nov 2026). So: `atIso` first; `at` only as a fallback, read as the
+// client's own local time.
 const MESSAGE_FIELD_SETS = [
-    { from: 'last_received_message_from', text: 'last_received_message_text', at: 'last_received_message_send_at', fallbackSender: 'me' },
-    { from: 'last_sent_message_from', text: 'last_sent_message_text', at: 'last_sent_message_send_at', fallbackSender: 'lead' },
+    { from: 'last_received_message_from', text: 'last_received_message_text', at: 'last_received_message_send_at', atIso: 'last_received_message_send_at_iso', fallbackSender: 'me' },
+    { from: 'last_sent_message_from', text: 'last_sent_message_text', at: 'last_sent_message_send_at', atIso: 'last_sent_message_send_at_iso', fallbackSender: 'lead' },
 ];
 
 /** Cheap pre-check so a payload with no messaging history costs nothing. */
@@ -69,6 +76,36 @@ function parseSendAt(raw) {
     }
     const d = new Date(String(raw));
     return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** True when a date string says which timezone it is in (a trailing Z or a +HH:MM offset). */
+function hasZone(raw) {
+    return /(?:Z|[+-]\d{2}:?\d{2})\s*$/i.test(String(raw).trim());
+}
+
+/**
+ * Parse LH's zone-less local time ("2026-11-21 08:19:34") as wall-clock time in `timeZone`.
+ * Numbers and strings that carry their own zone go straight through parseSendAt.
+ * @returns {Date|null}
+ */
+function parseLocalSendAt(raw, timeZone) {
+    if (raw === null || raw === undefined || raw === '') return null;
+    if (typeof raw === 'number' || /^\d+$/.test(String(raw).trim()) || hasZone(raw) || !timeZone) return parseSendAt(raw);
+    const m = String(raw).trim().match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return parseSendAt(raw);
+    const wallAsUtc = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+    try {
+        // What does the zone's clock read at that instant? The gap is the zone's offset.
+        const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone, hourCycle: 'h23',
+            year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+        }).formatToParts(new Date(wallAsUtc));
+        const get = (type) => Number((parts.find(p => p.type === type) || {}).value);
+        const zoneClock = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+        return new Date(wallAsUtc - (zoneClock - wallAsUtc));
+    } catch (e) {
+        return parseSendAt(raw); // unknown timezone on the client record
+    }
 }
 
 /**
@@ -128,7 +165,7 @@ function buildMessageLines(lh, opts = {}) {
         seen.add(key);
 
         const sender = String(lh[set.from] || '').trim() || (set.fallbackSender === 'me' ? meName : themName);
-        const at = parseSendAt(lh[set.at]);
+        const at = parseSendAt(lh[set.atIso]) || parseLocalSendAt(lh[set.at], timezone);
         // No readable timestamp: stamp it now. The webhook fires within seconds of the send, so
         // "now" is close enough to keep cadence honest - and a message missing from the history
         // entirely is worse than one dated a few seconds late.
@@ -214,6 +251,7 @@ module.exports = {
     // exported for tests
     payloadHasMessages,
     parseSendAt,
+    parseLocalSendAt,
     formatStamp,
     buildMessageLines,
     applyMessageLinesToNotes,

@@ -697,7 +697,7 @@ function parseFormattedMessages(formattedContent) {
 /**
  * The text of a message line, normalised for comparison: the "DD-MM-YY H:MM AM - Sender - " stamp
  * is stripped (the separator must be a spaced " - " so hyphenated names survive), then lowercased
- * with everything but letters, digits and single spaces removed. Two copies of the same message
+ * with everything but letters and digits removed. Two copies of the same message
  * land on identical strings even when their stamps disagree (LH stamps the send time, the
  * extension stamps whatever it could read from the DOM).
  * @param {string} line - A message line, with or without its stamp
@@ -705,7 +705,11 @@ function parseFormattedMessages(formattedContent) {
  */
 function normalizeMessageText(line) {
     const body = String(line || '').replace(/^\d{2}-\d{2}-\d{2}[^\n]*?\s-\s[^\n]*?\s-\s/, '');
-    return body.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+    // Spaces are dropped too: a line break inside a message becomes a space in one source and
+    // nothing at all in another (LH writes "...to connect. Rick.", the extension's scrape of the
+    // same bubble reads "...to connect.Rick."), and the two must still compare equal
+    // (Rick Wong, 24 Nov 2026 - every accepted invite note sat in Notes twice).
+    return body.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /**
@@ -755,7 +759,35 @@ function mergeAndSortMessages(existingContent, newContent, newestFirst = true) {
             norm.length >= CLIP_MIN_PREFIX &&
             withNorm.some((other, j) => j !== i && other.norm.length > norm.length && other.norm.startsWith(norm)))
         .map(({ msg }) => msg));
-    const survivors = uniqueMessages.filter(msg => !clipped.has(msg));
+    let survivors = uniqueMessages.filter(msg => !clipped.has(msg));
+
+    // Retire the same LONG message stored at two different clock times. An invite note has two
+    // honest times: Linked Helper stamps when the invite was SENT, and LinkedIn only shows the note
+    // in the chat once the person ACCEPTS - hours or weeks later - which is the time the extension
+    // reads. Keyed on clock time (above) both copies survived, so every accepted invite read as
+    // "note sent twice" (Rick Wong, 24 Nov 2026). Same sender + same text of 60+ normalised chars is
+    // one message; the later copy is kept, so "last contact" is never understated. Short lines are
+    // left alone - "Thanks!" twice from one person is two real messages.
+    const REPEAT_MIN_CHARS = 60;
+    const senderOf = (msg) => {
+        const m = msg.line.match(/^\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s*[AP]M\s+-\s+(.*?)\s+-\s/i);
+        return m ? m[1].trim().toLowerCase() : null;
+    };
+    const latestByText = new Map();
+    for (const msg of survivors) {
+        const sender = senderOf(msg);
+        const norm = normalizeMessageText(msg.line);
+        if (!sender || norm.length < REPEAT_MIN_CHARS) continue;
+        const key = `${sender}|${norm}`;
+        const kept = latestByText.get(key);
+        if (!kept || msg.dateTime.getTime() > kept.dateTime.getTime()) latestByText.set(key, msg);
+    }
+    survivors = survivors.filter(msg => {
+        const sender = senderOf(msg);
+        const norm = normalizeMessageText(msg.line);
+        if (!sender || norm.length < REPEAT_MIN_CHARS) return true;
+        return latestByText.get(`${sender}|${norm}`) === msg;
+    });
 
     // Sort by dateTime
     survivors.sort((a, b) => {
