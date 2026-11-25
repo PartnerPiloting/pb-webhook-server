@@ -357,6 +357,26 @@ router.post('/webhooks/lh-machine/:clientId/removals', express.json({ limit: '25
 });
 
 /**
+ * POST /webhooks/lh-machine/:clientId/connected-dates   { people: [{ slug, connected_at }] }
+ * The nightly "My own connections" run reports the connections it SKIPPED because a campaign already
+ * holds them - their profile address and the day they connected, both read off the My Connections
+ * page it reads anyway. The matching lead's Date Connected is filled where it is blank; nothing is
+ * ever overwritten (services/connectedDateFill.js). Costs the machine no profile visit and no send.
+ */
+router.post('/webhooks/lh-machine/:clientId/connected-dates', express.json({ limit: '256kb' }), async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  try {
+    const r = await require('../services/connectedDateFill').fillConnectedDates(client, (req.body || {}).people);
+    if (r.ok && !r.off) log.info(`LH-MACHINE ${client.clientId} reported ${r.received} connected date(s): ${r.filled} filled, ${r.dated} already dated, ${r.noLead} not leads yet`);
+    return res.status(r.ok ? 200 : 500).json(r);
+  } catch (e) {
+    log.error(`LH-MACHINE connected-dates failed for ${client.clientId}: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'write failed' });
+  }
+});
+
+/**
  * A file for this machine to fetch (services/machineFileStore.js, 30 Sep 2026). Polled by
  * lh-clipboard.py on the same cadence as the clipboard. What is handed over is a LINK - the
  * machine does the fetching, so nothing large ever passes through this server. Handed over once:

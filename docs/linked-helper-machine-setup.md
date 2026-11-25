@@ -927,4 +927,18 @@ it on for a client without Guy saying so.
   script switches it back on when it adds people.
 - Server side: a lead that already has a campaign keeps it when this one sends the same person
   (`services/leadCampaign.js` `keepRealCampaign`).
+- **Connected dates for people a campaign already holds (since 25 Nov 2026).** The pick above skips
+  anyone in a campaign's history, to save the profile visit. But a person a visit-only campaign
+  found, who connected some other way later, is a lead that says "Not connected" for ever - 787 of
+  Guy's had built up. So the same nightly run ends by reporting those skipped people's profile
+  address and connected date to the server (`POST <REPORT_URL>/connected-dates`, the machine's own
+  secret), and the server fills Date Connected on the matching lead ONLY where it is blank - exact
+  LinkedIn address, never a name, never over an existing date, never touching the campaign
+  (`services/connectedDateFill.js`). No profile visit and no webhook send, so it costs no daily
+  actions; it touches nothing in Linked Helper and runs after the machine is back as it was. It
+  needs `REPORT_URL` and `REPORT_SECRET` in the machine config (every machine has them) and the
+  client in `OWN_CONNECTIONS_ARRIVE` in `services/leadCampaign.js` - add the client there on the day
+  the collection is switched on for them, or the server answers "off" and fills nothing.
+  `lh-own-connections.py --dates-only` runs just this step; with `--dry-run` it only counts.
+  The log line starts `dates:`. It comes with the script: a client machine gets it with the collection.
 - Not on a cloud Linked Helper account: the script reads the machine's database, which is empty there.

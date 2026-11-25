@@ -17,6 +17,15 @@ the person was met. So once a night, just after midnight:
              "My own connections" (visit the profile, send to the webhook - no invite, no
              message). The rest wait in the holding list and go on later nights. Nobody is dropped:
              the pick is made from the WHOLE holding list every night, not from "tonight's new ones".
+  4. DATES - (25 Nov 2026) the people step 2 SKIPPED because a campaign holds them are not
+             necessarily known to Wingguy as connected: a visit-only campaign found them, they
+             connected some other way later, and their lead said "Not connected" for ever (787 of
+             Guy's had built up). The read already gave us their profile address and the day they
+             connected, so those two things are reported to the server
+             (POST <REPORT_URL>/connected-dates), which fills the date on the matching lead ONLY
+             where it is blank. No profile visit, no webhook send - it costs no daily actions. It
+             touches nothing in Linked Helper (a database read and one web request), runs after
+             everything has been put back, and a failure is one logged line.
 
 WHAT WAS PROVEN ON GUY'S MACHINE (23 Nov 2026, Linked Helper 2.140.13) - do not re-learn these:
   - Collecting costs no profile visits and no webhook sends (counters unchanged over 910 people).
@@ -36,6 +45,7 @@ minutes) puts things back if a run died half-way. The watchdog also presses Star
   lh-own-connections.py --no-read       skip the read, just pick and pass (after a read that failed)
   lh-own-connections.py --max 3         pass at most 3 this run
   lh-own-connections.py --recover       put back what a dead run left paused; otherwise nothing
+  lh-own-connections.py --dates-only    no read, nobody passed: just report connected dates (step 4)
 
 Config, /etc/linked-helper-machine.conf:
   OWN_CONNECTIONS_SINCE=2026-11-23      the switch-on date (machine's local date). Absent = this
@@ -51,6 +61,7 @@ import os
 import sys
 import tempfile
 import time
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOLDING_NAME = "My connections - holding list (collect only)"
@@ -379,6 +390,90 @@ def pass_on(m, own, people):
     return True
 
 
+# ------------------------------------------------------------------ 4. dates
+
+DATES_PER_NIGHT = 300       # most people reported in one night (the server takes the same)
+DATES_RETRY_DAYS = 60       # how long someone who is not a lead yet keeps being reported
+
+
+def skipped_people(m, hid, since):
+    """Everyone in the holding list who connected on or after the switch-on date and IS in another
+    campaign's history - the people step 2 skips. Oldest first."""
+    rows = m.q(
+        "SELECT h.person_id, min(pc.connected_at) AS connected_at, "
+        " (SELECT e.external_id FROM person_external_ids e WHERE e.person_id = h.person_id AND e.type_group = 'public' ORDER BY e.id DESC LIMIT 1) AS slug "
+        "FROM person_in_campaigns_history h JOIN person_connect pc ON pc.person_id = h.person_id "
+        "WHERE h.campaign_id = ? AND pc.connected_at >= ? "
+        "AND EXISTS (SELECT 1 FROM person_in_campaigns_history o WHERE o.person_id = h.person_id AND o.campaign_id <> ?) "
+        "GROUP BY h.person_id ORDER BY connected_at, h.person_id", (hid, since, hid))
+    return [{"person_id": int(r[0]), "connected_at": r[1], "slug": r[2]} for r in rows if r[2]]
+
+
+def dates_to_report(people, state, now_ms):
+    """Who to report tonight: not already settled (the server said their lead has a date), and - for
+    someone who is still not a lead - only while they connected within the retry window. Pure."""
+    settled = set(int(x) for x in (state or {}).get("dates_settled") or [])
+    cutoff = now_ms - DATES_RETRY_DAYS * 86400000
+    tried = set(int(x) for x in (state or {}).get("dates_tried") or [])
+    out = []
+    for p in people:
+        if p["person_id"] in settled:
+            continue
+        if p["person_id"] in tried and p["connected_at"] < cutoff:
+            continue                         # reported for two months and never became a lead - let them go
+        out.append(p)
+    return out[:DATES_PER_NIGHT]
+
+
+def post_json(url, secret, body):
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers={
+        "Content-Type": "application/json", "x-lh-machine-secret": secret})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return json.loads(r.read().decode())
+
+
+def report_dates(m, hid, since, dry=False):
+    """Step 4. Never raises: this must not turn a good night into a failed one."""
+    try:
+        url = (m.c.get("REPORT_URL") or "").rstrip("/")
+        secret = m.c.get("REPORT_SECRET") or ""
+        if not url or not secret:
+            say("dates: no REPORT_URL / REPORT_SECRET in the machine config - nothing reported")
+            return
+        state = read_json(STATE) or {}
+        tonight = dates_to_report(skipped_people(m, hid, since), state, int(time.time() * 1000))
+        if not tonight:
+            say("dates: nobody new to report")
+            return
+        if dry:
+            say("dates: would report %d connection(s) a campaign already holds, connected %s to %s"
+                % (len(tonight), day(tonight[0]["connected_at"]), day(tonight[-1]["connected_at"])))
+            return
+        answer = post_json(url + "/connected-dates", secret,
+                           {"people": [{"slug": p["slug"], "connected_at": p["connected_at"]} for p in tonight]})
+        if answer.get("off"):
+            say("dates: the server has this switched off for this client - nothing filled")
+            return
+        results = answer.get("results") or {}
+        settled = set(int(x) for x in state.get("dates_settled") or [])
+        tried = set(int(x) for x in state.get("dates_tried") or [])
+        for p in tonight:
+            what = results.get((p["slug"] or "").lower())
+            if what in ("filled", "dated"):
+                settled.add(p["person_id"])
+                tried.discard(p["person_id"])
+            elif what == "no-lead":
+                tried.add(p["person_id"])
+        state = read_json(STATE) or {}
+        state.update({"dates_settled": sorted(settled), "dates_tried": sorted(tried), "dates_last_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
+        write_json(STATE, state)
+        say("dates: reported %d connection(s) a campaign already holds - %d lead(s) had no connected date and now do, "
+            "%d already had one, %d are not leads yet (tried again on later nights)"
+            % (len(tonight), int(answer.get("filled") or 0), int(answer.get("dated") or 0), int(answer.get("noLead") or 0)))
+    except Exception as e:
+        say("dates: not reported tonight (%s) - tried again tomorrow" % str(e)[:160])
+
+
 def main():
     args = sys.argv[1:]
     dry = "--dry-run" in args
@@ -419,6 +514,10 @@ def main():
         say("an earlier run left a hold note - putting those campaigns back first")
         restore(m, stale, hid)
 
+    if "--dates-only" in args:
+        report_dates(m, hid, since, dry)
+        return 0
+
     read_ok = True
     if not dry and "--no-read" not in args:
         try:
@@ -435,13 +534,15 @@ def main():
         % (since_text, len(ready), len(tonight), len(later), (", %d with no profile link yet" % len(no_link)) if no_link else ""))
     for p in tonight:
         say("  %s %s  connected %s" % ("would pass" if dry else "passing", p["slug"], day(p["connected_at"])))
-    if dry or not tonight:
-        return 0 if read_ok else 1
-    own = m.ensure(OWN_NAME)
-    if not pass_on(m, own, tonight):
-        return 1
-    say("%d added to %r - it visits and sends them in its own hours" % (len(tonight), OWN_NAME))
-    return 0 if read_ok else 1
+    passed_ok = True
+    if tonight and not dry:
+        own = m.ensure(OWN_NAME)
+        passed_ok = pass_on(m, own, tonight)
+        if passed_ok:
+            say("%d added to %r - it visits and sends them in its own hours" % (len(tonight), OWN_NAME))
+    # 4. last, when the machine is already back as it was: it touches nothing in Linked Helper
+    report_dates(m, hid, since, dry)
+    return 0 if (read_ok and passed_ok) else 1
 
 
 if __name__ == "__main__":
