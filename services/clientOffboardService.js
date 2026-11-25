@@ -12,6 +12,9 @@
 //   - stop holding their secrets: clear their Claude key, notetaker keys,
 //     calendar token, portal token and machine report secret off the row
 //   - switch off their assistants
+//   - delete the people Wingguy holds for them outside their leads base: their contacts (imported,
+//     typed in, from their email or LinkedIn) and their stored LinkedIn connection list. The terms
+//     page promises this ("I delete them when you ask or when you leave" - Guy, 25 Nov 2026).
 // Their Airtable base (their leads) is kept. The Linked Helper machine, its
 // licence and the VPS are listed for Guy - nothing here can reach them.
 //
@@ -20,8 +23,8 @@
 //   30 days after a card lapse with no restart -> runLapseOffboardSweep, run by
 //     the nightly billing cron (routes/billingRoutes.js)
 //
-// Not reversible in one step: a client who comes back reconnects their mailbox
-// and gets a fresh portal link. That's why a pause alone never triggers this.
+// Not reversible in one step: a client who comes back reconnects their mailbox,
+// gets a fresh portal link and imports their address book again. That's why a pause alone never triggers this.
 
 const { createLogger } = require('../utils/contextLogger');
 
@@ -142,6 +145,21 @@ async function planOffboard(clientId) {
     if (conn) plan.actions.push({ kind: 'wispr', text: 'Delete Wingguy\'s sign-in to their Wispr Flow (it stops collecting their calls)' });
   } catch (_) { /* no database or no table = nothing held */ }
 
+  // 3c. The people Wingguy holds for them outside their leads base (services/contactsStore.js).
+  try {
+    const held = await require('./contactsStore').forgetClient(clientId, { apply: false });
+    if (held && held.ok && (held.contacts || held.linkedinPeople)) {
+      const bits = [];
+      if (held.contacts) bits.push(`${held.contacts} people in their contacts lookup`);
+      if (held.linkedinPeople) bits.push(`their stored LinkedIn connection list (${held.linkedinPeople})`);
+      plan.actions.push({ kind: 'contacts', text: `Delete ${bits.join(' and ')} - for good; their leads stay in their Airtable base` });
+    } else if (held && !held.ok && held.error !== 'no database') {
+      plan.warnings.push(`Couldn't count their contacts (${held.error}) - the terms page says they are deleted when a client leaves, so check by hand.`);
+    }
+  } catch (e) {
+    plan.warnings.push(`Couldn't count their contacts (${e.message}) - the terms page says they are deleted when a client leaves, so check by hand.`);
+  }
+
   // 4. Secrets on the row
   if (set.length) {
     plan.actions.push({ kind: 'fields', fields: set.map(([f]) => f), text: `Clear from their record: ${set.map(([, label]) => label).join(', ')}` });
@@ -216,6 +234,10 @@ async function runOffboard(clientId, { reason = 'Guy asked', logger = defaultLog
       } else if (a.kind === 'wispr') {
         await require('./wisprStore').getStore().deleteConnection(clientId);
         done.push('Wispr sign-in deleted');
+      } else if (a.kind === 'contacts') {
+        const r = await require('./contactsStore').forgetClient(clientId, { apply: true });
+        if (!r.ok) throw new Error(r.error);
+        done.push(`Contacts deleted: ${r.contacts} people${r.linkedinPeople ? `, plus their LinkedIn connection list (${r.linkedinPeople})` : ''}`);
       } else if (a.kind === 'assistants') {
         const base = masterBase();
         for (const id of a.ids) await base('Assistants').update(id, { Status: 'Off' }, { typecast: true });
@@ -255,7 +277,7 @@ async function runOffboard(clientId, { reason = 'Guy asked', logger = defaultLog
     'Still yours to do by hand:',
     ...plan.manual.map((m) => `- ${m}`),
     '',
-    'If they ever come back: they reconnect their mailbox and get a fresh portal link.',
+    'If they ever come back: they reconnect their mailbox, get a fresh portal link and import their address book again.',
   ].join('\n');
   await emailGuy(`Offboarded: ${name}${failed.length ? ' (something needs you)' : ''}`, text, logger);
   logger.info(`[offboard] ${clientId}: ${done.length} done, ${failed.length} failed`);

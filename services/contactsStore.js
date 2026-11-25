@@ -930,7 +930,48 @@ async function tenantStatus(coachClientId) {
   }
 }
 
+/**
+ * Everything the contacts lookup holds for one client - for offboarding (Guy, 26 Nov 2026). The terms
+ * page says a member's contacts are deleted when they leave, so this is what makes that true:
+ *   - every row in wingguy_contacts (imported, typed in, from their email, from LinkedIn, and the
+ *     copies of their leads - the leads themselves stay in their own Airtable base)
+ *   - the sweep stamps, so a client who comes back starts with a clean full sweep
+ *   - their stored LinkedIn connection list (linkedin_people)
+ * apply=false only COUNTS. Returns { ok, contacts, linkedinPeople, applied } or { ok:false, error }.
+ * A database with no linkedin_people table simply has none to delete.
+ */
+async function forgetClient(coachClientId, { apply = false } = {}) {
+  const tenant = clip(coachClientId, 80);
+  if (!tenant) return { ok: false, error: 'coach_client_id required' };
+  const p = getPool();
+  if (!p) return { ok: false, error: 'no database' };
+  const client = await p.connect();
+  const optional = async (sql) => {
+    try { return await client.query(sql, [tenant]); } catch (e) { if (/does not exist/.test(e.message)) return { rows: [{ n: 0 }], rowCount: 0 }; throw e; }
+  };
+  try {
+    await ensureTable(client);
+    if (!apply) {
+      const c = await client.query('SELECT count(*)::int AS n FROM wingguy_contacts WHERE coach_client_id = $1', [tenant]);
+      const l = await optional('SELECT count(*)::int AS n FROM linkedin_people WHERE tenant_id = $1');
+      return { ok: true, contacts: c.rows[0].n, linkedinPeople: l.rows[0].n, applied: false };
+    }
+    const l = await optional('DELETE FROM linkedin_people WHERE tenant_id = $1');
+    await client.query('BEGIN');
+    const c = await client.query('DELETE FROM wingguy_contacts WHERE coach_client_id = $1', [tenant]);
+    await client.query('DELETE FROM wingguy_contacts_sweeps WHERE coach_client_id = $1', [tenant]);
+    await client.query('COMMIT');
+    return { ok: true, contacts: c.rowCount, linkedinPeople: l.rowCount, applied: true };
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* nothing to roll back */ }
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
+  forgetClient,
   upsertContacts, syncLinkedinConnections, findPeople, findSamePeople, updatePersonShared, getContact, markAsLead, findByIdentity, addManualContact, updateContactFields, listForImport, applyImport, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
   // pure, for tests
   normaliseContact, rankMatches, cleanEmail, mergeContacts, mergedValue, slugOf, MANUAL_GUARD, GUARDED_COLS,
