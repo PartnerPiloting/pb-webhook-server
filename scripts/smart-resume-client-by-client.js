@@ -338,7 +338,12 @@ moduleLogger.info(`🔍 TRACE: About to define determineClientWorkflow function`
 async function determineClientWorkflow(client) {
     moduleLogger.info(`🔍 WORKFLOW-DEBUG: ========== determineClientWorkflow CALLED for ${client.clientName} (${client.clientId}) ==========`);
     
-    const operations = ['lead_scoring', 'post_harvesting', 'post_scoring'];
+    // 'post_harvesting' is NOT in this list (Guy, 25 Nov 2026). Its endpoint (/api/apify/*) was
+    // switched off on 16 May 2026 when the Apify post scraping was retired, so every night the
+    // call failed for every client and the report showed "2/3 Operations" with a warning beside
+    // all of them - and every client run was recorded as not successful. Its entry in
+    // operationMap below is kept as dormant legacy; put the name back here to resurrect it.
+    const operations = ['lead_scoring', 'post_scoring'];
     
     const workflow = {
         clientId: client.clientId,
