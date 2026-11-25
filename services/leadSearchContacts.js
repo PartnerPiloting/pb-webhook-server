@@ -24,7 +24,8 @@
  *     client, so one client can never add (or even see) another's contact.
  */
 
-const { groupByPerson, describeSources } = require('./wingguyContactsMcp');
+const { describeSources } = require('./wingguyContactsMcp');
+const { groupPeople, nameKey } = require('./contactGrouping');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'lead_search_contacts');
@@ -54,6 +55,45 @@ function nameParts(row = {}) {
   return { first, last };
 }
 
+const joinAnd = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
+
+/** "your list "Safe to Say"" / "your lists CC Results Group and Evercontact" - '' when on none. */
+function listsText(lists) {
+  const l = [...new Set((lists || []).map((x) => String(x || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  if (!l.length) return '';
+  return l.length === 1 ? `your list "${l[0]}"` : `your lists ${joinAnd(l)}`;
+}
+
+/**
+ * ONE ROW PER PERSON (Guy, 25 Nov 2026). The store keeps a row per address; a person's other rows
+ * may not have matched the words typed (search an email and only that row comes back). So: fetch
+ * every non-lead row with the same full name or the same file entry, let contactGrouping decide who
+ * is really the same person, and hand back one person for each row asked about - in the same order.
+ */
+async function peopleFor(store, clientId, rows) {
+  const asked = (rows || []).filter(Boolean);
+  if (!asked.length) return [];
+  let more = [];
+  if (store.findSamePeople) {
+    const names = asked.map((r) => nameKey(r.name || [r.first_name, r.last_name].filter(Boolean).join(' '))).filter(Boolean);
+    const refs = asked.map((r) => r.person_ref).filter(Boolean);
+    if (names.length || refs.length) more = await store.findSamePeople(clientId, { names, refs });
+  }
+  const have = new Set(asked.map((r) => String(r.id)));
+  const all = [...asked, ...(more || []).filter((r) => r && !r.lead_record_id && !have.has(String(r.id)))];
+  // only people who include a row that was asked for; the extra rows exist to complete them
+  return groupPeople(all).filter((p) => p.ids.some((id) => have.has(id)));
+}
+
+/** The whole person a contact id belongs to (or null). Leads' rows are handed back as they are. */
+async function personOf(store, clientId, contactId) {
+  const row = await store.getContact(clientId, contactId);
+  if (!row) return null;
+  if (row.lead_record_id) return { ...row, ids: [String(row.id)], emails: row.email ? [row.email] : [], members: [row] };
+  const people = await peopleFor(store, clientId, [row]);
+  return people.find((p) => p.ids.includes(String(row.id))) || { ...row, ids: [String(row.id)], emails: row.email ? [row.email] : [], members: [row] };
+}
+
 /** What the page shows for one person. */
 function shape(r) {
   const emails = r.emails || (r.email ? [r.email] : []);
@@ -67,7 +107,8 @@ function shape(r) {
     linkedin: r.linkedin_slug ? `https://www.linkedin.com/in/${r.linkedin_slug}/` : '',
     company: r.company || '',
     // an uploaded list is named: 'your list "Safe to Say"' says more than 'you imported them'
-    knownFrom: [...(r.lists || []).map((l) => `your list "${l}"`), describeSources((r.sources || []).filter((x) => !((r.lists || []).length && x === 'import')))].filter(Boolean).join(', '),
+    knownFrom: [listsText(r.lists), describeSources((r.sources || []).filter((x) => !((r.lists || []).length && x === 'import')))].filter(Boolean).join(', '),
+    lists: [...new Set(r.lists || [])],
     manual: !!r.manual,
   };
 }
@@ -84,8 +125,8 @@ async function searchContacts(clientId, query, { deps = {} } = {}) {
   if (/linkedin\.com\//i.test(q)) return none;        // a pasted profile link is a lead lookup, not a name
   try {
     // notLeads: a lead's main AND alternate addresses both carry its record id, so neither comes back.
-    const rows = await store.findPeople(clientId, q, { limit: 60, notLeads: true });
-    const people = groupByPerson(rows).filter((r) => !r.lead_record_id);
+    const rows = (await store.findPeople(clientId, q, { limit: 60, notLeads: true })).filter((r) => !r.lead_record_id);
+    const people = await peopleFor(store, clientId, rows);
     return { contacts: people.slice(0, MAX_SHOWN).map(shape), more: people.length > MAX_SHOWN };
   } catch (e) {
     log.warn(`lead-search contacts: lookup failed for ${clientId}: ${e.message}`);
@@ -122,18 +163,23 @@ async function addContactAsLead(clientId, airtableBaseId, contactId, { deps = {}
   const store = deps.store || require('./contactsStore');
   const wingguyLeads = deps.wingguyLeads || require('./wingguyLeads');
   const clientService = deps.clientService || require('./clientService');
-  const row = await store.getContact(clientId, contactId);
+  // The whole PERSON, not the one address row that was clicked: every address they have goes onto
+  // the lead (the first as the main email, the rest as alternates).
+  const row = await personOf(store, clientId, contactId);
   if (!row) return { ok: false, status: 404, error: 'That contact was not found.' };
   const { first, last } = nameParts(row);
-  const name = [first, last].filter(Boolean).join(' ') || row.email || '';
+  const emails = (row.emails || []).filter(Boolean);
+  const name = [first, last].filter(Boolean).join(' ') || emails[0] || '';
   if (row.lead_record_id) return { ok: true, status: 200, exists: true, leadRecordId: row.lead_record_id, name };
   if (!first && !last && !row.linkedin_slug) return { ok: false, status: 400, error: 'There is no name on this contact to file them under.' };
+  const markAll = async (leadId) => { for (const m of row.members || [row]) await store.markAsLead(clientId, m.id, leadId).catch(() => {}); };
 
   const base = clientService.getClientBase(airtableBaseId);
   if (!base) return { ok: false, status: 500, error: 'Your leads database is unavailable.' };
-  const sameEmail = await findLeadByEmail(base, row.email);
+  let sameEmail = null;
+  for (const e of emails.slice(0, 6)) { sameEmail = await findLeadByEmail(base, e); if (sameEmail) break; }
   if (sameEmail) {
-    await store.markAsLead(clientId, row.id, sameEmail.id).catch(() => {});
+    await markAll(sameEmail.id);
     return { ok: true, status: 200, exists: true, leadRecordId: sameEmail.id, name: `${sameEmail.fields['First Name'] || ''} ${sameEmail.fields['Last Name'] || ''}`.trim() || name };
   }
 
@@ -142,7 +188,7 @@ async function addContactAsLead(clientId, airtableBaseId, contactId, { deps = {}
     firstName: first,
     lastName: last,
     linkedinUrl: row.linkedin_slug ? `https://www.linkedin.com/in/${row.linkedin_slug}/` : '',
-    email: row.email || '',
+    email: emails[0] || '',
     phone: row.phone || '',
     location: row.location || '',
     notes: `Added from your contacts on Lead Search${knownFrom ? ` (${knownFrom})` : ''}.`,
@@ -150,13 +196,23 @@ async function addContactAsLead(clientId, airtableBaseId, contactId, { deps = {}
     // connected is deliberately left out: knowing someone by email does not make them a LinkedIn connection
   });
   if (!r || !r.ok) return { ok: false, status: 500, error: (r && r.error) || 'The lead could not be created.' };
-  await store.markAsLead(clientId, row.id, r.leadRecordId).catch(() => {});
+  await markAll(r.leadRecordId);
+  // Their other addresses go on as alternates - so a reply from any of them finds this lead. And the
+  // lists they came in on become tags, through the one tag writer. Extras: neither can fail the add.
+  if (r.created && emails.length > 1 && wingguyLeads.updateLeadEmails) {
+    try { await wingguyLeads.updateLeadEmails(airtableBaseId, r.leadRecordId, { addOthers: emails.slice(1) }); } catch (e) { log.warn(`make-a-lead: other addresses not added for ${clientId}: ${e.message}`); }
+  }
+  if (r.created && (row.lists || []).length) {
+    try { await (deps.leadTags || require('./wingguyLeadTags')).updateLeadTags(base, r.leadRecordId, { add: row.lists }); } catch (e) { log.warn(`make-a-lead: list tags not added for ${clientId}: ${e.message}`); }
+  }
   // A meeting recorded before they were a lead is parked under their email - attach it now (same as
   // every other create door). A bonus: never fails the add.
-  if (r.created && row.email) {
-    try {
-      await require('./recallWebhookDb').resolvePendingLeadByEmail({ email: row.email, airtableLeadId: r.leadRecordId, coachClientId: clientId, source: 'lead-created' });
-    } catch (_) { /* non-fatal */ }
+  if (r.created) {
+    for (const e of emails.slice(0, 6)) {
+      try {
+        await (deps.recallDb || require('./recallWebhookDb')).resolvePendingLeadByEmail({ email: e, airtableLeadId: r.leadRecordId, coachClientId: clientId, source: 'lead-created' });
+      } catch (_) { /* non-fatal */ }
+    }
   }
   return { ok: true, status: 200, created: !!r.created, exists: !!r.exists, leadRecordId: r.leadRecordId, name: r.name || name };
 }
@@ -233,8 +289,12 @@ async function editContact(clientId, contactId, fields = {}, { deps = {} } = {})
   if (!cur) return { ok: false, status: 404, error: 'That contact was not found.' };
   const newEmail = 'email' in allowed ? String(allowed.email || '').trim().toLowerCase() : '';
   const newLinkedin = 'linkedin' in allowed ? String(allowed.linkedin || '').trim() : '';
+  // The whole person: someone shown once may be several address rows, and their own other rows are
+  // not "someone else".
+  const person = cur.lead_record_id ? null : await personOf(store, clientId, contactId);
+  const ownIds = new Set((person && person.ids) || [String(cur.id)]);
   if ((newEmail && newEmail !== String(cur.email || '').toLowerCase()) || newLinkedin) {
-    const others = (await store.findByIdentity(clientId, { email: newEmail, linkedin: newLinkedin })).filter((r) => String(r.id) !== String(cur.id));
+    const others = (await store.findByIdentity(clientId, { email: newEmail, linkedin: newLinkedin })).filter((r) => !ownIds.has(String(r.id)));
     if (others.length) {
       const o = others[0];
       return { ok: false, status: 409, error: `${String(o.name || '').trim() || o.email || 'Someone else'} already has that ${newEmail && String(o.email || '').toLowerCase() === newEmail ? 'email address' : 'LinkedIn address'} - they are one of your ${o.lead_record_id ? 'leads' : 'contacts'}.` };
@@ -242,7 +302,19 @@ async function editContact(clientId, contactId, fields = {}, { deps = {} } = {})
   }
   const r = await store.updateContactFields(clientId, contactId, allowed);
   if (!r.ok) return { ok: false, status: r.status || 500, error: r.error };
-  return { ok: true, status: 200, contact: shape({ ...r.row, emails: r.row.email ? [r.row.email] : [] }) };
+  // A person with several address rows: the name and company go onto all of them and the rows are
+  // tied together, so the edit cannot split one person back into two.
+  if (ownIds.size > 1 && store.updatePersonShared) {
+    await store.updatePersonShared(clientId, [...ownIds], {
+      ...('name' in allowed ? { name: r.row.name } : {}), ...('company' in allowed ? { company: r.row.company } : {}),
+      ref: (person && person.person_ref) || `edit:${[...ownIds].sort()[0]}`,
+    });
+  }
+  const after = (await personOf(store, clientId, contactId)) || { ...r.row, emails: r.row.email ? [r.row.email] : [] };
+  // the row that was edited leads: its address is the one the card showed in the box
+  const lead = String(r.row.email || '').toLowerCase();
+  const emails = lead ? [lead, ...(after.emails || []).filter((e) => e !== lead)] : (after.emails || []);
+  return { ok: true, status: 200, contact: shape({ ...after, id: r.row.id, name: r.row.name, emails }) };
 }
 
-module.exports = { saveContact, editContact, searchContacts, addContactAsLead, nameParts, shape, findLeadByEmail, MIN_QUERY, MAX_SHOWN, ADD_SOURCE };
+module.exports = { saveContact, editContact, searchContacts, addContactAsLead, nameParts, shape, listsText, peopleFor, personOf, findLeadByEmail, MIN_QUERY, MAX_SHOWN, ADD_SOURCE };

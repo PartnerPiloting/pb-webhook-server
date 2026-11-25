@@ -9,7 +9,10 @@
  *   - any plain CSV with obvious columns: name, email, phone, company, linkedin
  *
  * PURE: text in, people out. No database, no network. Each person is
- *   { name, firstName, lastName, emails: [..], phone, company, linkedin }
+ *   { name, firstName, lastName, emails: [..], phone, company, linkedin, labels: [..] }
+ * labels (25 Nov 2026) are the lists the FILE says the person is on: Google's "Labels" (or the older
+ * "Group Membership") column, Outlook's "Categories", a vCard's CATEGORIES. Google's own system
+ * labels ("* myContacts", "* starred" - they start with an asterisk) are not lists and are dropped.
  * with emails lower-cased, de-duplicated and shape-checked. Nothing is guessed: a column this does
  * not recognise is ignored, never squeezed into a field.
  */
@@ -77,6 +80,26 @@ const isEmailColumn = (h) => /^e ?mail( \d+)?( value| address)?$/.test(h) || /^(
 // Phones in the order a person would want them: mobile first, then the rest.
 const PHONE_ORDER = [/^mobile( phone)?$/, /^(cell|cell phone|cellphone)$/, /^phone 1 value$/, /^(phone|phone number|telephone|tel|contact number)$/, /^primary phone$/, /^business phone$/, /^work phone$/, /^home phone$/, /^phone \d+ value$/, /^(business|home|other|company main) phone( \d)?$/, /^other phone$/];
 const isWebsiteColumn = (h) => /^website( \d+)?( value)?$/.test(h) || h === 'web page' || h === 'url' || h === 'personal web page';
+const LABEL_COLUMNS = ['labels', 'group membership', 'groups', 'categories'];
+
+/**
+ * The lists in one cell. Google separates with " ::: ", Outlook and vCard with ; or ,. A label that
+ * starts with an asterisk is one of Google's own ("* myContacts", "* starred", "* friends") - not a
+ * list the client made. Trimmed, de-duplicated (case-insensitively), 60 characters at most.
+ */
+function labelsFrom(cell, { commaToo = false } = {}) {
+  const parts = String(cell || '').split(commaToo ? /\s*(?::::|;|,)\s*/ : /\s*(?::::|;)\s*/);
+  const out = [];
+  const seen = new Set();
+  for (const raw of parts) {
+    const l = tidy(raw).slice(0, 60);
+    if (!l || l.startsWith('*') || /^(my ?contacts|starred|imported on .*)$/i.test(l)) continue;
+    if (seen.has(l.toLowerCase())) continue;
+    seen.add(l.toLowerCase());
+    out.push(l);
+  }
+  return out;
+}
 
 function peopleFromCsv(text) {
   const rows = parseCsv(text, sniffDelimiter(text));
@@ -89,6 +112,7 @@ function peopleFromCsv(text) {
     emails: headers.map((h, i) => (isEmailColumn(h) ? i : -1)).filter((i) => i >= 0),
     phones: PHONE_ORDER.flatMap((rx) => headers.map((h, i) => (rx.test(h) ? i : -1)).filter((i) => i >= 0)).filter((v, i, a) => a.indexOf(v) === i),
     websites: headers.map((h, i) => (isWebsiteColumn(h) ? i : -1)).filter((i) => i >= 0),
+    labels: headers.map((h, i) => (LABEL_COLUMNS.includes(h) ? i : -1)).filter((i) => i >= 0),
   };
   const hasName = col.name.length || col.first.length || col.last.length;
   if (!col.emails.length && !col.phones.length) {
@@ -107,7 +131,8 @@ function peopleFromCsv(text) {
     const phone = firstOf(r, col.phones).split(/\s*:::\s*/)[0];
     let linkedin = firstOf(r, col.linkedin);
     if (!linkedin) linkedin = col.websites.map((i) => tidy(r[i])).find((v) => /linkedin\.com\/in\//i.test(v)) || '';
-    people.push({ name, firstName, lastName, emails, phone, company: firstOf(r, col.company), linkedin: /linkedin\.com\/in\//i.test(linkedin) ? linkedin : '' });
+    const labels = labelsFrom(col.labels.map((i) => String(r[i] || '')).join(' ::: '));
+    people.push({ name, firstName, lastName, emails, phone, company: firstOf(r, col.company), linkedin: /linkedin\.com\/in\//i.test(linkedin) ? linkedin : '', labels });
   }
   return { people, format, hasName: !!hasName };
 }
@@ -133,13 +158,13 @@ function peopleFromVcard(text) {
   let cur = null;
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
-    if (/^BEGIN:VCARD/i.test(line)) { cur = { name: '', firstName: '', lastName: '', emails: [], phones: [], company: '', linkedin: '' }; continue; }
+    if (/^BEGIN:VCARD/i.test(line)) { cur = { name: '', firstName: '', lastName: '', emails: [], phones: [], company: '', linkedin: '', labels: [] }; continue; }
     if (/^END:VCARD/i.test(line)) {
       if (cur) {
         if (!cur.name) cur.name = [cur.firstName, cur.lastName].filter(Boolean).join(' ');
         // mobile first, then whatever came first
         const phone = (cur.phones.find((p) => p.mobile) || cur.phones[0] || {}).value || '';
-        people.push({ name: cur.name, firstName: cur.firstName, lastName: cur.lastName, emails: [...new Set(cur.emails)], phone, company: cur.company, linkedin: cur.linkedin });
+        people.push({ name: cur.name, firstName: cur.firstName, lastName: cur.lastName, emails: [...new Set(cur.emails)], phone, company: cur.company, linkedin: cur.linkedin, labels: labelsFrom(cur.labels.join(' ::: ')) });
       }
       cur = null;
       continue;
@@ -163,6 +188,7 @@ function peopleFromVcard(text) {
     } else if (prop === 'EMAIL') { const e = cleanEmail(unescapeV(value)); if (e) cur.emails.push(e); }
     else if (prop === 'TEL') { const v = tidy(unescapeV(value)).replace(/^tel:/i, ''); if (v) cur.phones.push({ value: v, mobile: /CELL|MOBILE|IPHONE/.test(params) }); }
     else if (prop === 'ORG') cur.company = tidy(unescapeV(value.split(';')[0]));
+    else if (prop === 'CATEGORIES') cur.labels.push(...value.split(/(?<!\\),/).map((x) => tidy(unescapeV(x))));
     else if ((prop === 'URL' || /^X-SOCIALPROFILE/.test(prop)) && /linkedin\.com\/in\//i.test(value) && !cur.linkedin) cur.linkedin = tidy(unescapeV(value));
   }
   return { people, format: 'vcard', hasName: true };
@@ -188,4 +214,4 @@ function parseContactsFile(text, filename = '') {
   return { format: out.format, people, ...(out.problem ? { problem: out.problem } : {}) };
 }
 
-module.exports = { parseContactsFile, parseCsv, peopleFromCsv, peopleFromVcard, sniffDelimiter, cleanEmail, MAX_PEOPLE };
+module.exports = { parseContactsFile, parseCsv, peopleFromCsv, peopleFromVcard, sniffDelimiter, cleanEmail, labelsFrom, MAX_PEOPLE };

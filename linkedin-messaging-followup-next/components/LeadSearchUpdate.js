@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { debounce } from '../utils/helpers';
-import { searchLeads, getLeadById, getLeadByLinkedInUrl, updateLead } from '../services/api';
+import { searchLeads, getLeadById, getLeadByLinkedInUrl, updateLead, wantsNewLeadSearch } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 import LeadSearchEnhanced from './LeadSearchEnhanced';
 import LeadDetailModal from './LeadDetailModal';
@@ -152,8 +152,11 @@ const LeadSearchUpdate = () => {
       
       console.log(`🔍 Search completed: "${query}" page ${page} (ID: ${requestId}) - ${filteredResults.length} results on this page, total: ${total || 'unknown'}`);
       
-      // Auto-select if exactly 1 result AND there's an active search query
-      if (filteredResults.length === 1 && query && query.trim() !== '') {
+      // Auto-select if exactly 1 result AND there's an active search query.
+      // NOT where the new Lead Search is on (Guy only for now, 25 Nov 2026): there a search always
+      // shows the list, even for one result, and the user clicks to open - a record that opens by
+      // itself reads as something having happened to it. Everyone else: exactly as before.
+      if (filteredResults.length === 1 && query && query.trim() !== '' && !(await wantsNewLeadSearch())) {
         const singleLead = filteredResults[0];
         const leadId = singleLead.id || singleLead.recordId || singleLead['Profile Key'];
         console.log(`🎯 Auto-selecting single result: ${leadId}`);

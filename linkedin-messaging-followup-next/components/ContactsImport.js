@@ -56,7 +56,8 @@ export default function ContactsImport({ onClose }) {
         {done ? (
           <div id="contacts-import-done" className="mt-4 p-4 rounded-lg bg-green-100 text-green-800 text-sm">
             <p className="font-medium">Imported: {done.line}.</p>
-            <p className="mt-1">Search a name on Your CRM to find them.{done.leadsUpdated ? ` ${done.leadsUpdated} of your leads had a blank filled in - that finishes in the next minute or so.` : ''}</p>
+            {done.listsLine ? <p className="mt-1">{done.listsLine}.{done.tagsCapped ? ` ${done.tagsCapped} list ${done.tagsCapped === 1 ? 'tag' : 'tags'} did not fit (those leads already have 15 tags).` : ''}</p> : null}
+            <p className="mt-1">Search a name on Your CRM to find them.{done.leadsUpdated ? ` ${done.leadsUpdated} of your leads were updated (a blank filled in, or a list added as a tag) - that finishes in the next few minutes.` : ''}</p>
           </div>
         ) : (
           <div className="mt-4 space-y-4">
@@ -67,14 +68,20 @@ export default function ContactsImport({ onClose }) {
             <div>
               <label htmlFor="contacts-import-list" className="block text-sm font-medium text-gray-700 mb-1">Name for this list <span className="font-normal text-gray-500">(optional)</span></label>
               <input id="contacts-import-list" type="text" value={listName} onChange={(e) => { setListName(e.target.value); setPreview(null); }} className={field} placeholder='e.g. "Safe to Say" or "My phone contacts"' />
-              <p className="mt-1 text-xs text-gray-500">Shown on each person as where Wingguy knows them from.</p>
+              <p className="mt-1 text-xs text-gray-500">Leave blank for a Google Contacts file - each person&apos;s labels are read from the file. A name typed here goes on everyone in the file, for a list with no labels of its own.</p>
             </div>
             {preview ? (
               <div id="contacts-import-preview" className="p-4 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-900">
                 <p className="font-medium">{preview.inFile} people in the file: {preview.line}.</p>
+                {preview.listsLine ? (
+                  <p id="contacts-import-lists" className="mt-1">
+                    {preview.listsLine}. Each person keeps the lists they are on{preview.leadsTagged ? ` - on a lead the list becomes a tag (${preview.leadsTagged} ${preview.leadsTagged === 1 ? 'lead' : 'leads'})` : ''}.
+                    {preview.tagsCapped ? ` ${preview.tagsCapped} list ${preview.tagsCapped === 1 ? 'tag' : 'tags'} will not fit: those leads already have 15 tags.` : ''}
+                  </p>
+                ) : null}
                 <p className="mt-1">
                   Nothing has been saved yet. New people become contacts. Someone you already have only gets blanks filled in - nothing is overwritten.
-                  {preview.leadsUpdated ? ` ${preview.leadsUpdated} of the updates are leads with a blank phone, email or company.` : ''}
+                  {preview.leadsUpdated ? ` ${preview.leadsUpdated} of the updates are leads: a blank phone, email or company filled in, or a list added as a tag.` : ''}
                 </p>
               </div>
             ) : null}

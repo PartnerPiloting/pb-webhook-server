@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import SearchTermsField from './SearchTermsField';
 import CollapsibleNotes from './CollapsibleNotes';
 import { deleteLead, getLeadCampaigns } from '../services/api';
@@ -6,6 +6,8 @@ import { deleteLead, getLeadCampaigns } from '../services/api';
 // "Tags (Search Terms)" instead of "Search Terms" where the new Lead Search wording is on (Guy only
 // for now, 24 Nov 2026), so the lead record matches the filter heading and the results column. Asked
 // once per page load, not once per lead opened. Any failure = the old label.
+/** Tags as a comparable key: lower case, trimmed, de-duplicated, order ignored. */
+const tagsKey = (v) => [...new Set(String(v || '').split(',').map((t) => t.trim().toLowerCase().replace(/\s+/g, ' ')).filter(Boolean))].sort().join(',');
 let newWordingPromise = null;
 const wantsNewWording = () => {
   if (!newWordingPromise) newWordingPromise = getLeadCampaigns().then((o) => !!(o && o.recentShortcut)).catch(() => false);
@@ -134,7 +136,18 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     return () => { alive = false; };
   }, []);
   const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production';
-  const [hasChanges, setHasChanges] = useState(false);
+  // "You have unsaved changes" (25 Nov 2026). The tags box reports its contents the moment it is
+  // drawn, and that used to count as a change - so EVERY record said "unsaved changes" the instant
+  // it opened, untouched. Two answers are kept: the old one (anything reported = changed), and the
+  // true one (something the user did, or tags that really differ from the record). Where the new
+  // wording is on (Guy only for now) the true one is shown; everyone else sees exactly what they
+  // always did.
+  const [anyChange, setAnyChange] = useState(false);
+  const [userChange, setUserChange] = useState(false);
+  const [tagsDiffer, setTagsDiffer] = useState(false);
+  const originalTagsRef = useRef({ display: '', canon: '' });
+  const setHasChanges = (v) => { setAnyChange(v); setUserChange(v); if (!v) setTagsDiffer(false); };
+  const hasChanges = tagsLabel === 'Search Terms' ? anyChange : (userChange || tagsDiffer);
   const [editingField, setEditingField] = useState(null); // Track which field is being edited
   const [isEditingNotes, setIsEditingNotes] = useState(false); // Track notes editing state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Track delete confirmation dialog
@@ -169,6 +182,10 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   searchTerms: lead.searchTerms || lead['Search Terms'] || '',
   searchTokensCanonical: lead.searchTokensCanonical || lead['Search Tokens (canonical)'] || ''
       });
+      originalTagsRef.current = {
+        display: tagsKey(lead.searchTerms || lead['Search Terms'] || lead.searchTokensCanonical || lead['Search Tokens (canonical)'] || ''),
+        canon: tagsKey(lead.searchTokensCanonical || lead['Search Tokens (canonical)'] || lead.searchTerms || lead['Search Terms'] || ''),
+      };
       setHasChanges(false);
     }
   }, [lead]);
@@ -251,7 +268,10 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
       searchTerms: termsString,
       searchTokensCanonical: canonicalCsv
     }));
-    setHasChanges(true);
+    setAnyChange(true);
+    // the same tags as the record holds (in any order or case) are not a change
+    const o = originalTagsRef.current;
+    setTagsDiffer(tagsKey(termsString) !== o.display && tagsKey(canonicalCsv) !== o.canon);
   }, [isDev]);
 
   // State for validation errors

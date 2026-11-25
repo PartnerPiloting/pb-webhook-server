@@ -67,6 +67,11 @@ async function ensureTable(client) {
   // lists (2026-11-24): the names of the uploaded lists this person came in on ("Safe to Say") - shown
   // as where Wingguy knows them from. Its own column, so no feed's upsert can ever drop it.
   await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS lists TEXT[] NOT NULL DEFAULT '{}';`);
+  // person_ref (2026-11-25): rows that an uploaded file listed under ONE entry carry the same value,
+  // so a person with three addresses is shown once (services/contactGrouping.js). It records what a
+  // file said - never a guess - and no feed's upsert touches it.
+  await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS person_ref TEXT;`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_ref ON wingguy_contacts (coach_client_id, person_ref) WHERE person_ref IS NOT NULL;`);
   // Failure columns (2026-09-15). last_run_at means SUCCESS; without a record of attempts,
   // "this feed has no stamp" cannot tell a genuinely broken feed from one that simply did not
   // exist yet - which would have alerted on every tenant the night a new feed shipped.
@@ -432,7 +437,7 @@ async function findPeople(coachClientId, query, { limit = 8, notLeads = false } 
     await ensureTable(client);
     const r = await client.query(
       `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
-              lead_record_id, sources, last_seen_at, evidence, manual, lists
+              lead_record_id, sources, last_seen_at, evidence, manual, lists, person_ref
          FROM wingguy_contacts
         WHERE coach_client_id = $1 ${clauses.length ? 'AND ' + clauses.join(' AND ') : ''}
               ${notLeads ? 'AND lead_record_id IS NULL' : ''}
@@ -448,7 +453,72 @@ async function findPeople(coachClientId, query, { limit = 8, notLeads = false } 
   }
 }
 
-const ROW_COLS = 'id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug, lead_record_id, sources, last_seen_at, evidence, manual, lists';
+const ROW_COLS = 'id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug, lead_record_id, sources, last_seen_at, evidence, manual, lists, person_ref';
+
+/**
+ * Every NON-LEAD row of this client that could be the same person as one already in hand: the same
+ * full name, or the same person_ref. The caller (services/contactGrouping.js) decides who really is
+ * - this only fetches the candidates, so a person's other addresses are found even when the search
+ * words matched just one of them. Capped: a name shared by hundreds is not one person.
+ */
+async function findSamePeople(coachClientId, { names = [], refs = [] } = {}) {
+  const tenant = clip(coachClientId, 80);
+  const n = [...new Set((names || []).map((x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()).filter(Boolean))].slice(0, 80);
+  const rf = [...new Set((refs || []).map((x) => String(x || '')).filter(Boolean))].slice(0, 80);
+  if (!tenant || (!n.length && !rf.length)) return [];
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const r = await client.query(
+      `SELECT ${ROW_COLS} FROM wingguy_contacts
+        WHERE coach_client_id = $1 AND lead_record_id IS NULL
+          AND (lower(name) = ANY($2::text[]) OR person_ref = ANY($3::text[]))
+        ORDER BY id LIMIT 400`, [tenant, n, rf]);
+    return r.rows;
+  } catch (e) {
+    console.warn(`[contactsStore] findSamePeople failed (${tenant}): ${e.message}`);
+    return [];
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * A person shown as ONE (several address rows) has been edited: the name and company go onto every
+ * one of their rows, and the rows are tied together (person_ref) so a later edit cannot split them.
+ * Leads' rows are never touched. Returns the number of rows written.
+ */
+async function updatePersonShared(coachClientId, ids = [], { name, company, ref = '' } = {}) {
+  const tenant = clip(coachClientId, 80);
+  const list = [...new Set((ids || []).map(Number).filter((x) => Number.isInteger(x) && x > 0))];
+  if (!tenant || list.length < 2) return 0;
+  const p = getPool();
+  if (!p) return 0;
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const setName = name !== undefined;
+    const setCompany = company !== undefined;
+    const r = await client.query(
+      `UPDATE wingguy_contacts SET
+          name = CASE WHEN $3 THEN $4 ELSE name END,
+          first_name = CASE WHEN $3 THEN NULL ELSE first_name END,
+          last_name = CASE WHEN $3 THEN NULL ELSE last_name END,
+          company = CASE WHEN $5 THEN $6 ELSE company END,
+          person_ref = COALESCE(person_ref, NULLIF($7, '')),
+          manual = true, updated_at = now()
+        WHERE coach_client_id = $1 AND id = ANY($2::bigint[]) AND lead_record_id IS NULL`,
+      [tenant, list, setName, setName ? (clip(name, 160) || null) : null, setCompany, setCompany ? (clip(company, 120) || null) : null, clip(ref, 200)]);
+    return r.rowCount;
+  } catch (e) {
+    console.warn(`[contactsStore] updatePersonShared failed (${tenant}): ${e.message}`);
+    return 0;
+  } finally {
+    client.release();
+  }
+}
 
 /** LinkedIn address or slug -> the slug we key on ('' when it is not a profile link). */
 function slugOf(v) {
@@ -597,7 +667,7 @@ async function listForImport(coachClientId) {
   try {
     await ensureTable(client);
     const r = await client.query(
-      `SELECT id, contact_key, email, linkedin_slug, lead_record_id, name, company, phone, lists FROM wingguy_contacts WHERE coach_client_id = $1`, [tenant]);
+      `SELECT id, contact_key, email, linkedin_slug, lead_record_id, name, company, phone, lists, person_ref FROM wingguy_contacts WHERE coach_client_id = $1`, [tenant]);
     return r.rows;
   } finally {
     client.release();
@@ -606,19 +676,20 @@ async function listForImport(coachClientId) {
 
 /**
  * Write an import (services/contactsImport.js planned it; nothing here decides anything).
- *   newPeople    [{ name, email, phone, company, linkedin (slug), otherEmails[] }]  -> new contact rows
- *   contactFills [{ id, set: { name?, company?, phone?, linkedin_slug? }, addList }] -> blanks filled
- *   list         the upload's list name ('' = none)
+ *   newPeople    [{ name, email, phone, company, linkedin (slug), otherEmails[], lists[], ref }] -> new contact rows
+ *   extraRows    [{ email, name, company, lists[], ref }]  -> a new address for someone already held
+ *   contactFills [{ id, set: { name?, company?, phone?, linkedin_slug? }, addLists[], ref }] -> blanks filled
+ * lists are PER PERSON (a Google file carries each contact's own labels) and are only ever ADDED - a
+ * list a person is already on is never replaced. ref ties one file entry's addresses together.
  * New rows are `manual` with source 'import'. An existing key is never overwritten (DO NOTHING), and
  * a fill is written as COALESCE(existing, new) - so even a row that changed since the preview keeps
  * what it has. One transaction: an import either lands whole or not at all.
  * Returns { ok, inserted, filled }.
  */
-async function applyImport(coachClientId, { newPeople = [], contactFills = [], list = '' } = {}) {
+async function applyImport(coachClientId, { newPeople = [], contactFills = [], extraRows = [] } = {}) {
   const tenant = clip(coachClientId, 80);
   if (!tenant) return { ok: false, error: 'coach_client_id required' };
-  const listName = clip(list, 60);
-  const lists = listName ? [listName] : [];
+  const listsJson = (l) => JSON.stringify([...new Set((l || []).map((x) => clip(x, 60)).filter(Boolean))]);
   const rows = [];
   for (const person of newPeople) {
     const email = cleanEmail(person.email);
@@ -628,11 +699,17 @@ async function applyImport(coachClientId, { newPeople = [], contactFills = [], l
     const key = email || (digits.length >= 6 ? `phone:${digits}` : '');
     if (!key) continue;
     const name = clip(person.name, 160) || null;
-    rows.push([key, email || null, name, clip(person.company, 120) || null, phone || null, slug || null]);
+    const lj = listsJson(person.lists);
+    const ref = clip(person.ref, 200) || null;
+    rows.push([key, email || null, name, clip(person.company, 120) || null, phone || null, slug || null, lj, ref]);
     for (const other of person.otherEmails || []) {
       const e = cleanEmail(other);
-      if (e && e !== email) rows.push([e, e, name, clip(person.company, 120) || null, null, null]);
+      if (e && e !== email) rows.push([e, e, name, clip(person.company, 120) || null, null, null, lj, ref]);
     }
+  }
+  for (const x of extraRows || []) {
+    const e = cleanEmail(x.email);
+    if (e) rows.push([e, e, clip(x.name, 160) || null, clip(x.company, 120) || null, null, null, listsJson(x.lists), clip(x.ref, 200) || null]);
   }
   const p = getPool();
   if (!p) return { ok: false, error: 'no database' };
@@ -644,11 +721,11 @@ async function applyImport(coachClientId, { newPeople = [], contactFills = [], l
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500);
       const r = await client.query(
-        `INSERT INTO wingguy_contacts (coach_client_id, contact_key, email, name, company, phone, linkedin_slug, sources, last_seen_at, manual, lists)
-         SELECT $1, v.k, v.e, v.n, v.c, v.ph, v.s, ARRAY['import'], now(), true, $8::text[]
-           FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) AS v(k, e, n, c, ph, s)
+        `INSERT INTO wingguy_contacts (coach_client_id, contact_key, email, name, company, phone, linkedin_slug, sources, last_seen_at, manual, lists, person_ref)
+         SELECT $1, v.k, v.e, v.n, v.c, v.ph, v.s, ARRAY['import'], now(), true, ARRAY(SELECT jsonb_array_elements_text(v.l::jsonb)), v.r
+           FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[]) AS v(k, e, n, c, ph, s, l, r)
          ON CONFLICT (coach_client_id, contact_key) DO NOTHING`,
-        [tenant, chunk.map((x) => x[0]), chunk.map((x) => x[1]), chunk.map((x) => x[2]), chunk.map((x) => x[3]), chunk.map((x) => x[4]), chunk.map((x) => x[5]), lists]);
+        [tenant, chunk.map((x) => x[0]), chunk.map((x) => x[1]), chunk.map((x) => x[2]), chunk.map((x) => x[3]), chunk.map((x) => x[4]), chunk.map((x) => x[5]), chunk.map((x) => x[6]), chunk.map((x) => x[7])]);
       inserted += r.rowCount;
     }
     let filled = 0;
@@ -659,12 +736,14 @@ async function applyImport(coachClientId, { newPeople = [], contactFills = [], l
             name = COALESCE(c.name, v.n), company = COALESCE(c.company, v.c), phone = COALESCE(c.phone, v.ph),
             linkedin_slug = COALESCE(c.linkedin_slug, v.s),
             sources = ARRAY(SELECT DISTINCT x FROM unnest(c.sources || ARRAY['import']) AS x),
-            lists = ARRAY(SELECT DISTINCT x FROM unnest(c.lists || $7::text[]) AS x),
+            lists = ARRAY(SELECT DISTINCT x FROM unnest(c.lists || ARRAY(SELECT jsonb_array_elements_text(v.l::jsonb))) AS x),
+            person_ref = COALESCE(c.person_ref, v.r),
             updated_at = now()
-           FROM unnest($2::bigint[], $3::text[], $4::text[], $5::text[], $6::text[]) AS v(id, n, c, ph, s)
+           FROM unnest($2::bigint[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) AS v(id, n, c, ph, s, l, r)
           WHERE c.coach_client_id = $1 AND c.id = v.id AND c.lead_record_id IS NULL`,
         [tenant, chunk.map((x) => Number(x.id)), chunk.map((x) => clip(x.set && x.set.name, 160) || null), chunk.map((x) => clip(x.set && x.set.company, 120) || null),
-          chunk.map((x) => clip(x.set && x.set.phone, 60) || null), chunk.map((x) => (x.set && x.set.linkedin_slug ? slugOf(x.set.linkedin_slug) : null) || null), lists]);
+          chunk.map((x) => clip(x.set && x.set.phone, 60) || null), chunk.map((x) => (x.set && x.set.linkedin_slug ? slugOf(x.set.linkedin_slug) : null) || null),
+          chunk.map((x) => listsJson(x.addLists)), chunk.map((x) => clip(x.ref, 200) || null)]);
       filled += r.rowCount;
     }
     await client.query('COMMIT');
@@ -693,7 +772,7 @@ async function getContact(coachClientId, id) {
     await ensureTable(client);
     const r = await client.query(
       `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
-              lead_record_id, sources, last_seen_at, evidence, manual, lists
+              lead_record_id, sources, last_seen_at, evidence, manual, lists, person_ref
          FROM wingguy_contacts WHERE coach_client_id = $1 AND id = $2`, [tenant, n]);
     return r.rows[0] || null;
   } finally {
@@ -750,7 +829,7 @@ async function tenantStatus(coachClientId) {
 }
 
 module.exports = {
-  upsertContacts, findPeople, getContact, markAsLead, findByIdentity, addManualContact, updateContactFields, listForImport, applyImport, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
+  upsertContacts, findPeople, findSamePeople, updatePersonShared, getContact, markAsLead, findByIdentity, addManualContact, updateContactFields, listForImport, applyImport, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
   // pure, for tests
   normaliseContact, rankMatches, cleanEmail, mergeContacts, mergedValue, slugOf, MANUAL_GUARD, GUARDED_COLS,
 };

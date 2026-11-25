@@ -513,7 +513,7 @@ export default function LeadSearchTableDirect({
                 <>
                   <span className="text-xs text-gray-500">
                     {openContact.add && openContact.add.state === 'error' ? <span className="block text-red-700">{openContact.add.text}</span> : null}
-                    {onEditContact ? <button type="button" id="contact-card-edit-open" onClick={() => startEdit(openContact)} className="text-sm text-blue-700 hover:underline">Edit details</button> : 'Not one of your leads.'}
+                    {onEditContact ? <button type="button" id="contact-card-edit-open" onClick={() => startEdit(openContact)} className="text-sm text-blue-700 hover:underline whitespace-nowrap">Edit details</button> : 'Not one of your leads.'}
                   </span>
                   <span className="text-right">
                     <button
