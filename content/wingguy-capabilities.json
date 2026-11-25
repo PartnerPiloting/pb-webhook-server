@@ -173,7 +173,7 @@
     }
   ],
   "not_shown": {
-    "wingguy_save_contact": "Guy only for now (24 Nov 2026) - saves a person as a contact, not a lead; goes on the list when contacts are switched on for clients",
+    "wingguy_save_contact": "works for every client since 26 Nov 2026 - saves a person as a contact, not a lead; gets its own line, with the sentence to say, when the contacts Learning topics are written (Guy to see the wording first)",
     "wingguy_vision": "the answer itself",
     "wingguy_onboarding_guide": "Guy only - his onboarding call script",
     "wingguy_get_client": "Guy only - client directory",

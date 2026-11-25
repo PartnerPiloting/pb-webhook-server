@@ -40,13 +40,16 @@ const CACHE_MS = 5 * 60 * 1000;
  * under "No campaign" although Linked Helper sent it. Add a client here once their catch-up has
  * run (or '*' once every base has had it). The field itself fills in for everyone from go-live.
  */
-const FILTER_READY = ['Roland-Illyes', 'Guy-Wilson'];
+// Every client base had its catch-up on 26 Nov 2026 (Guy), so the filter is on for everyone.
+const FILTER_READY = ['*'];
 
 /**
  * Lead Search's "Recently connected" shortcut and its "No tag or note" marker (Guy, 23 Nov 2026).
  * On for these clients only while Guy looks at it on his own portal - '*' turns it on for everyone.
  */
-const RECENT_SHORTCUT = ['Guy-Wilson'];
+// On for every client since 26 Nov 2026 (Guy) - with it come leads + contacts in one search, Add a
+// contact, Import contacts and the wingguy_save_contact tool, which all ask this same question.
+const RECENT_SHORTCUT = ['*'];
 const recentShortcut = (clientId) => RECENT_SHORTCUT.includes('*') || RECENT_SHORTCUT.includes(String(clientId || ''));
 
 /**

@@ -148,10 +148,10 @@ check('the filter list: machine campaigns + every name on leads; a renamed one i
   assert.deepStrictEqual(o.choices, ['Campaign 1', 'Legal ICP 50-201']);
 });
 
-check('the filter stays hidden for a client whose catch-up has not run, and for a base without the field', async () => {
+check('the filter is on for every client since 26 Nov 2026, but stays hidden for a base without the field', async () => {
   machine = live('Campaign 1');
   const notYet = await leadCampaign.getOptions('Someone-Else', fakeBase([{ id: 'a', fields: { Campaign: 'Campaign 1' } }]), { fresh: true });
-  assert.strictEqual(notYet.filterReady, false);
+  assert.strictEqual(notYet.filterReady, true);
   assert.deepStrictEqual(notYet.choices, ['Campaign 1']);
   const noField = await leadCampaign.getOptions('Roland-Illyes', fakeBase([], { failSelect: unknownField() }), { fresh: true });
   assert.strictEqual(noField.filterReady, false);
@@ -196,11 +196,11 @@ check('a big base: a first ask answers with the names found so far (no counts), 
   assert.strictEqual(await leadCampaign.getOptions('Big-Client', slow), full);
 });
 
-check('"Recently connected" and the no-tag marker: Guy only for now; the filter means Search Terms is blank', async () => {
+check('"Recently connected" and the no-tag marker: every client since 26 Nov 2026; the filter means Search Terms is blank', async () => {
   machine = live('Campaign 1');
   const base = fakeBase([{ id: 'a', fields: { Campaign: 'Campaign 1' } }]);
   assert.strictEqual((await leadCampaign.getOptions('Guy-Wilson', base, { fresh: true })).recentShortcut, true);
-  assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).recentShortcut, false);
+  assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).recentShortcut, true);
   // "connect on LinkedIn and they arrive by themselves" is only said where the nightly collection runs
   assert.strictEqual((await leadCampaign.getOptions('Guy-Wilson', base, { fresh: true })).ownConnectionsArrive, true);
   assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).ownConnectionsArrive, false);

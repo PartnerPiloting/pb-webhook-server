@@ -270,7 +270,8 @@ check('Claude\'s "save X to my contacts": create-only, says who already exists, 
   assert.ok(/Lee Lead is already one of your leads \(record recLEE\) - nothing new was saved/.test(again.text), again.text);
   const missing = await runSaveContact({ name: 'No Details' }, 'Guy-Wilson', deps);
   assert.ok(missing.isError && /email or a phone/.test(missing.text));
-  const off = await runSaveContact({ name: 'Jane Smith', phone: '0412 345 678' }, 'Roland-Illyes', deps);
+  // on for every client since 26 Nov 2026 - the gate itself is still there, so prove it with the switch held off
+  const off = await runSaveContact({ name: 'Jane Smith', phone: '0412 345 678' }, 'Roland-Illyes', { ...deps, leadCampaign: { recentShortcut: () => false } });
   assert.ok(/not switched on for this account yet/.test(off.text));
   assert.strictEqual(store.rows.length, 2);
 });

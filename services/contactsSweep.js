@@ -425,7 +425,8 @@ async function sweepTenant(coach, opts = {}) {
  * only while he looks at it; '*' = everyone who has linked LinkedIn). Add a client here to switch
  * it on for them: the next nightly sweep fills it in.
  */
-const LINKEDIN_CONTACTS = ['Guy-Wilson'];
+// Everyone since 26 Nov 2026 (Guy): a client with no stored connections is simply skipped.
+const LINKEDIN_CONTACTS = ['*'];
 const linkedinContactsOn = (clientId) => LINKEDIN_CONTACTS.includes('*') || LINKEDIN_CONTACTS.includes(String(clientId || ''));
 
 /** Every active client with a leads base - or just the ones named in `onlyClientIds`. */

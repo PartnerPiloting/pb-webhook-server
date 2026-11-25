@@ -243,10 +243,10 @@ check('a LINKEDIN CONNECTION is a contact: headline, profile link, the day they 
   await lsc.addContactAsLead('A', 'baseA', 52, { deps });
   assert.strictEqual(deps.created[1].connected, undefined);
   assert.strictEqual(deps.created[1].dateConnectedISO, undefined);
-  // and it is Guy only for now
+  // and it is on for every client since 26 Nov 2026
   const sweep = require('../services/contactsSweep');
   assert.strictEqual(sweep.linkedinContactsOn('Guy-Wilson'), true);
-  assert.strictEqual(sweep.linkedinContactsOn('Roland-Illyes'), false);
+  assert.strictEqual(sweep.linkedinContactsOn('Roland-Illyes'), true);
 });
 
 check('WHICH ADDRESS LEADS: supplied by the client, then work over free-mail, then most recently seen', async () => {
