@@ -22,7 +22,7 @@ const LeadSearchEnhanced = ({
   sortDirection = 'desc',
   onSortChange,
   onRefresh,
-  onContactsShown = null // (count) => void - how many contact rows are in the list right now
+  onContactsShown = null // (count, contactsOn) => void - contact rows in the list right now, and whether contacts are part of this client's list at all
 }) => {
   // Search states
   const [nameSearch, setNameSearch] = useState('');
@@ -107,7 +107,7 @@ const LeadSearchEnhanced = ({
     : [];
 
   const contactRowCount = contactRows.length;
-  useEffect(() => { if (onContactsShown) onContactsShown(contactRowCount); }, [contactRowCount, onContactsShown]);
+  useEffect(() => { if (onContactsShown) onContactsShown(contactRowCount, showRecentShortcut); }, [contactRowCount, showRecentShortcut, onContactsShown]);
 
   // Export modal state
   const [isExportOpen, setIsExportOpen] = useState(false);

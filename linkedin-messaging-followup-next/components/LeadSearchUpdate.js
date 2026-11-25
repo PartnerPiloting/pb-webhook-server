@@ -397,14 +397,14 @@ const LeadSearchUpdate = () => {
         sortField={sortField}
         sortDirection={sortDirection}
         onSortChange={handleSortChange}
-        onContactsShown={setContactsShown}
+        onContactsShown={(count, contactsOn) => { setContactsShown(count); if (contactsOn) setNewSearchOn(true); }}
       />
 
       {/* "No leads found" under "0 leads, 1 contact" read as nothing found (Guy, 25 Nov 2026). Where
           contacts are part of the list: the bar is not drawn while contact rows are showing and there
           are no leads to page through, and with nobody at all it says "Nobody found". Everyone else:
           exactly as before. */}
-      {newSearchOn && leads.length === 0 && contactsShown > 0 && currentPage === 1 && !isLoading ? null : (
+      {leads.length === 0 && contactsShown > 0 && currentPage === 1 && !isLoading ? null : (
       <PaginationSummary
         currentPage={currentPage}
         pageItemCount={leads.length}
@@ -414,7 +414,7 @@ const LeadSearchUpdate = () => {
         onPageChange={handlePageChange}
         isLoading={isLoading}
         disableNext={leads.length < leadsPerPage}
-        {...(newSearchOn ? { emptyText: contactsShown > 0 ? '' : 'Nobody found' } : {})}
+        {...(newSearchOn || contactsShown > 0 ? { emptyText: contactsShown > 0 ? '' : 'Nobody found' } : {})}
       />
       )}
 
