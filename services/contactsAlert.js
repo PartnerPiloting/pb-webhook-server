@@ -43,6 +43,20 @@ const DEFAULT_STALE_DAYS = 3;
 const DEFAULT_INGEST_STALE_DAYS = 30;
 const DEFAULT_MIN_HOURS_BETWEEN = 72;
 
+/**
+ * Is this the TEST server? Its contacts tables are a separate, rarely-refreshed copy (the database
+ * address carries search_path=staging), so every feed there looks weeks stale and the check below
+ * reports faults that do not exist. On 24 Nov 2026 a test sweep there emailed Guy "3 feeds not
+ * working" for Dean, Rick and Ashley - "last worked 69 days ago" - while all three had run on the
+ * real server the night before. Same two signals as invoiceEmailService.isStagingServer, plus the
+ * database address, which also catches a one-off job or a local run pointed at the test data.
+ */
+function isTestServer(env = process.env) {
+  return String(env.ENVIRONMENT || '').toLowerCase() === 'staging'
+    || String(env.RENDER_GIT_BRANCH || '') === 'staging'
+    || /search_path(=|%3d)staging/i.test(String(env.DATABASE_URL || ''));
+}
+
 function isIngestFeed(feed) {
   return String(feed || '').startsWith('ingest:');
 }
@@ -159,6 +173,7 @@ async function alertOnStaleFeeds({
   mailProvider,
   sendEmail,
   now = new Date(),
+  testServer = isTestServer(),
 } = {}) {
   const cs = clientService || require('./clientService');
   const mp = mailProvider || require('./mailProvider');
@@ -198,6 +213,11 @@ async function alertOnStaleFeeds({
     const grew = keys.some((k) => !marker.keys.includes(k));
     const hoursSince = marker.at ? (now - marker.at) / 3600000 : Infinity;
     const lines = stale.map(describeStale);
+    // The test server's data is an old copy - its "faults" are not faults. Report them to the
+    // caller's log, but never email Guy and never touch the alert marker (see isTestServer).
+    if (testServer) {
+      return { ok: true, stale: stale.length, emailed: false, reason: 'test server - never emailed', lines };
+    }
     if (!grew && hoursSince < minHoursBetweenAlerts) {
       return { ok: true, stale: stale.length, emailed: false, reason: `same faults, alerted ${Math.round(hoursSince)}h ago`, lines };
     }
@@ -232,4 +252,4 @@ async function alertOnStaleFeeds({
   }
 }
 
-module.exports = { alertOnStaleFeeds, findStale, expectedFeeds, describeStale, isIngestFeed, SYSTEM_TENANT, ALERT_SOURCE };
+module.exports = { alertOnStaleFeeds, findStale, expectedFeeds, describeStale, isIngestFeed, isTestServer, SYSTEM_TENANT, ALERT_SOURCE };

@@ -13,7 +13,7 @@
  * Run: node tests/wingguy-contacts-alert.test.js
  */
 const assert = require('assert');
-const { findStale, expectedFeeds, describeStale } = require('../services/contactsAlert');
+const { findStale, expectedFeeds, describeStale, isTestServer } = require('../services/contactsAlert');
 
 let failures = 0;
 const check = (name, fn) => { try { fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); } };
@@ -151,6 +151,18 @@ const TEN = [{ clientId: 'Dean', feeds: ['lead', 'mail', 'comms-log'] }];
   });
   check('singular day reads correctly', () => {
     assert.ok(/1 day ago/.test(describeStale({ clientId: 'X', feed: 'lead', lastRunAt: daysAgo(1), daysStale: 1 })));
+  });
+
+  console.log('\nisTestServer() - the test server never emails (24 Nov 2026 false alarm):');
+  check('the real server is not the test server', () => {
+    assert.strictEqual(isTestServer({ RENDER_GIT_BRANCH: 'main', DATABASE_URL: 'postgres://u:p@host/db' }), false);
+    assert.strictEqual(isTestServer({}), false);
+  });
+  check('known by its branch, its ENVIRONMENT, or its database address', () => {
+    assert.strictEqual(isTestServer({ RENDER_GIT_BRANCH: 'staging' }), true);
+    assert.strictEqual(isTestServer({ ENVIRONMENT: 'Staging' }), true);
+    assert.strictEqual(isTestServer({ DATABASE_URL: 'postgres://u:p@host/db?options=-c%20search_path=staging' }), true);
+    assert.strictEqual(isTestServer({ DATABASE_URL: 'postgres://u:p@host/db?options=-c%20search_path%3Dstaging' }), true);
   });
 
   console.log(failures ? `\n${failures} FAILED` : '\nall passed');
