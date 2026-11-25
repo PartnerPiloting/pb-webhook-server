@@ -98,8 +98,11 @@ const LeadSearchEnhanced = ({
   };
   // Someone the lead search itself has just returned is a lead - never offer them again as a contact.
   const leadEmails = new Set((leads || []).map((l) => String(l.Email || l.email || '').trim().toLowerCase()).filter(Boolean));
+  // ...and the same by LinkedIn address: a connection who became a lead today is a lead already.
+  const liKey = (u) => { const m = String(u || '').toLowerCase().match(/linkedin\.com\/in\/([^/?#]+)/); return m ? m[1] : ''; };
+  const leadProfiles = new Set((leads || []).map((l) => liKey(l['LinkedIn Profile URL'] || l.linkedinProfileUrl)).filter(Boolean));
   const contactRows = nameTyped
-    ? contactMatches.filter((c) => !c.email || !leadEmails.has(String(c.email).toLowerCase())).map((c) => ({ ...c, add: contactAdds[c.id] || {} }))
+    ? contactMatches.filter((c) => (!c.email || !leadEmails.has(String(c.email).toLowerCase())) && !(c.linkedin && leadProfiles.has(liKey(c.linkedin)))).map((c) => ({ ...c, add: contactAdds[c.id] || {} }))
     : [];
 
   // Export modal state

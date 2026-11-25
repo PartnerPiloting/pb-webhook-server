@@ -408,8 +408,25 @@ async function sweepTenant(coach, opts = {}) {
     try { out.mail = await sweepMailbox(coach, opts); } catch (e) { out.mail = { ok: false, error: e.message }; }
     await note('mail', out.mail);
   }
+  // LinkedIn connections as contacts - AFTER the leads feed, so anyone who is a lead is already
+  // known as one and is left out. Only for clients it is switched on for (LINKEDIN_CONTACTS).
+  if (linkedinContactsOn(tenant)) {
+    try { out.linkedin = await contactsStore.syncLinkedinConnections(tenant); } catch (e) { out.linkedin = { ok: false, error: e.message }; }
+    if (out.linkedin && out.linkedin.ok) {
+      await contactsStore.recordSweep(tenant, 'linkedin', { rowsSeen: out.linkedin.connections, note: `${out.linkedin.newContacts} as contacts, ${out.linkedin.alreadyLeads} already leads, ${out.linkedin.removed} removed` }).catch(() => {});
+    }
+    await note('linkedin', out.linkedin);
+  }
   return out;
 }
+
+/**
+ * Clients whose LinkedIn connections are copied into their contacts lookup (Guy, 25 Nov 2026 - Guy
+ * only while he looks at it; '*' = everyone who has linked LinkedIn). Add a client here to switch
+ * it on for them: the next nightly sweep fills it in.
+ */
+const LINKEDIN_CONTACTS = ['Guy-Wilson'];
+const linkedinContactsOn = (clientId) => LINKEDIN_CONTACTS.includes('*') || LINKEDIN_CONTACTS.includes(String(clientId || ''));
 
 /** Every active client with a leads base - or just the ones named in `onlyClientIds`. */
 async function sweepAll({ full = false, onlyClientIds = null, clientService, skipMail = false } = {}) {
@@ -430,6 +447,7 @@ async function sweepAll({ full = false, onlyClientIds = null, clientService, ski
 }
 
 module.exports = {
+  LINKEDIN_CONTACTS, linkedinContactsOn,
   sweepLeads, sweepCommsLog, sweepMailbox, sweepTenant, sweepAll,
   leadToContacts, messageToContacts, nameFromEmail, splitAltEmails, fmtDay, withTimeout, mailTimeoutFor, isWeeklyRetryNight, backfillSlices,
 };

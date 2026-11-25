@@ -71,6 +71,10 @@ async function ensureTable(client) {
   // so a person with three addresses is shown once (services/contactGrouping.js). It records what a
   // file said - never a guess - and no feed's upsert touches it.
   await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS person_ref TEXT;`);
+  // linkedin_connected_at (2026-11-25): the day they connected on LinkedIn, for a person who is one
+  // of the client's LinkedIn connections (source 'linkedin' - see syncLinkedinConnections).
+  await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS linkedin_connected_at TIMESTAMPTZ;`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_slug ON wingguy_contacts (coach_client_id, lower(linkedin_slug)) WHERE linkedin_slug IS NOT NULL;`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_ref ON wingguy_contacts (coach_client_id, person_ref) WHERE person_ref IS NOT NULL;`);
   // Failure columns (2026-09-15). last_run_at means SUCCESS; without a record of attempts,
   // "this feed has no stamp" cannot tell a genuinely broken feed from one that simply did not
@@ -437,7 +441,7 @@ async function findPeople(coachClientId, query, { limit = 8, notLeads = false } 
     await ensureTable(client);
     const r = await client.query(
       `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
-              lead_record_id, sources, last_seen_at, evidence, manual, lists, person_ref
+              lead_record_id, sources, last_seen_at, evidence, manual, lists, person_ref, linkedin_connected_at
          FROM wingguy_contacts
         WHERE coach_client_id = $1 ${clauses.length ? 'AND ' + clauses.join(' AND ') : ''}
               ${notLeads ? 'AND lead_record_id IS NULL' : ''}
@@ -453,7 +457,105 @@ async function findPeople(coachClientId, query, { limit = 8, notLeads = false } 
   }
 }
 
-const ROW_COLS = 'id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug, lead_record_id, sources, last_seen_at, evidence, manual, lists, person_ref';
+const ROW_COLS = 'id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug, lead_record_id, sources, last_seen_at, evidence, manual, lists, person_ref, linkedin_connected_at';
+
+/**
+ * LINKEDIN CONNECTIONS AS CONTACTS (Guy, 25 Nov 2026): a client wants ONE place to look someone up,
+ * not Wingguy and then LinkedIn. Wingguy already holds each linked client's connections (Postgres
+ * linkedin_people, read from Unipile for Reconnect - name, headline, profile link, date connected).
+ * This copies them into the contacts lookup:
+ *   - someone who is already a LEAD is left out - they show once, as the lead
+ *   - someone Wingguy already holds as a contact under the same LinkedIn address is not added again:
+ *     that contact is marked "connected on LinkedIn", with the date and (if blank) the headline
+ *   - everyone else becomes a contact keyed on their LinkedIn address (li:<slug>), source 'linkedin'
+ *   - a connection row made redundant since (the person became a lead, or gained a fuller contact
+ *     row) is removed, so nobody is ever listed twice. Only rows THIS feed made are ever removed -
+ *     never one a client typed, uploaded, or that carries an email.
+ * It writes nothing to the leads base: no scoring, no follow-ups. "Make this contact a lead" is the
+ * only way one of them becomes a lead. Set-based SQL - 8,000 connections is three statements.
+ *   apply=false only COUNTS. Returns { ok, connections, alreadyLeads, alreadyContacts, newContacts,
+ *   removed, lastSynced } or { ok:false, skipped?, error }.
+ */
+async function syncLinkedinConnections(coachClientId, { apply = true } = {}) {
+  const tenant = clip(coachClientId, 80);
+  if (!tenant) return { ok: false, error: 'coach_client_id required' };
+  const p = getPool();
+  if (!p) return { ok: false, error: 'no database' };
+  const client = await p.connect();
+  const CONN = `
+    SELECT DISTINCT ON (lower(public_identifier)) lower(public_identifier) AS slug, name, first_name, last_name, headline, connected_at, lead_rec_id
+      FROM linkedin_people
+     WHERE tenant_id = $1 AND is_connection AND coalesce(public_identifier, '') <> ''
+     ORDER BY lower(public_identifier), connected_at DESC NULLS LAST`;
+  try {
+    await ensureTable(client);
+    let counts;
+    try {
+      counts = (await client.query(
+        `WITH conn AS (${CONN}),
+              held AS (SELECT lower(linkedin_slug) AS slug, bool_or(lead_record_id IS NOT NULL) AS is_lead, bool_or(contact_key <> 'li:' || lower(linkedin_slug)) AS other_row
+                         FROM wingguy_contacts WHERE coach_client_id = $1 AND linkedin_slug IS NOT NULL GROUP BY 1)
+         SELECT count(*)::int AS connections,
+                count(*) FILTER (WHERE conn.lead_rec_id IS NOT NULL OR coalesce(held.is_lead, false))::int AS already_leads,
+                count(*) FILTER (WHERE conn.lead_rec_id IS NULL AND NOT coalesce(held.is_lead, false) AND coalesce(held.other_row, false))::int AS already_contacts,
+                count(*) FILTER (WHERE conn.lead_rec_id IS NULL AND held.slug IS NULL)::int AS brand_new,
+                count(*) FILTER (WHERE conn.lead_rec_id IS NULL AND NOT coalesce(held.is_lead, false) AND NOT coalesce(held.other_row, false))::int AS as_contacts,
+                (SELECT max(synced_at) FROM linkedin_people WHERE tenant_id = $1) AS last_synced
+           FROM conn LEFT JOIN held ON held.slug = conn.slug`, [tenant])).rows[0];
+    } catch (e) {
+      // a client who never linked LinkedIn, or a database with no connections table: nothing to copy
+      if (/linkedin_people/.test(e.message)) return { ok: false, skipped: true, error: 'no LinkedIn connections are stored for this client' };
+      throw e;
+    }
+    const out = { ok: true, connections: counts.connections, alreadyLeads: counts.already_leads, alreadyContacts: counts.already_contacts,
+      newContacts: counts.as_contacts, toAdd: counts.brand_new, removed: 0, lastSynced: counts.last_synced, applied: false };
+    if (!apply || !counts.connections) return out;
+
+    await client.query('BEGIN');
+    // 1. a contact Wingguy already holds under that LinkedIn address: say they are connected
+    await client.query(
+      `WITH conn AS (${CONN})
+       UPDATE wingguy_contacts c SET
+              sources = ARRAY(SELECT DISTINCT s FROM unnest(c.sources || ARRAY['linkedin']) AS s),
+              linkedin_connected_at = COALESCE(conn.connected_at, c.linkedin_connected_at),
+              headline = COALESCE(c.headline, conn.headline),
+              updated_at = now()
+         FROM conn
+        WHERE c.coach_client_id = $1 AND c.lead_record_id IS NULL AND c.contact_key NOT LIKE 'li:%' AND lower(c.linkedin_slug) = conn.slug
+          AND (NOT ('linkedin' = ANY(c.sources)) OR c.linkedin_connected_at IS DISTINCT FROM COALESCE(conn.connected_at, c.linkedin_connected_at))`, [tenant]);
+    // 2. everyone else who is not a lead: a contact keyed on their LinkedIn address
+    await client.query(
+      `WITH conn AS (${CONN})
+       INSERT INTO wingguy_contacts (coach_client_id, contact_key, name, first_name, last_name, headline, linkedin_slug, sources, linkedin_connected_at)
+       SELECT $1, 'li:' || conn.slug, NULLIF(trim(coalesce(conn.name, concat_ws(' ', conn.first_name, conn.last_name))), ''), conn.first_name, conn.last_name, conn.headline, conn.slug, ARRAY['linkedin'], conn.connected_at
+         FROM conn
+        WHERE conn.lead_rec_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM wingguy_contacts c WHERE c.coach_client_id = $1 AND lower(c.linkedin_slug) = conn.slug AND c.contact_key <> 'li:' || conn.slug)
+       ON CONFLICT (coach_client_id, contact_key) DO UPDATE SET
+              name = CASE WHEN wingguy_contacts.manual THEN COALESCE(wingguy_contacts.name, EXCLUDED.name) ELSE COALESCE(EXCLUDED.name, wingguy_contacts.name) END,
+              first_name = CASE WHEN wingguy_contacts.manual THEN COALESCE(wingguy_contacts.first_name, EXCLUDED.first_name) ELSE COALESCE(EXCLUDED.first_name, wingguy_contacts.first_name) END,
+              last_name = CASE WHEN wingguy_contacts.manual THEN COALESCE(wingguy_contacts.last_name, EXCLUDED.last_name) ELSE COALESCE(EXCLUDED.last_name, wingguy_contacts.last_name) END,
+              headline = CASE WHEN wingguy_contacts.manual THEN COALESCE(wingguy_contacts.headline, EXCLUDED.headline) ELSE COALESCE(EXCLUDED.headline, wingguy_contacts.headline) END,
+              linkedin_connected_at = COALESCE(EXCLUDED.linkedin_connected_at, wingguy_contacts.linkedin_connected_at),
+              sources = ARRAY(SELECT DISTINCT s FROM unnest(wingguy_contacts.sources || ARRAY['linkedin']) AS s),
+              updated_at = now()`, [tenant]);
+    // 3. a connection row this feed made that is now redundant: the person is a lead, or has a fuller row
+    const gone = await client.query(
+      `DELETE FROM wingguy_contacts a
+        WHERE a.coach_client_id = $1 AND a.contact_key LIKE 'li:%' AND NOT a.manual AND a.email IS NULL
+          AND a.sources = ARRAY['linkedin']::text[] AND a.lists = '{}'
+          AND (EXISTS (SELECT 1 FROM wingguy_contacts b WHERE b.coach_client_id = $1 AND b.id <> a.id AND lower(b.linkedin_slug) = lower(a.linkedin_slug))
+               OR EXISTS (SELECT 1 FROM linkedin_people lp WHERE lp.tenant_id = $1 AND lower(lp.public_identifier) = lower(a.linkedin_slug) AND lp.lead_rec_id IS NOT NULL))`, [tenant]);
+    await client.query('COMMIT');
+    return { ...out, removed: gone.rowCount, applied: true };
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* nothing to roll back */ }
+    console.warn(`[contactsStore] syncLinkedinConnections failed (${tenant}): ${e.message}`);
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
 
 /**
  * Every NON-LEAD row of this client that could be the same person as one already in hand: the same
@@ -772,7 +874,7 @@ async function getContact(coachClientId, id) {
     await ensureTable(client);
     const r = await client.query(
       `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
-              lead_record_id, sources, last_seen_at, evidence, manual, lists, person_ref
+              lead_record_id, sources, last_seen_at, evidence, manual, lists, person_ref, linkedin_connected_at
          FROM wingguy_contacts WHERE coach_client_id = $1 AND id = $2`, [tenant, n]);
     return r.rows[0] || null;
   } finally {
@@ -829,7 +931,7 @@ async function tenantStatus(coachClientId) {
 }
 
 module.exports = {
-  upsertContacts, findPeople, findSamePeople, updatePersonShared, getContact, markAsLead, findByIdentity, addManualContact, updateContactFields, listForImport, applyImport, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
+  upsertContacts, syncLinkedinConnections, findPeople, findSamePeople, updatePersonShared, getContact, markAsLead, findByIdentity, addManualContact, updateContactFields, listForImport, applyImport, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
   // pure, for tests
   normaliseContact, rankMatches, cleanEmail, mergeContacts, mergedValue, slugOf, MANUAL_GUARD, GUARDED_COLS,
 };

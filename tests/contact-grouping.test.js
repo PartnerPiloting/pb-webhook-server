@@ -214,6 +214,40 @@ check('editing a person shown once still works - and cannot split them back into
   assert.strictEqual(JSON.stringify(deps.store.rows.filter((x) => x.id !== 13)), before);
 });
 
+check('a LINKEDIN CONNECTION is a contact: headline, profile link, the day they connected - and no email needed', async () => {
+  const rows = [
+    row(50, null, 'Lena Linked', { linkedin_slug: 'lena-linked', headline: 'Partner at Linked Law', sources: ['linkedin'], linkedin_connected_at: '2024-03-03T02:00:00.000Z' }),
+    // the same person is also known by email: same name + same LinkedIn address = one person
+    row(51, 'lena@law.example', 'Lena Linked', { linkedin_slug: 'lena-linked', phone: '0400 123 123', sources: ['mail-from'] }),
+    row(52, null, 'Nodate Linked', { linkedin_slug: 'nodate-linked', sources: ['linkedin'] }),
+  ];
+  const deps = fakeDeps(rows);
+  const r = await lsc.searchContacts('A', 'linked', { deps });
+  assert.strictEqual(r.contacts.length, 2);
+  const lena = r.contacts.find((c) => c.name === 'Lena Linked');
+  assert.strictEqual(lena.headline, 'Partner at Linked Law');
+  assert.strictEqual(lena.linkedin, 'https://www.linkedin.com/in/lena-linked/');
+  assert.strictEqual(lena.connectedOn, '3 Mar 2024');
+  assert.strictEqual(lena.knownFrom, 'connected on LinkedIn 3 Mar 2024, they emailed you');
+  assert.strictEqual(lena.email, 'lena@law.example');           // another source knew her email
+  assert.strictEqual(lena.phone, '0400 123 123');
+  assert.strictEqual(r.contacts.find((c) => c.name === 'Nodate Linked').knownFrom, 'connected on LinkedIn');
+  // making her a lead: the lead carries the REAL connection date, never today's
+  await lsc.addContactAsLead('A', 'baseA', 50, { deps });
+  assert.strictEqual(deps.created[0].connected, true);
+  assert.strictEqual(deps.created[0].dateConnectedISO, '2024-03-03T02:00:00.000Z');
+  assert.strictEqual(deps.created[0].linkedinUrl, 'https://www.linkedin.com/in/lena-linked/');
+  assert.strictEqual(deps.created[0].email, 'lena@law.example');
+  // a connection with no date known is NOT stamped as connected (the date would be made up)
+  await lsc.addContactAsLead('A', 'baseA', 52, { deps });
+  assert.strictEqual(deps.created[1].connected, undefined);
+  assert.strictEqual(deps.created[1].dateConnectedISO, undefined);
+  // and it is Guy only for now
+  const sweep = require('../services/contactsSweep');
+  assert.strictEqual(sweep.linkedinContactsOn('Guy-Wilson'), true);
+  assert.strictEqual(sweep.linkedinContactsOn('Roland-Illyes'), false);
+});
+
 check('lists on the card: one list, two lists, three', () => {
   assert.strictEqual(lsc.listsText([]), '');
   assert.strictEqual(lsc.listsText(['Safe to Say']), 'your list "Safe to Say"');

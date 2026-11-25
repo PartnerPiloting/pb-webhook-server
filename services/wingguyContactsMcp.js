@@ -31,6 +31,7 @@ function describeSources(sources) {
     'manual': 'you added them',
     'manual-claude': 'you asked Claude to save them',
     'import': 'you imported them',
+    'linkedin': 'connected on LinkedIn',
   };
   return (sources || []).map((s) => labels[s] || (s.startsWith('ingest:') ? `your ${s.slice(7)} feed` : s)).join(', ');
 }

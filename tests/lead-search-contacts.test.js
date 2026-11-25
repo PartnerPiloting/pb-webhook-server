@@ -65,7 +65,7 @@ check('only for a typed name of 3+ characters; never for a pasted LinkedIn link'
 check('a contact shows name, email, phone, LinkedIn and where Wingguy knows them from', async () => {
   const [c] = (await lsc.searchContacts('A', 'pat lee', { deps: { store: fakeStore() } })).contacts;
   assert.deepStrictEqual(c, { id: '1', name: 'Pat Lee', email: 'pat@acme.example', otherEmails: [], phone: '0400 000 001',
-    linkedin: 'https://www.linkedin.com/in/pat-lee/', company: 'Acme', knownFrom: 'you emailed them', lists: [], manual: false });
+    linkedin: 'https://www.linkedin.com/in/pat-lee/', company: 'Acme', knownFrom: 'you emailed them', lists: [], headline: '', connectedOn: '', manual: false });
 });
 
 check('anyone who is already a lead is left out - by their main or an alternate address', async () => {

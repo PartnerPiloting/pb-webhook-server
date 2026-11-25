@@ -94,10 +94,20 @@ async function personOf(store, clientId, contactId) {
   return people.find((p) => p.ids.includes(String(row.id))) || { ...row, ids: [String(row.id)], emails: row.email ? [row.email] : [], members: [row] };
 }
 
+/** "3 Mar 2024" - '' for no date. Day-level, so the timezone only matters at midnight. */
+function dayText(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Australia/Brisbane' });
+}
+
 /** What the page shows for one person. */
 function shape(r) {
   const emails = r.emails || (r.email ? [r.email] : []);
   const { first, last } = nameParts(r);
+  const onLinkedin = (r.sources || []).includes('linkedin');
+  const connectedOn = onLinkedin ? dayText(r.linkedin_connected_at) : '';
   return {
     id: String(r.id),
     name: String(r.name || '').trim() || [first, last].filter(Boolean).join(' ') || emails[0] || '',
@@ -107,8 +117,12 @@ function shape(r) {
     linkedin: r.linkedin_slug ? `https://www.linkedin.com/in/${r.linkedin_slug}/` : '',
     company: r.company || '',
     // an uploaded list is named: 'your list "Safe to Say"' says more than 'you imported them'
-    knownFrom: [listsText(r.lists), describeSources((r.sources || []).filter((x) => !((r.lists || []).length && x === 'import')))].filter(Boolean).join(', '),
+    // a LinkedIn connection says so, with the day they connected when LinkedIn gave one
+    knownFrom: [listsText(r.lists), onLinkedin ? `connected on LinkedIn${connectedOn ? ` ${connectedOn}` : ''}` : '',
+      describeSources((r.sources || []).filter((x) => x !== 'linkedin' && !((r.lists || []).length && x === 'import')))].filter(Boolean).join(', '),
     lists: [...new Set(r.lists || [])],
+    headline: r.headline || '',
+    connectedOn,
     manual: !!r.manual,
   };
 }
@@ -193,7 +207,10 @@ async function addContactAsLead(clientId, airtableBaseId, contactId, { deps = {}
     location: row.location || '',
     notes: `Added from your contacts on Lead Search${knownFrom ? ` (${knownFrom})` : ''}.`,
     source: ADD_SOURCE,
-    // connected is deliberately left out: knowing someone by email does not make them a LinkedIn connection
+    // Knowing someone by email does not make them a LinkedIn connection, so `connected` is normally
+    // left out. The one exception is a person LinkedIn itself says is a connection AND gave a date
+    // for (the connections copy): the lead then carries that real date - never today's.
+    ...((row.sources || []).includes('linkedin') && row.linkedin_connected_at ? { connected: true, dateConnectedISO: new Date(row.linkedin_connected_at).toISOString() } : {}),
   });
   if (!r || !r.ok) return { ok: false, status: 500, error: (r && r.error) || 'The lead could not be created.' };
   await markAll(r.leadRecordId);

@@ -94,7 +94,7 @@ function groupPeople(rows) {
       ids: members.map((m) => String(m.id)),
       emails: uniq(members.map((m) => (m.email ? String(m.email).toLowerCase() : ''))),
       phone: pick('phone'), company: pick('company'), linkedin_slug: pick('linkedin_slug'), headline: pick('headline'), location: pick('location'),
-      connected_at: pick('connected_at'),
+      linkedin_connected_at: pick('linkedin_connected_at'),
       sources: uniq(members.flatMap((m) => m.sources || [])),
       lists: uniq(members.flatMap((m) => m.lists || [])),
       manual: members.some((m) => m.manual),

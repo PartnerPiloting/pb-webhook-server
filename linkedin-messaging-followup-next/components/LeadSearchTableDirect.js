@@ -286,7 +286,7 @@ export default function LeadSearchTableDirect({
       );
     }
     if (key === 'reach') return <ReachLines email={c.email} phone={c.phone} linkedin={c.linkedin} />;
-    if (key === 'Company') return c.company || '';
+    if (key === 'Company') return c.company || (c.headline ? <span className="text-gray-500">{c.headline}</span> : '');
     if (key === 'email') return c.email ? <a href={`mailto:${c.email}`} onClick={stop} className="text-blue-600 hover:underline">{c.email}</a> : '';
     if (key === 'phone') return c.phone ? <a href={telHref(c.phone)} onClick={stop} className="text-blue-600 hover:underline">{c.phone}</a> : '';
     if (key === 'linkedinProfileUrl') {
@@ -444,6 +444,7 @@ export default function LeadSearchTableDirect({
               <div>
                 <h4 className="text-lg font-medium text-gray-900">{openContact.name || openContact.email || 'Unnamed'}</h4>
                 {openContact.company ? <div className="text-sm text-gray-600">{openContact.company}</div> : null}
+                {openContact.headline && openContact.headline !== openContact.company ? <div id="contact-card-headline" className="text-sm text-gray-500">{openContact.headline}</div> : null}
                 <span className={`inline-block mt-1 ${openContact.add && openContact.add.state === 'added' ? KIND_LEAD : KIND_CONTACT}`}>{openContact.add && openContact.add.state === 'added' ? 'Lead' : 'Contact'}</span>
               </div>
               <button type="button" aria-label="Close" onClick={closeCard} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
