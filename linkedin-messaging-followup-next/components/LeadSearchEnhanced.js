@@ -21,7 +21,8 @@ const LeadSearchEnhanced = ({
   sortField = 'AI Score',
   sortDirection = 'desc',
   onSortChange,
-  onRefresh
+  onRefresh,
+  onContactsShown = null // (count) => void - how many contact rows are in the list right now
 }) => {
   // Search states
   const [nameSearch, setNameSearch] = useState('');
@@ -104,6 +105,9 @@ const LeadSearchEnhanced = ({
   const contactRows = nameTyped
     ? contactMatches.filter((c) => (!c.email || !leadEmails.has(String(c.email).toLowerCase())) && !(c.linkedin && leadProfiles.has(liKey(c.linkedin)))).map((c) => ({ ...c, add: contactAdds[c.id] || {} }))
     : [];
+
+  const contactRowCount = contactRows.length;
+  useEffect(() => { if (onContactsShown) onContactsShown(contactRowCount); }, [contactRowCount, onContactsShown]);
 
   // Export modal state
   const [isExportOpen, setIsExportOpen] = useState(false);

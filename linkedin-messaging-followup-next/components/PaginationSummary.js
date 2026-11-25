@@ -9,7 +9,8 @@ export default function PaginationSummary({
   onPageChange,
   isLoading = false,
   disableNext = false,
-  className = ''
+  className = '',
+  emptyText = 'No leads found' // what to say when the page holds no leads
 }) {
   // Derive range (optimistic – we only know what we fetched)
   const start = pageItemCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
@@ -22,7 +23,7 @@ export default function PaginationSummary({
         {isLoading ? (
           <span>Loading…</span>
         ) : pageItemCount === 0 ? (
-          <span>No leads found</span>
+          <span>{emptyText}</span>
         ) : (
           <span>
             Page {currentPage} · Showing {start}–{end} ({pageItemCount} {plural} {totalLabel})

@@ -148,8 +148,9 @@ check('a name search shows the person ONCE, with every address', async () => {
 check('a search that matched only ONE address still shows all of them', async () => {
   const r = await lsc.searchContacts('A', 'avon@old', { deps: { store: fakeStore() } });
   assert.strictEqual(r.contacts.length, 1);
-  assert.strictEqual(r.contacts[0].email, 'avon@old.example');           // the address typed leads
-  assert.deepStrictEqual(r.contacts[0].otherEmails, ['avon@work.example', 'avon@home.example']);
+  // whichever address was typed, the row shows the address that leads (see the ordering test)
+  assert.strictEqual(r.contacts[0].email, 'avon@work.example');
+  assert.deepStrictEqual(r.contacts[0].otherEmails, ['avon@old.example', 'avon@home.example']);
   // and another client's row with the same name and company never joins
   assert.ok(!JSON.stringify(r).includes('theirs'));
 });
@@ -168,11 +169,11 @@ check('"Make this contact a lead" carries EVERY address: the first as the main e
   const r = await lsc.addContactAsLead('A', 'baseA', 2, { deps });        // clicked from the row for the HOME address
   assert.ok(r.ok && r.created && r.leadRecordId === 'recNEW', JSON.stringify(r));
   assert.strictEqual(deps.created.length, 1);
-  assert.strictEqual(deps.created[0].email, 'avon@home.example');
+  assert.strictEqual(deps.created[0].email, 'avon@work.example');      // the same address the row showed
   assert.strictEqual(deps.created[0].phone, '+61 400 111 222');
   assert.strictEqual(deps.created[0].linkedinUrl, 'https://www.linkedin.com/in/avonexample/');
   assert.strictEqual(deps.created[0].connected, undefined);
-  assert.deepStrictEqual(deps.altEmails, [['recNEW', { addOthers: ['avon@work.example', 'avon@old.example'] }]]);
+  assert.deepStrictEqual(deps.altEmails, [['recNEW', { addOthers: ['avon@home.example', 'avon@old.example'] }]]);
   // the lists they came in on become tags, through the one tag writer
   assert.deepStrictEqual(deps.tagged, [['recNEW', ['CC Results Group', 'Evercontact']]]);
   // all three rows stop being offered - not just the one clicked
@@ -246,6 +247,39 @@ check('a LINKEDIN CONNECTION is a contact: headline, profile link, the day they 
   const sweep = require('../services/contactsSweep');
   assert.strictEqual(sweep.linkedinContactsOn('Guy-Wilson'), true);
   assert.strictEqual(sweep.linkedinContactsOn('Roland-Illyes'), false);
+});
+
+check('WHICH ADDRESS LEADS: supplied by the client, then work over free-mail, then most recently seen', async () => {
+  const { leadOrder, isFreeMail } = require('../services/contactGrouping');
+  const order = (rows) => leadOrder(rows).map((r) => r.email);
+  // Guy's own case: one Google contact, three addresses, all imported - the work address leads, never gmail
+  assert.deepStrictEqual(order([
+    row(1, 'avoncollis@gmail.com', 'A C', { company: 'R', sources: ['import'], manual: true }),
+    row(2, 'avon@relevate.example', 'A C', { company: 'R', sources: ['import'], manual: true, phone: '0400 1', linkedin_slug: 'ac' }),
+    row(3, 'avon@relevate-old.example', 'A C', { company: 'R', sources: ['import'], manual: true }),
+  ]), ['avon@relevate.example', 'avon@relevate-old.example', 'avoncollis@gmail.com']);
+  // 1. an address the client imported or typed beats one only seen in email - even a free-mail one
+  assert.deepStrictEqual(order([
+    row(1, 'pat@work.example', 'P', { sources: ['mail-from'], last_seen_at: '2026-11-20' }),
+    row(2, 'pat@hotmail.com', 'P', { sources: ['manual'], manual: true }),
+  ]), ['pat@hotmail.com', 'pat@work.example']);
+  // 2. neither supplied by hand: the work address beats free-mail, however recent the free-mail one
+  assert.deepStrictEqual(order([
+    row(1, 'pat@bigpond.com', 'P', { sources: ['mail-from'], last_seen_at: '2026-11-24' }),
+    row(2, 'pat@work.example', 'P', { sources: ['mail-to'], last_seen_at: '2025-01-01' }),
+  ]), ['pat@work.example', 'pat@bigpond.com']);
+  // 3. two work addresses: the most recently seen
+  assert.deepStrictEqual(order([
+    row(1, 'pat@old-job.example', 'P', { sources: ['mail-to'], last_seen_at: '2024-01-01' }),
+    row(2, 'pat@new-job.example', 'P', { sources: ['mail-to'], last_seen_at: '2026-11-01' }),
+  ]), ['pat@new-job.example', 'pat@old-job.example']);
+  // a row with no address never leads one that has one
+  assert.deepStrictEqual(order([row(1, null, 'P', { sources: ['linkedin'], linkedin_slug: 'p' }), row(2, 'pat@gmail.com', 'P')]), ['pat@gmail.com', null]);
+  for (const e of ['a@gmail.com', 'a@outlook.com', 'a@hotmail.com.au', 'a@yahoo.co.uk', 'a@icloud.com', 'a@bigpond.net.au', 'a@live.com.au', '']) assert.strictEqual(isFreeMail(e), true, e);
+  for (const e of ['a@relevate.com.au', 'a@acme.example', 'a@me-and-co.com']) assert.strictEqual(isFreeMail(e), false, e);
+  // a person who is a single row is untouched by any of this
+  const [solo] = groupPeople([row(9, 'solo@gmail.com', 'Solo Person')]);
+  assert.strictEqual(solo.email, 'solo@gmail.com');
 });
 
 check('lists on the card: one list, two lists, three', () => {

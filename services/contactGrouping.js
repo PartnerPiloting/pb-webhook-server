@@ -64,9 +64,44 @@ function joinKeys(r) {
 
 const uniq = (a) => [...new Set(a.filter(Boolean))];
 
+// Free-mail and ISP addresses - a person's own address rather than their work one. The repo's list
+// (pendingLeadFilter) plus the country variants of the big ones (hotmail.com.au, yahoo.co.uk ...).
+const FREE_LABELS = new Set(['gmail', 'googlemail', 'outlook', 'hotmail', 'live', 'msn', 'yahoo', 'ymail', 'icloud', 'me', 'mac', 'aol', 'proton', 'protonmail', 'bigpond', 'optusnet', 'westnet', 'iinet', 'tpg']);
+function isFreeMail(email) {
+  const domain = String(email || '').toLowerCase().split('@')[1] || '';
+  if (!domain) return true;
+  let known = false;
+  try { known = require('./pendingLeadFilter').isFreemailEmail(email); } catch (_) { /* the labels below still apply */ }
+  return known || FREE_LABELS.has(domain.split('.')[0]);
+}
+
+/**
+ * WHICH ADDRESS LEADS (Guy, 25 Nov 2026): a person with several addresses shows ONE on the row, and
+ * the same one becomes the lead's main email - so the row and the lead agree. In order:
+ *   1. an address the client supplied themselves - from a file they imported, or typed by hand
+ *   2. a work address over a free-mail one (gmail, outlook, hotmail, yahoo, icloud, bigpond ...) -
+ *      the standing rule that a learned work address beats a free-mail one
+ *   3. the most recently seen
+ * then the row that knows most (the file's first address carries the phone), then as found.
+ * A row with no address at all never leads one that has an address.
+ */
+function leadOrder(members) {
+  const byHand = (m) => !!m.manual || (m.sources || []).some((s) => s === 'import' || s === 'manual' || s === 'manual-claude');
+  const seen = (m) => { const t = m.last_seen_at ? new Date(m.last_seen_at).getTime() : 0; return Number.isNaN(t) ? 0 : t; };
+  const knows = (m) => (m.phone ? 1 : 0) + (m.linkedin_slug ? 1 : 0);
+  return members.map((m, i) => ({ m, i })).sort((a, b) =>
+    ((a.m.email ? 0 : 1) - (b.m.email ? 0 : 1))
+    || ((byHand(a.m) ? 0 : 1) - (byHand(b.m) ? 0 : 1))
+    || ((isFreeMail(a.m.email) ? 1 : 0) - (isFreeMail(b.m.email) ? 1 : 0))
+    || (seen(b.m) - seen(a.m))
+    || (knows(b.m) - knows(a.m))
+    || (a.i - b.i)).map((x) => x.m);
+}
+
 /**
  * Fold rows into people. Order of first appearance is kept (the caller already ranked the rows), and
- * inside a person the first row is the primary one: its name and id are the person's.
+ * inside a person the rows are put in leadOrder (see above): the first one's address, name and id are
+ * the person's.
  * Each person is the primary row plus:
  *   ids     every row id that is this person
  *   emails  every address, the primary row's first
@@ -86,7 +121,9 @@ function groupPeople(rows) {
   });
   const groups = new Map();
   list.forEach((r, i) => { const root = find(i); if (!groups.has(root)) groups.set(root, []); groups.get(root).push(r); });
-  return [...groups.values()].map((members) => {
+  return [...groups.values()].map((found) => {
+    // one row is one person exactly as before; several rows: the address that leads is chosen
+    const members = found.length > 1 ? leadOrder(found) : found;
     const head = members[0];
     const pick = (f) => { for (const m of members) if (m[f] !== null && m[f] !== undefined && m[f] !== '') return m[f]; return head[f] === undefined ? null : head[f]; };
     return {
@@ -103,4 +140,4 @@ function groupPeople(rows) {
   });
 }
 
-module.exports = { groupPeople, joinKeys, nameKey, companyKey, phoneKey };
+module.exports = { groupPeople, leadOrder, isFreeMail, joinKeys, nameKey, companyKey, phoneKey };

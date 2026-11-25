@@ -59,6 +59,10 @@ const LeadSearchUpdate = () => {
 
   // Use ref to track current search request and prevent race conditions
   const currentSearchRef = useRef(0);
+  // contacts are part of the list where the new Lead Search is on (Guy only for now)
+  const [contactsShown, setContactsShown] = useState(0);
+  const [newSearchOn, setNewSearchOn] = useState(false);
+  useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setNewSearchOn(true); }); return () => { alive = false; }; }, []);
 
   // Single search function that handles both search and pagination
   const performSearch = useCallback(async (query, currentPriority, currentSearchTerms, requestId, page = 1, currentSortField = 'AI Score', currentSortDirection = 'desc') => {
@@ -393,8 +397,14 @@ const LeadSearchUpdate = () => {
         sortField={sortField}
         sortDirection={sortDirection}
         onSortChange={handleSortChange}
+        onContactsShown={setContactsShown}
       />
 
+      {/* "No leads found" under "0 leads, 1 contact" read as nothing found (Guy, 25 Nov 2026). Where
+          contacts are part of the list: the bar is not drawn while contact rows are showing and there
+          are no leads to page through, and with nobody at all it says "Nobody found". Everyone else:
+          exactly as before. */}
+      {newSearchOn && leads.length === 0 && contactsShown > 0 && currentPage === 1 && !isLoading ? null : (
       <PaginationSummary
         currentPage={currentPage}
         pageItemCount={leads.length}
@@ -404,7 +414,9 @@ const LeadSearchUpdate = () => {
         onPageChange={handlePageChange}
         isLoading={isLoading}
         disableNext={leads.length < leadsPerPage}
+        {...(newSearchOn ? { emptyText: contactsShown > 0 ? '' : 'Nobody found' } : {})}
       />
+      )}
 
       {/* Modal for Lead Details */}
       <LeadDetailModal
