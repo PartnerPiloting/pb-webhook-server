@@ -1000,8 +1000,10 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
 // Everyone else gets the form exactly as it was - this wrapper adds nothing to their page.
 // (Claude's wingguy_create_lead, introductions and the browser panel still create leads.)
 const NewLeadFormWhereAllowed = (props) => {
-  const [hidden, setHidden] = useState(newLeadSearchIfKnown() === true);
-  useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setHidden(true); }); return () => { alive = false; }; }, []);
+  // On for every client since 26 Nov 2026, so the form STARTS hidden and only appears if the server says this
+  // client is not on the new way - it must never flash up for a moment and take a hand-typed lead.
+  const [hidden, setHidden] = useState(newLeadSearchIfKnown() !== false);
+  useEffect(() => { let alive = true; wantsNewLeadSearch().then(() => { if (alive) setHidden(newLeadSearchIfKnown() !== false); }); return () => { alive = false; }; }, []);
   return hidden ? null : <NewLeadForm {...props} />;
 };
 

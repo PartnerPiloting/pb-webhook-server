@@ -10,7 +10,7 @@ import { useSearchParams } from 'next/navigation';
 import { UserPlusIcon, TrophyIcon } from '@heroicons/react/24/outline';
 import { getClientProfile } from '../utils/clientUtils';
 import LeadSearchUpdate from './LeadSearchUpdate';
-import { wantsNewLeadSearch, ownConnectionsArrive, getPendingPeople, getPossibleMatches, exportContacts } from '../services/api';
+import { wantsNewLeadSearch, newLeadSearchIfKnown, ownConnectionsArrive, getPendingPeople, getPossibleMatches, exportContacts } from '../services/api';
 import ContactsImport from './ContactsImport';
 import ContactQuickForm from './ContactQuickForm';
 
@@ -108,8 +108,10 @@ function LeadsInner() {
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
   const features = getClientProfile()?.features || {};
-  // Contacts as well as leads (Guy only for now, 24 Nov 2026): the door says so where that is on.
-  const [contactsOn, setContactsOn] = useState(false);
+  // Contacts as well as leads - on for every client since 26 Nov 2026, so the page STARTS with the Add people
+  // card. It used to start with the old "New leads ... add someone by hand" door and swap a moment later, once the
+  // server had answered; Guy saw the old wording flash by. The old door now shows only if the server says no.
+  const [contactsOn, setContactsOn] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
   const [addContactOpen, setAddContactOpen] = useState(false);
   // What is waiting behind the card - asked only where the new card shows. A failure just means no line.
@@ -123,7 +125,7 @@ function LeadsInner() {
     });
     return () => { alive = false; };
   }, [contactsOn]);
-  useEffect(() => { let alive = true; wantsNewLeadSearch().then((yes) => { if (alive && yes) setContactsOn(true); }); return () => { alive = false; }; }, []);
+  useEffect(() => { let alive = true; wantsNewLeadSearch().then(() => { if (alive && newLeadSearchIfKnown() === false) setContactsOn(false); }); return () => { alive = false; }; }, []);
   // "Connect there and they'll arrive here by themselves" - only where that is true for this client.
   const [linkedinHint, setLinkedinHint] = useState(false);
   useEffect(() => {
