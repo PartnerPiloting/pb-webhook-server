@@ -113,6 +113,19 @@ check('the front page links every guide and every topic, to places that exist', 
   assert.ok(!/\*|[–—]/.test(strip(html)));
 });
 
+check('the front page lists the older picture pages, and the site really has each one', () => {
+  const html = g.renderIndex();
+  const more = JSON.parse(fs.readFileSync(g.GUIDES_PATH, 'utf8')).index.more.items;
+  assert.ok(more.length >= 1);
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'marketingRoutes.js'), 'utf8');
+  for (const m of more) {
+    assert.ok(/^\/[a-z0-9-]+$/.test(m.href), m.href);
+    assert.ok(routes.includes(`router.get('${m.href}'`), `the site has no page at ${m.href}`);
+    assert.ok(html.includes(`href="${m.href}"`) && html.includes(g.inline(m.title).replace(/<[^>]+>/g, '')), m.href);
+  }
+  assert.ok(/\/learn$/.test(g.everythingLinkLine()));
+});
+
 check('the rest of the words: numbered steps, a quote to copy, a "###" heading, a web address, code', () => {
   const parts = g.partsOf('### 2. Choose the machine\n\nThen, in the clone:\n1. **Rename it** to suit.\n2. Start it.\n\n> *Hi there -\n> happy to connect?*\n\n  `ssh-ed25519 AAAA key`\n\nPicture: https://knowaguy.com.au/your-machine#ready. And "https://..." stays text.');
   assert.deepStrictEqual(parts.map((p) => p.label), ['', '2. Choose the machine']);

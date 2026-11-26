@@ -1005,12 +1005,15 @@ async function runLearn(args = {}, tenant = TENANT) {
   }
 
   if (wantsEverything(topicArg)) {
+    let webPage = '';
+    try { webPage = `${require('../utils/learnGuides').everythingLinkLine()}\n`; } catch (_) { /* no guides file = no link */ }
     return withMemoryFooter({
       text:
         `**Wingguy Learning - the whole course** - all ${pb.topics.length} topics, Guy's own words.\n\n` +
         pb.topics.map((t) => t.body).join('\n\n') +
         '\n\n---\n' +
         "That's all of Wingguy Learning - Guy speaking throughout, so present it as his words, not paraphrased into generic advice.\n" +
+        webPage +
         'It is long. Unless they asked to read the lot end to end, lead with the map of topics and what each covers, then go deep on whatever they pick.\n' +
         "One exception to the first person: any claim about how good Wingguy itself is stays attributed to Guy (\"Guy reckons...\") - you praising your own drafting costs the client's trust and his vouching for it doesn't.\n" +
         "If they ask something Wingguy Learning doesn't cover, say so and point them to Guy - never fill the gap from general knowledge.",

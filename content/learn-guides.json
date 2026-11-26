@@ -8,12 +8,63 @@
     "EVERY topic's answer in Claude ends with the link to its place on its page, unasked (Guy, 26 Nov 2026): 'See it with pictures' when the guide gives the topic figures, 'Read it on a page' when it is words only. The list of topics ends with the front page link. One home for those words: utils/learnGuides.js topicLinkLine / indexLinkLine, called by services/wingguyGetStartedMcp.js.",
     "Pages are sent by link and are noindex - they are not in the site's navigation or in search.",
     "Every Wingguy Learning topic is in exactly ONE guide, so every topic has a link (tests/learn-guides.test.js fails when a new topic has no home). The order of the guides here is the order on the front page, knowaguy.com.au/learn.",
-    "\"footer\" at the top is the closing line of every guide that has none of its own. \"index\" is the framing of the front page."
+    "\"footer\" at the top is the closing line of every guide that has none of its own. \"index\" is the framing of the front page.",
+    "\"index.more\" lists the one-off picture pages that were built before the guides (knowaguy.com.au/your-machine and the like) so the front page shows everything. Each is { href, title, sub } - href is the page's own address on the site; the test fails if the site has no such page."
   ],
   "index": {
     "title": "Wingguy Learning",
     "dek": "Everything in your training, a page at a time - the same words your Claude gives you, laid out to read.",
-    "intro": "Pick the page you need. Each one opens on its own link, so you can keep it, come back to it, or pass it on."
+    "intro": "Pick the page you need. Each one opens on its own link, so you can keep it, come back to it, or pass it on.",
+    "more": {
+      "heading": "Pages with pictures",
+      "items": [
+        {
+          "href": "/your-machine",
+          "title": "Your Linked Helper machine",
+          "sub": "The three screens that matter when you buy it"
+        },
+        {
+          "href": "/open-your-machine",
+          "title": "Getting into your Linked Helper machine",
+          "sub": "Every step, from the link to the desktop"
+        },
+        {
+          "href": "/your-licence",
+          "title": "Buying your Linked Helper licence",
+          "sub": "Every click, and where the promo code goes"
+        },
+        {
+          "href": "/your-claude-key",
+          "title": "Setting up your Claude key",
+          "sub": "The same steps, to follow along with"
+        },
+        {
+          "href": "/pick-your-people",
+          "title": "Picking your people on LinkedIn",
+          "sub": "Choosing who to search for"
+        },
+        {
+          "href": "/your-campaign",
+          "title": "One campaign, and the message that matters",
+          "sub": "Your campaign on one page"
+        },
+        {
+          "href": "/thanks-for-connecting-example",
+          "title": "Thanks for connecting, done properly",
+          "sub": "What a good one looks like"
+        },
+        {
+          "href": "/your-links",
+          "title": "Your links - what Wingguy sends, and when",
+          "sub": "With the examples ready to copy"
+        },
+        {
+          "href": "/introduction-example",
+          "title": "What an introduction looks like",
+          "sub": "One that lands"
+        }
+      ]
+    }
   },
   "footer": "These are the same words your Claude gives you from Wingguy Learning, laid out on a page. You can always just ask it, in your own words.",
   "guides": [

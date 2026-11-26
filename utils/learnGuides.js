@@ -77,6 +77,9 @@ function topicLinkLine(title) {
 }
 
 /** The same for the list of topics: the front page, where every topic is a link. */
+function everythingLinkLine() {
+  return `WEB PAGE: all of this is also on the web, a page at a time, easier to read than one long answer. At the end, on a line of its own, give them this link exactly as written: All of it on one page: ${siteBase()}/learn`;
+}
 function indexLinkLine() {
   return `WEB PAGE: all of Wingguy Learning is also on the web, every topic a link. After the list, on a line of its own, give them this link exactly as written: All of it on one page: ${siteBase()}/learn`;
 }
@@ -256,10 +259,15 @@ function renderIndex() {
     return `<li class="gd"><a class="gt" href="/learn/${g.slug}"><span class="num">${i + 1}</span><span><b>${esc(g.title)}</b>${g.dek ? `<span class="short">${esc(g.dek)}</span>` : ''}</span></a>
           <ul class="tl">${shown.map((t) => `<li><a href="/learn/${g.slug}#${slugOf(t.heading || t.title)}">${esc(t.heading || t.title)}</a></li>`).join('')}</ul></li>`;
   }).join('\n        ');
+  const more = ix.more && (ix.more.items || []).length ? `
+      <h2 class="mh">${esc(ix.more.heading || 'More pages')}</h2>
+      <ul class="map">
+          ${ix.more.items.map((m) => `<li><a href="${esc(m.href)}"><span><b>${esc(m.title)}</b>${m.sub ? `<span class="short">${esc(m.sub)}</span>` : ''}</span></a></li>`).join('\n          ')}
+      </ul>` : '';
   const inner = `${ix.intro ? `<p class="how">${inline(ix.intro)}</p>` : ''}
       <ul class="idx">
         ${cards}
-      </ul>`;
+      </ul>${more}`;
   return page({ title: ix.title || 'Wingguy Learning', dek: ix.dek, inner, footer: file.footer });
 }
 function indexMeta() {
@@ -335,6 +343,7 @@ function page(o) {
   .more .nx b { font-size:20px; font-weight:400; color:var(--ink-deep); }
   .more .all { font-size:16px; color:var(--gold-ink); }
   .idx { list-style:none; margin:0 0 2rem; padding:0; }
+  .mh { font-size:13px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold-ink); margin:0 0 12px; font-weight:400; }
   .gd { margin:0 0 14px; border:1px solid var(--rule); border-radius:5px; background:#fff; }
   .gt { display:flex; align-items:center; gap:14px; padding:14px 16px; text-decoration:none; color:inherit; }
   .gt:hover { background:var(--cream); }
@@ -448,4 +457,4 @@ function page(o) {
 </script>`;
 }
 
-module.exports = { renderGuide, guideMeta, renderIndex, indexMeta, topicLink, topicLinkLine, indexLinkLine, topicHasPictures, runsOf, loadGuides, loadTopics, partsOf, inline, slugOf, GUIDES_PATH };
+module.exports = { renderGuide, guideMeta, renderIndex, indexMeta, topicLink, topicLinkLine, indexLinkLine, everythingLinkLine, topicHasPictures, runsOf, loadGuides, loadTopics, partsOf, inline, slugOf, GUIDES_PATH };
