@@ -180,11 +180,11 @@ function partsOf(text) {
   return parts;
 }
 
-function figure(name, caption) {
+function figure(name, caption, bar) {
   const safe = String(name || '').replace(/[^a-z0-9-]/gi, '');
   let inner;
   try { inner = fs.readFileSync(path.join(FIGURES_DIR, `${safe}.html`), 'utf8'); } catch (_) { return ''; }
-  return `<figure class="fig"><div class="shot"><div class="bar"><i></i><i></i><i></i><span>portal.knowaguy.com.au</span></div><div class="screen">${inner}</div></div>${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}</figure>`;
+  return `<figure class="fig"><div class="shot"><div class="bar"><i></i><i></i><i></i><span>${esc(bar || 'portal.knowaguy.com.au')}</span></div><div class="screen">${inner}</div></div>${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}</figure>`;
 }
 
 function topicSection(g, t, topics, n) {
@@ -206,7 +206,7 @@ function topicSection(g, t, topics, n) {
     }
   }
   const body = parts.map((p) => {
-    const mine = figs.filter((f) => slugOf(f.after) === p.id && p.id).map((f) => figure(f.name, f.caption)).join('');
+    const mine = figs.filter((f) => slugOf(f.after) === p.id && p.id).map((f) => figure(f.name, f.caption, f.bar)).join('');
     const top = p.label ? `<h3 id="${id}-${p.id}">${esc(p.label)}</h3>` : '';
     return `${top}${p.html.join('\n')}${mine}`;
   }).join('\n');

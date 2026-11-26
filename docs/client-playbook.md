@@ -835,6 +835,33 @@ turn the old one right down - about 5 a week - and give the new one the rest. Af
 the old one. If I look after your machine, that's "send 5 a week on the old one and 95 on the new one"
 in Claude.
 
+**Moving people from one campaign to another**
+
+Sometimes the people you want are already sitting in a campaign that isn't sending - an old one you've
+paused, or one that only visited profiles and never invited anyone. Don't run the search again to get
+them into your new campaign: Linked Helper skips anyone it already has, so a fresh search brings in
+nobody. Move them across instead. It takes a minute, and the numbers below match the pictures.
+
+1. In your list of campaigns, open the campaign they're sitting in, and make sure you're on its
+   **Queue** - the people still waiting.
+2. Tick the box at the top left of the list. It changes to read **All** and the full number - say All
+   773 / 773 - which means everyone is selected, on every page, not just the one you can see.
+3. Press **Add to**. It isn't a word on the screen - it's the small square with a plus in it, just to
+   the right of that number. A panel opens called **Add selected contacts to list**.
+4. At the top of the panel, choose the campaign you want them in.
+5. Leave **Sub-list** chosen and click **Queue**.
+6. Press **+ Add**.
+
+They land at the start of the new campaign, so its first step - the invitation - goes to them next, at
+that campaign's pace. Then, back in the old campaign with them still selected, press the bin next to
+Add to. That only takes them out of the old campaign - they stay in the new one - and it means nobody
+sits in two campaigns at once.
+
+**If some of them won't go across,** they're on the new campaign's skip list. That happens when the
+new campaign was cloned from the old one with "Exclude profiles from current campaign" ticked - which
+is exactly what that box is for. Open the new campaign's **Exclude** list, select the ones you want,
+and press the bin to take them off it. Then go back to the old campaign and do Add to again.
+
 ---
 
 ## YOUR LINKED HELPER MACHINE - SETTING IT UP IN TEN MINUTES

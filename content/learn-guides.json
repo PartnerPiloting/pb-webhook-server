@@ -229,7 +229,21 @@
         {
           "title": "A SECOND LINKED HELPER CAMPAIGN",
           "heading": "A second campaign",
-          "sub": "When it's worth it, and how to clone one"
+          "sub": "When it's worth it, how to clone one, and moving people across",
+          "figures": [
+            {
+              "after": "Moving people from one campaign to another",
+              "name": "lh-select-add-to",
+              "bar": "Linked Helper",
+              "caption": "Inside Linked Helper, on the old campaign's Queue. 2 selects everyone, 3 is Add to. The bin is just to its right."
+            },
+            {
+              "after": "Moving people from one campaign to another",
+              "name": "lh-add-to-panel",
+              "bar": "Linked Helper",
+              "caption": "The panel Add to opens. 4 the campaign you're moving them to, 5 its Queue, 6 + Add."
+            }
+          ]
         }
       ]
     },
