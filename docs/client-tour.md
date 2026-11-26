@@ -170,7 +170,7 @@ you like, and press send. About a minute each. Not someone you want a conversati
 them, no deliberation. Guy reckons you'll be startled how good the drafts are.
 
 Later, when new connections start arriving, the same move works on them. They come up on your
-Thanks for Connecting screen with their score beside them. Low score? Skip. High score? Open their
+Today page, in the "New connections to welcome" box, with their score beside them. Low score? Skip. High score? Open their
 profile and make the judgement no score can make for you: is this someone I actually want a
 conversation with? For your yeses I write the thanks-for-connecting message - tailored to
 something true on their profile, ending with the ask: *how about a quick Zoom?*
@@ -309,7 +309,7 @@ here I'll just give you the shape of what's coming.
 
 Your search feeds Linked Helper. It sends your connection request with a short note in your words,
 and the people who accept flow straight into your own database - no exporting, no spreadsheets -
-where each one is scored and lands on your Thanks for Connecting screen. From that point on, your
+where each one is scored and lands in "New connections to welcome" on your Today page. From that point on, your
 database is the record of everything.
 
 On the call, you and Guy go through your campaign together. It comes already built, so the work is

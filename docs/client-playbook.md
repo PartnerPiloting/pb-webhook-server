@@ -93,7 +93,7 @@ Here's the whole thing in order, so you can see where any one piece fits.
    clutter it.
 5. **Everyone who accepts gets scored** - on headline, About section and posts, against the
    attributes you've set up. That's the attitude filter.
-6. **Work your new connections on Thanks for Connecting.** Each one comes up with their score beside
+6. **Work your new connections in "New connections to welcome" on your Today page.** Each one comes up with their score beside
    them. Skip the low ones. For the high ones, open their profile, decide you want them, and set
    Wingguy to work.
 7. **Send your thanks-for-connecting.** Tailored to something real on their profile, ending with
@@ -598,7 +598,7 @@ your onboarding.
    who don't accept never arrive, so your database only holds people who said yes.
 4. **Each new connection gets scored** - on headline, About section and posts, against the
    attributes you've set up. That's the attitude filter, and it's what puts the promising ones at
-   the top of your Thanks for Connecting screen.
+   the top of "New connections to welcome" on your Today page.
 
 From that point on, your database is the record of everything: every message, every reply, every
 meeting.
@@ -1453,8 +1453,10 @@ The whole thing on one page, with the examples ready to copy: https://knowaguy.c
 
 This is where the scoring earns its keep, and it's a quick job once you're in the rhythm of it.
 
-On your **Thanks for Connecting** screen, your new connections come up with **their score beside
-them**. That's all the score is for - it
+Open your portal and you land on the **Today** page. The first box, **New connections to welcome**
+("Accepted recently, best fit first"), is where your new connections come up with **their score
+beside them** - click the box to open it. (If your portal still has a separate **Thanks for
+Connecting** tab instead of Today, it's the same list.) That's all the score is for - it
 puts the promising ones in front of you and keeps you from spending your attention evenly across
 everybody.
 
@@ -1512,10 +1514,11 @@ to say yes to except connecting. The Zoom ask lives here, in the thanks-for-conn
 earned. Second, this is the one deliberately generic message in the whole system - it goes out at
 volume through Linked Helper, so it can't be tailored, and that's fine.
 
-**Where you do it: the Thanks for Connecting screen.** The catch has always been the effort. On
+**Where you do it: "New connections to welcome" on your Today page.** The catch has always been the effort. On
 LinkedIn itself you'd have to dig through your recent connections, remember who you'd already
 thanked, and write each one from scratch - which is exactly why almost nobody has ever done it
-properly. The Thanks for Connecting screen in your portal does the remembering. It lists everyone
+properly. Your portal does the remembering: open it and the first box on the Today page is **New
+connections to welcome** (on an older portal it's the **Thanks for Connecting** tab - same list). It lists everyone
 who's accepted and hasn't been thanked yet, with their score beside them - sort by highest score if
 you like. Click a name and their LinkedIn opens; type /wg in the message box and Wingguy reads their
 profile and writes the message right there. Mark them Messaged and they leave the list, or Skipped
