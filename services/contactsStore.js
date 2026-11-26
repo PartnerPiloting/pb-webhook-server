@@ -777,6 +777,28 @@ async function listForImport(coachClientId) {
 }
 
 /**
+ * Every row that is a CONTACT (not a lead), whole, for "Export contacts" (services/contactsExport.js).
+ * One query; the biggest client holds some 15,000 of these.
+ */
+async function listContactsForExport(coachClientId) {
+  const tenant = clip(coachClientId, 80);
+  if (!tenant) return [];
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const r = await client.query(
+      `SELECT id, contact_key, email, name, first_name, last_name, company, headline, phone, linkedin_slug, lead_record_id,
+              sources, lists, manual, person_ref, last_seen_at, linkedin_connected_at
+         FROM wingguy_contacts WHERE coach_client_id = $1 AND lead_record_id IS NULL ORDER BY id`, [tenant]);
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Write an import (services/contactsImport.js planned it; nothing here decides anything).
  *   newPeople    [{ name, email, phone, company, linkedin (slug), otherEmails[], lists[], ref }] -> new contact rows
  *   extraRows    [{ email, name, company, lists[], ref }]  -> a new address for someone already held
@@ -971,7 +993,7 @@ async function forgetClient(coachClientId, { apply = false } = {}) {
 }
 
 module.exports = {
-  forgetClient,
+  forgetClient, listContactsForExport,
   upsertContacts, syncLinkedinConnections, findPeople, findSamePeople, updatePersonShared, getContact, markAsLead, findByIdentity, addManualContact, updateContactFields, listForImport, applyImport, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
   // pure, for tests
   normaliseContact, rankMatches, cleanEmail, mergeContacts, mergedValue, slugOf, MANUAL_GUARD, GUARDED_COLS,

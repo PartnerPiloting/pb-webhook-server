@@ -378,6 +378,17 @@ export const importContacts = async ({ filename, text, listName, confirm }) => {
   }
 };
 
+// "Export contacts": the client's contacts (not leads) as a CSV file. { ok, blob, people, error }.
+export const exportContacts = async () => {
+  try {
+    const clientId = getCurrentClientId();
+    const res = await api.get('/contacts/export', { params: { clientId }, responseType: 'blob', timeout: 120000 });
+    return { ok: true, blob: res.data, people: Number(res.headers?.['x-total-rows'] || 0) };
+  } catch (e) {
+    return { ok: false, error: e.response?.status === 404 ? 'Not available yet' : (e.message || 'Export failed') };
+  }
+};
+
 // Edit a contact from its details card: { ok, contact, error }.
 export const updateContact = async (contactId, fields) => {
   try {

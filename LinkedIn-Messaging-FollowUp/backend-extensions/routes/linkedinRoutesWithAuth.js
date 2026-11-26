@@ -1669,6 +1669,29 @@ router.get('/contacts/search', async (req, res) => {
 });
 
 /**
+ * GET /api/linkedin/contacts/export
+ * "Export contacts": every contact (not leads - those have their own export) as one CSV, one row per
+ * person, laid out as a Google Contacts file (services/contactsExport.js). Read-only.
+ */
+router.get('/contacts/export', async (req, res) => {
+  try {
+    if (!leadCampaign.recentShortcut(req.client.clientId)) return res.status(404).json({ ok: false, error: 'Not available' });
+    const out = await require('../../../services/contactsExport').exportContacts(req.client.clientId);
+    if (!out.ok) return res.status(out.status || 500).json(out);
+    const today = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="wingguy-contacts-${today}.csv"`);
+    res.setHeader('X-Total-Rows', String(out.people));
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length, X-Total-Rows');
+    res.send(out.csv);
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /contacts/export:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/linkedin/contacts  { name | firstName+lastName, email, phone, company, linkedin }
  * Add a CONTACT by hand - someone Wingguy just keeps details for, not a lead (services/
  * leadSearchContacts.js saveContact). Dedupes on email / LinkedIn address first.
