@@ -129,7 +129,32 @@ function deriveNameFromFull(fullName) {
   return { firstName: t[0], lastName: t.slice(1).join(' ') };
 }
 
+/**
+ * The names to store for a lead, given what Linked Helper sent (first, last) and the full display
+ * name LinkedIn showed (original_full_name).
+ *
+ * A usable last name is kept as sent. When it is broken (blank, a symbol, just a credential) the
+ * surname is recovered from the full name - and if that recovered surname is the very word Linked
+ * Helper put in the FIRST name slot, the first name is recovered too. Linked Helper sent
+ * first "Wilk", last blank for "Mat Wilk" (Roland Illyes, 27 Nov 2026) and the lead was stored as
+ * "Wilk Wilk". In every other case the first name is left exactly as sent.
+ */
+function repairLeadName(firstName, lastName, fullName) {
+  const first = stripCredentialSuffixes(firstName);
+  let last = stripCredentialSuffixes(lastName);
+  if (!isBrokenLastName(last)) return { firstName: first, lastName: last };
+  const derived = deriveNameFromFull(fullName);
+  if (!derived.lastName) return { firstName: first, lastName: last };
+  last = derived.lastName;
+  const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  if (derived.firstName && same(first, last) && !same(derived.firstName, last)) {
+    return { firstName: derived.firstName, lastName: last };
+  }
+  return { firstName: first, lastName: last };
+}
+
 module.exports = {
+  repairLeadName,
   stripCredentialSuffixes,
   normalizeNameForMatching,
   isBrokenLastName,
