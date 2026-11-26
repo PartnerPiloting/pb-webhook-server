@@ -5,7 +5,7 @@
     "The topics' words live in docs/client-playbook.md and NOWHERE else. A guide only names topics (by the start of their title); the page pulls their text in on every request. Never paste topic text into this file.",
     "What a guide may hold of its own: its title, its one-line dek, a short intro, and the 'do this now' box. Those are framing, not method - keep them short, and show Guy before changing them.",
     "figures: pictures placed after a named sub-heading of a topic ('after' = the bold words that open that part, without the full stop). Each is a file in content/learn/figures/<name>.html - a drawn picture of the screen with MADE-UP people, never a screenshot of a real client's list.",
-    "A topic that is in a guide gets a 'See it with pictures' line at the end of Claude's answer (services/wingguyGetStartedMcp.js asks utils/learnGuides.js topicLink).",
+    "EVERY topic's answer in Claude ends with the link to its place on its page, unasked (Guy, 26 Nov 2026): 'See it with pictures' when the guide gives the topic figures, 'Read it on a page' when it is words only. The list of topics ends with the front page link. One home for those words: utils/learnGuides.js topicLinkLine / indexLinkLine, called by services/wingguyGetStartedMcp.js.",
     "Pages are sent by link and are noindex - they are not in the site's navigation or in search.",
     "Every Wingguy Learning topic is in exactly ONE guide, so every topic has a link (tests/learn-guides.test.js fails when a new topic has no home). The order of the guides here is the order on the front page, knowaguy.com.au/learn.",
     "\"footer\" at the top is the closing line of every guide that has none of its own. \"index\" is the framing of the front page."

@@ -993,11 +993,13 @@ async function runLearn(args = {}, tenant = TENANT) {
   if (topicArg && wantsTourAdvance(topicArg)) return runTourAdvance(tenant);
 
   if (!topicArg) {
+    let webPage = '';
+    try { webPage = ` ${require('../utils/learnGuides').indexLinkLine()}`; } catch (_) { /* no guides file = no link */ }
     return withMemoryFooter({
       text:
         "**Wingguy Learning** - Guy's whole method, taught right here one topic at a time. Built from real client work, and it keeps growing - new topics land in every client's Wingguy automatically. Topics:\n" +
         pb.topics.map((t) => `- ${t.title}`).join('\n') +
-        '\n\n---\nPick whichever fits the user\'s question and call again with topic="...", or topic="everything" for the whole playbook in one go. New or just curious? Start with the big picture. ' +
+        '\n\n---\nPick whichever fits the user\'s question and call again with topic="...", or topic="everything" for the whole playbook in one go. New or just curious? Start with the big picture.' + webPage + ' ' +
         "Call it **Wingguy Learning** when you present it - their training, built into Wingguy - never 'the playbook' or 'documentation'. These are Guy's words - serve them as his. If a question isn't covered by any topic, say so and point them to Guy rather than improvising.",
     });
   }
@@ -1053,14 +1055,10 @@ async function runLearn(args = {}, tenant = TENANT) {
 
   // A topic that is part of a web guide (knowaguy.com.au/learn/..., utils/learnGuides.js) has the same
   // words there WITH PICTURES - a chat cannot show them, so the client is handed the link (Guy, 26 Nov 2026).
-  // Every topic is on a web page now, but only one whose page really has pictures gets this line - a
-  // promise of pictures that are not there would cost the next link its click.
+  // Every topic is on a web page now and EVERY answer ends with its link, unasked (Guy, 26 Nov 2026) -
+  // "See it with pictures" where the page has them, "Read it on a page" where it is words only.
   let pictures = '';
-  try {
-    const learnGuides = require('../utils/learnGuides');
-    const link = learnGuides.topicHasPictures(topic.title) ? learnGuides.topicLink(topic.title) : '';
-    if (link) pictures = `PICTURES: this topic is also on a web page with pictures of the screens. After Guy's words, on a line of its own, give them this link exactly as written: See it with pictures: ${link}`;
-  } catch (_) { /* no guides file = no link; the topic is still served */ }
+  try { pictures = require('../utils/learnGuides').topicLinkLine(topic.title); } catch (_) { /* no guides file = no link; the topic is still served */ }
 
   const footer = [
     '---',

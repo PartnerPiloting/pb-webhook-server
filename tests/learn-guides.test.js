@@ -86,9 +86,20 @@ check('every Wingguy Learning topic has exactly one home, so every topic has a l
   for (const p of named) assert.strictEqual(topics.filter((t) => t.title.toUpperCase().startsWith(p)).length, 1, `"${p}" matches more than one topic - name more of its title`);
 });
 
-check('only a topic with pictures tells Claude to hand over a "see it with pictures" link', () => {
-  const full = (t) => topics.find((x) => x.title.toUpperCase().startsWith(t.title.toUpperCase())).title;
-  for (const guide of guides) for (const t of guide.topics) assert.strictEqual(g.topicHasPictures(full(t)), (t.figures || []).length > 0, t.title);
+check('EVERY topic tells Claude to hand over its link - "with pictures" only where the page has them', () => {
+  for (const topic of topics) {
+    const line = g.topicLinkLine(topic.title);
+    const link = g.topicLink(topic.title);
+    assert.ok(link && line.endsWith(link), `${topic.title}: no link line`);
+    const [slug, anchor] = link.split('/learn/')[1].split('#');
+    assert.ok(g.renderGuide(slug).includes(`id="${anchor}"`), `${topic.title}: ${link} points at nothing`);
+    const entry = guides.flatMap((x) => x.topics).find((t) => topic.title.toUpperCase().startsWith(t.title.toUpperCase()));
+    const pics = (entry.figures || []).length > 0;
+    assert.strictEqual(g.topicHasPictures(topic.title), pics, topic.title);
+    assert.strictEqual(/pictures/i.test(line), pics, `${topic.title}: the line must promise pictures only when there are some`);
+  }
+  assert.strictEqual(g.topicLinkLine('A TOPIC NOBODY HAS WRITTEN'), '');
+  assert.ok(/\/learn$/.test(g.indexLinkLine()));
 });
 
 check('the front page links every guide and every topic, to places that exist', () => {

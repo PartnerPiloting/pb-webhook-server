@@ -63,7 +63,25 @@ function topicLink(title) {
   return '';
 }
 
-/** Does the guide show PICTURES for this topic? Only then does Claude hand the client the link. */
+/**
+ * What Claude is told to put after a topic's words: the link to that topic on its web page. EVERY
+ * topic gets one (Guy, 26 Nov 2026: "just show the link without the user specifically asking").
+ * The words before the link promise pictures only when the page has them.
+ */
+function topicLinkLine(title) {
+  const link = topicLink(title);
+  if (!link) return '';
+  return topicHasPictures(title)
+    ? `PICTURES: this topic is also on a web page with pictures of the screens. After Guy's words, on a line of its own, give them this link exactly as written: See it with pictures: ${link}`
+    : `WEB PAGE: this topic is also on a web page they can keep, come back to or pass on. After Guy's words, on a line of its own, give them this link exactly as written: Read it on a page: ${link}`;
+}
+
+/** The same for the list of topics: the front page, where every topic is a link. */
+function indexLinkLine() {
+  return `WEB PAGE: all of Wingguy Learning is also on the web, every topic a link. After the list, on a line of its own, give them this link exactly as written: All of it on one page: ${siteBase()}/learn`;
+}
+
+/** Does the guide show PICTURES for this topic? It decides how the link is worded, not whether it goes. */
 function topicHasPictures(title) {
   const t = String(title || '').toUpperCase();
   if (!t) return false;
@@ -430,4 +448,4 @@ function page(o) {
 </script>`;
 }
 
-module.exports = { renderGuide, guideMeta, renderIndex, indexMeta, topicLink, topicHasPictures, runsOf, loadGuides, loadTopics, partsOf, inline, slugOf, GUIDES_PATH };
+module.exports = { renderGuide, guideMeta, renderIndex, indexMeta, topicLink, topicLinkLine, indexLinkLine, topicHasPictures, runsOf, loadGuides, loadTopics, partsOf, inline, slugOf, GUIDES_PATH };
