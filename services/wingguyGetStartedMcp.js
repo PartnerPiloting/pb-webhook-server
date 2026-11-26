@@ -455,11 +455,25 @@ const MATCH_STOPWORDS = new Set(['what', 'about', 'your', 'you', 'the', 'and', '
 // text" is not about the invite note.)
 const TOPIC_ALIASES = [
   // Sam, 17 Nov 2026: "How do I export all my Wingguy contacts/leads to a CSV or spreadsheet?" - the portal's
-  // Export All to CSV button, topic EXPORTING YOUR CONTACTS. NOT for getting a file off the Linked Helper
+  // Export All to CSV button, topic EXPORTING YOUR PEOPLE (was EXPORTING YOUR CONTACTS until 26 Nov 2026). NOT for getting a file off the Linked Helper
   // machine (Roland), nor for loading a Connections.csv INTO Wingguy (Sam, Steve) - both still gaps, so
   // they are fenced out and stay a miss.
   // FIRST in the list: his question lists "phone" among the columns, which the phone alias below would take.
-  [[/^(?![\s\S]*\b(machine|linked ?helper|lh|import\w*|bulk\S*|upload\w*|connections\.csv)\b)/, /\b(export\w*|csv|spreadsheets?|excel|download\w*)\b/, /\b(contacts?|leads?|list|people|everyone|connections?)\b/], 'EXPORTING YOUR CONTACTS'],
+  [[/^(?![\s\S]*\b(machine|linked ?helper|lh|import\w*|bulk\S*|upload\w*|connections\.csv)\b)/, /\b(export\w*|csv|spreadsheets?|excel|download\w*)\b/, /\b(contacts?|leads?|list|people|everyone|connections?)\b/], 'EXPORTING YOUR PEOPLE'],
+  // Contacts (Guy, 26 Nov 2026): Wingguy holds contacts as well as leads, with Import contacts, Add a contact
+  // and one search - topic YOUR CONTACTS. Two questions no title word answers: getting an address book IN
+  // ("import", "upload" - fenced out of the export alias above), and what a contact is next to a lead.
+  // Loading a LinkedIn Connections.csv, or anything on the Linked Helper machine, is still not covered, so it
+  // is fenced out here too and stays a miss.
+  [[/^(?![\s\S]*\b(machine|linked ?helper|lh|connections\.csv|campaigns?)\b)/, /\b(import\w*|upload\w*|bring in|load)\b/, /\b(contacts?|address ?book|google|outlook|icloud|vcards?|phone)\b/], 'YOUR CONTACTS'],
+  [[/\bleads?\b/, /\bcontacts?\b/, /\b(difference|different|versus|vs|or)\b/], 'YOUR CONTACTS'],
+  // "how do I add a contact" / "what is a contact": the title says CONTACTS and scoring is on whole words, so
+  // the singular missed. Kept to adding and to the bare question - "contact" is also a verb ("how do I contact Guy").
+  [[/\b(add\w*|sav(e|ing))\b/, /\bcontacts?\b/], 'YOUR CONTACTS'],
+  [[/\bwhat(.?s| is| are) (a )?contacts?\b/], 'YOUR CONTACTS'],
+  // "how do I add a lead" was a gap for the same whole-word reason (the title says LEADS). NEW LEADS is the
+  // topic that says how a person gets in by hand, and how a contact becomes a lead.
+  [[/\badd\w*\b/, /\bleads?\b/, /^(?![\s\S]*\b(campaigns?|search\w*|linked ?helper|machine|top ?up)\b)/], 'NEW LEADS'],
   // The browser extension (10 Nov 2026): Paul "add Wingguy Chrome extension to chrome", "chrome extension",
   // Roland "extension". The panel's own error keeps its topic, so it sits first.
   [[/couldn.?t reach wingguy/], '"COULDN'],

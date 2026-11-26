@@ -1971,8 +1971,12 @@ through.
 **No LinkedIn link? Add them anyway.** For someone you only know from a call or an email, the
 LinkedIn link is optional. Add it when you find their profile - that's what lets them be scored.
 
-**Adding someone by hand.** Met someone at an event, or been handed a name? Use the form on the same
-screen. Put in what you have, and a line on how you met - that's the most useful thing you can add.
+**Adding someone by hand.** Met someone at an event, or been handed a name? Say *"save Jane Smith to
+my contacts, 0412 345 678"* in your Claude chat, or open **Your CRM** in the portal and press **Add
+a contact**. A name with an email or a phone number is all it needs. They come in as a contact -
+Wingguy keeps their details and leaves them alone. If it's someone you want to build a relationship
+with, say *"add her as a lead"*, or open their card and press **Make this contact a lead**. From
+then on Wingguy tracks your conversations with them and reminds you to follow up.
 
 **Possible matches.** Sometimes the same person turns up twice - their work email on one call, their
 personal one on another. New Leads shows them side by side. Choose **Same person - combine**, or
@@ -2294,26 +2298,76 @@ It works whether your mail is Gmail, Outlook or Zoho, once your mailbox is conne
 
 ---
 
-## EXPORTING YOUR CONTACTS - GETTING YOUR LIST INTO A SPREADSHEET
+## YOUR CONTACTS - EVERYONE YOU KNOW IN ONE PLACE
 
-Everything Wingguy holds on your people is yours, and you can take a copy whenever you like.
+Wingguy holds two kinds of people.
 
-**Where it is.** Say **open my portal** and go to **Your CRM** (on the older menu it's called Lead
-Search & Update). Under the search and filters there's a row that says "Export matching leads". Click
-**Export All to CSV** and a file downloads to your computer. It opens in Excel or Google Sheets.
+**Leads** are the people it's working on with you. It scores them, tracks your conversations and
+reminds you to follow up.
 
-**Everyone, or just some.** The button exports whoever the screen is showing. With no search and no
-filters, that's your whole list. Narrow it first - by search term, campaign, priority or connection -
-and you get just those people.
+**Contacts** are everyone else you know. Wingguy just keeps their details. They never show in your
+lists or your follow-ups - they only appear when you search for them.
 
-**What's in it.** One row per person. Their name, email, phone and LinkedIn link come first, then
-their score, status, the date you connected and your next follow-up date. After that comes everything
-Linked Helper collected from their profile - company, location, industry and so on - so you can sort
-and slice it your own way.
+The point is one place to look. Say *"who is Sarah and what's her email?"* and you get the answer,
+whether Sarah is a lead or your accountant.
 
-**What it's for.** Merging your people into another list, building an invite list for an event, or
-just having your own copy. It's a snapshot - Wingguy carries on as before, and you can export again
-any time.
+**How contacts get in**
+
+- **From your email.** Anyone you write to, or who writes to you, becomes a contact by themselves
+  once your mailbox is connected.
+- **Your address book.** In the portal, open **Your CRM** and press **Import contacts**. Upload the
+  file from Google, Outlook or your phone. It shows you a summary before it saves, and nothing you
+  already have is overwritten.
+- **One at a time.** Say *"save Jane Smith to my contacts, 0412 345 678"*, or press **Add a
+  contact** in the portal.
+- **Your LinkedIn connections.** Once your LinkedIn is linked, everyone you're connected to comes in
+  with their name, headline and profile link. LinkedIn doesn't hand over emails or phone numbers.
+  Ask me for the link.
+
+**Finding someone.** In **Your CRM**, type three or more letters of a name or email. Leads come
+first, then contacts, each row labelled. Click a contact to see their card.
+
+**Turning a contact into a lead.** Open their card and press **Make this contact a lead**. Their
+details and any lists they were on come across with them.
+
+**Getting the file to import**
+
+- **Google.** Go to contacts.google.com, choose Export, and pick Google CSV.
+- **Outlook on the web, or the new Outlook.** Open People, choose Manage contacts, then Export
+  contacts.
+- **Outlook on your computer, the classic one.** File, then Open & Export, then Import/Export.
+  Choose "Export to a file", then "Comma Separated Values", pick your Contacts folder and save.
+- **iPhone.** Go to icloud.com on a computer, open Contacts, select everyone, and choose Export
+  vCard.
+- **Android.** Your contacts are almost always in Google, so use the Google step.
+
+Your Google labels and Outlook categories are read from the file, so each person keeps the lists
+they were on.
+
+---
+
+## EXPORTING YOUR PEOPLE - GETTING A COPY OUT OF WINGGUY
+
+Everything Wingguy holds on your people is yours, and you can take a copy whenever you like. There
+are two ways, for two different jobs.
+
+**Everyone, in one file.** Say **open my portal**, go to **Your CRM**, and press **Export everyone
+(leads + contacts)**. One spreadsheet downloads with all your people in it, one row each. The first
+column says Lead or Contact. The second says how Wingguy knows them - imported, added by hand, from
+email, or from LinkedIn - so you can sort or filter to just the ones you want. It's laid out as a
+Google Contacts file, so it goes straight into Google. Outlook will ask you to match up a few
+columns.
+
+**A working list of leads.** Under the search and filters there's a row that says "Export matching
+leads". **Export All to CSV** downloads whoever the screen is showing. With no search and no
+filters, that's all your leads. Narrow it first - by tag, campaign, priority or connection - and you
+get just those people. This file carries more on each lead: their score, status, the date you
+connected, your next follow-up date, and everything Linked Helper collected from their profile.
+
+**Which to use.** Want your whole address book out? Export everyone. Building an invite list or a
+mail merge from a set of leads? Export All to CSV.
+
+Both are snapshots. Wingguy carries on as before, and you can export again any time.
 
 ---
 

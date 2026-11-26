@@ -368,14 +368,24 @@
       "phrase": "who is Sarah and what's her email?",
       "tool": "wingguy_find_person",
       "where": [
-        "content/wingguy-capabilities.json"
+        "content/wingguy-capabilities.json",
+        "docs/client-playbook.md"
       ]
     },
     {
       "phrase": "add her as a lead",
       "tool": "wingguy_create_lead",
       "where": [
-        "content/wingguy-capabilities.json"
+        "content/wingguy-capabilities.json",
+        "docs/client-playbook.md"
+      ]
+    },
+    {
+      "phrase": "save Jane Smith to my contacts",
+      "tool": "wingguy_save_contact",
+      "where": [
+        "content/wingguy-capabilities.json",
+        "docs/client-playbook.md"
       ]
     },
     {
@@ -467,24 +477,24 @@
     {
       "phrase": "how do I export all my contacts to a spreadsheet",
       "not": "WORKING YOUR LIST IN THE PORTAL",
-      "expect": "EXPORTING YOUR CONTACTS"
+      "expect": "EXPORTING YOUR PEOPLE"
     },
     {
       "phrase": "can I download my leads as a CSV",
       "not": "NEW LEADS",
-      "expect": "EXPORTING YOUR CONTACTS"
+      "expect": "EXPORTING YOUR PEOPLE"
     },
     {
       "phrase": "how do I get a CSV I exported from a Linked Helper campaign off the machine and onto my own computer",
-      "not": "EXPORTING YOUR CONTACTS"
+      "not": "EXPORTING YOUR PEOPLE"
     },
     {
       "phrase": "how do I bulk import my existing LinkedIn connections from the Connections.csv export into Wingguy",
-      "not": "EXPORTING YOUR CONTACTS"
+      "not": "EXPORTING YOUR PEOPLE"
     },
     {
       "phrase": "show me my follow-up list",
-      "not": "EXPORTING YOUR CONTACTS",
+      "not": "EXPORTING YOUR PEOPLE",
       "expect": "YOUR DAILY FOLLOW-UP LIST"
     },
     {
@@ -562,6 +572,36 @@
     {
       "phrase": "how many invites go out a day?",
       "not": "THANKS FOR CONNECTING"
+    },
+    {
+      "phrase": "how do I import my Google contacts into Wingguy",
+      "not": "EXPORTING YOUR PEOPLE",
+      "expect": "YOUR CONTACTS"
+    },
+    {
+      "phrase": "can I upload my Outlook address book",
+      "not": "EXPORTING YOUR PEOPLE",
+      "expect": "YOUR CONTACTS"
+    },
+    {
+      "phrase": "what's the difference between a lead and a contact",
+      "not": "NEW LEADS",
+      "expect": "YOUR CONTACTS"
+    },
+    {
+      "phrase": "how do I export everyone to a spreadsheet",
+      "not": "YOUR CONTACTS",
+      "expect": "EXPORTING YOUR PEOPLE"
+    },
+    {
+      "phrase": "how do I export my contacts",
+      "not": "YOUR CONTACTS",
+      "expect": "EXPORTING YOUR PEOPLE"
+    },
+    {
+      "phrase": "how do I add someone by hand",
+      "not": "YOUR CONTACTS",
+      "expect": "NEW LEADS"
     }
   ]
 }

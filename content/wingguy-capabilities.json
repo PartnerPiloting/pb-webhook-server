@@ -83,6 +83,7 @@
         { "say": "rebuild my scoring", "does": "change what a good lead looks like for you, test it on real people before anything is saved, and undo it if you don't like it.", "tools": ["wingguy_scoring_get", "wingguy_scoring_propose", "wingguy_scoring_test", "wingguy_scoring_commit", "wingguy_scoring_revert"] },
         { "say": "who is Sarah and what's her email?", "does": "one lookup across your leads and everyone you've written to.", "tools": ["wingguy_find_person", "wingguy_contacts_status"] },
         { "say": "add her as a lead", "does": "someone you met another way, or a person you've just been introduced to, goes in properly. Fix a city, email or phone the same way, or tag people into a list.", "tools": ["wingguy_create_lead", "wingguy_update_lead", "wingguy_tag_lead"] },
+        { "say": "save Jane Smith to my contacts", "does": "someone you want on file but aren't working on - their details are kept and they only show when you search.", "tools": ["wingguy_save_contact"], "added": "2026-11-26" },
         { "say": "open my portal", "does": "the website where you work your leads.", "tools": ["wingguy_open_portal"] }
       ]
     },
@@ -173,7 +174,6 @@
     }
   ],
   "not_shown": {
-    "wingguy_save_contact": "works for every client since 26 Nov 2026 - saves a person as a contact, not a lead; gets its own line, with the sentence to say, when the contacts Learning topics are written (Guy to see the wording first)",
     "wingguy_vision": "the answer itself",
     "wingguy_onboarding_guide": "Guy only - his onboarding call script",
     "wingguy_get_client": "Guy only - client directory",
