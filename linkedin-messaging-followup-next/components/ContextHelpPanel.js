@@ -156,7 +156,7 @@ export default function ContextHelpPanel({ area, isOpen, onClose }) {
         return 'Help: Lead Detail';
       case 'lead_search_and_update_search':
       case 'lead_search_and_update':
-        return 'Help: Lead Search & Update';
+        return 'Help: Your CRM';
       case 'lead_follow_up':
         return 'Help: Follow-Up Manager';
       case 'new_lead':
