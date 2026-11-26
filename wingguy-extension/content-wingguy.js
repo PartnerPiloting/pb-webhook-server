@@ -3443,8 +3443,63 @@
   const CHAT_POLL_MS = 2000;
   const CHAT_MAX_WAIT_MS = 4 * 60 * 1000;
   const CHAT_TRANSIENT = /failed to fetch|networkerror|network error|message port|message channel|no response from background|receiving end/i;
+  // WHEN THE START FAILS (0.3.46, 26 Nov 2026). Dean Hobin's panel lost the link on every try from
+  // 23 Nov and not one request reached the server, while the old one-shot door had drafted for him
+  // until 11 Nov. Two things now happen on a dropped start: the old door is tried, so he can keep
+  // working, and a fault report goes to the server with the browser's own words and how far the
+  // request got (the worker's trail, read straight from storage). The fallback is a bridge - take it
+  // out once the report has shown the cause and the start is fixed.
+  function readChatTrace() {
+    return new Promise((resolve) => {
+      try { chrome.storage.local.get(['wgChatTrace'], (d) => resolve((d && d.wgChatTrace) || null)); }
+      catch (_) { resolve(null); }
+    });
+  }
+  async function reportPanelError(report) {
+    try {
+      const t = await readChatTrace();
+      const full = {
+        step: report.step,
+        error: report.error,
+        fallback: report.fallback,
+        trace: { id: report.traceId, panel: report.panel || null, worker: t && t.id === report.traceId ? t : null, workerLast: t && t.id !== report.traceId ? t : null },
+        extensionVersion: (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest && chrome.runtime.getManifest().version) || '',
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        at: new Date().toISOString(),
+      };
+      await new Promise((resolve) => {
+        try {
+          chrome.storage.local.get(['wgPanelErrors'], (d) => {
+            const list = (Array.isArray(d && d.wgPanelErrors) ? d.wgPanelErrors : []).concat([full]).slice(-10);
+            chrome.storage.local.set({ wgPanelErrors: list }, resolve);
+          });
+        } catch (_) { resolve(); }
+      });
+      await bg({ type: 'WG_PANEL_ERROR_FLUSH' }).catch(() => null);
+    } catch (_) { /* a fault report must never become a second fault */ }
+  }
+  async function startByOldDoor(payload, firstErr, traceId, panel) {
+    try {
+      const data = await bg({ type: 'WG_CHAT', payload });
+      reportPanelError({ step: 'start', error: firstErr.message, traceId, panel, fallback: 'old door worked' });
+      return data;
+    } catch (e2) {
+      reportPanelError({ step: 'start', error: firstErr.message, traceId, panel, fallback: `old door failed: ${(e2 && e2.message) || ''}` });
+      throw firstErr;
+    }
+  }
+
   async function runChatTurn(payload) {
-    const started = await bg({ type: 'WG_CHAT_START', payload });
+    const traceId = Math.random().toString(36).slice(2, 10);
+    const panel = { asked: Date.now() };
+    let started;
+    try {
+      started = await bg({ type: 'WG_CHAT_START', payload, traceId });
+    } catch (e) {
+      if (!CHAT_TRANSIENT.test((e && e.message) || '')) throw e;
+      panel.failed = Date.now();
+      return startByOldDoor(payload, e, traceId, panel);
+    }
     if (started && started.legacy) return started.data;           // server without the new doors yet
     const jobId = started && started.jobId;
     if (!jobId) return started;                                    // never expected; hand back what came
@@ -3457,6 +3512,9 @@
         r = await bg({ type: 'WG_CHAT_RESULT', jobId });
       } catch (e) {
         if (CHAT_TRANSIENT.test((e && e.message) || '') && ++misses <= 5) continue;
+        if (CHAT_TRANSIENT.test((e && e.message) || '')) {
+          reportPanelError({ step: 'collect', error: e.message, traceId, panel: { ...panel, failed: Date.now(), jobId }, fallback: 'none' });
+        }
         throw e;
       }
       misses = 0;

@@ -165,7 +165,7 @@ function loadRunChatTurn(bg) {
   const end = content.indexOf('  async function sendChatTurn(');
   assert.ok(start > 0 && end > start, 'runChatTurn block found');
   const src = content.slice(start, end).replace('const CHAT_POLL_MS = 2000;', 'const CHAT_POLL_MS = 5;');
-  const ctx = { bg, sleep, Date, Error };
+  const ctx = { bg, sleep, Date, Error, Math, Promise, JSON, Array };
   vm.createContext(ctx);
   vm.runInContext(`${src}\nthis.runChatTurn = runChatTurn;`, ctx);
   return ctx.runChatTurn;
@@ -204,14 +204,76 @@ check('panel: an older server (no start door) runs the old way', async () => {
   assert.strictEqual((await run({})).draft, 'old-way');
 });
 
+// 0.3.46 (Dean Hobin, 25 Nov 2026): his start dropped on every try and nothing reached the server.
+check('panel: a dropped start falls back to the old door, and a fault report is sent', async () => {
+  const sent = [];
+  const run = loadRunChatTurn(async (m) => {
+    sent.push(m.type);
+    if (m.type === 'WG_CHAT_START') { assert.ok(m.traceId, 'start carries a trace id'); throw new Error('The message port closed before a response was received.'); }
+    if (m.type === 'WG_CHAT') return { draft: 'by the old door' };
+    return { ok: true };
+  });
+  const out = await run({ messages: [] });
+  assert.strictEqual(out.draft, 'by the old door');
+  await sleep(20);
+  assert.deepStrictEqual(sent, ['WG_CHAT_START', 'WG_CHAT', 'WG_PANEL_ERROR_FLUSH']);
+});
+
+check('panel: when the old door fails too, the first error is what shows, and it is reported', async () => {
+  const sent = [];
+  const run = loadRunChatTurn(async (m) => {
+    sent.push(m.type);
+    if (m.type === 'WG_CHAT_START') throw new Error('Failed to fetch');
+    if (m.type === 'WG_CHAT') throw new Error('Failed to fetch');
+    return { ok: true };
+  });
+  await assert.rejects(run({}), /Failed to fetch/);
+  await sleep(20);
+  assert.ok(sent.includes('WG_PANEL_ERROR_FLUSH'), 'reported');
+});
+
+check("panel: a start refused for a real reason is not bridged (e.g. no Claude key)", async () => {
+  const sent = [];
+  const run = loadRunChatTurn(async (m) => { sent.push(m.type); throw new Error('Wingguy is signed in as someone else.'); });
+  await assert.rejects(run({}), /signed in as someone else/);
+  assert.deepStrictEqual(sent, ['WG_CHAT_START']);
+});
+
+check('panel-error door: stores the report for the signed-in client, never a 500', async () => {
+  const store = require('../services/wingguyPanelErrorStore');
+  const before = store._memory.length;
+  const r = await call('POST', '/api/wingguy/panel-error', 'tok-kim', { reports: [{ step: 'start', error: 'The message port closed before a response was received.', fallback: 'old door worked', trace: { id: 'abc', worker: { arrived: 1, handled: 2 } }, extensionVersion: '0.3.46', at: new Date().toISOString() }] });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.json.stored, 1);
+  const row = store._memory[store._memory.length - 1];
+  assert.strictEqual(store._memory.length, before + 1);
+  assert.strictEqual(row.tenantId, 'Kim-Keyed');
+  assert.strictEqual(row.step, 'start');
+  assert.strictEqual(row.trace.worker.handled, 2);
+  const empty = await call('POST', '/api/wingguy/panel-error', 'tok-kim', {});
+  assert.strictEqual(empty.status, 200);
+  assert.strictEqual(empty.json.stored, 0);
+});
+
+check('extension wiring: the worker writes the trail and sends queued reports', () => {
+  assert.match(background, /markChatTrace\(message\.traceId, \{ arrived:/);
+  assert.match(background, /markChatTrace\(trace\.id, \{ fetching:/);
+  assert.match(background, /\/panel-error/);
+  assert.match(background, /'WG_PANEL_ERROR_FLUSH'/);
+});
+
 check('extension wiring: new messages act as the client; version bumped past 0.3.41', () => {
   assert.match(background, /'WG_CHAT_START', 'WG_CHAT_RESULT'/);
   assert.match(background, /\/chat\/start/);
   assert.match(background, /\/chat\/result\//);
-  assert.doesNotMatch(content, /type: 'WG_CHAT',/, 'panel no longer holds one request open');
+  // The one-shot door is used ONLY as the bridge when a start drops (0.3.46) - nowhere else.
+  const oneShot = content.match(/type: 'WG_CHAT',/g) || [];
+  assert.strictEqual(oneShot.length, 1, 'one-shot door appears once');
+  const bridge = content.slice(content.indexOf('async function startByOldDoor('), content.indexOf('  async function runChatTurn('));
+  assert.match(bridge, /type: 'WG_CHAT',/, 'and that once is the bridge');
   const v = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8')).version;
   const { compareVersions } = require('../services/extensionPolicy');
-  assert.ok(compareVersions(v, '0.3.41') > 0, `version ${v}`);
+  assert.ok(compareVersions(v, '0.3.45') > 0, `version ${v} - the fallback ships in 0.3.46`);
 });
 
 chain.then(() => {

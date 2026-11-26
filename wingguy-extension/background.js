@@ -199,8 +199,38 @@ const ACTS_AS_CLIENT = new Set([
   'WG_CHAT', 'WG_CHAT_START', 'WG_CHAT_RESULT', 'WG_LEAD_CONTACT', 'WG_EDIT_PAIR', 'WG_ENRICH_FROM_PROFILE'
 ]);
 
+// THE DRAFT REQUEST'S TRAIL (0.3.46, 26 Nov 2026). Dean Hobin's panel failed on every try and not
+// one request reached the server; the panel only knew "the link dropped". Each step a draft request
+// passes in this worker is written to storage under its trace id, so the panel can read how far it
+// got - even when the reply to the panel is the thing that broke.
+let chatTrace = null;
+function markChatTrace(id, fields) {
+  if (!id) return null;
+  if (!chatTrace || chatTrace.id !== id) chatTrace = { id };
+  Object.assign(chatTrace, fields);
+  try { chrome.storage.local.set({ wgChatTrace: { ...chatTrace } }); } catch (_) { /* never fatal */ }
+  return chatTrace;
+}
+
+// Queued panel fault reports go to the server; sent ones are cleared. A report that will not send
+// stays queued (max 10) for the next page load.
+async function flushPanelErrors() {
+  const held = await storageGet(['wgPanelErrors']);
+  const list = Array.isArray(held.wgPanelErrors) ? held.wgPanelErrors : [];
+  if (!list.length) return { sent: 0 };
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/panel-error`, { method: 'POST', headers, body: JSON.stringify({ reports: list }) });
+  if (!response.ok) throw new Error(`panel-error post failed: ${response.status}`);
+  const now = await storageGet(['wgPanelErrors']);
+  const rest = (Array.isArray(now.wgPanelErrors) ? now.wgPanelErrors : []).slice(list.length);
+  await new Promise((r) => chrome.storage.local.set({ wgPanelErrors: rest }, r));
+  return { sent: list.length };
+}
+
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message && message.type === 'WG_CHAT_START') markChatTrace(message.traceId, { arrived: Date.now() });
   if (message && ACTS_AS_CLIENT.has(message.type) && message._viewer) {
     identityVerdict(message._viewer)
       .catch(() => null)
@@ -423,6 +453,8 @@ function handleMessage(message, sender, sendResponse) {
   // What the landmarks actually found in the field. Fire-and-forget — a failure here must never
   // reach the person using Wingguy.
   if (message.type === 'WG_SELECTOR_HEALTH') {
+    // A page load is also the moment to send any fault report that could not go at the time.
+    flushPanelErrors().catch(() => {});
     wingguyPostSelectorHealth(message.checks, message.extensionVersion)
       .then(data => sendResponse({ success: true, data }))
       .catch(() => sendResponse({ success: false }));
@@ -460,9 +492,18 @@ function handleMessage(message, sender, sendResponse) {
   // new doors, the whole turn the old way); the PANEL then asks RESULT every couple of seconds, so no
   // single request stays open long enough for the ~30 s cut that dropped ~1 turn in 11 (9 Nov 2026).
   if (message.type === 'WG_CHAT_START') {
-    wingguyChatStart({ ...(message.payload || {}), viewerName: message._viewer || '' })
+    // 0.3.46: write down each step, so a failure can say how far it got (Dean Hobin, 25 Nov 2026).
+    const trace = markChatTrace(message.traceId, { handled: Date.now() });
+    wingguyChatStart({ ...(message.payload || {}), viewerName: message._viewer || '' }, trace)
+      .then(data => { markChatTrace(message.traceId, { started: Date.now() }); sendResponse({ success: true, data }); })
+      .catch(error => { markChatTrace(message.traceId, { failed: Date.now(), error: error.message }); sendResponse({ success: false, error: error.message }); });
+    return true;
+  }
+  // 0.3.46: send any panel fault reports the panel has queued (see flushPanelErrors).
+  if (message.type === 'WG_PANEL_ERROR_FLUSH') {
+    flushPanelErrors()
       .then(data => sendResponse({ success: true, data }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
+      .catch(() => sendResponse({ success: false }));
     return true;
   }
   if (message.type === 'WG_CHAT_RESULT') {
@@ -818,10 +859,13 @@ async function wingguyChat(payload) {
 
 // Start a chat turn (POST /chat/start, 0.3.42). Returns { jobId } - or { legacy: true, data } when the
 // server has no start door yet (404), having run the turn through the old one-shot /chat instead.
-async function wingguyChatStart(payload) {
+async function wingguyChatStart(payload, trace) {
   const apiBase = await getWingguyApiBase();
   const headers = await getAuthHeaders();
-  const response = await fetch(`${apiBase}/chat/start`, { method: 'POST', headers, body: JSON.stringify(payload || {}) });
+  const body = JSON.stringify(payload || {});
+  if (trace) markChatTrace(trace.id, { fetching: Date.now(), bodyChars: body.length });
+  const response = await fetch(`${apiBase}/chat/start`, { method: 'POST', headers, body });
+  if (trace) markChatTrace(trace.id, { httpStatus: response.status });
   if (response.status === 404) return { legacy: true, data: await wingguyChat(payload) };
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

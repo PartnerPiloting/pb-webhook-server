@@ -40,6 +40,7 @@ const { runWingguyChatTurn } = require('../services/wingguyChat');
 const wingguyLeads = require('../services/wingguyLeads');
 const wingguyIdentity = require('../services/wingguyIdentity');
 const chatJobs = require('../services/wingguyChatJobStore');
+const panelErrors = require('../services/wingguyPanelErrorStore');
 const clientService = require('../services/clientService');
 const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../utils/linkedinCanonical');
 const wingguyStore = require('../services/wingguyRulesStore');
@@ -823,6 +824,18 @@ module.exports = function mountWingguy(app) {
       logger.error(`[Wingguy] draft-reply failed: ${e.message}`);
       return respondClaudeError(res, e, req);
     }
+  });
+
+  // The panel could not get a draft: what really happened, step by step (26 Nov 2026 - Dean Hobin's
+  // drafts never reached the server and the panel had thrown the browser's own words away). Answers
+  // 200 whatever happens so the extension clears its copy. See services/wingguyPanelErrorStore.js.
+  router.post('/panel-error', async (req, res) => {
+    const reports = (req.body && req.body.reports) || [];
+    const r = await panelErrors.record(req.client.clientId, reports);
+    for (const one of (Array.isArray(reports) ? reports : []).slice(0, 10)) {
+      logger.warn(`[Wingguy] panel error for ${req.client.clientId}: step=${one && one.step} fallback=${one && one.fallback} ext=${one && one.extensionVersion} error="${String((one && one.error) || '').slice(0, 300)}" trace=${JSON.stringify((one && one.trace) || null).slice(0, 600)}`);
+    }
+    return res.json({ ok: true, stored: r.stored });
   });
 
   // Learn-from-my-edit: the extension logs a {generated, sent} pair here when the human changed
