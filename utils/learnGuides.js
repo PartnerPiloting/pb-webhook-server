@@ -30,8 +30,11 @@ const esc = (s) => String(s === undefined || s === null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const slugOf = (s) => String(s || '').toLowerCase().replace(/&[a-z]+;/g, ' ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
+function loadFile() {
+  return JSON.parse(fs.readFileSync(GUIDES_PATH, 'utf8'));
+}
 function loadGuides() {
-  return JSON.parse(fs.readFileSync(GUIDES_PATH, 'utf8')).guides || [];
+  return loadFile().guides || [];
 }
 
 /** The playbook as { title, body } topics - the same split wingguy_learn uses ("## " headings). */
@@ -60,15 +63,56 @@ function topicLink(title) {
   return '';
 }
 
+/** Does the guide show PICTURES for this topic? Only then does Claude hand the client the link. */
+function topicHasPictures(title) {
+  const t = String(title || '').toUpperCase();
+  if (!t) return false;
+  return loadGuides().some((g) => (g.topics || []).some((x) => t.startsWith(String(x.title || '').toUpperCase()) && (x.figures || []).length > 0));
+}
+
 // ---------------------------------------------------------------------------- the words
 
-/** Inline markdown: escape first, then the three marks. A quoted sentence in italics is one to SAY. */
+/**
+ * Inline markdown: escape first, then the marks. A quoted sentence in italics is one to SAY. A web
+ * address becomes a link (a made-up one like "https://..." stays as text), and `ticks` become code.
+ * Anything that ends up inside an HTML attribute is parked first so a later mark cannot break it.
+ */
 function inline(text) {
   let s = esc(String(text).replace(/\s*\n\s*/g, ' ').trim());
-  s = s.replace(/\*&quot;([^*]+?)&quot;\*/g, (_, say) => `<button type="button" class="say" data-say="${say}" title="Tap to copy, then paste it into your Claude">&ldquo;${say}&rdquo;</button>`);
+  const parked = [];
+  const park = (html) => { parked.push(html); return `\u0001${parked.length - 1}\u0001`; };
+  s = s.replace(/\*&quot;([^*]+?)&quot;\*/g, (_, say) => park(`<button type="button" class="say" data-say="${say}" title="Tap to copy, then paste it into your Claude">&ldquo;${say}&rdquo;</button>`));
+  s = s.replace(/`([^`]+?)`/g, (_, code) => park(`<code>${code}</code>`));
+  s = s.replace(/https?:\/\/[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+[^\s<\u0001]*/gi, (m) => {
+    const tail = (m.match(/(?:&quot;|&#39;|[.,;:!?)\]*])+$/) || [''])[0];
+    const url = tail ? m.slice(0, -tail.length) : m;
+    return park(`<a class="lnk" href="${url}" rel="noopener">${url.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a>`) + tail;
+  });
   s = s.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/\*([^*\s][^*]*?)\*/g, '<em>$1</em>');
-  return s;
+  return s.replace(/\u0001(\d+)\u0001/g, (_, i) => parked[Number(i)]);
+}
+
+/** The words of a block with the marks taken off - what a Copy button puts on the clipboard. */
+const plain = (text) => esc(String(text).replace(/\s*\n\s*/g, ' ').replace(/\*+/g, '').replace(/`/g, '').trim());
+const copyBtn = (text) => `<button type="button" class="say cp" data-say="${plain(text)}" data-toast="Copied">Copy</button>`;
+
+/**
+ * One block of the playbook (the text between two blank lines) can hold more than one thing: a "### "
+ * heading, a paragraph, then a list straight under it. Split it into runs of one kind each:
+ * h (heading) / p (paragraph) / ul / ol / q (a "> " quote).
+ */
+function runsOf(block) {
+  const out = []; let buf = []; let kind = 'p';
+  const flush = () => { if (buf.length) out.push({ kind, text: buf.join('\n') }); buf = []; };
+  for (const ln of String(block).split('\n')) {
+    if (/^#{3,}\s+/.test(ln)) { flush(); out.push({ kind: 'h', text: ln.replace(/^#{3,}\s+/, '').trim() }); kind = 'p'; continue; }
+    const k = /^\s*>/.test(ln) ? 'q' : /^\s*- /.test(ln) ? 'ul' : /^\s*\d+[.)] /.test(ln) ? 'ol' : null;
+    if (k && k !== kind) { flush(); kind = k; } else if (!k && kind === 'q') { flush(); kind = 'p'; }
+    buf.push(ln);
+  }
+  flush();
+  return out;
 }
 
 /**
@@ -79,16 +123,33 @@ function partsOf(text) {
   const blocks = String(text || '').split(/\n\s*\n/).map((b) => b.replace(/\s+$/, '')).filter((b) => b.trim() && !/^-{3,}$/.test(b.trim()));
   const parts = [{ label: '', id: '', html: [] }];
   const cur = () => parts[parts.length - 1];
-  for (const b of blocks) {
-    if (/^\s*- /.test(b)) {
+  for (const run of blocks.flatMap(runsOf)) {
+    const b = run.text;
+    if (run.kind === 'h') { parts.push({ label: b, id: slugOf(b), html: [] }); continue; }
+    if (run.kind === 'ul') {
       const items = b.split(/\n(?=\s*- )/).map((it) => it.replace(/^\s*- /, ''));
       cur().html.push(`<ul class="pts">${items.map((it) => `<li>${inline(it)}</li>`).join('')}</ul>`);
       continue;
     }
+    if (run.kind === 'ol') {
+      const items = b.split(/\n(?=\s*\d+[.)] )/).map((it) => it.replace(/^\s*\d+[.)] /, ''));
+      cur().html.push(`<ol class="steps">${items.map((it) => `<li>${inline(it)}</li>`).join('')}</ol>`);
+      continue;
+    }
+    if (run.kind === 'q') {
+      // words to copy and use - a message to send, or something to say to Claude
+      const said = b.split('\n').map((ln) => ln.replace(/^\s*> ?/, '')).join('\n').trim();
+      const bare = said.replace(/^\*([^*]+)\*$/s, '$1').replace(/^"([^"]+)"$/s, '$1');
+      cur().html.push(`<blockquote class="quote">${bare.split(/\n\s*\n/).map((p) => `<p>${inline(p)}</p>`).join('')}${copyBtn(bare)}</blockquote>`);
+      continue;
+    }
     const flat = b.replace(/\s*\n\s*/g, ' ').trim();
+    if (!flat) continue;
+    const code = flat.match(/^`([^`]+)`$/);
+    if (code) { cur().html.push(`<div class="code"><code>${esc(code[1])}</code>${copyBtn(code[1])}</div>`); continue; }
     const head = flat.match(/^\*\*([^*]+?)\*\*\s*(.*)$/);
     if (head && (head[2] === '' || /[.?!]$/.test(head[1]))) {
-      const label = head[1].replace(/[.]$/, '').trim();
+      const label = head[1].replace(/[.:]$/, '').trim();
       parts.push({ label, id: slugOf(label), html: [] });
       if (head[2]) cur().html.push(`<p>${inline(head[2])}</p>`);
       continue;
@@ -155,6 +216,41 @@ function renderGuide(slug) {
         ${a.say ? `<p class="then">${esc(a.then || 'Then say:')} ${inline(`*"${a.say}"*`)}</p>` : ''}
       </aside>` : '';
 
+  const all = loadGuides();
+  const next = all[all.findIndex((x) => x.slug === slug) + 1];
+  const inner = `${g.intro ? `<p class="how">${inline(g.intro)}</p>` : ''}
+${action}
+      ${shown.length > 1 ? `<ul class="map">
+          ${map}
+      </ul>` : ''}
+${shown.map((t, i) => topicSection(g, t, topics, i + 1)).join('\n')}
+      <nav class="more">${next ? `<a class="nx" href="/learn/${next.slug}"><span>Next page</span><b>${esc(next.title)} &rarr;</b></a>` : ''}<a class="all" href="/learn">Everything in Wingguy Learning</a></nav>`;
+  return page({ eyebrow: g.eyebrow, title: g.title, dek: g.dek, inner, footer: g.footer || loadFile().footer });
+}
+
+/** The front page, knowaguy.com.au/learn: every guide, and every topic in it, each one a link. */
+function renderIndex() {
+  const file = loadFile();
+  const ix = file.index || {};
+  const topics = loadTopics();
+  const cards = (file.guides || []).map((g, i) => {
+    const shown = (g.topics || []).filter((t) => findTopic(topics, t.title));
+    return `<li class="gd"><a class="gt" href="/learn/${g.slug}"><span class="num">${i + 1}</span><span><b>${esc(g.title)}</b>${g.dek ? `<span class="short">${esc(g.dek)}</span>` : ''}</span></a>
+          <ul class="tl">${shown.map((t) => `<li><a href="/learn/${g.slug}#${slugOf(t.heading || t.title)}">${esc(t.heading || t.title)}</a></li>`).join('')}</ul></li>`;
+  }).join('\n        ');
+  const inner = `${ix.intro ? `<p class="how">${inline(ix.intro)}</p>` : ''}
+      <ul class="idx">
+        ${cards}
+      </ul>`;
+  return page({ title: ix.title || 'Wingguy Learning', dek: ix.dek, inner, footer: file.footer });
+}
+function indexMeta() {
+  const ix = loadFile().index || {};
+  return { title: `${ix.title || 'Wingguy Learning'} - I Know A Guy`, description: ix.dek || '' };
+}
+
+/** The editorial shell every Learning page wears. o = { eyebrow, title, dek, inner, footer }. */
+function page(o) {
   return `<style>
   /* The editorial shell the one-pagers use (see utils/wingguyCapabilities.js). GENERATED by
      utils/learnGuides.js: the topics' words come from docs/client-playbook.md - edit them there. */
@@ -204,6 +300,30 @@ function renderGuide(slug) {
   .pts { list-style:none; margin:.2rem 0 1.2rem; padding:0; }
   .pts li { position:relative; padding:0 0 .7rem 22px; font-size:17px; line-height:1.6; color:var(--ink); }
   .pts li::before { content:""; position:absolute; left:3px; top:.62em; width:7px; height:7px; border-radius:50%; background:var(--gold); }
+
+  .steps { list-style:none; counter-reset:s; margin:.3rem 0 1.3rem; padding:0; }
+  .steps li { counter-increment:s; position:relative; padding:0 0 .8rem 40px; font-size:17px; line-height:1.6; color:var(--ink); }
+  .steps li::before { content:counter(s); position:absolute; left:0; top:.1em; width:26px; height:26px; border-radius:50%; border:1px solid var(--gold); color:var(--gold-ink); font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .quote { margin:.4rem 0 1.4rem; padding:16px 18px 12px; background:#fff; border:1px solid var(--rule); border-left:3px solid var(--gold); border-radius:4px; }
+  .body .quote p { font-size:16.5px; line-height:1.6; margin:0 0 .7rem; color:var(--ink-deep); }
+  .say.cp { font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; font-size:13px; font-weight:600; color:var(--gold-ink); padding:4px 12px; }
+  .code { margin:.2rem 0 1.2rem; padding:12px 14px 10px; background:#fff; border:1px solid var(--rule); border-radius:4px; }
+  .code code { display:block; margin:0 0 8px; overflow-wrap:anywhere; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.84em; color:var(--ink-deep); }
+  .lnk { color:var(--gold-ink); overflow-wrap:anywhere; }
+  .more { display:flex; flex-direction:column; gap:12px; margin:0 0 2rem; padding-top:1.6rem; border-top:1px solid var(--rule); }
+  .more .nx { display:block; padding:14px 18px; border:1px solid var(--gold); border-radius:6px; background:var(--cream); text-decoration:none; }
+  .more .nx span { display:block; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold-ink); margin:0 0 3px; }
+  .more .nx b { font-size:20px; font-weight:400; color:var(--ink-deep); }
+  .more .all { font-size:16px; color:var(--gold-ink); }
+  .idx { list-style:none; margin:0 0 2rem; padding:0; }
+  .gd { margin:0 0 14px; border:1px solid var(--rule); border-radius:5px; background:#fff; }
+  .gt { display:flex; align-items:center; gap:14px; padding:14px 16px; text-decoration:none; color:inherit; }
+  .gt:hover { background:var(--cream); }
+  .gt b { display:block; font-size:20px; line-height:1.25; color:var(--ink-deep); font-weight:400; }
+  .tl { list-style:none; margin:0; padding:10px 16px 12px 60px; border-top:1px solid var(--rule); display:flex; flex-wrap:wrap; gap:4px 18px; }
+  .tl a { font-size:15px; line-height:1.5; color:var(--gold-ink); text-decoration:none; }
+  .tl a:hover { text-decoration:underline; }
 
   .pair { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:.3rem 0 1.3rem; }
   .kind { background:#fff; border:1px solid var(--rule); border-top:3px solid var(--dark); border-radius:5px; padding:16px 18px 4px; }
@@ -263,7 +383,7 @@ function renderGuide(slug) {
     .op-page { padding:0 0 36px; } .op { border-radius:0; }
     .op-mast, .op-c, .op-foot { padding-left:20px; padding-right:20px; }
     .op-t { font-size:29px; } .head h2 { font-size:23px; }
-    .now { padding:18px 16px 14px; } .screen { padding:11px; } .pair { grid-template-columns:1fr; }
+    .now { padding:18px 16px 14px; } .tl { padding-left:16px; } .screen { padding:11px; } .pair { grid-template-columns:1fr; }
     .u-row { grid-template-columns:70px minmax(0,1fr); } .u-row .u-wide { grid-column:1 / -1; }
     .u-tabs { gap:14px; } .u-tab small { display:none; }
   }
@@ -273,20 +393,17 @@ function renderGuide(slug) {
   <article class="op">
     <header class="op-mast">
       <p class="op-wm"><a href="/">(I know a) Guy</a></p>
-      <p class="op-eb">${esc(g.eyebrow || 'Wingguy Learning')}</p>
+      <p class="op-eb">${esc(o.eyebrow || 'Wingguy Learning')}</p>
     </header>
 
     <div class="op-c">
-      <h1 class="op-t">${esc(g.title)}</h1>
-      ${g.dek ? `<p class="op-dek">${esc(g.dek)}</p>` : ''}
+      <h1 class="op-t">${esc(o.title)}</h1>
+      ${o.dek ? `<p class="op-dek">${esc(o.dek)}</p>` : ''}
       <hr class="op-r">
-      ${g.intro ? `<p class="how">${inline(g.intro)}</p>` : ''}
-${action}
-      ${shown.length > 1 ? `<ul class="map">\n          ${map}\n      </ul>` : ''}
-${shown.map((t, i) => topicSection(g, t, topics, i + 1)).join('\n')}
+      ${o.inner}
 
       <footer class="op-foot">
-        ${g.footer ? `<p>${inline(g.footer)}</p>` : ''}
+        ${o.footer ? `<p>${inline(o.footer)}</p>` : ''}
         <p class="op-sign">- (I know a) Guy</p>
       </footer>
     </div>
@@ -299,7 +416,8 @@ ${shown.map((t, i) => topicSection(g, t, topics, i + 1)).join('\n')}
 <script>
 (function () {
   var toast = document.getElementById('toast'); var timer;
-  function done(btn) { toast.classList.add('on'); btn.classList.add('done'); clearTimeout(timer); timer = setTimeout(function () { toast.classList.remove('on'); btn.classList.remove('done'); }, 1800); }
+  var said = toast.textContent;
+  function done(btn) { toast.textContent = btn.getAttribute('data-toast') || said; toast.classList.add('on'); btn.classList.add('done'); clearTimeout(timer); timer = setTimeout(function () { toast.classList.remove('on'); btn.classList.remove('done'); }, 1800); }
   function fallback(text, btn) { var t = document.createElement('textarea'); t.value = text; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); done(btn); } catch (e) {} document.body.removeChild(t); }
   document.addEventListener('click', function (e) {
     var btn = e.target.closest ? e.target.closest('.say') : null;
@@ -312,4 +430,4 @@ ${shown.map((t, i) => topicSection(g, t, topics, i + 1)).join('\n')}
 </script>`;
 }
 
-module.exports = { renderGuide, guideMeta, topicLink, loadGuides, loadTopics, partsOf, inline, slugOf, GUIDES_PATH };
+module.exports = { renderGuide, guideMeta, renderIndex, indexMeta, topicLink, topicHasPictures, runsOf, loadGuides, loadTopics, partsOf, inline, slugOf, GUIDES_PATH };

@@ -6,9 +6,354 @@
     "What a guide may hold of its own: its title, its one-line dek, a short intro, and the 'do this now' box. Those are framing, not method - keep them short, and show Guy before changing them.",
     "figures: pictures placed after a named sub-heading of a topic ('after' = the bold words that open that part, without the full stop). Each is a file in content/learn/figures/<name>.html - a drawn picture of the screen with MADE-UP people, never a screenshot of a real client's list.",
     "A topic that is in a guide gets a 'See it with pictures' line at the end of Claude's answer (services/wingguyGetStartedMcp.js asks utils/learnGuides.js topicLink).",
-    "Pages are sent by link and are noindex - they are not in the site's navigation or in search."
+    "Pages are sent by link and are noindex - they are not in the site's navigation or in search.",
+    "Every Wingguy Learning topic is in exactly ONE guide, so every topic has a link (tests/learn-guides.test.js fails when a new topic has no home). The order of the guides here is the order on the front page, knowaguy.com.au/learn.",
+    "\"footer\" at the top is the closing line of every guide that has none of its own. \"index\" is the framing of the front page."
   ],
+  "index": {
+    "title": "Wingguy Learning",
+    "dek": "Everything in your training, a page at a time - the same words your Claude gives you, laid out to read.",
+    "intro": "Pick the page you need. Each one opens on its own link, so you can keep it, come back to it, or pass it on."
+  },
+  "footer": "These are the same words your Claude gives you from Wingguy Learning, laid out on a page. You can always just ask it, in your own words.",
   "guides": [
+    {
+      "slug": "the-big-picture",
+      "eyebrow": "Wingguy Learning",
+      "title": "What this is all for",
+      "dek": "The idea behind the method, the whole process in one go, and what it asks of you.",
+      "topics": [
+        {
+          "title": "THE BIG PICTURE",
+          "heading": "The big picture",
+          "sub": "What all of this is for"
+        },
+        {
+          "title": "THE PROCESS",
+          "heading": "The process, start to finish",
+          "sub": "Every step, in the order you meet it"
+        },
+        {
+          "title": "THE TWO SIDES",
+          "heading": "The two sides",
+          "sub": "Getting the meeting, then everything after it"
+        },
+        {
+          "title": "SEEMS LIKE A LOT?",
+          "heading": "Seems like a lot?",
+          "sub": "Why it's mostly setup, and what it really pays"
+        },
+        {
+          "title": "YOUR PACE",
+          "heading": "Your pace",
+          "sub": "Choosing it and holding it"
+        },
+        {
+          "title": "WINGGUY LEARNING",
+          "heading": "Wingguy Learning",
+          "sub": "Your training, built in"
+        }
+      ]
+    },
+    {
+      "slug": "who-you-are-looking-for",
+      "eyebrow": "Wingguy Learning",
+      "title": "Who you're looking for, and how to find them",
+      "dek": "What you say you do, what your profile has to do, and the LinkedIn search that finds the right people.",
+      "topics": [
+        {
+          "title": "WHAT DO YOU DO",
+          "heading": "What do you do?",
+          "sub": "And why \"I'm working it out\" is a fine answer"
+        },
+        {
+          "title": "YOUR LINKEDIN PROFILE",
+          "heading": "Your LinkedIn profile",
+          "sub": "What it has to do"
+        },
+        {
+          "title": "WHO YOU'RE LOOKING FOR",
+          "heading": "Who you're looking for",
+          "sub": "Capability first - and don't agonise over it"
+        },
+        {
+          "title": "FINDING YOUR AUDIENCE WITH CLAUDE",
+          "heading": "Finding your audience with Claude",
+          "sub": "The conversation to have"
+        },
+        {
+          "title": "YOUR LINKEDIN SUBSCRIPTION AND THE SEARCH",
+          "heading": "Your LinkedIn subscription and the search",
+          "sub": "A paid LinkedIn, a search, and the link you take away"
+        },
+        {
+          "title": "NARROWING A SEARCH",
+          "heading": "Narrowing a search",
+          "sub": "Years of experience, time in the role, and LinkedIn groups"
+        },
+        {
+          "title": "INMAIL CREDITS",
+          "heading": "InMail credits",
+          "sub": "What they are, and why you don't need them"
+        }
+      ]
+    },
+    {
+      "slug": "why-linked-helper",
+      "eyebrow": "Wingguy Learning",
+      "title": "Linked Helper, and where it fits",
+      "dek": "Why we use it, what it does for you, and how the people it finds reach Wingguy.",
+      "topics": [
+        {
+          "title": "WHY LINKED HELPER",
+          "heading": "Why Linked Helper",
+          "sub": "And not the slick cloud tools"
+        },
+        {
+          "title": "WHAT WE USE LINKED HELPER FOR",
+          "heading": "What we use Linked Helper for",
+          "sub": "The basics, and the loop that makes them work"
+        },
+        {
+          "title": "THE PLUMBING",
+          "heading": "The plumbing",
+          "sub": "Linked Helper and your database"
+        },
+        {
+          "title": "YOUR SCORING ATTRIBUTES",
+          "heading": "Your scoring attributes",
+          "sub": "And why not to agonise over them"
+        }
+      ]
+    },
+    {
+      "slug": "your-linked-helper-machine",
+      "eyebrow": "Wingguy Learning",
+      "title": "Your Linked Helper machine",
+      "dek": "Setting it up, opening it, and which Linked Helper licence to get.",
+      "topics": [
+        {
+          "title": "YOUR LINKED HELPER MACHINE",
+          "heading": "Setting it up",
+          "sub": "Ten minutes, one screen at a time"
+        },
+        {
+          "title": "OPEN YOUR LINKED HELPER MACHINE",
+          "heading": "Opening it",
+          "sub": "A link in your browser"
+        },
+        {
+          "title": "LINKED HELPER - THE TRIAL",
+          "heading": "Linked Helper itself",
+          "sub": "The trial, and which version to get"
+        }
+      ]
+    },
+    {
+      "slug": "your-campaigns",
+      "eyebrow": "Wingguy Learning",
+      "title": "Your campaigns",
+      "dek": "How your first campaign is set up, how to keep it fed, and when a second one is worth it.",
+      "topics": [
+        {
+          "title": "YOUR FIRST CAMPAIGN",
+          "heading": "Your first campaign",
+          "sub": "How it's set up and why"
+        },
+        {
+          "title": "YOUR ACCEPTANCE RATE",
+          "heading": "Your acceptance rate",
+          "sub": "What's good, and when to judge it"
+        },
+        {
+          "title": "KEEPING YOUR CAMPAIGN FED",
+          "heading": "Keeping your campaign fed",
+          "sub": "Topping up when it runs low"
+        },
+        {
+          "title": "SEVERAL SEARCHES IN ONE CAMPAIGN",
+          "heading": "Several searches in one campaign",
+          "sub": "All at once, or one at a time?"
+        },
+        {
+          "title": "A SECOND LINKED HELPER CAMPAIGN",
+          "heading": "A second campaign",
+          "sub": "When it's worth it, and how to clone one"
+        }
+      ]
+    },
+    {
+      "slug": "setting-up-wingguy",
+      "eyebrow": "Wingguy Learning",
+      "title": "Setting up Wingguy",
+      "dek": "Where it works, what it needs connecting, and what to do when a piece of it stops answering.",
+      "topics": [
+        {
+          "title": "SETTING UP WINGGUY",
+          "heading": "Where it works and what it needs"
+        },
+        {
+          "title": "YOUR CLAUDE KEY",
+          "heading": "Your Claude key",
+          "sub": "Setting it up in fifteen minutes"
+        },
+        {
+          "title": "THE BROWSER EXTENSION",
+          "heading": "The browser extension",
+          "sub": "Getting Wingguy into LinkedIn"
+        },
+        {
+          "title": "\"COULDN'T REACH WINGGUY\"",
+          "heading": "\"Couldn't reach Wingguy\"",
+          "sub": "When the panel in LinkedIn doesn't answer"
+        },
+        {
+          "title": "YOUR MAILBOX SAYS",
+          "heading": "Your mailbox says \"Disconnected account\"",
+          "sub": "When your email, calendar and follow-up list stop"
+        },
+        {
+          "title": "WINGGUY ON YOUR PHONE",
+          "heading": "Wingguy on your phone",
+          "sub": "/wg needs your laptop, and what works at an event"
+        }
+      ]
+    },
+    {
+      "slug": "sounding-like-you",
+      "eyebrow": "Wingguy Learning",
+      "title": "Making Wingguy sound like you",
+      "dek": "Your instructions, your edits and your links - how the drafts come to be yours.",
+      "topics": [
+        {
+          "title": "YOUR INSTRUCTIONS",
+          "heading": "Your instructions",
+          "sub": "How Wingguy learns your way"
+        },
+        {
+          "title": "YOUR EDITS",
+          "heading": "Your edits",
+          "sub": "Wingguy is taking notes"
+        },
+        {
+          "title": "YOUR LINKS",
+          "heading": "Your links",
+          "sub": "What Wingguy sends and when"
+        },
+        {
+          "title": "CAMPAIGN INSTRUCTIONS",
+          "heading": "Campaign instructions",
+          "sub": "A different thank-you for each campaign"
+        }
+      ]
+    },
+    {
+      "slug": "getting-the-meeting",
+      "eyebrow": "Wingguy Learning",
+      "title": "Getting the meeting",
+      "dek": "From a new connection to a time in the diary.",
+      "topics": [
+        {
+          "title": "THANKS FOR CONNECTING",
+          "heading": "Thanks for connecting",
+          "sub": "The message that decides everything"
+        },
+        {
+          "title": "WORKING YOUR LIST IN THE PORTAL",
+          "heading": "Working your list in the portal"
+        },
+        {
+          "title": "/WG ON PEOPLE",
+          "heading": "/wg on people you're already talking to",
+          "sub": "Not just new connections"
+        },
+        {
+          "title": "YOUR RECONNECT LIST",
+          "heading": "Your reconnect list",
+          "sub": "The people you already know"
+        },
+        {
+          "title": "GETTING THE MEETING IN THE DIARY",
+          "heading": "Getting the meeting in the diary"
+        },
+        {
+          "title": "YOUR MEETING ROOM",
+          "heading": "Your meeting room",
+          "sub": "One permanent link per platform"
+        }
+      ]
+    },
+    {
+      "slug": "your-meetings",
+      "eyebrow": "Wingguy Learning",
+      "title": "The meetings themselves",
+      "dek": "Getting ready, the first meeting, the second, and the introductions that follow.",
+      "topics": [
+        {
+          "title": "BEFORE EVERY CALL",
+          "heading": "Before every call",
+          "sub": "Wingguy briefs you, and reminds you what was said last time"
+        },
+        {
+          "title": "THE FIRST MEETING",
+          "heading": "The first meeting",
+          "sub": "How it actually goes"
+        },
+        {
+          "title": "THE SECOND MEETING",
+          "heading": "The second meeting",
+          "sub": "Where most networkers fall down"
+        },
+        {
+          "title": "THE INNER CIRCLE",
+          "heading": "The inner circle",
+          "sub": "Who's in it and how it works"
+        },
+        {
+          "title": "MAKING INTRODUCTIONS",
+          "heading": "Making introductions",
+          "sub": "What makes one land, and letting Wingguy write it"
+        }
+      ]
+    },
+    {
+      "slug": "after-the-meeting",
+      "eyebrow": "Wingguy Learning",
+      "title": "After the meeting",
+      "dek": "Recordings, transcripts and your daily follow-up list - the bit everybody else drops.",
+      "topics": [
+        {
+          "title": "TRANSCRIPTS",
+          "heading": "Transcripts",
+          "sub": "The fuel for everything after the meeting"
+        },
+        {
+          "title": "FATHOM",
+          "heading": "Fathom",
+          "sub": "Setting it up so it actually records"
+        },
+        {
+          "title": "PHONE CALLS",
+          "heading": "Phone calls",
+          "sub": "Getting the transcript into Wingguy"
+        },
+        {
+          "title": "THE TRANSCRIPT REVIEW SCREEN",
+          "heading": "The transcript review screen",
+          "sub": "That one's mine"
+        },
+        {
+          "title": "YOUR DAILY FOLLOW-UP LIST",
+          "heading": "Your daily follow-up list",
+          "sub": "The bit everybody else drops"
+        },
+        {
+          "title": "ASK ABOUT ANYONE",
+          "heading": "Ask about anyone",
+          "sub": "Have they replied, what you've sent, your emails with them"
+        }
+      ]
+    },
     {
       "slug": "everyone-in-one-place",
       "eyebrow": "Wingguy Learning",
@@ -22,7 +367,10 @@
           "Under **Add people**, press **Import contacts** and upload your address book from Google, Outlook or your phone.",
           "Read the summary it shows you, then press **Import**. Nothing you already have is overwritten."
         ],
-        "button": { "label": "Open your portal", "href": "https://portal.knowaguy.com.au" },
+        "button": {
+          "label": "Open your portal",
+          "href": "https://portal.knowaguy.com.au"
+        },
         "then": "Then ask your Claude:",
         "say": "who is Sarah and what's her email?"
       },
@@ -31,11 +379,26 @@
           "title": "YOUR CONTACTS",
           "heading": "Leads and contacts",
           "sub": "The two kinds of people Wingguy holds, and how they get in",
-          "pair": ["Leads", "Contacts"],
+          "pair": [
+            "Leads",
+            "Contacts"
+          ],
           "figures": [
-            { "after": "How contacts get in", "name": "add-people-card", "caption": "Your CRM, in your portal. Everything on this page starts from the Add people card." },
-            { "after": "How contacts get in", "name": "import-summary", "caption": "Import contacts shows you what it found before anything is saved." },
-            { "after": "Finding someone", "name": "search-results", "caption": "One search. Leads first, then contacts, each row labelled." }
+            {
+              "after": "How contacts get in",
+              "name": "add-people-card",
+              "caption": "Your CRM, in your portal. Everything on this page starts from the Add people card."
+            },
+            {
+              "after": "How contacts get in",
+              "name": "import-summary",
+              "caption": "Import contacts shows you what it found before anything is saved."
+            },
+            {
+              "after": "Finding someone",
+              "name": "search-results",
+              "caption": "One search. Leads first, then contacts, each row labelled."
+            }
           ]
         },
         {
@@ -48,7 +411,11 @@
           "heading": "Getting a copy out",
           "sub": "They stay yours - take the whole lot back any time",
           "figures": [
-            { "after": "Everyone, in one file", "name": "export-file", "caption": "The file from Export everyone. The first two columns let you sort or filter to just the people you want." }
+            {
+              "after": "Everyone, in one file",
+              "name": "export-file",
+              "caption": "The file from Export everyone. The first two columns let you sort or filter to just the people you want."
+            }
           ]
         }
       ],

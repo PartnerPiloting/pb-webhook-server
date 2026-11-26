@@ -1053,9 +1053,12 @@ async function runLearn(args = {}, tenant = TENANT) {
 
   // A topic that is part of a web guide (knowaguy.com.au/learn/..., utils/learnGuides.js) has the same
   // words there WITH PICTURES - a chat cannot show them, so the client is handed the link (Guy, 26 Nov 2026).
+  // Every topic is on a web page now, but only one whose page really has pictures gets this line - a
+  // promise of pictures that are not there would cost the next link its click.
   let pictures = '';
   try {
-    const link = require('../utils/learnGuides').topicLink(topic.title);
+    const learnGuides = require('../utils/learnGuides');
+    const link = learnGuides.topicHasPictures(topic.title) ? learnGuides.topicLink(topic.title) : '';
     if (link) pictures = `PICTURES: this topic is also on a web page with pictures of the screens. After Guy's words, on a line of its own, give them this link exactly as written: See it with pictures: ${link}`;
   } catch (_) { /* no guides file = no link; the topic is still served */ }
 

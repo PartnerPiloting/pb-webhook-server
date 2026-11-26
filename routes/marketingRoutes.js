@@ -420,6 +420,20 @@ module.exports = function mountMarketingSite(app) {
   // Wingguy Learning guides: several Learning topics on one page, with pictures (Guy, 26 Nov 2026).
   // GENERATED on each request from docs/client-playbook.md - the same words wingguy_learn serves -
   // by utils/learnGuides.js, so there is one copy of the method. Sent by link, so noindex.
+  // /learn itself is the front page: every guide and every topic in it, each one a link.
+  router.get('/learn', (req, res) => {
+    const guides = require('../utils/learnGuides');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    try {
+      const meta = guides.indexMeta();
+      return res.end(fullPage(guides.renderIndex(), req.get('host'), { title: meta.title, description: meta.description, noindex: true }));
+    } catch (err) {
+      logger.error(`[site] learn front page failed: ${err && err.message}`);
+      res.status(500);
+      return res.end(fullPage('<div style="max-width:34rem;margin:4rem auto;padding:0 1.25rem;font-family:Georgia,serif;font-size:1.1rem;line-height:1.6;color:#2c2823"><p>That page didn\'t load. Ask your Claude instead - it has the whole of Wingguy Learning.</p></div>', req.get('host'), { title: 'Wingguy Learning - I Know A Guy', description: '', noindex: true }));
+    }
+  });
   router.get('/learn/:slug', (req, res) => {
     const guides = require('../utils/learnGuides');
     let body = null; let meta = null;
