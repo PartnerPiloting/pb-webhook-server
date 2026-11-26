@@ -1051,9 +1051,18 @@ async function runLearn(args = {}, tenant = TENANT) {
     if (linked) return withMemoryFooter({ text: linked });
   }
 
+  // A topic that is part of a web guide (knowaguy.com.au/learn/..., utils/learnGuides.js) has the same
+  // words there WITH PICTURES - a chat cannot show them, so the client is handed the link (Guy, 26 Nov 2026).
+  let pictures = '';
+  try {
+    const link = require('../utils/learnGuides').topicLink(topic.title);
+    if (link) pictures = `PICTURES: this topic is also on a web page with pictures of the screens. After Guy's words, on a line of its own, give them this link exactly as written: See it with pictures: ${link}`;
+  } catch (_) { /* no guides file = no link; the topic is still served */ }
+
   const footer = [
     '---',
     "That's Guy speaking - present it as his words, essentially as written, not paraphrased into generic advice.",
+    ...(pictures ? [pictures] : []),
     `Other topics on hand: ${playbookShortNames(pb.topics, topic)}.`,
     "If their actual question isn't answered by this, say Wingguy Learning doesn't cover it yet and suggest they ask Guy - never fill the gap from general knowledge - and log the question by calling this tool again with not_covered=\"their question\".",
     'If they come back saying this did not work, is not what they see, or still does not make sense, call this tool again with explain_better="..." and noticed=true (the detail to give is in the tool description), and tell them you have let Guy know.',

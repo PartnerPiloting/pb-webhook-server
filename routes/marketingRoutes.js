@@ -417,6 +417,23 @@ module.exports = function mountMarketingSite(app) {
       noindex: true,
     }));
   });
+  // Wingguy Learning guides: several Learning topics on one page, with pictures (Guy, 26 Nov 2026).
+  // GENERATED on each request from docs/client-playbook.md - the same words wingguy_learn serves -
+  // by utils/learnGuides.js, so there is one copy of the method. Sent by link, so noindex.
+  router.get('/learn/:slug', (req, res) => {
+    const guides = require('../utils/learnGuides');
+    let body = null; let meta = null;
+    try { body = guides.renderGuide(req.params.slug); meta = guides.guideMeta(req.params.slug); } catch (err) {
+      logger.error(`[site] learn guide ${req.params.slug} failed: ${err && err.message}`);
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    if (!body || !meta) {
+      res.status(404);
+      return res.end(fullPage('<div style="max-width:34rem;margin:4rem auto;padding:0 1.25rem;font-family:Georgia,serif;font-size:1.1rem;line-height:1.6;color:#2c2823"><p>That page isn\'t here. Ask your Claude instead - it has the whole of Wingguy Learning.</p><p><a href="/what-wingguy-can-do" style="color:#9a6a2f">What you can do with Wingguy</a></p></div>', req.get('host'), { title: 'Not found - I Know A Guy', description: '', noindex: true }));
+    }
+    return res.end(fullPage(body, req.get('host'), { title: meta.title, description: meta.description, noindex: true }));
+  });
   router.get('/pick-your-people', servePage(PAGES.pickPeople));
 
   // ---------------------------------------------------------------------------

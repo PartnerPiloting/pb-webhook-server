@@ -1,0 +1,58 @@
+{
+  "_what": "Wingguy Learning GUIDES - web pages at knowaguy.com.au/learn/<slug>, each made of Wingguy Learning topics shown one after another, with pictures. Read by utils/learnGuides.js. Checked by tests/learn-guides.test.js.",
+  "_why": "Guy, 26 Nov 2026: a Learning topic could only be reached by asking Claude, so an email could not link to one. He wanted a link that works the moment it is tapped, looks far better than chat text, and can gather several small topics into one story - WITHOUT a second copy of the words.",
+  "_rules": [
+    "The topics' words live in docs/client-playbook.md and NOWHERE else. A guide only names topics (by the start of their title); the page pulls their text in on every request. Never paste topic text into this file.",
+    "What a guide may hold of its own: its title, its one-line dek, a short intro, and the 'do this now' box. Those are framing, not method - keep them short, and show Guy before changing them.",
+    "figures: pictures placed after a named sub-heading of a topic ('after' = the bold words that open that part, without the full stop). Each is a file in content/learn/figures/<name>.html - a drawn picture of the screen with MADE-UP people, never a screenshot of a real client's list.",
+    "A topic that is in a guide gets a 'See it with pictures' line at the end of Claude's answer (services/wingguyGetStartedMcp.js asks utils/learnGuides.js topicLink).",
+    "Pages are sent by link and are noindex - they are not in the site's navigation or in search."
+  ],
+  "guides": [
+    {
+      "slug": "everyone-in-one-place",
+      "eyebrow": "Wingguy Learning",
+      "title": "Everyone you know, in one place",
+      "dek": "Your leads, your contacts, your whole address book - one search, and one question to your Claude.",
+      "intro": "Wingguy can now hold everyone you know, not just the people it's working on with you. This page is the whole story. If you only have five minutes, do the box below and come back for the rest.",
+      "action": {
+        "heading": "The five-minute version",
+        "steps": [
+          "Open your portal and click **Your CRM** - the second tab from the left.",
+          "Under **Add people**, press **Import contacts** and upload your address book from Google, Outlook or your phone.",
+          "Read the summary it shows you, then press **Import**. Nothing you already have is overwritten."
+        ],
+        "button": { "label": "Open your portal", "href": "https://portal.knowaguy.com.au" },
+        "then": "Then ask your Claude:",
+        "say": "who is Sarah and what's her email?"
+      },
+      "topics": [
+        {
+          "title": "YOUR CONTACTS",
+          "heading": "Leads and contacts",
+          "sub": "The two kinds of people Wingguy holds, and how they get in",
+          "pair": ["Leads", "Contacts"],
+          "figures": [
+            { "after": "How contacts get in", "name": "add-people-card", "caption": "Your CRM, in your portal. Everything on this page starts from the Add people card." },
+            { "after": "How contacts get in", "name": "import-summary", "caption": "Import contacts shows you what it found before anything is saved." },
+            { "after": "Finding someone", "name": "search-results", "caption": "One search. Leads first, then contacts, each row labelled." }
+          ]
+        },
+        {
+          "title": "NEW LEADS",
+          "heading": "People you meet along the way",
+          "sub": "From a recorded call, an introduction, or a name you've been handed"
+        },
+        {
+          "title": "EXPORTING YOUR PEOPLE",
+          "heading": "Getting a copy out",
+          "sub": "They stay yours - take the whole lot back any time",
+          "figures": [
+            { "after": "Everyone, in one file", "name": "export-file", "caption": "The file from Export everyone. The first two columns let you sort or filter to just the people you want." }
+          ]
+        }
+      ],
+      "footer": "These are the same words your Claude gives you from Wingguy Learning - this page adds the pictures. You can always just ask it, in your own words."
+    }
+  ]
+}
