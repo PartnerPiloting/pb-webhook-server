@@ -13,7 +13,7 @@
  * Run: node tests/wingguy-contacts-alert.test.js
  */
 const assert = require('assert');
-const { findStale, expectedFeeds, describeStale, isTestServer } = require('../services/contactsAlert');
+const { findStale, expectedFeeds, describeStale, isTestServer, watchedClients } = require('../services/contactsAlert');
 
 let failures = 0;
 const check = (name, fn) => { try { fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); } };
@@ -163,6 +163,19 @@ const TEN = [{ clientId: 'Dean', feeds: ['lead', 'mail', 'comms-log'] }];
     assert.strictEqual(isTestServer({ ENVIRONMENT: 'Staging' }), true);
     assert.strictEqual(isTestServer({ DATABASE_URL: 'postgres://u:p@host/db?options=-c%20search_path=staging' }), true);
     assert.strictEqual(isTestServer({ DATABASE_URL: 'postgres://u:p@host/db?options=-c%20search_path%3Dstaging' }), true);
+  });
+
+  console.log('\nwatchedClients() - a client paused on the board does not nag (Guy, 13 Nov 2026):');
+  check('active clients are watched; paused accounts and paused-on-the-board clients are not', () => {
+    const all = [
+      { clientId: 'A', status: 'Active', coachingStatus: 'Active' },
+      { clientId: 'B', status: 'Active', coachingStatus: 'Paused' },
+      { clientId: 'C', status: 'Paused', coachingStatus: 'Active' },
+      { clientId: 'D', status: 'Active', coachingStatus: null },
+      { clientId: 'E', status: 'Active', coachingStatus: 'Graduated' },
+    ];
+    assert.deepStrictEqual(watchedClients(all).map((c) => c.clientId), ['A', 'D', 'E']);
+    assert.deepStrictEqual(watchedClients(null), []);
   });
 
   console.log(failures ? `\n${failures} FAILED` : '\nall passed');

@@ -161,6 +161,15 @@ async function readAlertMarker(client) {
 }
 
 /**
+ * Whose feeds are worth an alert: active clients, less anyone paused on the board. A client with
+ * Coaching Status = Paused is someone Guy has set aside - their dead mailbox is known and not news,
+ * so it must not nag every few days (Guy, 13 Nov 2026; written that day, shipped 26 Nov 2026).
+ */
+function watchedClients(clients = []) {
+  return (clients || []).filter((c) => c && String(c.status || '').toLowerCase() === 'active' && c.coachingStatus !== 'Paused');
+}
+
+/**
  * Check every sweepable tenant and email Guy when a feed has been broken for days.
  * Never throws - an alert failing must not fail the sweep that called it.
  * @returns {Promise<{ok:boolean, stale:number, emailed:boolean, reason?:string, lines?:string[]}>}
@@ -184,7 +193,7 @@ async function alertOnStaleFeeds({
   let client;
   try {
     client = await p.connect();
-    const clients = (await cs.getAllClients()).filter((c) => String(c.status || '').toLowerCase() === 'active');
+    const clients = watchedClients(await cs.getAllClients());
     const stamps = await readStamps(client);
     // Outside feeds are discovered from what has actually delivered, not from the client record.
     const ingestByTenant = new Map();
@@ -252,4 +261,4 @@ async function alertOnStaleFeeds({
   }
 }
 
-module.exports = { alertOnStaleFeeds, findStale, expectedFeeds, describeStale, isIngestFeed, isTestServer, SYSTEM_TENANT, ALERT_SOURCE };
+module.exports = { alertOnStaleFeeds, watchedClients, findStale, expectedFeeds, describeStale, isIngestFeed, isTestServer, SYSTEM_TENANT, ALERT_SOURCE };
