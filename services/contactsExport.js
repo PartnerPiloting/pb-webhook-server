@@ -1,15 +1,21 @@
 /**
- * "Export contacts" (Guy, 26 Nov 2026): a client who keeps their people in Wingguy can take a copy
- * out again - the terms page says "they stay yours", and until now only LEADS could be exported.
+ * "Export everyone (leads + contacts)" (Guy, 26 Nov 2026): a client who keeps their people in Wingguy
+ * can take a copy out again - the terms page says "they stay yours". It began the same morning as
+ * "Export contacts" (contacts only); Guy's point was that two exports for "everyone I know" is
+ * friction, and a spreadsheet can be sorted - so it is ONE file with everyone, and the first column
+ * says Lead or Contact.
  *
- * One row per PERSON (services/contactGrouping.js - the same fold the search screen shows), contacts
- * only: anyone who is a lead is in "Export All to CSV" on the same screen instead.
+ * One row per PERSON (services/contactGrouping.js - the same fold the search screen shows). A lead's
+ * details here come from the lookup's nightly copy of the leads base, so a lead edited today shows
+ * yesterday's details; "Export All to CSV" under the search stays the live one for leads, with their
+ * score, status and Linked Helper data.
  *
  * The file is laid out as a Google Contacts CSV (First Name, Last Name, Organization Name,
  * E-mail 1 - Value ..., Phone 1 - Value, Labels), so it uploads into Google Contacts as it is and
  * Wingguy's own Import contacts reads it back (tests/contacts-export.test.js proves the round trip).
- * The first column, "How Wingguy knows them", is ours: a client with thousands of LinkedIn
- * connections sorts or filters on it to set those aside. People with an email or phone come first.
+ * The first two columns, "Lead or contact" and "How Wingguy knows them", are ours: a client sorts or
+ * filters on them to keep just the leads, or to set thousands of LinkedIn connections aside. People
+ * with an email or phone come first.
  *
  * Read-only. Nothing here writes.
  */
@@ -17,7 +23,7 @@
 const { groupPeople } = require('./contactGrouping');
 
 const MAX_EMAILS = 3;
-const COLUMNS = ['How Wingguy knows them', 'First Name', 'Last Name', 'Organization Name',
+const COLUMNS = ['Lead or contact', 'How Wingguy knows them', 'First Name', 'Last Name', 'Organization Name',
   ...Array.from({ length: MAX_EMAILS }, (_, i) => `E-mail ${i + 1} - Value`),
   'Phone 1 - Value', 'Labels', 'LinkedIn', 'Connected on LinkedIn', 'Headline'];
 
@@ -29,6 +35,7 @@ function knownFrom(sources = []) {
   if (s.has('manual') || s.has('manual-claude')) out.push('added by hand');
   if (s.has('mail-to') || s.has('mail-from') || s.has('mail-thread')) out.push('from email');
   if (s.has('linkedin')) out.push('from LinkedIn');
+  if (!out.length && (s.has('lead') || s.has('lead-alt'))) return 'your leads list';
   return out.length ? out.join(', ') : 'other';
 }
 
@@ -57,9 +64,15 @@ function safeCell(v, { phone = false } = {}) {
 
 const csvCell = (v) => `"${String(v).replace(/"/g, '""')}"`;
 
-/** rows = wingguy_contacts rows that are not leads. Returns { csv, people, withDetails }. */
+/**
+ * rows = every wingguy_contacts row for the client. Returns { csv, people, leads, contacts, withDetails }.
+ * A lead's own addresses (main + alternates) are one person: they share its record id, so they are
+ * tied together before the usual fold. Anyone with a lead row among theirs is a Lead.
+ */
 function buildExport(rows = []) {
-  const people = groupPeople((rows || []).filter((r) => r && !r.lead_record_id));
+  const tied = (rows || []).filter(Boolean).map((r) => (r.lead_record_id && !r.person_ref ? { ...r, person_ref: `lead:${r.lead_record_id}` } : r));
+  const people = groupPeople(tied);
+  const isLead = (p) => (p.members || [p]).some((m) => m.lead_record_id);
   const reachable = (p) => (p.emails && p.emails.length) || p.phone;
   const sortName = (p) => { const n = nameParts(p); return `${n.last} ${n.first}`.trim().toLowerCase() || '￿'; };
   people.sort((a, b) => ((reachable(a) ? 0 : 1) - (reachable(b) ? 0 : 1)) || sortName(a).localeCompare(sortName(b)));
@@ -67,7 +80,7 @@ function buildExport(rows = []) {
     const { first, last } = nameParts(p);
     const emails = (p.emails || []).slice(0, MAX_EMAILS);
     const cells = [
-      knownFrom(p.sources), safeCell(first), safeCell(last), safeCell(p.company),
+      isLead(p) ? 'Lead' : 'Contact', knownFrom(p.sources), safeCell(first), safeCell(last), safeCell(p.company),
       ...Array.from({ length: MAX_EMAILS }, (_, i) => safeCell(emails[i] || '')),
       safeCell(p.phone, { phone: true }),
       (p.lists || []).map((l) => safeCell(l)).filter(Boolean).join(' ::: '),
@@ -77,7 +90,8 @@ function buildExport(rows = []) {
     return cells.map(csvCell).join(',');
   });
   const csv = `﻿${COLUMNS.map(csvCell).join(',')}\r\n${lines.join('\r\n')}${lines.length ? '\r\n' : ''}`;
-  return { csv, people: people.length, withDetails: people.filter(reachable).length };
+  const leads = people.filter(isLead).length;
+  return { csv, people: people.length, leads, contacts: people.length - leads, withDetails: people.filter(reachable).length };
 }
 
 /** The whole export for one client. { ok, csv, people, withDetails } or { ok:false, status, error }. */

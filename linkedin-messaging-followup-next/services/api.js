@@ -378,7 +378,7 @@ export const importContacts = async ({ filename, text, listName, confirm }) => {
   }
 };
 
-// "Export contacts": the client's contacts (not leads) as a CSV file. { ok, blob, people, error }.
+// "Export everyone (leads + contacts)": everyone the client has in Wingguy as a CSV file. { ok, blob, people, error }.
 export const exportContacts = async () => {
   try {
     const clientId = getCurrentClientId();

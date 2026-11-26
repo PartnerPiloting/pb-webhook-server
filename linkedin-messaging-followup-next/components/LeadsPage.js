@@ -38,7 +38,8 @@ function Door({ href, icon: Icon, title, blurb }) {
 // LinkedIn should arrive through LinkedIn (profile, score, Thanks for Connecting); a hand-typed
 // lead is an unscored shell. A contact becomes a lead from their details card when it is wanted.
 function AddPeopleCard({ href, icon: Icon, waitingCalls, waitingDupes, onAddContact, onImport }) {
-  // "Export contacts" (Guy, 26 Nov 2026): what goes in can come out. Leads have their own export below.
+  // "Export everyone (leads + contacts)" (Guy, 26 Nov 2026): what goes in can come out, in ONE file.
+  // The exports under the search stay for filtered lists of leads with their scores.
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState('');
   const onExport = async () => {
@@ -46,15 +47,15 @@ function AddPeopleCard({ href, icon: Icon, waitingCalls, waitingDupes, onAddCont
     setExporting(true); setExportNote('');
     const r = await exportContacts();
     setExporting(false);
-    if (!r.ok) { setExportNote(`Couldn't export your contacts - ${r.error}. Try again in a moment.`); return; }
+    if (!r.ok) { setExportNote(`Couldn't export your people - ${r.error}. Try again in a moment.`); return; }
     // the count rides on a response header; if a browser hides it, the size of the file still says whether anyone is in it
-    if (!r.people && (!r.blob || r.blob.size < 400)) { setExportNote('You have no contacts to export yet.'); return; }
+    if (!r.people && (!r.blob || r.blob.size < 400)) { setExportNote('There is nobody to export yet.'); return; }
     const url = URL.createObjectURL(r.blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `wingguy-contacts-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.href = url; a.download = `wingguy-everyone-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setExportNote(`${r.people ? `${r.people.toLocaleString()} ${r.people === 1 ? 'contact' : 'contacts'}` : 'Your contacts are'} saved to your downloads. Your leads have their own export, under the search.`);
+    setExportNote(`${r.people ? `${r.people.toLocaleString()} ${r.people === 1 ? 'person' : 'people'}` : 'Everyone is'} saved to your downloads - leads and contacts in one file. The first column says which is which.`);
   };
   const btn = 'shrink-0 text-sm text-blue-700 border border-blue-300 rounded-lg px-3 py-1.5 hover:bg-blue-50 whitespace-nowrap';
   return (
@@ -69,7 +70,7 @@ function AddPeopleCard({ href, icon: Icon, waitingCalls, waitingDupes, onAddCont
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" id="add-contact-open" onClick={onAddContact} className={btn}>Add a contact</button>
         <button type="button" id="import-contacts-open" onClick={onImport} className={btn}>Import contacts</button>
-        <button type="button" id="export-contacts" onClick={onExport} disabled={exporting} className={`${btn} disabled:opacity-60`}>{exporting ? 'Exporting...' : 'Export contacts'}</button>
+        <button type="button" id="export-contacts" onClick={onExport} disabled={exporting} className={`${btn} disabled:opacity-60`}>{exporting ? 'Exporting...' : 'Export everyone (leads + contacts)'}</button>
       </div>
       {exportNote ? <p id="export-contacts-note" className="mt-2 text-sm text-gray-600">{exportNote}</p> : null}
       {waitingCalls > 0 ? (
