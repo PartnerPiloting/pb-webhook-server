@@ -59,7 +59,8 @@ const recentShortcut = (clientId) => RECENT_SHORTCUT.includes('*') || RECENT_SHO
  * here by themselves" where that is true (Guy, 24 Nov 2026). ADD A CLIENT HERE the day the
  * collection is switched on on their machine - never before, or the sentence is a false promise.
  */
-const OWN_CONNECTIONS_ARRIVE = ['Guy-Wilson'];
+// Roland-Illyes: collection installed on his machine 26 Nov 2026 (first client; Guy said start with Roland).
+const OWN_CONNECTIONS_ARRIVE = ['Guy-Wilson', 'Roland-Illyes'];
 const ownConnectionsArrive = (clientId) => OWN_CONNECTIONS_ARRIVE.includes('*') || OWN_CONNECTIONS_ARRIVE.includes(String(clientId || ''));
 
 /**

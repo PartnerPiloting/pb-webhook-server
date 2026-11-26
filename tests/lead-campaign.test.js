@@ -203,7 +203,8 @@ check('"Recently connected" and the no-tag marker: every client since 26 Nov 202
   assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).recentShortcut, true);
   // "connect on LinkedIn and they arrive by themselves" is only said where the nightly collection runs
   assert.strictEqual((await leadCampaign.getOptions('Guy-Wilson', base, { fresh: true })).ownConnectionsArrive, true);
-  assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).ownConnectionsArrive, false);
+  assert.strictEqual((await leadCampaign.getOptions('Roland-Illyes', base, { fresh: true })).ownConnectionsArrive, true);
+  assert.strictEqual((await leadCampaign.getOptions('Someone-Else', base, { fresh: true })).ownConnectionsArrive, false);
   assert.strictEqual(leadCampaign.UNLABELLED_FORMULA, 'NOT({Search Terms})');
 });
 
