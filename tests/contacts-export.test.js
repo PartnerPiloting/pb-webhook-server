@@ -81,6 +81,14 @@ const rows = [
   assert.strictEqual(res.people, 5);
   assert.strictEqual((await exportContacts('')).ok, false);
 
+  // someone with five addresses: the file grows to five address columns and none is left off
+  const many = buildExport([1, 2, 3, 4, 5].map((n) => ({ id: 20 + n, contact_key: `m${n}@x.example`, email: `m${n}@x.example`, name: 'Many Mail', sources: ['import'], lists: [], manual: true, person_ref: 'rm' })));
+  const mt = parseCsv(many.csv.replace(/^﻿/, ''));
+  assert.strictEqual(many.people, 1);
+  assert.ok(mt[0].includes('E-mail 5 - Value') && !mt[0].includes('E-mail 6 - Value'));
+  assert.strictEqual([1, 2, 3, 4, 5].filter((n) => mt[1].includes(`m${n}@x.example`)).length, 5, 'all five addresses are in the row');
+  assert.strictEqual(mt[1].length, mt[0].length);
+
   // nobody on file = a header and nothing else
   assert.strictEqual(buildExport([]).people, 0);
 

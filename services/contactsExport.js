@@ -22,10 +22,15 @@
 
 const { groupPeople } = require('./contactGrouping');
 
-const MAX_EMAILS = 3;
-const COLUMNS = ['Lead or contact', 'How Wingguy knows them', 'First Name', 'Last Name', 'Organization Name',
-  ...Array.from({ length: MAX_EMAILS }, (_, i) => `E-mail ${i + 1} - Value`),
+// Three address columns as standard; the file grows more when someone has more (Guy's first real export,
+// 26 Nov 2026, left ten addresses off because a few people had four or five). Nobody's address is dropped
+// short of MAX_EMAILS, which is only there so one freak record cannot make the sheet absurdly wide.
+const MIN_EMAILS = 3;
+const MAX_EMAILS = 12;
+const columnsFor = (emails) => ['Lead or contact', 'How Wingguy knows them', 'First Name', 'Last Name', 'Organization Name',
+  ...Array.from({ length: emails }, (_, i) => `E-mail ${i + 1} - Value`),
   'Phone 1 - Value', 'Labels', 'LinkedIn', 'Connected on LinkedIn', 'Headline'];
+const COLUMNS = columnsFor(MIN_EMAILS);
 
 /** How the person got in, in the words the portal uses - most deliberate first. */
 function knownFrom(sources = []) {
@@ -76,12 +81,14 @@ function buildExport(rows = []) {
   const reachable = (p) => (p.emails && p.emails.length) || p.phone;
   const sortName = (p) => { const n = nameParts(p); return `${n.last} ${n.first}`.trim().toLowerCase() || '￿'; };
   people.sort((a, b) => ((reachable(a) ? 0 : 1) - (reachable(b) ? 0 : 1)) || sortName(a).localeCompare(sortName(b)));
+  const width = Math.min(MAX_EMAILS, Math.max(MIN_EMAILS, ...people.map((p) => (p.emails || []).length)));
+  const columns = columnsFor(width);
   const lines = people.map((p) => {
     const { first, last } = nameParts(p);
-    const emails = (p.emails || []).slice(0, MAX_EMAILS);
+    const emails = (p.emails || []).slice(0, width);
     const cells = [
       isLead(p) ? 'Lead' : 'Contact', knownFrom(p.sources), safeCell(first), safeCell(last), safeCell(p.company),
-      ...Array.from({ length: MAX_EMAILS }, (_, i) => safeCell(emails[i] || '')),
+      ...Array.from({ length: width }, (_, i) => safeCell(emails[i] || '')),
       safeCell(p.phone, { phone: true }),
       (p.lists || []).map((l) => safeCell(l)).filter(Boolean).join(' ::: '),
       p.linkedin_slug ? `https://www.linkedin.com/in/${p.linkedin_slug}/` : '',
@@ -89,7 +96,7 @@ function buildExport(rows = []) {
     ];
     return cells.map(csvCell).join(',');
   });
-  const csv = `﻿${COLUMNS.map(csvCell).join(',')}\r\n${lines.join('\r\n')}${lines.length ? '\r\n' : ''}`;
+  const csv = `﻿${columns.map(csvCell).join(',')}\r\n${lines.join('\r\n')}${lines.length ? '\r\n' : ''}`;
   const leads = people.filter(isLead).length;
   return { csv, people: people.length, leads, contacts: people.length - leads, withDetails: people.filter(reachable).length };
 }
@@ -102,4 +109,4 @@ async function exportContacts(clientId, { deps = {} } = {}) {
   return { ok: true, ...buildExport(rows) };
 }
 
-module.exports = { exportContacts, buildExport, knownFrom, safeCell, COLUMNS };
+module.exports = { exportContacts, buildExport, knownFrom, safeCell, COLUMNS, columnsFor };
