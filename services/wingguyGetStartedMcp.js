@@ -454,10 +454,18 @@ const MATCH_STOPWORDS = new Set(['what', 'about', 'your', 'you', 'the', 'and', '
 // exists to prevent. (Bare "connection" is deliberately NOT a key - "my connection sent me a
 // text" is not about the invite note.)
 const TOPIC_ALIASES = [
+  // Sam, 17 Nov 2026: "How do I bulk import my existing LinkedIn connections (from the LinkedIn data export
+  // Connections.csv, ~4,500 people) into Wingguy, without them all landing in the pipeline as new connections
+  // dated today?" - answered since 26 Nov: a linked LinkedIn brings every connection in as a CONTACT, and
+  // YOUR CONTACTS says so ("Thinking of uploading your LinkedIn connections file?", Guy, 27 Nov 2026).
+  // Steve's 16 Nov question - DM those connections with a specific offer - is a broadcast and still NOT
+  // covered, so messaging words are fenced out and it stays a miss. FIRST: the aliases below fence
+  // "import" and "connections.csv" out.
+  [[/^(?![\s\S]*\b(machine|linked ?helper|lh|campaigns?|dm|dms|messag\w*|offers?)\b)/, /\b(import\w*|upload\w*|bulk\S*|load\w*|bring in)\b/, /\blinkedin\b/, /\bconnections?\b/], 'YOUR CONTACTS'],
   // Sam, 17 Nov 2026: "How do I export all my Wingguy contacts/leads to a CSV or spreadsheet?" - the portal's
   // Export All to CSV button, topic EXPORTING YOUR PEOPLE (was EXPORTING YOUR CONTACTS until 26 Nov 2026). NOT for getting a file off the Linked Helper
-  // machine (Roland), nor for loading a Connections.csv INTO Wingguy (Sam, Steve) - both still gaps, so
-  // they are fenced out and stay a miss.
+  // machine (Roland), nor for loading a Connections.csv INTO Wingguy (Sam - the alias above; Steve - still a
+  // gap), so both are fenced out here.
   // FIRST in the list: his question lists "phone" among the columns, which the phone alias below would take.
   [[/^(?![\s\S]*\b(machine|linked ?helper|lh|import\w*|bulk\S*|upload\w*|connections\.csv)\b)/, /\b(export\w*|csv|spreadsheets?|excel|download\w*)\b/, /\b(contacts?|leads?|list|people|everyone|connections?)\b/], 'EXPORTING YOUR PEOPLE'],
   // Contacts (Guy, 26 Nov 2026): Wingguy holds contacts as well as leads, with Import contacts, Add a contact

@@ -2354,6 +2354,11 @@ whether Sarah is a lead or your accountant.
   with their name, headline and profile link. LinkedIn doesn't hand over emails or phone numbers.
   Ask me for the link.
 
+**Thinking of uploading your LinkedIn connections file?** You don't need to. Once your LinkedIn is
+linked, Wingguy brings every connection in by itself, as a contact. They stay out of your lists and
+your follow-ups, and nobody is marked as newly connected. When one of them is worth working on, open
+their card and press **Make this contact a lead**.
+
 **Finding someone.** In **Your CRM**, type three or more letters of a name or email. Leads come
 first, then contacts, each row labelled. Click a contact to see their card.
 

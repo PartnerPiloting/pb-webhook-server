@@ -490,7 +490,17 @@
     },
     {
       "phrase": "how do I bulk import my existing LinkedIn connections from the Connections.csv export into Wingguy",
-      "not": "EXPORTING YOUR PEOPLE"
+      "not": "EXPORTING YOUR PEOPLE",
+      "expect": "YOUR CONTACTS"
+    },
+    {
+      "phrase": "How do I bulk import my existing LinkedIn connections (from the LinkedIn data export Connections.csv, ~4,500 people) into Wingguy, without them all landing in the pipeline as new connections dated today?",
+      "not": "EXPORTING YOUR PEOPLE",
+      "expect": "YOUR CONTACTS"
+    },
+    {
+      "phrase": "How do I use Wingguy to DM my existing 1st-degree LinkedIn connections in decision-making roles (from a Connections.csv export) for a specific offer, e.g. bulk-load them into my list and work them in the portal?",
+      "not": "YOUR CONTACTS"
     },
     {
       "phrase": "show me my follow-up list",
