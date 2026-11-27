@@ -185,12 +185,31 @@ land on the right one:
    `tests/wingguy-established-connection.test.js`; then one real /wg on Guy's own search person.
 5. Playbook words, then roll the machine step to Steve's machine first (he is the case), then others.
 
-## Open questions for Guy (answer before step 4)
+## Decided by Guy (28 Nov 2026)
 
-- Daily visit cap default: 25 suggested. Lower for clients whose invite campaign runs hot?
-- Should search people appear for clients who also have conversation Reconnect, or only once the
-  conversation list for the day is used up (the plan above says the latter)?
-- "Link in the first message" switch: offer it at all, or leave it out until a client asks?
+- Daily visit cap default: 25.
+- Search people only fill what the day's conversation people leave (no fixed share).
+- NO "link in the first message" switch in v1 - every first message waits for a yes; the client can
+  still add the link to a draft by hand. Drop `link_first` from the tables, tool and page above.
+
+## Duplicates - one person, one row, everywhere (Guy asked, 28 Nov 2026)
+
+Matched on the LinkedIn profile address, cleaned the same way everywhere (`clean_slug`), never by name.
+
+| Case | What happens |
+|---|---|
+| Same search pasted twice | Linked Helper skips everyone already in the campaign; email says "nobody new - they were all already in". |
+| Person in two searches | One row. The FIRST search's reason and link stay; the later search does not re-add or re-show them. |
+| Already a lead in Wingguy | Lead topped up (blanks filled), never a second record. |
+| Also an old-conversation Reconnect person | One row in the list. The conversation wins; the search reason and link are kept for /wg. |
+| Messaged in the last 90 days | Stays in normal Follow-Ups, marked done here - never in both lists. |
+| Already Done / Never / Cease FUP | A new search never brings them back. Never stays never. |
+| Also queued as an overnight fill-in | Whichever reaches Linked Helper first visits them; the other skips them (already in a campaign's history). |
+| A current or former client | Never shown, as Reconnect does today. |
+
+To check in step 2: people from a SALES NAVIGATOR search must arrive with their normal
+linkedin.com/in/ address after the visit, or matching fails and duplicates appear. Prove on Guy's
+machine before rollout.
 
 ## Not in this build
 
