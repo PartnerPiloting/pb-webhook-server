@@ -187,7 +187,12 @@ land on the right one:
 
 ## Decided by Guy (28 Nov 2026)
 
-- Daily visit cap default: 25.
+- Daily visit cap default: 25 (Guy: "good").
+  ⚠ On a STANDARD Linked Helper licence the webhook send is capped at 20 per 24 h for the WHOLE machine
+  (read off lh.db 23 Nov - project_own_connections_nightly_collect). There the search campaign gets at
+  most ~5 a day, like the nightly own-connections run (Rick, Alex, Julian, Guy McPhee). The page and
+  email must quote the machine's real number, not 25. Check Steve's licence first - only a trial is
+  on record.
 - Search people only fill what the day's conversation people leave (no fixed share).
 - NO "link in the first message" switch in v1 - every first message waits for a yes; the client can
   still add the link to a draft by hand. Drop `link_first` from the tables, tool and page above.
