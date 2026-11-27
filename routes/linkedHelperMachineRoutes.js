@@ -377,6 +377,40 @@ router.post('/webhooks/lh-machine/:clientId/connected-dates', express.json({ lim
 });
 
 /**
+ * Overnight fill-ins (services/leadFillIns.js, 27 Nov 2026): the profile links of contacts this
+ * client made into leads, whose profile nobody has fetched yet. Collected by the nightly "My own
+ * connections" run (lh-own-connections.py), which adds them to that campaign ahead of its own picks
+ * so Linked Helper visits them and sends the full profile. GET hands the list over; POST
+ * { queued: [slugs] } is the machine confirming, and only then do they stop being offered. Empty for
+ * a client the nightly collection is not switched on for.
+ */
+router.get('/webhooks/lh-machine/:clientId/fill-ins', async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  try {
+    const people = await require('../services/leadFillIns').pendingForMachine(client);
+    if (people.length) log.info(`LH-MACHINE ${client.clientId} collected ${people.length} fill-in(s)`);
+    return res.json({ ok: true, people });
+  } catch (e) {
+    log.error(`LH-MACHINE fill-ins read failed for ${client.clientId}: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'read failed' });
+  }
+});
+
+router.post('/webhooks/lh-machine/:clientId/fill-ins', express.json({ limit: '64kb' }), async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  try {
+    const r = await require('../services/leadFillIns').markQueued(client.clientId, (req.body || {}).queued);
+    log.info(`LH-MACHINE ${client.clientId} confirmed ${r.count || 0} fill-in(s) queued`);
+    return res.status(r.ok ? 200 : 500).json(r);
+  } catch (e) {
+    log.error(`LH-MACHINE fill-ins confirm failed for ${client.clientId}: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'write failed' });
+  }
+});
+
+/**
  * A file for this machine to fetch (services/machineFileStore.js, 30 Sep 2026). Polled by
  * lh-clipboard.py on the same cadence as the clipboard. What is handed over is a LINK - the
  * machine does the fetching, so nothing large ever passes through this server. Handed over once:

@@ -231,7 +231,18 @@ async function addContactAsLead(clientId, airtableBaseId, contactId, { deps = {}
       } catch (_) { /* non-fatal */ }
     }
   }
-  return { ok: true, status: 200, created: !!r.created, exists: !!r.exists, leadRecordId: r.leadRecordId, name: r.name || name };
+  // OVERNIGHT FILL-IN (Guy, 27 Nov 2026): the lead just made is light - a name and an address. With a
+  // LinkedIn address on it, note it for the client's Linked Helper machine, which visits the profile
+  // on its nightly run so the lead has the full picture and a score by morning
+  // (services/leadFillIns.js). `fillIn` is true only when their machine really will. Never fails the add.
+  let fillIn = false;
+  if (r.created && row.linkedin_slug) {
+    try {
+      const noted = await (deps.leadFillIns || require('./leadFillIns')).request(clientId, row.linkedin_slug, r.leadRecordId);
+      fillIn = !!(noted && noted.willFill);
+    } catch (e) { log.warn(`make-a-lead: fill-in not noted for ${clientId}: ${e.message}`); }
+  }
+  return { ok: true, status: 200, created: !!r.created, exists: !!r.exists, leadRecordId: r.leadRecordId, name: r.name || name, fillIn };
 }
 
 /**

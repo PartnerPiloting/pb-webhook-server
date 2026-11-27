@@ -237,6 +237,8 @@ async function runOffboard(clientId, { reason = 'Guy asked', logger = defaultLog
       } else if (a.kind === 'contacts') {
         const r = await require('./contactsStore').forgetClient(clientId, { apply: true });
         if (!r.ok) throw new Error(r.error);
+        // the notes of contacts they made into leads, waiting for a profile visit (services/leadFillIns.js)
+        await require('./leadFillIns').forgetClient(clientId).catch(() => {});
         done.push(`Contacts deleted: ${r.contacts} people${r.linkedinPeople ? `, plus their LinkedIn connection list (${r.linkedinPeople})` : ''}`);
       } else if (a.kind === 'assistants') {
         const base = masterBase();

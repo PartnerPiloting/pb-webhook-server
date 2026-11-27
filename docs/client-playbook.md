@@ -2356,14 +2356,39 @@ whether Sarah is a lead or your accountant.
 
 **Thinking of uploading your LinkedIn connections file?** You don't need to. Once your LinkedIn is
 linked, Wingguy brings every connection in by itself, as a contact. They stay out of your lists and
-your follow-ups, and nobody is marked as newly connected. When one of them is worth working on, open
-their card and press **Make this contact a lead**.
+your follow-ups, and nobody is marked as newly connected.
+
+**Light and rich - why the two aren't equal.** Your LinkedIn connections come in light. LinkedIn's
+list only gives a name, a headline, a profile link and the date you connected. That's enough to find
+someone. It isn't enough to know who's worth your time.
+
+That's the job Linked Helper does. When someone accepts through a campaign, Linked Helper opens
+their profile and brings back the lot - their About section, their job history, everything they've
+written about themselves. Wingguy scores that against your attributes. So a lead arrives with the
+full picture and a number beside their name, and your lists put the best fit first. It's the whole
+reason we run Linked Helper.
+
+Put simply: a contact is someone you can look up. A lead is someone Wingguy can tell you about.
+
+So if you export everyone and some rows look thin, nothing's broken. Those are contacts.
 
 **Finding someone.** In **Your CRM**, type three or more letters of a name or email. Leads come
 first, then contacts, each row labelled. Click a contact to see their card.
 
 **Turning a contact into a lead.** Open their card and press **Make this contact a lead**. Their
-details and any lists they were on come across with them.
+details and any lists they were on come across with them, along with the real date you connected.
+They're on your lists straight away.
+
+At that moment they're still light. What happens next depends on your setup:
+
+- **Your portal says "Linked Helper will collect their full profile overnight".** Then that's what
+  happens. Your Linked Helper machine visits their profile that night, no invite and no message, and
+  by morning they have the full picture and a score like any campaign lead. It does a handful a
+  night, so pick people a few at a time, not hundreds.
+- **It doesn't say that.** They fill in the first time you open their LinkedIn profile and type
+  **/wg**. Wingguy reads their headline and About section there and then, and scores them.
+
+Someone with no LinkedIn profile on their record stays light until you add one.
 
 **Getting the file to import**
 

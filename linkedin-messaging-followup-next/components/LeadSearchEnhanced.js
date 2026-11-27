@@ -95,7 +95,7 @@ const LeadSearchEnhanced = ({
     }
     // The row turns into a lead row where it stands (label Lead, opens the record). The lead list
     // is not re-run, so the same person can never show twice.
-    setContactAdds((prev) => ({ ...prev, [c.id]: { state: 'added', leadRecordId: r.leadRecordId } }));
+    setContactAdds((prev) => ({ ...prev, [c.id]: { state: 'added', leadRecordId: r.leadRecordId, fillIn: !!r.fillIn } }));
   };
   // Someone the lead search itself has just returned is a lead - never offer them again as a contact.
   const leadEmails = new Set((leads || []).map((l) => String(l.Email || l.email || '').trim().toLowerCase()).filter(Boolean));

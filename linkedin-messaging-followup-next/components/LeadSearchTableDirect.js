@@ -507,7 +507,10 @@ export default function LeadSearchTableDirect({
             <div className="mt-5 pt-4 border-t border-gray-100 flex items-start justify-between gap-3">
               {openContact.add && openContact.add.state === 'added' ? (
                 <>
-                  <span className="text-sm text-green-700">Now one of your leads</span>
+                  <span className="text-sm text-green-700">
+                    Now one of your leads
+                    {openContact.add.fillIn ? <span id="contact-card-fill-in" className="mt-1 block text-xs text-gray-500">Linked Helper will collect their full profile overnight, and Wingguy will score them.</span> : null}
+                  </span>
                   <button type="button" id="contact-card-open-lead" onClick={() => { const id = openContact.add.leadRecordId; closeCard(); if (onLeadSelect && id) onLeadSelect({ id }); }} className="text-sm text-blue-700 hover:underline">Open their lead record</button>
                 </>
               ) : (

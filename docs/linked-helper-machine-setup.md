@@ -941,4 +941,19 @@ it on for a client without Guy saying so.
   the collection is switched on for them, or the server answers "off" and fills nothing.
   `lh-own-connections.py --dates-only` runs just this step; with `--dry-run` it only counts.
   The log line starts `dates:`. It comes with the script: a client machine gets it with the collection.
+- **Fill-ins: a contact made into a lead gets its profile overnight (since 27 Nov 2026).** In the
+  portal, "Make this contact a lead" creates a LIGHT lead - a name and a profile address, no About
+  section, no job history, no score. A campaign lead is RICH because Linked Helper opened the
+  profile. So the server keeps a note of each promoted contact that has a LinkedIn address
+  (`services/leadFillIns.js`, table `lead_fill_ins`), and the same nightly run collects the notes
+  (`GET <REPORT_URL>/fill-ins`), adds those people to "My own connections" AHEAD of its own picks and
+  inside the same `OWN_CONNECTIONS_MAX`, then confirms (`POST <REPORT_URL>/fill-ins`). Linked Helper
+  visits and sends them through the usual webhook; the server queues a never-profiled lead for
+  scoring when its first profile arrives (`services/leadService.js` `neverProfiledWantsScoring`).
+  The note is kept for every client, but handed only to a machine whose client is in
+  `OWN_CONNECTIONS_ARRIVE` - so switching a machine on later clears that client's backlog, the cap
+  a night. The lead then carries the campaign "My own connections". The log line starts `fill-ins:`.
+  A machine gets this with the script: one with an older copy simply never asks.
+  NOT filled in: a lead with no LinkedIn address, and any client without a machine we manage -
+  those stay light until /wg is opened on them (the extension reads the About section and scores).
 - Not on a cloud Linked Helper account: the script reads the machine's database, which is empty there.

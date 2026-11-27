@@ -26,6 +26,14 @@ the person was met. So once a night, just after midnight:
              where it is blank. No profile visit, no webhook send - it costs no daily actions. It
              touches nothing in Linked Helper (a database read and one web request), runs after
              everything has been put back, and a failure is one logged line.
+  FILL-INS - (27 Nov 2026) a contact the client made into a lead in Wingguy ("Make this contact a
+             lead") is a LIGHT lead: a name and a profile address, no About section, no score. The
+             server keeps a note of each one (GET <REPORT_URL>/fill-ins). They are added to "My own
+             connections" in step 3 AHEAD of the picks and inside the same nightly cap, because the
+             client chose them by hand. Linked Helper visits the profile and sends it through the
+             usual webhook, so by morning the lead is as full as a campaign lead and queued for
+             scoring. Once they are in the campaign the server is told (POST .../fill-ins) and stops
+             offering them. A failure to fetch is one logged line and the night carries on without.
 
 WHAT WAS PROVEN ON GUY'S MACHINE (23 Nov 2026, Linked Helper 2.140.13) - do not re-learn these:
   - Collecting costs no profile visits and no webhook sends (counters unchanged over 910 people).
@@ -390,9 +398,66 @@ def pass_on(m, own, people):
     return True
 
 
+# ------------------------------------------------------------------ fill-ins (contacts made into leads)
+
+def clean_slug(text):
+    """A profile address or a bare slug -> the slug, lower case. '' when it is not one."""
+    s = (text or "").strip().lower()
+    if "/in/" in s:
+        s = s.split("/in/", 1)[1]
+    s = s.split("?", 1)[0].split("#", 1)[0].strip("/")
+    return s if s and "/" not in s and " " not in s else ""
+
+
+def plan_tonight(fill_slugs, ready, cap):
+    """Who goes into the campaign tonight. Fill-ins first (the client chose them by hand), then the
+    picks, never more than the cap in all and nobody twice. Pure.
+    Returns (fill_tonight [slug], picks_tonight [person], picks_later [person])."""
+    cap = max(0, int(cap))
+    fill, seen = [], set()
+    for s in fill_slugs or []:
+        s = clean_slug(s)
+        if s and s not in seen:
+            seen.add(s)
+            fill.append(s)
+    fill_tonight = fill[:cap]
+    taken = set(fill_tonight)
+    rest = [p for p in ready if clean_slug(p.get("slug")) not in taken]
+    room = cap - len(fill_tonight)
+    return fill_tonight, rest[:room], rest[room:]
+
+
+def fetch_fill_ins(m):
+    """The contacts this client made into leads that still want a profile visit. Never raises:
+    no answer means no fill-ins tonight, and the picks go ahead as usual."""
+    try:
+        url = (m.c.get("REPORT_URL") or "").rstrip("/")
+        secret = m.c.get("REPORT_SECRET") or ""
+        if not url or not secret:
+            return []
+        req = urllib.request.Request(url + "/fill-ins", headers={"x-lh-machine-secret": secret})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            answer = json.loads(r.read().decode())
+        return [p.get("slug") or p.get("link") or "" for p in (answer.get("people") or [])]
+    except Exception as e:
+        say("fill-ins: not fetched tonight (%s) - tried again tomorrow" % str(e)[:160])
+        return []
+
+
+def confirm_fill_ins(m, slugs):
+    """Tell the server these are in the campaign, so it stops offering them. Never raises: an
+    unconfirmed one is offered again tomorrow and Linked Helper skips it as already in the campaign."""
+    try:
+        url = (m.c.get("REPORT_URL") or "").rstrip("/")
+        answer = post_json(url + "/fill-ins", m.c.get("REPORT_SECRET") or "", {"queued": slugs})
+        say("fill-ins: %d confirmed to the server" % int(answer.get("count") or 0))
+    except Exception as e:
+        say("fill-ins: could not confirm (%s) - offered again tomorrow" % str(e)[:160])
+
+
 # ------------------------------------------------------------------ 4. dates
 
-DATES_PER_NIGHT = 300       # most people reported in one night (the server takes the same)
+DATES_PER_NIGHT = 300      # most people reported in one night (the server takes the same)
 DATES_RETRY_DAYS = 60       # how long someone who is not a lead yet keeps being reported
 
 
@@ -529,17 +594,26 @@ def main():
     people = pick(m, hid, since)
     no_link = [p for p in people if not p["slug"]]
     ready = [p for p in people if p["slug"]]
-    tonight, later = ready[:cap], ready[cap:]
+    asked = fetch_fill_ins(m)
+    fill_tonight, tonight, later = plan_tonight(asked, ready, cap)
+    if asked:
+        say("fill-ins: %d contact(s) made into leads in Wingguy want a profile visit - %d tonight, ahead of the picks"
+            % (len(asked), len(fill_tonight)))
     say("switch-on date %s: %d waiting who no campaign sent - %d tonight, %d on later nights%s"
         % (since_text, len(ready), len(tonight), len(later), (", %d with no profile link yet" % len(no_link)) if no_link else ""))
+    for s in fill_tonight:
+        say("  %s %s  made a lead in Wingguy" % ("would pass" if dry else "passing", s))
     for p in tonight:
         say("  %s %s  connected %s" % ("would pass" if dry else "passing", p["slug"], day(p["connected_at"])))
     passed_ok = True
-    if tonight and not dry:
+    going = [{"slug": s} for s in fill_tonight] + tonight
+    if going and not dry:
         own = m.ensure(OWN_NAME)
-        passed_ok = pass_on(m, own, tonight)
+        passed_ok = pass_on(m, own, going)
         if passed_ok:
-            say("%d added to %r - it visits and sends them in its own hours" % (len(tonight), OWN_NAME))
+            say("%d added to %r - it visits and sends them in its own hours" % (len(going), OWN_NAME))
+            if fill_tonight:
+                confirm_fill_ins(m, fill_tonight)
     # 4. last, when the machine is already back as it was: it touches nothing in Linked Helper
     report_dates(m, hid, since, dry)
     return 0 if (read_ok and passed_ok) else 1

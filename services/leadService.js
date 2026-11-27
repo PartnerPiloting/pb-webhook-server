@@ -62,8 +62,21 @@ async function findExistingLeadByUrl(airtableBase, url) {
     }).firstPage();
 }
 
+/**
+ * Should an EXISTING lead be queued for scoring because its first-ever profile is arriving now?
+ * Yes only when: the caller passed no scoring status, the record has never had a profile, the record
+ * has no scoring status of its own, and this arrival carries a profile. Pure - see upsertLead.
+ */
+function neverProfiledWantsScoring(existingFields = {}, incoming = {}) {
+    const filled = (v) => String(v == null ? '' : v).trim() !== '';
+    return incoming[LEAD_FIELDS.SCORING_STATUS] === undefined
+        && !filled(existingFields[LEAD_FIELDS.PROFILE_FULL_JSON])
+        && !filled(existingFields[LEAD_FIELDS.SCORING_STATUS])
+        && filled(incoming[LEAD_FIELDS.PROFILE_FULL_JSON]);
+}
+
 async function upsertLead(
-    lead, 
+    lead,
     finalScore = null,
     aiProfileAssessment = null,
     attribute_reasoning_obj = null, 
@@ -249,6 +262,15 @@ async function upsertLead(
         if (adoptedSkeleton && fields[LEAD_FIELDS.SCORING_STATUS] === undefined) {
             fields[LEAD_FIELDS.SCORING_STATUS] = SCORING_STATUS_VALUES.NOT_SCORED;
         }
+        // NEVER PROFILED (Guy, 27 Nov 2026): a lead made by hand or from a contact ("Make this contact
+        // a lead") has no profile and no scoring status. When Linked Helper first sends its profile
+        // the person is already a 1st-degree connection, so the webhook passes no status and the lead
+        // used to sit unscored for ever. Queue it - only when it has never had a profile AND has no
+        // status of its own (a Scored / Skipped / Manually Excluded lead is never touched).
+        if (neverProfiledWantsScoring(existing[0].fields, fields)) {
+            fields[LEAD_FIELDS.SCORING_STATUS] = SCORING_STATUS_VALUES.NOT_SCORED;
+            logger.info(`leadService/upsertLead: ${existing[0].id} had no profile until now - queued for scoring`);
+        }
         // For "Date Connected", update if:
         // 1. We have a new connection date from the webhook, OR
         // 2. Status is now "Connected" but there's no existing date
@@ -375,5 +397,6 @@ async function trackLeadProcessingMetrics(runId, clientId, metrics) {
 module.exports = {
     upsertLead,
     findExistingLeadByUrl,
+    neverProfiledWantsScoring,
     trackLeadProcessingMetrics
 };
