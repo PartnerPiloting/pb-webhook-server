@@ -135,6 +135,39 @@ buttons and the same /wg.
     put it in this message. When it reads as anything else, the link is not offered.
 - Works with the established-connection line already live: under 30 days = thanks as before.
 
+### 8a. The explanation where the client uses it (Guy, 28 Nov 2026)
+There is no Reconnect PAGE - Reconnect is a section of the Follow-Ups screen, shown only when Reconnect
+= Yes, and its empty state only mentions old conversations. Change `ReconnectSection.js`:
+- Show the section for EVERY client (switched on or not).
+- Empty state = the explainer: "Your Reconnect list - people you're already connected with. Two ways
+  to fill it, either or both." Then "From your old conversations" (one line + "Ask Guy to set this
+  up") and "From a search" (one line + the paste box and the two questions).
+- With people in it: one line at the top, "Want more? Paste another search", box folded under it.
+- Both states end with a link "How your Reconnect list works" that opens the full Wingguy Learning
+  topic (the portal already shows playbook topics - use the same door as other in-portal help).
+- One set of words in three places: this section, the Learning topic (YOUR RECONNECT LIST rewritten to
+  cover both ways), and journey stop 2 on Start Here. Change one, change all three.
+
+### 8b. "In future, do it like this" when Wingguy has several jobs (Guy, 28 Nov 2026)
+Wingguy already has several writing jobs, each with its own instruction: thank a new connection
+(`post-connection-message`, plus per-campaign versions), pick up an old conversation
+(`reconnection-formula`), replies, booking. This build adds a third first-message job, so feedback must
+land on the right one:
+- **New instruction "First message to an existing connection"** (standard, follow-up context) - this
+  build needs it now: search people and never-spoken old connections stop borrowing
+  `reconnection-formula`, which is written for conversations that went quiet. The established-connection
+  line in `wingguyChat.js` points to it (falls back to reconnection-formula if a client has neither).
+- **Every /wg draft records which job it did** (new connection / old conversation / existing
+  connection / reply / booking, plus the search id when there is one) on its draft-vs-sent pair.
+- **The weekly edit learner groups edits by job** and folds a pattern into THAT job's instruction -
+  never across jobs (three edits on search people are one pattern; one each on three jobs is none).
+- **When the client says "in future..."** (in /wg or Claude), Wingguy names the job it just did and
+  defaults to it: "Got it - for first messages to people you've been connected with a while. Want it
+  on every message instead?" One question, only when it could be either.
+- **Per-search wording** (Steve wants his CEO search worded differently from his accountants search)
+  is a "for this search" note kept with the search, like campaign instructions - not built in v1;
+  the reason sentence covers most of it.
+
 ### 8. Words for clients
 - Playbook topic: extend YOUR CONTACTS / RECONNECT with "Bringing in connections from a search" -
   how to build the search, why the reason matters, why the link waits. Alias "bring my connections in",
