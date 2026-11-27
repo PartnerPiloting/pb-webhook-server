@@ -383,6 +383,9 @@ function portalFieldsFromRecord(f = {}) {
     // server-side only, by leadRecordLocation - it is never rendered into the profile block, so its
     // ~15KB never reaches the model.
     rawProfileData: f['Raw Profile Data'],
+    // When they connected - decides "thanks for connecting" vs a first message to an old connection
+    // (services/wingguyChat.js establishedConnection, 27 Nov 2026). Underscore key: never rendered.
+    _dateConnected: f['Date Connected'],
   };
 }
 

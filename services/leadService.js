@@ -188,8 +188,13 @@ async function upsertLead(
             || (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED
                 ? (safeDate(originalLeadData.invited_date_iso)
                     || safeDate(originalLeadData.invited_date)
-                    || (!lead.id ? new Date().toISOString() : null))
-                : null), // Set Date Connected if newly Connected and no previous date
+                    // NO "TODAY" (Guy, 27 Nov 2026): a 1st-degree person who arrives with no date at
+                    // all - an old connection a visit-only campaign looked at - used to be stamped as
+                    // connected TODAY, so years-old connections landed in "New connections to welcome"
+                    // and /wg thanked them for connecting. Blank is honest, and blank gets filled with
+                    // the REAL date (services/connectedDateFill.js, and the LinkedIn list copy).
+                    || null)
+                : null),
         [LEAD_FIELDS.EMAIL]: emailAddress || originalLeadData.email || originalLeadData.workEmail || originalLeadData.email_1 || originalLeadData.email_2 || "",
         [LEAD_FIELDS.PHONE]: phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || originalLeadData.phone_1 || originalLeadData.phone_2 || "",
         [LEAD_FIELDS.REFRESHED_AT]: refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
@@ -274,12 +279,13 @@ async function upsertLead(
         // For "Date Connected", update if:
         // 1. We have a new connection date from the webhook, OR
         // 2. Status is now "Connected" but there's no existing date
-        if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED) {
-            if (!existing[0].fields[LEAD_FIELDS.DATE_CONNECTED] && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
-                // No date anywhere - set to now
-                fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
+        // No date in this arrival = say nothing about the date: an existing one is never cleared, and a
+        // blank one is never filled with today (see the field build above - Guy, 27 Nov 2026).
+        if (!fields[LEAD_FIELDS.DATE_CONNECTED]) {
+            delete fields[LEAD_FIELDS.DATE_CONNECTED];
+            if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !existing[0].fields[LEAD_FIELDS.DATE_CONNECTED]) {
+                logger.info(`leadService/upsertLead: ${existing[0].id} is a connection but Linked Helper sent no connected date - left blank for the real date to fill`);
             }
-            // If fields[LEAD_FIELDS.DATE_CONNECTED] already exists from connectionSince, it will be used
         }
 
         // MANUAL-CORRECTION GUARD (2026-08-20): a refresh scrape that carries NO location/email/phone
@@ -310,8 +316,11 @@ async function upsertLead(
         if (fields[LEAD_FIELDS.SCORING_STATUS] === undefined) {
             fields[LEAD_FIELDS.SCORING_STATUS] = SCORING_STATUS_VALUES.NOT_SCORED;
         }
-        if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
-            fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
+        if (!fields[LEAD_FIELDS.DATE_CONNECTED]) {
+            delete fields[LEAD_FIELDS.DATE_CONNECTED];
+            if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED) {
+                logger.info(`leadService/upsertLead: new lead ${finalUrl} is a connection but Linked Helper sent no connected date - left blank for the real date to fill`);
+            }
         }
         // REMOVED: System Notes field - not all client bases have this field (e.g., Dean Hobin)
         // This was causing "Unknown field name: 'System Notes'" errors

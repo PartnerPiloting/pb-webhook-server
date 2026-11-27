@@ -939,6 +939,69 @@ function isHandshakeOnly({ conversation, coachName, leadName, group }) {
   return !leadHasSpoken(conversation, coachName, leadName) && !coachHasAskedToMeet(conversation, coachName);
 }
 
+// AN OLD CONNECTION IS NOT A NEW ONE (Guy, 27 Nov 2026 - Steve Nelson's existing connections). /wg
+// picked the opener from the thread alone: no message from the lead = "thanks for connecting". For
+// someone the coach connected with five years ago and never wrote to, that is plainly wrong - and to a
+// CEO it reads as a mail-merge. The connected date decides it: connected this long ago or more, and the
+// lead has never written, = an ESTABLISHED connection, and the first message is a reconnect.
+const ESTABLISHED_CONNECTION_DAYS = 30;
+
+/** When the coach and this lead connected, from the CRM record or Linked Helper's payload. ISO or ''. */
+function connectedDateOf(profile = {}) {
+  const fromRecord = String((profile && profile._dateConnected) || '').trim();
+  if (fromRecord && !Number.isNaN(Date.parse(fromRecord))) return fromRecord;
+  try {
+    const raw = typeof profile.rawProfileData === 'string' ? JSON.parse(profile.rawProfileData) : (profile.rawProfileData || {});
+    const v = raw && (raw.connected_at_iso || raw.connected_at);
+    if (!v) return '';
+    const t = typeof v === 'number' || /^\d{10,13}$/.test(String(v)) ? Number(v) : Date.parse(v);
+    const ms = t < 1e11 ? t * 1000 : t;
+    return Number.isFinite(ms) ? new Date(ms).toISOString() : '';
+  } catch (_) { return ''; }
+}
+
+/**
+ * { days, date } when this is an established connection the lead has never written on, else null.
+ * Never for a group thread, never once the lead has said anything, never without a real date (an
+ * unknown date keeps the old behaviour - we cannot tell, so we do not guess). Pure.
+ */
+function establishedConnection({ conversation, coachName, leadName, group, connectedAt, now = Date.now() }) {
+  if (group) return null;
+  if (leadHasSpoken(conversation, coachName, leadName)) return null;
+  const t = Date.parse(String(connectedAt || ''));
+  if (Number.isNaN(t)) return null;
+  const days = Math.floor((now - t) / 86400000);
+  if (days < ESTABLISHED_CONNECTION_DAYS) return null;
+  return { days, date: new Date(t).toISOString().slice(0, 10) };
+}
+
+function connectedAgo(days) {
+  if (days >= 730) return `about ${Math.floor(days / 365)} years ago`;
+  if (days >= 365) return 'about a year ago';
+  const months = Math.max(1, Math.round(days / 30));
+  return months === 1 ? 'about a month ago' : `about ${months} months ago`;
+}
+
+/** The context line that overrides the thanks-for-connecting framing for an established connection. */
+function establishedConnectionLine(est, leadName = '') {
+  if (!est) return '';
+  const first = String(leadName || 'the lead').trim().split(/\s+/)[0] || 'the lead';
+  return `⚠ NOT A NEW CONNECTION: ${first} and the coach connected on LinkedIn on ${est.date} - ${connectedAgo(est.days)} - and ${first} has never written to the coach. ` +
+    `So any instruction to draft a "thanks for connecting" opener does NOT apply here, and neither does the campaign's connection-message wording below. ` +
+    `Never thank ${first} for connecting or accepting, never "great to connect", "glad we connected" or "now that we're connected". ` +
+    `Write it the way the "Reconnecting after a gap" instruction says, with one difference: there is no past conversation, so there are no old words or memories to quote. ` +
+    `The anchor is something current of theirs - a recent post first, else one specific, true thing from their profile. ` +
+    `A light touch that it has been a while since you connected is fine; never pretend you have spoken before. Then one small ask. Keep the coach's greeting and sign-off. ` +
+    `In your chat reply to the coach, say in a few words that you wrote it as a first message to an existing connection (connected ${est.date}), not a thanks-for-connecting.`;
+}
+
+// The words that give a "thanks for connecting" away. Refused once per turn on an established connection.
+const THANKS_FOR_CONNECTING = /\b(?:thanks|thank you|cheers)(?:\s+so\s+much)?\s+for\s+(?:connecting|the\s+connection|accepting|the\s+connect)\b|\b(?:great|good|nice|lovely|glad|pleased|delighted)\s+(?:to\s+|we\s+|we've\s+)?(?:have\s+)?(?:connect|connected|be\s+connected)\b|\bnow\s+(?:that\s+)?we(?:'re|\s+are)\s+connected\b/i;
+function thanksForConnectingPhrase(text = '') {
+  const m = String(text || '').match(THANKS_FOR_CONNECTING);
+  return m ? m[0] : null;
+}
+
 // NO TIME LIST BEFORE ANYONE HAS RAISED A CALL (Guy, 2026-10-07 — Andrew Wheater). The coach's
 // handshake note ("I'm building a network…") asked for nothing; Andrew replied "would love to be
 // involved, anything I can do to help" — a yes to the NETWORK, not to a meeting — and the panel went
@@ -1271,15 +1334,21 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     : ballWithLead
       ? `NOTE: the newest message in the thread is the coach's own and ${leadFirst} has not answered it - there is nothing new to react to, so never open as a reply ("Great/Perfect/Thanks, ${leadFirst}").`
       : '';
+  // An established connection the lead has never written on: the first message is a reconnect, not a
+  // thanks-for-connecting (see establishedConnection). Named in the context, guarded on the draft.
+  const established = establishedConnection({ conversation, coachName: coach.clientName, leadName: profile.name, group: profile.group, connectedAt: connectedDateOf(profile) });
+  if (established) console.log(`[Wingguy] established connection: ${profile.name || 'lead'} connected ${established.date} (${established.days} days), never written - drafting a reconnect, not a thanks`);
+  const contextStallLine = [stallLine, establishedConnectionLine(established, profile.name)].filter(Boolean).join('\n\n');
   let replyOpenerGuardFired = false; // refuses at most ONCE per turn, like the hook guard
   let withdrawnGuardFired = false; // same: once per turn
+  let thanksGuardFired = false; // same: once per turn
 
   const system = [
     ...(systemPrefixBlocks || [
       { type: 'text', text: WINGGUY_VOICE },
       { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
     ]),
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, leadName: profile.name, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: clock.line, stallLine }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, leadName: profile.name, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: clock.line, stallLine: contextStallLine }) },
   ];
 
   // The panel resends the whole history each turn; previous turns' thinking blocks are bound to a
@@ -1850,7 +1919,21 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         }
       }
       // Stage-1 opener guard (see STAGE1_BANNED_OPENER above): refuse, explain, let the model redraft.
-      if (isHandshakeOnly({ conversation, coachName: coach.clientName, leadName: profile.name, group: profile.group })) {
+      // Established connection: a "thanks for connecting" tells someone they connected with years ago
+      // that the coach thinks they just met. Refused once, with the reason, so the model redrafts.
+      if (established && !thanksGuardFired) {
+        const thanks = thanksForConnectingPhrase(draft);
+        if (thanks) {
+          thanksGuardFired = true;
+          const first = String(profile.name || 'the lead').trim().split(/\s+/)[0];
+          console.warn(`WINGGUY-ESTABLISHED-GUARD refused "${thanks}" for ${coach.clientId} → ${profile.name || 'lead'} (connected ${established.date})`);
+          return {
+            ok: false,
+            error: `REJECTED - draft NOT set. It says "${thanks}", but ${first} connected with the coach on ${established.date} - ${connectedAgo(established.days)}. This is a first message to an EXISTING connection, not a new one. Redraft as a reconnect: greeting, one anchor that is current (a recent post first, else one specific true thing from their profile), at most a light touch that it has been a while since you connected, then one small ask. No thanks for connecting or accepting. Then call propose_message again.`,
+          };
+        }
+      }
+      if (!established && isHandshakeOnly({ conversation, coachName: coach.clientName, leadName: profile.name, group: profile.group })) {
         const hit = bannedStage1Opener(draft);
         if (hit) {
           const who = profile.name || 'the lead';
@@ -1952,4 +2035,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: clocked.reply, draft: draftOut, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, trimHistoryForModel, restoreSignoffLayout, meetingRaisedInThread, coachAskedForTimes, withInviteLine, loadFixedLines, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, withdrawnAcceptance, leadBlamingLine, summariseEventsForPanel, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, trimHistoryForModel, restoreSignoffLayout, meetingRaisedInThread, coachAskedForTimes, withInviteLine, loadFixedLines, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, withdrawnAcceptance, leadBlamingLine, summariseEventsForPanel, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, detectLeadBookingLinkResolved,linkBookingPromise, linkBookedDraftProblem, priorLeadLinkRead, coachSlotLine, scrubSameClockClaims, chosenSlotFromReply, slotCandidates, coachClockReply, buildContext, jobLocationOffer, leadClockLine, cvTallyHook, connectedDateOf, establishedConnection, establishedConnectionLine, thanksForConnectingPhrase, ESTABLISHED_CONNECTION_DAYS };
