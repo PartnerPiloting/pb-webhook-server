@@ -17,6 +17,24 @@ When the person says yes, the next message carries the client's link.
 It is step 7 of the Reconnect plan ("signals tier", docs/RECONNECT-BUILD-PLAN.md), now possible because
 /wg can tell an old connection from a new one (commit 52c8ca5b).
 
+## How it sits with the Reconnect that already exists (Guy asked, 28 Nov 2026)
+
+Same destination, a second way in. Today's Reconnect finds people from the client's OLD CONVERSATIONS
+(LinkedIn linked to Unipile for a month, AI reads how each ended, picks the ones worth picking up).
+This finds people by WHO THEY ARE (a search). Both land in the same Reconnect list, with the same
+buttons and the same /wg.
+
+| | Reconnect today | From a search |
+|---|---|---|
+| Who it finds | people you've talked to | people you choose by title, place, etc. - talked to or not |
+| How it gets them | Unipile reads your inbox, one month, set up with Guy | Linked Helper visits them, any time, the client does it |
+| What /wg is told | how the conversation ended + what to pick up on | why the client picked them + their link |
+
+- **Someone in both:** one row, never two. The conversation wins (it is the better reason to write);
+  the search's reason and link are kept with it for /wg.
+- **No Unipile history (Steve):** the list still shows - search people alone.
+- **One list, one daily number:** conversation people first, search people fill what is left.
+
 ## The lines held (Guy, 27 Nov 2026)
 
 - **The campaign collects and visits. It never messages.** No message step, even if a client asks. A
@@ -36,8 +54,10 @@ It is step 7 of the Reconnect plan ("signals tier", docs/RECONNECT-BUILD-PLAN.md
    - Why are you reaching out to these people? (required, one sentence)
    - A link to share with the ones who are interested? (optional)
    - [ ] Put the link in the first message (off, with the warning)
-2. Email when the collect finishes: "N of your connections found; Linked Helper visits about X a day,
-   so they will all be in Wingguy by about <date>."
+2. Email when the collect finishes, written so nobody thinks they must wait for the last one (Guy,
+   28 Nov): "Linked Helper found N of your connections. The first ones will be in your Reconnect list
+   tomorrow morning - start with those. About X more arrive each day, so you will always have some
+   to work." The finish date is NOT the headline; at most a closing line ("all N in by about <date>").
 3. Follow-Ups > Reconnect: search people appear with a chip "From your search: <reason, shortened>",
    their score, and "open their profile and use /wg".
 4. /wg on one of them: the draft opens on a post or profile detail, frames it as an existing
