@@ -71,6 +71,18 @@ async function requestTopUp({ client, url, campaign: named = '', requestedBy = n
   if (!check.ok) {
     return { ok: false, text: `That link won't work as a top-up - ${check.problem}. A top-up needs the address of a LinkedIn people search, a Sales Navigator people search, or a Sales Navigator lead list, copied from the address bar. How to build one: ${PICK_URL}` };
   }
+  // A search of their OWN connections is not a top-up (nobody to invite). Where bringing connections
+  // in from a search is switched on, say where it goes instead of only refusing
+  // (services/connectionSearches.js, docs/CONNECTIONS-SEARCH-BUILD-PLAN.md).
+  if (check.degrees && check.degrees.first && require('./connectionSearches').enabledFor(client.clientId)) {
+    const own = require('../utils/linkedinSearchUrl').ownConnectionsCheck(check);
+    if (own.own) {
+      return { ok: false, ownConnections: true, text: 'That is a search of your own connections (1st degree) - a campaign can\'t invite people you already know, so it doesn\'t go here. '
+        + 'It goes into Wingguy instead: say "bring these connections into Wingguy" in your Claude, with this link. '
+        + 'For a campaign top-up, set the search to 2nd and 3rd degree only and copy the link again.' };
+    }
+    if (own.problem && check.degrees.second) return { ok: false, text: own.problem };
+  }
   const objection = degreeObjection(check);
   if (objection) return { ok: false, text: objection };
 

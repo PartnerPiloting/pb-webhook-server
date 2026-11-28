@@ -102,6 +102,8 @@ buttons and the same /wg.
   (per-machine secret, new route in `routes/linkedHelperMachineRoutes.js`). This is how each person is
   tied to the search and its reason; the webhook alone only says the campaign.
 - Rolled out with step 6 of the update only (as the top-up was), never during a client call.
+- Bring `lh-topup.py degrees_in()` in step with the server's (28 Nov review): Sales Navigator values
+  marked EXCLUDED do not count, and codes other than F/S/O (group members) are reported as `other`.
 
 ### 5. Leads (server) - webhook path, `services/leadService.js`
 - No change to create/update: the visit's webhook makes or tops up the lead as for any campaign
@@ -174,6 +176,18 @@ land on the right one:
   "search my connections"; near-miss tests in `content/client-phrases.json`.
 - `content/site/pick-your-people.html`: a short "your own connections" section.
 - `docs/linked-helper-machine-setup.md`: recipe 07, the cap, the report-back route.
+
+## Progress
+
+- **Step 1 - server side: DONE 28 Nov 2026.** `utils/linkedinSearchUrl.js` ownConnectionsCheck,
+  `services/connectionSearches.js` (gate `CONNECTION_SEARCH_CLIENTS`, default the owner only), chat tool
+  `wingguy_bring_in_connections` (in `services/wingguyTopUpMcp.js`, phrase "bring these connections into
+  Wingguy"), portal routes GET `/api/followups/connection-searches` + POST `/api/followups/connection-search`,
+  the top-up door pointing own-connection searches there, own offboarding step. Reviewed fresh on Fable;
+  its 9 findings fixed (Sales Navigator EXCLUDED/group codes, saved searches, missing narrowing params,
+  query split, tenant guard, searches no longer replace each other, honest wording, offboarding,
+  capabilities list). Tests: `tests/connection-searches.test.js` (39).
+  Note: nothing is handed to a machine yet - searches sit as "waiting" until step 2.
 
 ## Build order and checks
 

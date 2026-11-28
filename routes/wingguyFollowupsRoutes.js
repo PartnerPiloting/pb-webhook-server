@@ -371,6 +371,40 @@ module.exports = function mountWingguyFollowups(app) {
     }
   });
 
+  // Bring your connections in from a search (docs/CONNECTIONS-SEARCH-BUILD-PLAN.md) - the box in
+  // the Reconnect section. GET = their searches + whether it is switched on for them; POST saves one
+  // ({ url, reason, shareLink }) through the same door as the chat tool (services/connectionSearches).
+  router.get('/connection-searches', authenticateUserWithTestMode, async (req, res) => {
+    const clientId = getClientId(req);
+    const gate = await resolveGate(clientId);
+    if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
+    try {
+      const cs = require('../services/connectionSearches');
+      const enabled = cs.enabledFor(clientId);
+      const searches = enabled ? await cs.listFor(clientId, { limit: 5 }) : [];
+      return res.json({ ok: true, enabled, searches: searches.map((s) => ({ ...s, words: cs.describeSearch(s) })) });
+    } catch (e) {
+      logger.error(`followupsScreen: connection searches error for ${clientId}: ${e?.message || e}`);
+      res.status(500).json({ error: 'searches_failed', details: e?.message || String(e) });
+    }
+  });
+
+  router.post('/connection-search', authenticateUserWithTestMode, async (req, res) => {
+    const clientId = getClientId(req);
+    const gate = await resolveGate(clientId);
+    if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
+    try {
+      const client = await require('../services/clientService').getClientById(clientId);
+      if (!client) return res.status(404).json({ error: 'no_client' });
+      const { url, reason, shareLink } = req.body || {};
+      const r = await require('../services/connectionSearches').requestSearch({ client, url, reason, shareLink, requestedBy: 'portal' });
+      return res.status(r.ok ? 200 : 400).json(r);
+    } catch (e) {
+      logger.error(`followupsScreen: connection search error for ${clientId}: ${e?.message || e}`);
+      res.status(500).json({ error: 'search_failed', details: e?.message || String(e) });
+    }
+  });
+
   // Potential disconnects (docs/RECONNECT-BUILD-PLAN.md, brick 5): the client's own flags plus
   // system suggestions, and the people already approved. Nothing here removes anyone from LinkedIn.
   router.get('/disconnects', authenticateUserWithTestMode, async (req, res) => {

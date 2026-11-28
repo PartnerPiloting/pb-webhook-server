@@ -28,12 +28,23 @@ function degreesIn(url, kind) {
   if (kind === 'search-page') {
     codes = codesFrom(raw.match(/[?&]network=(\[[^\]&#]*\])/), /"([FSO])"/g);
   } else if (kind === 'sn-search-page') {
-    codes = codesFrom(raw.match(/relationship:List\(([^)]*)\)/), /\b([FSO])\b/g);
-    if (!codes.length) codes = codesFrom(raw.match(/type:RELATIONSHIP,values:List\((.*?)\)\)/), /id:([FSO])\b/g);
+    codes = codesFrom(raw.match(/relationship:List\(([^)]*)\)/), /\b([A-Z])\b/g);
+    if (!codes.length) {
+      // (type:RELATIONSHIP,values:List((id:F,...,selectionType:INCLUDED),(id:S,...,selectionType:EXCLUDED)))
+      // An EXCLUDED value is the opposite of asking for it - only included ones count (review 28 Nov 2026).
+      const block = raw.match(/type:RELATIONSHIP,values:List\((.*?)\)\)\)/) || raw.match(/type:RELATIONSHIP,values:List\((.*?)\)\)/);
+      if (block) {
+        for (const v of block[1].split(/\),\s*\(/)) {
+          const id = (v.match(/id:([A-Z])\b/) || [])[1];
+          if (id && !/selectionType:EXCLUDED/.test(v)) codes.push(id);
+        }
+      }
+    }
   }
   d.first = codes.includes('F');
   d.second = codes.includes('S');
   d.third = codes.includes('O');
+  d.other = codes.some((c) => !['F', 'S', 'O'].includes(c));   // e.g. Sales Navigator group members (A)
   d.known = codes.length > 0;
   return d;
 }
@@ -111,4 +122,73 @@ function degreeNote(check) {
   return 'That link has no connection-degree filter I can read, so I cannot tell from it whether it is 2nd and 3rd degree only - check the Connections filter before relying on it.';
 }
 
-module.exports = { checkSearchUrl, degreeObjection, degreeNote, KINDS };
+/**
+ * Is this a search of the client's OWN connections, ready to bring into Wingguy?
+ * (docs/CONNECTIONS-SEARCH-BUILD-PLAN.md, Guy 27-28 Nov 2026.)
+ *
+ * A campaign top-up wants 2nd/3rd degree (it invites). Bringing connections in wants the opposite:
+ * 1st degree ONLY - nobody to invite, Linked Helper only visits them. And it must be NARROWED: a
+ * bare "all my 1st-degree connections" is the Connections.csv problem again (Guy: "everyone I know"
+ * is never the list), so the link must carry at least one real filter besides the degree.
+ *
+ * Returns { own, problem } - own=true means use it; otherwise `problem` says why, in words for the
+ * person who pasted it, or null when the link is simply not a 1st-degree search (a normal top-up).
+ */
+const SEARCH_NARROWING_PARAMS = [
+  'keywords', 'geoUrn', 'currentCompany', 'pastCompany', 'industry', 'title', 'titleFreeText',
+  'schoolFilter', 'schoolFreetext', 'school', 'company', 'firstName', 'lastName', 'profileLanguage',
+  'serviceCategory', 'connectionOf', 'followerOf',
+];
+
+function searchIsNarrowed(url, kind) {
+  if (kind === 'search-page') {
+    // Split the query BEFORE decoding, so a %3F or %26 inside one value can't cut it short.
+    const at = url.indexOf('?');
+    const q = at >= 0 ? url.slice(at + 1).split('#')[0] : '';
+    return q.split('&').some((part) => {
+      const eq = part.indexOf('=');
+      if (eq < 0) return false;
+      const k = part.slice(0, eq);
+      let val = part.slice(eq + 1).replace(/\+/g, ' ');
+      try { val = decodeURIComponent(val); } catch (_e) { /* keep as is */ }
+      val = val.trim();
+      return SEARCH_NARROWING_PARAMS.includes(k) && val && val !== '[]' && val !== '""';
+    });
+  }
+  if (kind === 'sn-search-page') {
+    let raw = url;
+    try { raw = decodeURIComponent(url); } catch (_e) { /* leave as pasted */ }
+    if (/keywords:[^,)]+/i.test(raw)) return true;
+    // Any filter besides the connection degree counts. A saved search whose link shows no filters
+    // does NOT count - its filters live on Sales Navigator's side and can't be seen from here.
+    const types = [...raw.matchAll(/type:([A-Z_]+)/g)].map((m) => m[1]).filter((t) => t !== 'RELATIONSHIP');
+    return types.length > 0;
+  }
+  return false;
+}
+
+function ownConnectionsCheck(check) {
+  const out = { own: false, problem: null };
+  if (!check || !check.ok || !check.degrees) return out;
+  const d = check.degrees;
+  if (check.kind === 'sn-search-page' && !d.known && /savedSearchId=/i.test(check.url)) {
+    out.problem = 'That is a saved Sales Navigator search, and its link does not show its filters, so I cannot tell who is in it. '
+      + 'Open the saved search, wait for the results to load, then copy the link from the address bar again - it then carries the filters.';
+    return out;
+  }
+  if (!d.first) return out;                                     // not about their own connections
+  if (d.second || d.third || d.other) {
+    out.problem = 'That search mixes your own connections (1st) with people you are not connected to (2nd/3rd). '
+      + 'Split it into two: 1st only to bring your connections into Wingguy, and 2nd and 3rd only to top up your campaign.';
+    return out;
+  }
+  if (!searchIsNarrowed(check.url, check.kind)) {
+    out.problem = 'That search is all of your 1st-degree connections with nothing else picked. Narrow it down to the people '
+      + 'you actually want to talk to - a job title, a location, an industry or a company size - then copy the link again.';
+    return out;
+  }
+  out.own = true;
+  return out;
+}
+
+module.exports = { checkSearchUrl, degreeObjection, degreeNote, ownConnectionsCheck, searchIsNarrowed, KINDS };

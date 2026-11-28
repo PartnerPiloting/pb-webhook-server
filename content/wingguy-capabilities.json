@@ -174,6 +174,7 @@
     }
   ],
   "not_shown": {
+    "wingguy_bring_in_connections": "owner only until the machine side is proven (docs/CONNECTIONS-SEARCH-BUILD-PLAN.md) - move it into the Reconnect item when it reaches clients",
     "wingguy_vision": "the answer itself",
     "wingguy_onboarding_guide": "Guy only - his onboarding call script",
     "wingguy_get_client": "Guy only - client directory",

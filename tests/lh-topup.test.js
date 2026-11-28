@@ -19,7 +19,7 @@ check('a LinkedIn people search with 2nd + 3rd is fine', () => {
   const c = checkSearchUrl('https://www.linkedin.com/search/results/people/?keywords=cfo&network=%5B%22S%22%2C%22O%22%5D');
   assert.strictEqual(c.ok, true);
   assert.strictEqual(c.kind, 'search-page');
-  assert.deepStrictEqual(c.degrees, { first: false, second: true, third: true, known: true });
+  assert.deepStrictEqual(c.degrees, { first: false, second: true, third: true, other: false, known: true });
   assert.strictEqual(degreeObjection(c), null);
   assert.strictEqual(degreeNote(c), null);
 });
@@ -34,7 +34,7 @@ check('1st-degree in the filter is the one objection worth stopping for', () => 
 check('Sales Navigator search: both URL dialects read; a saved search gets a soft note, not a refusal', () => {
   const a = checkSearchUrl('https://www.linkedin.com/sales/search/people?query=(filters%3AList((type%3ARELATIONSHIP%2Cvalues%3AList((id%3AS%2Ctext%3A2nd)%2C(id%3AO%2Ctext%3A3rd)))))');
   assert.strictEqual(a.kind, 'sn-search-page');
-  assert.deepStrictEqual(a.degrees, { first: false, second: true, third: true, known: true });
+  assert.deepStrictEqual(a.degrees, { first: false, second: true, third: true, other: false, known: true });
   const b = checkSearchUrl('https://www.linkedin.com/sales/search/people?query=(relationship:List(S,O))');
   assert.strictEqual(b.degrees.known, true);
   assert.strictEqual(b.degrees.first, false);

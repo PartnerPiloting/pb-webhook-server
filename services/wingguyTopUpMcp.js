@@ -63,7 +63,51 @@ async function runTopUp(args = {}, tenant = TENANT) {
   return { text: who + r.text };
 }
 
+/** "Bring these connections into Wingguy" - services/connectionSearches.js. No url = how it went. */
+async function runBringIn(args = {}, tenant = TENANT) {
+  const cs = require('./connectionSearches');
+  let target;
+  try {
+    target = await resolveTarget(args.client, tenant, 'bring in connections for');
+  } catch (e) {
+    return { text: `Couldn't read the client directory: ${e.message}`, isError: true };
+  }
+  if (target.error) return { text: target.error, isError: true };
+  const c = target.client;
+  const who = target.own ? '' : `For ${c.clientName}: `;
+  const url = String(args.url || '').trim();
+  if (!url) {
+    const list = await cs.listFor(c.clientId, { limit: 3 });
+    if (!list.length) return { text: who + cs.describeSearch(null) };
+    return { text: who + list.map((s) => cs.describeSearch(s)).join('\n\n') };
+  }
+  const r = await cs.requestSearch({ client: c, url, reason: args.reason, shareLink: args.share_link, requestedBy: tenant });
+  if (!r.ok && r.needsReason) return { text: who + r.text };           // a question back, not an error
+  return { text: who + r.text, ...(r.ok ? {} : { isError: true }) };
+}
+
 const TOOL_DEFS = [
+  {
+    name: 'wingguy_bring_in_connections',
+    description:
+      "Bring the person's OWN LinkedIn connections into Wingguy from a search - the door for \"bring these connections into Wingguy\", \"search my connections\", \"get my CEOs / accountants / Melbourne people that I'm already connected to into Wingguy\", or a LinkedIn / Sales Navigator people search link set to 1st-degree connections. Pass the link as url exactly as pasted, plus reason: ONE sentence in their words on why they want to reach these people (e.g. \"CEOs I'd like to tell about our leadership programme\") - if they have not said why, ASK them before calling; never invent a reason. share_link is optional: a page they want to send to the ones who are interested (their programme, their site). Wingguy checks the search is 1st degree only and narrowed (not all their connections), saves it with the reason, and their Linked Helper machine collects it and visits each person overnight - NEVER an invite, NEVER a message. The people become full leads and appear a few a day in the Reconnect section of the Follow-Ups screen; /wg then writes each first message itself, ending with a small ask built from the reason. The share link is held back until the person says yes - it never goes in a first message, and there is no setting to change that. Tell them all that after it is saved. Call with NO url to answer \"what happened to my connections search?\". A search of people they are NOT connected to is a campaign top-up instead (wingguy_top_up_campaign). Never paste a search into Linked Helper by hand, never go to Airtable.",
+    zodSchema: {
+      url: z.string().optional().describe('The search link (Connections: 1st), exactly as copied from the address bar. Leave out to ask how the latest search went.'),
+      reason: z.string().optional().describe('One sentence, in their words: why they want to reach these people. Ask them if they have not said - never make it up.'),
+      share_link: z.string().optional().describe('Optional: a web page to send to the people who say yes (their programme, their site).'),
+      client: z.string().optional().describe("Coaches only: which of your clients. Leave out for your own."),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The search link (Connections: 1st), exactly as copied from the address bar. Leave out to ask how the latest search went.' },
+        reason: { type: 'string', description: 'One sentence, in their words: why they want to reach these people. Ask them if they have not said - never make it up.' },
+        share_link: { type: 'string', description: 'Optional: a web page to send to the people who say yes (their programme, their site).' },
+        client: { type: 'string', description: "Coaches only: which of your clients. Leave out for your own." },
+      },
+    },
+    run: runBringIn,
+  },
   {
     name: 'wingguy_top_up_campaign',
     description:
@@ -124,4 +168,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // Stamp every sentence a client is told to type into the description (content/client-phrases.json).
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { registerWingguyTopUpTools, legacyToolList, legacyToolCall, TOOL_DEFS, runTopUp, resolveTarget };
+module.exports = { registerWingguyTopUpTools, legacyToolList, legacyToolCall, TOOL_DEFS, runTopUp, runBringIn, resolveTarget };

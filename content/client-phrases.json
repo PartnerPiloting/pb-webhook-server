@@ -40,6 +40,13 @@
       ]
     },
     {
+      "phrase": "bring these connections into Wingguy",
+      "tool": "wingguy_bring_in_connections",
+      "where": [
+        "services/lhTopUp.js"
+      ]
+    },
+    {
       "phrase": "help me work out who to search for",
       "tool": "wingguy_learn",
       "topic": "FINDING YOUR AUDIENCE WITH CLAUDE",

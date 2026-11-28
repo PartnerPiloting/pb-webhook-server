@@ -145,6 +145,13 @@ async function planOffboard(clientId) {
     if (conn) plan.actions.push({ kind: 'wispr', text: 'Delete Wingguy\'s sign-in to their Wispr Flow (it stops collecting their calls)' });
   } catch (_) { /* no database or no table = nothing held */ }
 
+  // 3b2. Their searches of their own connections, with reasons and share links
+  // (services/connectionSearches.js) - its own step, so it runs whether or not they hold contacts.
+  try {
+    const held = await require('./connectionSearches').countFor(clientId);
+    if (held.searches || held.people) plan.actions.push({ kind: 'connectionSearches', text: `Delete their ${held.searches} connection search(es) and the ${held.people} people tied to them` });
+  } catch (_) { /* no database or no table = nothing held */ }
+
   // 3c. The people Wingguy holds for them outside their leads base (services/contactsStore.js).
   try {
     const held = await require('./contactsStore').forgetClient(clientId, { apply: false });
@@ -234,6 +241,10 @@ async function runOffboard(clientId, { reason = 'Guy asked', logger = defaultLog
       } else if (a.kind === 'wispr') {
         await require('./wisprStore').getStore().deleteConnection(clientId);
         done.push('Wispr sign-in deleted');
+      } else if (a.kind === 'connectionSearches') {
+        const r = await require('./connectionSearches').forgetClient(clientId);
+        if (!r.ok) throw new Error('could not reach the database');
+        done.push(`Connection searches deleted (${r.count} rows)`);
       } else if (a.kind === 'contacts') {
         const r = await require('./contactsStore').forgetClient(clientId, { apply: true });
         if (!r.ok) throw new Error(r.error);
