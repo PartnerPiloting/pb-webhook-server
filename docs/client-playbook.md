@@ -1661,11 +1661,34 @@ that simply stopped - someone said "happy to chat", or asked you to try them aft
 life got in the way. Those people already said yes to you once, and a reply from someone who knows
 you is far more likely than one from a stranger.
 
-**What Wingguy does.** It reads your old LinkedIn conversations, works out how each one ended, and
-brings you the ones worth picking up - about twenty each morning, on your Follow-Ups screen, under
-your normal follow-ups. Each person comes with the reason they're there and one thing to pick up on.
+**Two ways to fill it - use either, or both.** Both land in the same list: a small batch each morning,
+on your Follow-Ups screen, under your normal follow-ups.
 
-**Setting it up.** Three steps, and we do them together.
+- **From your old conversations.** Wingguy reads your past LinkedIn chats and brings back the ones
+  worth picking up. Each comes with the reason they're there and one thing to pick up on.
+- **From a search.** You pick people you're already connected to by who they are - say, accountants
+  in Brisbane - whether you've ever spoken or not. Each comes with your reason for picking them.
+
+People from your old conversations come first; search people fill the rest of the day's places. Nobody
+shows up twice.
+
+**From a search - how.** On LinkedIn, search for the people you want and click **People**. Set
+**Connections** to **1st** only, and add one more filter - a job title, a city. (All of your connections
+with nothing else picked isn't accepted - pick the ones you actually want to talk to.) Copy the address
+from the top of the browser. Then either paste it in the Reconnect section of your Follow-Ups screen, or
+say **bring these connections into Wingguy** in your Claude with the link. Either way you're asked one
+thing: why you're reaching out to these people, in a sentence - "accountants I'd like to swap referrals
+with". You can add a link to share, like your programme page.
+
+Your Linked Helper machine then visits each person - a few each morning - and they arrive in Wingguy as
+full leads. **It never sends anyone a message or an invitation.** The first ones show up the morning
+after, so start with those; you never wait for the last one. When you open one and type **/wg**, it
+writes a first message to someone you've been connected with a while - no "thanks for connecting" - and
+ends with a small ask built from your reason. Your link waits until they say yes: it goes in your reply
+to them, never in the first message. (This is switched on client by client - if you can't see the box,
+ask me.)
+
+**From your old conversations - setting it up.** Three steps, and we do them together.
 
 1. I send you a link and you connect your LinkedIn. Two minutes. It only lets Wingguy read - it never
    posts, connects or sends anything - and it switches itself off after a month.

@@ -2199,7 +2199,9 @@ async function buildQueue(tenant = TENANT, { reconnectMore = 0 } = {}) {
   // past 90 days who are in the Reconnect pool leave THIS list for that one, so nobody shows twice.
   // Off, or on any failure, the live list comes back whole and `reconnect` is null.
   const rc = await require('./reconnectQueue').buildReconnect(tenant, live.items, { more: reconnectMore });
-  const reconnect = rc.enabled ? { items: rc.items, waiting: rc.waiting, dailyNumber: rc.dailyNumber, moreStep: rc.moreStep, handedOver: rc.handedOver, unread: rc.unread } : null;
+  // conversations / searches / learnLink: which ways in this client has, and the Learning page - the
+  // Reconnect section explains the two ways and shows the search box from these (28 Nov 2026).
+  const reconnect = rc.enabled ? { items: rc.items, waiting: rc.waiting, dailyNumber: rc.dailyNumber, moreStep: rc.moreStep, handedOver: rc.handedOver, unread: rc.unread, conversations: rc.conversations, searches: rc.searches, learnLink: rc.learnLink } : null;
   // Dark machines (Guy 2026-09-13): a coached client's extension updater that has gone quiet for
   // three days rides on the queue, because the queue is what the coach reads each morning and the
   // updater itself never tells anyone. Best-effort - [] on any failure, never blocks the queue.

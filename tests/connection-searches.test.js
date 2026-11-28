@@ -240,6 +240,38 @@ const STEVE = { clientId: 'Steve-Nelson', clientName: 'Steve Nelson' };
   await check('a lead with no campaign takes the search campaign', () => assert.strictEqual(lc.keepRealCampaign({}, { campaign_name: lc.SEARCH_CONNECTIONS }), null));
   await check('the search campaign never becomes a top-up target', () => assert.ok(lc.isCatchAll('Connections from your searches') && lc.isCatchAll('My own connections') && !lc.isCatchAll('Melbourne CEOs')));
 
+  console.log('the Reconnect list (step 3)');
+  const rq = require('../services/reconnectQueue');
+  const TODAY = '2026-11-29';
+  const lead = (extra = {}) => ({ 'First Name': 'Priya', 'Last Name': 'Patel', Headline: 'Partner, Patel & Co', 'AI Score': 72, ...extra });
+  const row = (slug, extra = {}) => ({ slug, lead_rec_id: `rec_${slug}`, search_id: 'csA', reason: 'Accountants I\'d like to swap referrals with', added_at: '2026-11-28', lead: lead(), ...extra });
+  await check('a visited search person is on the list with their reason; one not visited yet is not', () => {
+    const out = rq.eligibleSearch([row('priya-p'), row('not-visited', { lead_rec_id: null, lead: null })], { todayIso: TODAY });
+    assert.deepStrictEqual(out.map((p) => p.person_key), ['search:priya-p']);
+    const item = rq.toItem(out[0], TODAY);
+    assert.ok(item.kind === 'search' && item.chip === 'From your search' && /swap referrals/.test(item.why) && item.name === 'Priya Patel' && item.warmth === null, JSON.stringify(item));
+  });
+  await check('left off: Done, Never, skipped for now, Cease FUP, a client, written to in the last 90 days, on the live list', () => {
+    const notes = '=== LINKEDIN MESSAGES ===\n15-11-26 Guy: hi';
+    const out = rq.eligibleSearch([
+      row('done', { status: 'done' }), row('never', { status: 'never' }), row('skipped', { status: 'skipped', until: '2027-02-01' }),
+      row('ceased', { lead: lead({ 'Cease FUP': 'Yes' }) }), row('client', { lead: lead({ 'First Name': 'Roland', 'Last Name': 'Illyes' }) }),
+      row('recent', { lead: lead({ Notes: notes }) }), row('live'), row('ok'),
+    ], { todayIso: TODAY, nowMs: Date.parse('2026-11-29T00:00:00Z'), clientNames: new Set(['roland illyes']), takenRecIds: new Set(['rec_live']) });
+    assert.deepStrictEqual(out.map((p) => p.slug), ['ok']);
+  });
+  await check('a skip that has run out brings them back', () => assert.strictEqual(rq.eligibleSearch([row('back', { status: 'skipped', until: '2026-11-01' })], { todayIso: TODAY }).length, 1));
+  await check('conversation people always come first; search people by profile score', () => {
+    const convo = [{ person_key: 'c1', warmth: 3, ending: 'other', quietDays: 200, lead: { 'AI Score': 10 } }];
+    const srch = rq.eligibleSearch([row('low', { lead: lead({ 'AI Score': 40 }) }), row('high', { lead: lead({ 'AI Score': 90 }) })], { todayIso: TODAY });
+    const { portion } = rq.pickPortion([...srch, ...convo], { todayIso: TODAY, number: 2 });
+    assert.deepStrictEqual(portion.map((p) => p.person_key), ['c1', 'search:high']);
+  });
+  await check('the chat note names search people with their reason', () => {
+    const note = rq.reconnectNote({ enabled: true, waiting: 0, items: [rq.toItem(rq.eligibleSearch([row('priya-p')], { todayIso: TODAY })[0], TODAY)] });
+    assert.ok(/From your search/.test(note) && /why they picked them: Accountants/.test(note), note);
+  });
+
   console.log('the top-up door points own-connection searches here');
   await check('a gated client pasting a 1st-only narrowed search into a top-up is told where it goes', async () => {
     const r = await require('../services/lhTopUp').requestTopUp({ client: GUY, url: good });

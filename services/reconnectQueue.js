@@ -17,6 +17,15 @@
 //   - NOTHING AUTOMATIC: every exit is a click (reconnectAction).
 //
 // Not here yet: the overnight "prepared in full" pass and the calendar check for a booked person.
+//
+// SECOND WAY IN (28 Nov 2026, docs/CONNECTIONS-SEARCH-BUILD-PLAN.md step 3): people the client brought
+// in from a SEARCH of their own connections (services/connectionSearches.js). They join the same
+// list AFTER the conversation people - someone who said yes once beats someone picked by title - with
+// the client's reason as the "why". Their key is "search:<profile slug>" in the same reconnect_state
+// table, so Done / Skip / Never and the daily portion work unchanged. No Disconnect for them. The list
+// shows for a client whose Reconnect switch is off when searches are switched on for them (Steve has
+// no conversation history, only searches). One person, one row: a conversation person or anyone on
+// the live list is never shown again as a search person.
 
 const { Pool } = require('pg');
 
@@ -28,6 +37,9 @@ const MORE_STEP = 10;
 const SKIP_DAYS = 90;
 const LEADS_CACHE_MS = 5 * 60 * 1000;
 const NEVER_SHOWN = new Set(['declined', 'their_pitch']);
+const SEARCH_PREFIX = 'search:';
+const SEARCH_CHIP = 'From your search';
+const SEARCH_LOOKUPS_PER_BUILD = 120;   // search people matched to their lead per queue load (Airtable calls)
 
 // Order within one warmth score: who is most owed a message first.
 const ENDING_RANK = {
@@ -95,6 +107,14 @@ function eligible(people, leadsById, { todayIso, nowMs = Date.now(), cutOff = DE
 }
 
 function rank(a, b) {
+  const ka = a.kind === 'search' ? 1 : 0;
+  const kb = b.kind === 'search' ? 1 : 0;
+  if (ka !== kb) return ka - kb;                       // conversation people first, always
+  if (ka) {
+    return ((Number(b.lead && b.lead['AI Score']) || 0) - (Number(a.lead && a.lead['AI Score']) || 0))
+      || String(a.added_at || '').localeCompare(String(b.added_at || ''))
+      || String(a.person_key).localeCompare(String(b.person_key));
+  }
   return (Number(b.warmth) - Number(a.warmth))
     || ((ENDING_RANK[a.ending] ?? 9) - (ENDING_RANK[b.ending] ?? 9))
     || (a.quietDays - b.quietDays)
@@ -140,9 +160,55 @@ function splitOwnership(liveItems, pool) {
   return { live, handedOver, liveKeys };
 }
 
+/**
+ * Search people who may be on the list today. Pure. `rows` = connection_search_people joined to
+ * their search and state, each with `lead` attached (or none yet - not visited, so not shown).
+ * Left out: worked (done / never / skipped for now), stopped (Cease FUP), clients, anyone written to
+ * in the last 90 days (the live list's), anyone already on the live list or in the conversation pool.
+ */
+function eligibleSearch(rows, { todayIso, nowMs = Date.now(), clientEmails = new Set(), clientNames = new Set(), takenRecIds = new Set() } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const p of rows || []) {
+    const lead = p.lead;
+    if (!lead || !p.lead_rec_id || takenRecIds.has(p.lead_rec_id) || seen.has(p.lead_rec_id)) continue;
+    if (p.status === 'done' || p.status === 'never' || p.status === 'disconnect') continue;
+    if (p.status === 'skipped' && p.until && String(p.until).slice(0, 10) > todayIso) continue;
+    if (String(lead['Cease FUP'] || '').trim() === 'Yes' || lead['Cease FUP At']) continue;
+    if (lead['Reconnect On'] && String(lead['Reconnect On']).slice(0, 10) > todayIso) continue;
+    const email = nrm(lead.Email);
+    const fullName = nrm(`${lead['First Name'] || ''} ${lead['Last Name'] || ''}`);
+    if ((email && clientEmails.has(email)) || (fullName && clientNames.has(fullName))) continue;
+    const lastMs = newestNoteMs(lead.Notes);
+    if (lastMs && Math.floor((nowMs - lastMs) / MS_DAY) < QUIET_DAYS) continue;
+    seen.add(p.lead_rec_id);
+    out.push({ ...p, kind: 'search', person_key: `${SEARCH_PREFIX}${p.slug}` });
+  }
+  return out;
+}
+
 function toItem(p, todayIso) {
   const lead = p.lead || {};
   const profile = lead['AI Score'];
+  if (p.kind === 'search') {
+    const fullName = `${lead['First Name'] || ''} ${lead['Last Name'] || ''}`.trim();
+    return {
+      key: p.person_key,
+      recId: p.lead_rec_id,
+      kind: 'search',
+      name: fullName || p.slug,
+      headline: String(lead.Headline || '').split('\n')[0].slice(0, 160),
+      linkedin: lead['LinkedIn Profile URL'] || `https://www.linkedin.com/in/${p.slug}/`,
+      warmth: null,
+      ending: 'search',
+      chip: SEARCH_CHIP,
+      why: p.reason || '',
+      pickUpOn: '',
+      quietDays: null,
+      profileScore: profile == null || profile === '' ? null : Math.round(Number(profile)),
+      carried: !!p.shown_on && day(p.shown_on) !== todayIso,
+    };
+  }
   return {
     key: p.person_key,
     recId: p.lead_rec_id,
@@ -212,6 +278,83 @@ async function loadPeople(db, tenantId, cutOff) {
   return r.rows;
 }
 
+/** Search people with their search's reason and their Reconnect state. */
+async function loadSearchPeople(db, tenantId) {
+  await require('./connectionSearches').ensureSchema(db);
+  const r = await db.query(
+    `SELECT p.slug, p.lead_rec_id, p.search_id, p.added_at::text AS added_at, s.reason, s.share_link,
+            st.status, st.until::text AS until, st.shown_on::text AS shown_on
+       FROM connection_search_people p
+       JOIN connection_searches s ON s.search_id = p.search_id AND s.client_id = p.client_id
+       LEFT JOIN reconnect_state st ON st.tenant_id = p.client_id AND st.person_key = 'search:' || p.slug
+      WHERE p.client_id = $1`, [tenantId]);
+  return r.rows;
+}
+
+const LEAD_FIELDS_SHOWN = ['First Name', 'Last Name', 'Email', 'Headline', 'LinkedIn Profile URL', 'Notes', 'Cease FUP', 'Cease FUP At', 'Reconnect On', 'AI Score'];
+// Some bases predate these two fields (wingguyMailMcp.js loads the same way): richest first, then without.
+const LEAD_FIELD_ATTEMPTS = [LEAD_FIELDS_SHOWN, LEAD_FIELDS_SHOWN.filter((f) => f !== 'Cease FUP At'), LEAD_FIELDS_SHOWN.filter((f) => f !== 'Cease FUP At' && f !== 'Reconnect On')];
+async function selectLeads(base, filterByFormula) {
+  for (let i = 0; i < LEAD_FIELD_ATTEMPTS.length; i++) {
+    try {
+      return await base('Leads').select({ filterByFormula, fields: LEAD_FIELD_ATTEMPTS[i] }).all();
+    } catch (e) {
+      const unknownField = /Reconnect On|Cease FUP At|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message);
+      if (!unknownField || i === LEAD_FIELD_ATTEMPTS.length - 1) throw e;
+    }
+  }
+  return [];
+}
+const searchLeadsCache = new Map(); // tenantId -> { at, byId }
+const searchMisses = new Map();     // tenantId -> Map(slug -> when last looked for and not found)
+const MISS_RETRY_MS = 60 * 60 * 1000;   // not a lead yet (not visited) - look again in an hour, not every load
+const quote = (v) => `"${String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
+/**
+ * Attach each search person's lead. A person becomes a lead only once Linked Helper has visited them,
+ * so the match is made by profile address the first time (and saved), by record id after that.
+ */
+async function attachSearchLeads(db, base, tenantId, rows) {
+  const open = rows.filter((p) => !['done', 'never', 'disconnect'].includes(p.status));
+  const { canonicalLinkedinSlug: canon, slugPrefilterFormula } = require('../utils/linkedinCanonical');
+  const misses = searchMisses.get(tenantId) || new Map();
+  searchMisses.set(tenantId, misses);
+  const nowMs = Date.now();
+  // Newest first, so a backlog of people never visited can't starve today's arrivals.
+  const unmatched = open
+    .filter((p) => !p.lead_rec_id && !(misses.get(p.slug) > nowMs - MISS_RETRY_MS))
+    .sort((a, b) => String(b.added_at || '').localeCompare(String(a.added_at || '')))
+    .slice(0, SEARCH_LOOKUPS_PER_BUILD);
+  for (let i = 0; i < unmatched.length; i += 30) {
+    const chunk = unmatched.slice(i, i + 30);
+    // The shared prefilter: matches the stored address with a ?query, a trailing slash or none, and
+    // the percent-encoded spelling of non-English names. The exact check below throws out the rest.
+    const ors = chunk.map((p) => slugPrefilterFormula(p.slug)).join(',');
+    const recs = await selectLeads(base, `OR(${ors})`);
+    for (const p of chunk) misses.set(p.slug, nowMs);
+    for (const rec of recs) {
+      const slug = canon(rec.fields['LinkedIn Profile URL']);
+      const p = chunk.find((x) => x.slug === slug);
+      if (!p) continue;
+      p.lead_rec_id = rec.id;
+      p.lead = rec.fields;
+      misses.delete(slug);
+      await db.query('UPDATE connection_search_people SET lead_rec_id = $3, updated_at = now() WHERE client_id = $1 AND slug = $2', [tenantId, slug, rec.id]);
+    }
+  }
+  const need = open.filter((p) => p.lead_rec_id && !p.lead).map((p) => p.lead_rec_id);
+  let cache = searchLeadsCache.get(tenantId);
+  if (!cache || Date.now() - cache.at > LEADS_CACHE_MS) { cache = { at: Date.now(), byId: new Map() }; searchLeadsCache.set(tenantId, cache); }
+  const missing = [...new Set(need.filter((id) => !cache.byId.has(id)))];
+  for (let i = 0; i < missing.length; i += 50) {
+    const chunk = missing.slice(i, i + 50);
+    const recs = await selectLeads(base, `OR(${chunk.map((id) => `RECORD_ID() = ${quote(id)}`).join(',')})`);
+    for (const rec of recs) cache.byId.set(rec.id, rec.fields);
+  }
+  for (const p of open) if (!p.lead && p.lead_rec_id) p.lead = cache.byId.get(p.lead_rec_id) || null;
+  return open;
+}
+
 const leadsCache = new Map(); // tenantId -> { at, byId }
 async function loadLeads(base, tenantId, cutOff) {
   const hit = leadsCache.get(tenantId);
@@ -245,7 +388,9 @@ async function buildReconnect(tenantId, liveItems = [], { more = 0, nowMs = Date
   try {
     const clientService = require('./clientService');
     const client = await clientService.getClientById(tenantId);
-    if (!client || String(client.reconnect || '').trim() !== 'Yes') return off;
+    const convoOn = !!client && String(client.reconnect || '').trim() === 'Yes';
+    const searchOn = !!client && require('./connectionSearches').enabledFor(tenantId);
+    if (!convoOn && !searchOn) return off;
     const db = getPool();
     const base = client.airtableBaseId && clientService.getClientBase(client.airtableBaseId);
     if (!db || !base) return off;
@@ -255,8 +400,13 @@ async function buildReconnect(tenantId, liveItems = [], { more = 0, nowMs = Date
     const number = Number(client.reconnectDailyNumber) || DEFAULT_DAILY;
     const todayIso = todayIn(client.timezone, nowMs);
     const score = require('./conversationScore');
-    const [people, leadsById, clients, profile] = await Promise.all([
-      loadPeople(db, tenantId, cutOff), loadLeads(base, tenantId, cutOff), clientService.getAllClients(), score.loadProfile(tenantId),
+    const [people, leadsById, clients, profile, searchRows] = await Promise.all([
+      convoOn ? loadPeople(db, tenantId, cutOff) : [], convoOn ? loadLeads(base, tenantId, cutOff) : new Map(),
+      clientService.getAllClients(), convoOn ? score.loadProfile(tenantId) : { yearsBack: null },
+      searchOn ? loadSearchPeople(db, tenantId).then((rows) => attachSearchLeads(db, base, tenantId, rows)).catch((e) => {
+        console.error(`[reconnectQueue] ${tenantId}: search people not loaded - ${e.message}`);
+        return [];
+      }) : [],
     ]);
     const oldest = score.oldestAllowed(profile.yearsBack, nowMs);
     const clientEmails = new Set((clients || []).map((c) => nrm(c.clientEmailAddress)).filter(Boolean));
@@ -264,7 +414,13 @@ async function buildReconnect(tenantId, liveItems = [], { more = 0, nowMs = Date
 
     const everyone = eligible(people, leadsById, { todayIso, nowMs, cutOff, clientEmails, clientNames, oldest });
     const { live, handedOver, liveKeys } = splitOwnership(liveItems, everyone);
-    const poolNow = everyone.filter((p) => !liveKeys.has(p.person_key));
+    const convoNow = everyone.filter((p) => !liveKeys.has(p.person_key));
+    // Search people: never someone on the live list or already here from a conversation.
+    // Every conversation person - worked, skipped, declined or not - owns their lead: a search never
+    // brings them back under a second key (review 28 Nov 2026).
+    const takenRecIds = new Set([...(liveItems || []).map((it) => it.recId), ...people.map((p) => p.lead_rec_id)].filter(Boolean));
+    const fromSearches = eligibleSearch(searchRows, { todayIso, nowMs, clientEmails, clientNames, takenRecIds });
+    const poolNow = [...convoNow, ...fromSearches];
     const { portion, stamp, waiting } = pickPortion(poolNow, { todayIso, number, more });
     await stampShown(db, tenantId, stamp, todayIso);
 
@@ -275,9 +431,14 @@ async function buildReconnect(tenantId, liveItems = [], { more = 0, nowMs = Date
       waiting, dailyNumber: number, moreStep: MORE_STEP,
       // Nobody scored at the cut-off yet = the read has not run (switch on from the first batch,
       // 29 Oct 2026) - the screen says so instead of "nobody left".
-      unread: people.length === 0,
+      unread: convoOn && people.length === 0,
+      // Which ways in this client has (the screen explains the ones they don't), and the full
+      // explanation in Wingguy Learning (Guy, 28 Nov 2026: the box links to it).
+      conversations: convoOn,
+      searches: searchOn,
+      learnLink: (() => { try { return require('../utils/learnGuides').topicLink('YOUR RECONNECT LIST') || null; } catch (_) { return null; } })(),
       // Disconnects is its own switch (Guy, 5 Oct 2026): most clients never need it. Off = no button.
-      disconnects: disconnectsOn(client),
+      disconnects: convoOn && disconnectsOn(client),
     };
   } catch (e) {
     console.error(`[reconnectQueue] ${tenantId}: ${e.message}`);
@@ -301,9 +462,10 @@ async function reconnectAction(tenantId, key, action, { nowMs = Date.now(), clie
   const db = getPool();
   if (!db) return { ok: false, error: 'store_unavailable' };
   await ensureSchema(db);
-  const who = await db.query('SELECT lead_rec_id, name FROM linkedin_people WHERE tenant_id = $1 AND person_key = $2', [tenantId, personKey]);
-  if (!who.rows.length) return { ok: false, error: 'unknown_person' };
-  const { lead_rec_id: leadRecId, name } = who.rows[0];
+  if (action === 'disconnect' && personKey.startsWith(SEARCH_PREFIX)) return { ok: false, error: 'invalid_action' };
+  const who = await lookupPerson(db, tenantId, personKey);
+  if (!who) return { ok: false, error: 'unknown_person' };
+  const { leadRecId, name } = who;
 
   if (action === 'never' && leadRecId) {
     const clientService = require('./clientService');
@@ -312,6 +474,7 @@ async function reconnectAction(tenantId, key, action, { nowMs = Date.now(), clie
     if (!base) return { ok: false, error: 'no_leads_base' };
     await base('Leads').update(leadRecId, { 'Cease FUP': 'Yes', 'Reconnect On': null, 'Cease FUP At': new Date(nowMs).toISOString() });
     leadsCache.delete(tenantId);
+    searchLeadsCache.delete(tenantId);
   }
   const until = action === 'skip' ? new Date(nowMs + SKIP_DAYS * MS_DAY).toISOString().slice(0, 10) : null;
   // DISCONNECT is the client's own decision about one person they are looking at, so it is
@@ -327,13 +490,28 @@ async function reconnectAction(tenantId, key, action, { nowMs = Date.now(), clie
   return { ok: true, action, name, until };
 }
 
+/** A Reconnect key -> { leadRecId, name }: a conversation person, or a search person ("search:<slug>"). */
+async function lookupPerson(db, tenantId, personKey) {
+  if (personKey.startsWith(SEARCH_PREFIX)) {
+    const slug = personKey.slice(SEARCH_PREFIX.length);
+    await require('./connectionSearches').ensureSchema(db);
+    const r = await db.query('SELECT lead_rec_id FROM connection_search_people WHERE client_id = $1 AND slug = $2', [tenantId, slug]);
+    if (!r.rows[0]) return null;
+    const leadRecId = r.rows[0].lead_rec_id || null;
+    const cached = leadRecId && (searchLeadsCache.get(tenantId) || { byId: new Map() }).byId.get(leadRecId);
+    const name = cached ? `${cached['First Name'] || ''} ${cached['Last Name'] || ''}`.trim() : '';
+    return { leadRecId, name: name || slug };
+  }
+  const r = await db.query('SELECT lead_rec_id, name FROM linkedin_people WHERE tenant_id = $1 AND person_key = $2', [tenantId, personKey]);
+  return r.rows[0] ? { leadRecId: r.rows[0].lead_rec_id || null, name: r.rows[0].name || '' } : null;
+}
+
 /** One person on the Reconnect list: their lead record (if they are a lead) and name. */
 async function personFor(tenantId, key) {
   const db = getPool();
   if (!db || !String(key || '').trim()) return null;
   await ensureSchema(db);
-  const r = await db.query('SELECT lead_rec_id, name FROM linkedin_people WHERE tenant_id = $1 AND person_key = $2', [tenantId, String(key).trim()]);
-  return r.rows[0] ? { leadRecId: r.rows[0].lead_rec_id || null, name: r.rows[0].name || '' } : null;
+  return lookupPerson(db, tenantId, String(key).trim());
 }
 
 /** Is the optional disconnects extra switched on for this client? */
@@ -344,12 +522,14 @@ function disconnectsOn(client) {
 /** The line chat adds under the queue. '' when the list is off or empty. */
 function reconnectNote(rc) {
   if (!rc || !rc.enabled || !(rc.items || []).length) return '';
-  const lines = rc.items.map((it, i) => `${i + 1}. ${it.name} [${it.chip}, ${it.warmth}/5, quiet ${it.quietDays}d] - ${it.why}${it.pickUpOn ? ` Pick up on: ${it.pickUpOn}.` : ''}`);
-  return `\n\nRECONNECT (${rc.items.length} today, ${rc.waiting} more waiting) - people whose old LinkedIn conversation is worth picking up. A separate list from the queue above: mention it in one line and give the list only if the human asks. No message is pre-written - they open the thread and type /wg. Done / Skip 90 days / Never / Potential disconnect are buttons on the Follow-Ups screen.\n${lines.join('\n')}`;
+  const lines = rc.items.map((it, i) => (it.kind === 'search'
+    ? `${i + 1}. ${it.name} [${it.chip}${it.profileScore != null ? `, profile ${it.profileScore}` : ''}] - why they picked them: ${it.why}`
+    : `${i + 1}. ${it.name} [${it.chip}, ${it.warmth}/5, quiet ${it.quietDays}d] - ${it.why}${it.pickUpOn ? ` Pick up on: ${it.pickUpOn}.` : ''}`));
+  return `\n\nRECONNECT (${rc.items.length} today, ${rc.waiting} more waiting) - people whose old LinkedIn conversation is worth picking up, then people they brought in from a search of their own connections ("${SEARCH_CHIP}"). A separate list from the queue above: mention it in one line and give the list only if the human asks. No message is pre-written - they open the thread and type /wg. Done / Skip 90 days / Never / Potential disconnect are buttons on the Follow-Ups screen.\n${lines.join('\n')}`;
 }
 
 module.exports = {
   buildReconnect, reconnectAction, personFor, reconnectNote, disconnectsOn,
-  eligible, rank, pickPortion, splitOwnership, toItem, newestNoteMs, todayIn,
+  eligible, eligibleSearch, rank, pickPortion, splitOwnership, toItem, newestNoteMs, todayIn, SEARCH_PREFIX, SEARCH_CHIP,
   ensureSchema, _setPool, _getPool: getPool, QUIET_DAYS, MORE_STEP, ENDING_CHIP,
 };

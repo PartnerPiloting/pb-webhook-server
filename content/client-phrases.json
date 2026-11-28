@@ -43,7 +43,8 @@
       "phrase": "bring these connections into Wingguy",
       "tool": "wingguy_bring_in_connections",
       "where": [
-        "services/lhTopUp.js"
+        "services/lhTopUp.js",
+        "docs/client-playbook.md"
       ]
     },
     {

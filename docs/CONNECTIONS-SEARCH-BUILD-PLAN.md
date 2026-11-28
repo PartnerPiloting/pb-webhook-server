@@ -202,6 +202,18 @@ land on the right one:
   safe default of 5). Tests: `tests/lh-connection-search.test.py` (19) + machine door in
   `tests/connection-searches.test.js`.
 
+- **Step 3 - the Reconnect list: BUILT 28 Nov 2026.** Search people join the Reconnect list after the
+  conversation people (`reconnectQueue.eligibleSearch`, key `search:<slug>` in reconnect_state, chip
+  "From your search", the reason as the why); matched to their lead by LinkedIn address once visited
+  (shared prefilter, misses retried hourly), then by record id. The list shows for a client with
+  searches switched on even when their Reconnect switch is off. Screen: the two-ways explainer + paste
+  box + "How your Reconnect list works" link (only for clients with searches on - everyone else's list
+  reads as before); Learning topic YOUR RECONNECT LIST rewritten for both ways. Fable review: 6
+  findings fixed (fields never reached the screen; a worked conversation person could come back as a
+  search person; bases missing two fields; address spellings; Reconnect On; names). Noticed, NOT
+  changed: `disconnects` is not passed to the screen by buildQueue (pre-existing) - so the Disconnect
+  button on Reconnect rows never shows; ask Guy before turning it on.
+
 ## Build order and checks
 
 1. Link check + search tables + queueing + page/chat fields (server only; testable with no machine).
