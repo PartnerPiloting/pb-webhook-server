@@ -70,6 +70,16 @@ const ownConnectionsArrive = (clientId) => OWN_CONNECTIONS_ARRIVE.includes('*') 
  * any other EXCEPT that it never replaces a real one - see keepRealCampaign.
  */
 const OWN_CONNECTIONS = 'My own connections';
+/**
+ * The campaign that collects and visits a client's searches of their OWN connections
+ * (scripts/linked-helper/campaigns/07-connections-from-search.json, 28 Nov 2026). Like "My own
+ * connections" it never invites and never replaces a real campaign. The machine script uses the
+ * same name: scripts/linked-helper/lh-connection-search.py CAMPAIGN_NAME.
+ */
+const SEARCH_CONNECTIONS = 'Connections from your searches';
+/** Visit-only catch-all campaigns: never a top-up target, never take a lead off its real campaign. */
+const CATCH_ALL_CAMPAIGNS = [OWN_CONNECTIONS, SEARCH_CONNECTIONS];
+const isCatchAll = (name) => CATCH_ALL_CAMPAIGNS.includes(String(name || '').trim());
 
 /**
  * A lead arriving from the catch-all campaign that ALREADY has a campaign keeps it.
@@ -82,11 +92,12 @@ const OWN_CONNECTIONS = 'My own connections';
  * profile with the lead's own campaign put back (scoring reads campaign_id off it).
  */
 function keepRealCampaign(existingFields = {}, incomingRaw) {
-  if (campaignNameFromRaw(incomingRaw) !== OWN_CONNECTIONS) return null;
+  const incomingName = campaignNameFromRaw(incomingRaw);
+  if (!isCatchAll(incomingName)) return null;
   const sentBy = campaignNameFromRaw(existingFields['Raw Profile Data']);
   const stored = String(existingFields[FIELD] || '').trim();
-  const fromLh = sentBy && sentBy !== OWN_CONNECTIONS ? sentBy : '';
-  const chosen = !fromLh && stored && stored !== OWN_CONNECTIONS ? stored : '';
+  const fromLh = sentBy && !isCatchAll(sentBy) ? sentBy : '';
+  const chosen = !fromLh && stored && !isCatchAll(stored) ? stored : '';
   if (!fromLh && !chosen) return null;
   let raw;
   try {
@@ -94,7 +105,7 @@ function keepRealCampaign(existingFields = {}, incomingRaw) {
   } catch (_) {
     return null;
   }
-  raw.wingguy_also_seen_in = OWN_CONNECTIONS;
+  raw.wingguy_also_seen_in = incomingName;
   if (fromLh) {
     raw.campaign_name = fromLh;
     const id = campaignIdOf(existingFields['Raw Profile Data']);
@@ -411,7 +422,7 @@ async function setLeadCampaign({ clientId, base, leadId, value }) {
 }
 
 module.exports = {
-  FIELD, NONE, OWN_CONNECTIONS, keepRealCampaign, FILTER_READY, filterReady, RECENT_SHORTCUT, recentShortcut, OWN_CONNECTIONS_ARRIVE, ownConnectionsArrive, UNLABELLED_FORMULA,
+  FIELD, NONE, OWN_CONNECTIONS, SEARCH_CONNECTIONS, CATCH_ALL_CAMPAIGNS, isCatchAll, keepRealCampaign, FILTER_READY, filterReady, RECENT_SHORTCUT, recentShortcut, OWN_CONNECTIONS_ARRIVE, ownConnectionsArrive, UNLABELLED_FORMULA,
   _setQuickMs: (ms) => { QUICK_MS = ms; }, campaignNameFromRaw, filterFormula, isMissingFieldError,
   describeLead, writeFields, getOptions, setLeadCampaign, tallyNamesOnLeads,
   followRenames, followRenamesForClient, onMachineRenames,

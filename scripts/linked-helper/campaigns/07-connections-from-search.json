@@ -1,0 +1,59 @@
+{
+  "_comment": [
+    "Connections from your searches (Guy, 27-28 Nov 2026 - docs/CONNECTIONS-SEARCH-BUILD-PLAN.md).",
+    "A client's search of their OWN 1st-degree connections is put at the head of this campaign by",
+    "lh-connection-search.py as Linked Helper's auto-collect step (the same one a top-up uses); this",
+    "recipe is the two steps behind it: visit the profile, send the person to the client's webhook.",
+    "NO invite, NO message - ever. That is the line Guy held: every first message is written by /wg",
+    "and sent by the client.",
+    "A visit and a send a day each, at most SEARCH_VISITS_PER_DAY (unset = 5, safe for a Standard licence -",
+    "its webhook allowance is 20 a day for the whole machine; Pro machines set 25) - the script writes that",
+    "number over maxActionResultsPerIteration before building. One iteration a day (20-hour cooldown),",
+    "05:00-07:30 machine time: after the 00:00 own-connections run and the 02:30 backup, done before",
+    "the working day. {{WEBHOOK_URL}} comes from /etc/linked-helper-machine.conf.",
+    "NOT part of the default build - lh-connection-search.py builds it the first time a search arrives."
+  ],
+  "name": "Connections from your searches",
+  "description": "Wingguy: your own connections from a search you sent. Visit, then send to Wingguy. No invite, no message.",
+  "actions": [
+    {
+      "name": "",
+      "actionType": "VisitAndExtract",
+      "actionSettings": {},
+      "coolDownMinutes": 1200,
+      "maxActionResultsPerIteration": 25,
+      "workingHours": { "days": "all", "windows": [["05:00", "07:00"]] }
+    },
+    {
+      "name": "",
+      "actionType": "SendPersonToWebhook",
+      "actionSettings": {
+        "url": "{{WEBHOOK_URL}}",
+        "convertMultiLine": true,
+        "exportAsFlatObject": true,
+        "exportSettings": {
+          "educations": 3,
+          "messengers": 2,
+          "positions": 10,
+          "phoneNumbers": 2,
+          "websites": 3,
+          "languages": 3,
+          "thirdPartyEmails": 3,
+          "fullMessagingHistory": false,
+          "campaignMessagingHistory": false,
+          "positionFields": {
+            "title": true,
+            "description": true,
+            "locationName": true,
+            "dateStart": true,
+            "dateEnd": true,
+            "defaultPositionFlag": true
+          }
+        }
+      },
+      "coolDownMinutes": 1,
+      "maxActionResultsPerIteration": 25,
+      "workingHours": { "days": "all", "windows": [["05:00", "07:30"]] }
+    }
+  ]
+}

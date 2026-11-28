@@ -51,8 +51,22 @@ function fakePool() {
         const s = p && searches.find((x) => x.search_id === p.search_id && x.client_id === p.client_id);
         return { rows: s ? [{ search_id: s.search_id, reason: s.reason, share_link: s.share_link }] : [] };
       }
-      if (/SELECT \* FROM connection_searches/.test(sql)) {
+      if (/SELECT \* FROM connection_searches WHERE client_id = \$1\s+ORDER BY/.test(sql)) {
         return { rows: searches.filter((s) => s.client_id === params[0]).reverse() };
+      }
+      if (/status IN \('collecting', 'waiting'\)/.test(sql)) {
+        const mine = searches.filter((x) => x.client_id === params[0] && ['collecting', 'waiting'].includes(x.status));
+        mine.sort((a, b) => (b.status === 'collecting') - (a.status === 'collecting') || a.created_at - b.created_at);
+        return { rows: mine.slice(0, 1) };
+      }
+      if (/SELECT status FROM connection_searches/.test(sql)) {
+        const x = searches.find((y) => y.search_id === params[0] && y.client_id === params[1]);
+        return { rows: x ? [{ status: x.status }] : [] };
+      }
+      if (/UPDATE connection_searches SET status = \$3/.test(sql)) {
+        const x = searches.find((y) => y.search_id === params[0] && y.client_id === params[1]);
+        if (x) { x.status = params[2]; if (params[3] !== null) x.collected = params[3]; }
+        return { rowCount: x ? 1 : 0, rows: [] };
       }
       if (/DELETE FROM connection_search_people/.test(sql)) { const n = people.length; people.length = 0; return { rowCount: n }; }
       if (/DELETE FROM connection_searches/.test(sql)) { const n = searches.length; searches.length = 0; return { rowCount: n }; }
@@ -178,6 +192,53 @@ const STEVE = { clientId: 'Steve-Nelson', clientName: 'Steve Nelson' };
     const r = await cs.forgetClient('Guy-Wilson', { deps });
     assert.ok(r.ok && r.count > 0 && !pool.searches.length && !pool.people.length);
   });
+
+  console.log('the machine door (step 2)');
+  const pool2 = fakePool();
+  const deps2 = { pool: pool2, ...noAssets };
+  const t = Date.now();
+  pool2.searches.push(
+    { search_id: 'csOld', client_id: 'Guy-Wilson', url: 'u1', url_kind: 'search-page', reason: 'CEOs for the programme', share_link: null, status: 'waiting', created_at: new Date(t - 2000) },
+    { search_id: 'csNew', client_id: 'Guy-Wilson', url: 'u2', url_kind: 'search-page', reason: 'Accountants who refer', share_link: null, status: 'waiting', created_at: new Date(t - 1000) },
+    { search_id: 'csSteve', client_id: 'Steve-Nelson', url: 'u3', url_kind: 'search-page', reason: 'CEOs for Steve', share_link: null, status: 'waiting', created_at: new Date(t - 3000) },
+  );
+  await check('the machine gets the OLDEST waiting search of its own client', async () => assert.strictEqual((await cs.takeForMachine('Guy-Wilson', { deps: deps2 })).searchId, 'csOld'));
+  await check('a client it is not switched on for gets nothing, even with a search waiting', async () => assert.strictEqual(await cs.takeForMachine('Steve-Nelson', { deps: deps2 }), null));
+  await check('"collecting" is reported and the same search is handed back until it is done (a restarted machine carries on)', async () => {
+    const r = await cs.reportFromMachine('Guy-Wilson', 'csOld', { stage: 'collecting', collected: 0 }, { deps: deps2 });
+    assert.ok(r.ok && r.status === 'collecting');
+    pool2.searches.find((x) => x.search_id === 'csNew').created_at = new Date(t - 5000);   // even if a newer one is older in the queue
+    assert.strictEqual((await cs.takeForMachine('Guy-Wilson', { deps: deps2 })).searchId, 'csOld');
+  });
+  await check('"done" with a count, then the next search is handed over', async () => {
+    const r = await cs.reportFromMachine('Guy-Wilson', 'csOld', { stage: 'done', collected: 212 }, { deps: deps2 });
+    assert.ok(r.ok && r.status === 'done');
+    assert.strictEqual(pool2.searches.find((x) => x.search_id === 'csOld').collected, 212);
+    assert.strictEqual((await cs.takeForMachine('Guy-Wilson', { deps: deps2 })).searchId, 'csNew');
+  });
+  await check('a late "collecting" never re-opens a finished search', async () => {
+    const r = await cs.reportFromMachine('Guy-Wilson', 'csOld', { stage: 'collecting' }, { deps: deps2 });
+    assert.strictEqual(r.status, 'done');
+  });
+  await check('people reported later are tied to that search', async () => {
+    const r = await cs.reportFromMachine('Guy-Wilson', 'csOld', { people: ['priya-p', 'https://www.linkedin.com/in/sam-k/'] }, { deps: deps2 });
+    assert.strictEqual(r.added, 2);
+    assert.strictEqual((await cs.reasonFor('Guy-Wilson', 'sam-k', { deps: deps2 })).reason, 'CEOs for the programme');
+  });
+  await check('a machine reporting on a search of ANOTHER client is refused', async () => {
+    const r = await cs.reportFromMachine('Guy-Wilson', 'csSteve', { stage: 'done', people: ['x'] }, { deps: deps2 });
+    assert.ok(!r.ok && pool2.searches.find((x) => x.search_id === 'csSteve').status === 'waiting');
+  });
+
+  console.log('leads from the search campaign');
+  const lc = require('../services/leadCampaign');
+  await check('a lead with a real campaign keeps it when "Connections from your searches" sends them too', () => {
+    const kept = lc.keepRealCampaign({ 'Raw Profile Data': JSON.stringify({ campaign_name: 'Melbourne CEOs', campaign_id: 47 }) },
+      { campaign_name: lc.SEARCH_CONNECTIONS, campaign_id: 60 });
+    assert.ok(kept && kept.name === 'Melbourne CEOs' && kept.raw.wingguy_also_seen_in === lc.SEARCH_CONNECTIONS, JSON.stringify(kept));
+  });
+  await check('a lead with no campaign takes the search campaign', () => assert.strictEqual(lc.keepRealCampaign({}, { campaign_name: lc.SEARCH_CONNECTIONS }), null));
+  await check('the search campaign never becomes a top-up target', () => assert.ok(lc.isCatchAll('Connections from your searches') && lc.isCatchAll('My own connections') && !lc.isCatchAll('Melbourne CEOs')));
 
   console.log('the top-up door points own-connection searches here');
   await check('a gated client pasting a 1st-only narrowed search into a top-up is told where it goes', async () => {

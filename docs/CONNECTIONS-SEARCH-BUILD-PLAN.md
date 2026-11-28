@@ -188,6 +188,19 @@ land on the right one:
   query split, tenant guard, searches no longer replace each other, honest wording, offboarding,
   capabilities list). Tests: `tests/connection-searches.test.js` (39).
   Note: nothing is handed to a machine yet - searches sit as "waiting" until step 2.
+- **Step 2 - machine side: BUILT 28 Nov 2026, not yet proven on a machine.** Recipe
+  `campaigns/07-connections-from-search.json` (visit + send, no invite, no message; 05:00-07:30; one batch
+  a day, 20-hour cooldown - longer than any cooldown used before, watch it), `lh-connection-search.py`
+  (cron */15 as root; switched on per machine by `CONNECTION_SEARCH=on`; `SEARCH_VISITS_PER_DAY`, unset =
+  5), machine door GET/POST `/webhooks/lh-machine/:clientId/connection-searches`, the catch-all campaign
+  kept off top-ups and never taking a lead off its real campaign (`leadCampaign.isCatchAll`). It never
+  pauses or holds the client's other campaigns. Each search owns a WINDOW of the collect step (until
+  the next search goes in), so late arrivals keep the right reason; Sales Navigator people are reported
+  once visited (they have no /in/ address before - 61 of 917 on Guy's BDM campaign). Fable review: 7
+  findings, all fixed (restart no longer fails a search, "nobody new" finishes, limits are not "done",
+  state saved straight after a search goes in, a deleted campaign no longer jams it, 120-day wait,
+  safe default of 5). Tests: `tests/lh-connection-search.test.py` (19) + machine door in
+  `tests/connection-searches.test.js`.
 
 ## Build order and checks
 

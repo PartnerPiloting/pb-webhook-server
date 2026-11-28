@@ -197,6 +197,54 @@ async function reasonFor(clientId, linkedin, { deps = {} } = {}) {
   return row ? { searchId: row.search_id, reason: row.reason, shareLink: row.share_link || '' } : null;
 }
 
+/**
+ * STEP 2 - the machine's door (routes/linkedHelperMachineRoutes.js, behind the per-client secret).
+ * The oldest search of this client's still waiting, or one the machine already started and has not
+ * finished (so a machine that restarted picks up where it was). Never another client's.
+ */
+async function takeForMachine(clientId, { deps = {} } = {}) {
+  if (!clientId || !enabledFor(clientId)) return null;
+  const pool = await db(deps);
+  if (!pool) return null;
+  const r = await pool.query(
+    `SELECT * FROM connection_searches WHERE client_id = $1 AND status IN ('collecting', 'waiting')
+      ORDER BY (status = 'collecting') DESC, created_at ASC LIMIT 1`, [String(clientId)]);
+  const s = rowOut(r.rows[0]);
+  return s ? { searchId: s.searchId, url: s.url, urlKind: s.urlKind, status: s.status } : null;
+}
+
+const STAGES = new Set(['collecting', 'done', 'failed']);
+/**
+ * The machine reporting on a search: { stage, collected, error, people: [slugs] }. `people` may come
+ * on any report (a person's profile address is only known once Linked Helper has visited them, so
+ * they trickle in over days); they are tied to THIS search unless an earlier search already has them.
+ * Only ever a search of this client's. Returns { ok, status, added }.
+ */
+async function reportFromMachine(clientId, searchId, body = {}, { deps = {} } = {}) {
+  const pool = await db(deps);
+  if (!pool || !clientId || !searchId) return { ok: false, error: 'missing' };
+  const cur = await pool.query('SELECT status FROM connection_searches WHERE search_id = $1 AND client_id = $2', [String(searchId), String(clientId)]);
+  if (!cur.rows[0]) return { ok: false, error: 'no such search for this client' };
+  let status = cur.rows[0].status;
+  const stage = String(body.stage || '').trim();
+  if (STAGES.has(stage) && !(status === 'done' && stage === 'collecting')) {
+    const collected = Number.isFinite(Number(body.collected)) ? Math.max(0, Math.round(Number(body.collected))) : null;
+    const detail = { error: body.error ? String(body.error).slice(0, 300) : undefined, at: new Date().toISOString() };
+    await pool.query(
+      `UPDATE connection_searches SET status = $3, collected = COALESCE($4, collected), detail = $5::jsonb,
+              updated_at = now(), finished_at = CASE WHEN $3 IN ('done', 'failed') THEN now() ELSE finished_at END
+        WHERE search_id = $1 AND client_id = $2`,
+      [String(searchId), String(clientId), stage, collected, JSON.stringify(detail)]);
+    status = stage;
+  }
+  let added = 0;
+  if (Array.isArray(body.people) && body.people.length) {
+    const r = await recordPeople(clientId, searchId, body.people, { deps });
+    added = r.added || 0;
+  }
+  return { ok: true, status, added };
+}
+
 /** Offboarding plan: how many searches and people are held for this client (0 = nothing to do). */
 async function countFor(clientId, { deps = {} } = {}) {
   const pool = await db(deps);
@@ -264,6 +312,6 @@ function describeSearch(s) {
 }
 
 module.exports = {
-  enabledFor, countFor, cleanReason, cleanShareLink, saveSearch, listFor, recordPeople, reasonFor, forgetClient,
+  enabledFor, countFor, takeForMachine, reportFromMachine, cleanReason, cleanShareLink, saveSearch, listFor, recordPeople, reasonFor, forgetClient,
   requestSearch, describeSearch, ensureSchema, REASON_MAX,
 };

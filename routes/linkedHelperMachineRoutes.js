@@ -411,6 +411,38 @@ router.post('/webhooks/lh-machine/:clientId/fill-ins', express.json({ limit: '64
 });
 
 /**
+ * Searches of the client's own connections (services/connectionSearches.js, 28 Nov 2026 - step 2 of
+ * docs/CONNECTIONS-SEARCH-BUILD-PLAN.md). Polled by lh-connection-search.py. GET hands over the
+ * search to work on (the one already collecting, else the oldest waiting); POST { searchId, stage,
+ * collected, error, people: [profile slugs] } reports on it. A machine only ever sees its own client's.
+ */
+router.get('/webhooks/lh-machine/:clientId/connection-searches', async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  try {
+    const search = await require('../services/connectionSearches').takeForMachine(client.clientId);
+    return res.json({ ok: true, search });
+  } catch (e) {
+    log.error(`LH-MACHINE connection-search read failed for ${client.clientId}: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'read failed' });
+  }
+});
+
+router.post('/webhooks/lh-machine/:clientId/connection-searches', express.json({ limit: '256kb' }), async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  try {
+    const r = await require('../services/connectionSearches').reportFromMachine(client.clientId, clip(body.searchId, 40), body);
+    log.info(`LH-MACHINE ${client.clientId} connection-search ${clip(body.searchId, 40)}: ${body.stage || 'people'} -> ${r.status || r.error}${r.added ? `, ${r.added} people tied to it` : ''}`);
+    return res.status(r.ok ? 200 : 400).json(r);
+  } catch (e) {
+    log.error(`LH-MACHINE connection-search report failed for ${client.clientId}: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'write failed' });
+  }
+});
+
+/**
  * A file for this machine to fetch (services/machineFileStore.js, 30 Sep 2026). Polled by
  * lh-clipboard.py on the same cadence as the clipboard. What is handed over is a LINK - the
  * machine does the fetching, so nothing large ever passes through this server. Handed over once:

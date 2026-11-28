@@ -40,7 +40,10 @@ async function pickCampaign(clientId, named = '') {
   } catch (e) {
     return { error: `Couldn't read the campaign list: ${e.message}` };
   }
-  const live = (res.campaigns || []).filter((c) => c.live && c.id > 0);
+  // The visit-only catch-alls ("My own connections", "Connections from your searches") have no
+  // invite step - a top-up can never go there, and they must not turn one campaign into a choice.
+  const { isCatchAll } = require('./leadCampaign');
+  const live = (res.campaigns || []).filter((c) => c.live && c.id > 0 && !isCatchAll(c.name));
   if (!live.length) {
     return { error: res.source === 'none'
       ? 'No campaign has come through from a Linked Helper machine for this client - either Linked Helper runs on their own computer (nothing can reach it from here; the how-to page is the answer), or the machine has never reported. Ask Guy.'

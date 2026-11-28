@@ -302,7 +302,7 @@ async function upsertLead(
         if (kept) {
             delete fields[leadCampaign.FIELD];
             fields[LEAD_FIELDS.RAW_PROFILE_DATA] = JSON.stringify(kept.raw);
-            logger.info(`leadService/upsertLead: ${existing[0].id} arrived from "${leadCampaign.OWN_CONNECTIONS}" but keeps its campaign "${kept.name}"`);
+            logger.info(`leadService/upsertLead: ${existing[0].id} arrived from a catch-all campaign but keeps its campaign "${kept.name}"`);
         }
 
         // Validate field names before sending to Airtable
